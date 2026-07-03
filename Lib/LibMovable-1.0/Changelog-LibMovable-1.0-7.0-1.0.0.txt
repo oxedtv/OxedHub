@@ -1,0 +1,13 @@
+tag 7.0-1.0.0
+1668721403aec375f2366b4971f0d1df1c7d7555
+Adirelle <adirelle+github@gmail.com>
+2016-09-09 23:06:44 +0200
+
+Updated for legion
+
+
+--------------------
+
+Adirelle:
+	- Fixed for Legion.
+	- TOC bump.

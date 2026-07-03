@@ -1,0 +1,78 @@
+## Interface: 11508, 20505, 30403, 40401, 110100, 120001, 120007
+## Title: Oxed Hub
+## Notes: Unified interface for sounds, animations, emotes, chat messages, and toys based on in-game events
+## Author: https://customwowaddon.com/
+## Version: 2.0.5
+## SavedVariables: OxedHubDB
+## Category: Audio
+## IconTexture: Interface\AddOns\OxedHub\Media\Textures\Minimap\o-oxed-minimap.tga
+# Loader (must load FIRST to avoid taint)
+Core\Loader.lua
+
+# Localization
+Locales\ENLocalization.lua
+Locales\ESLocalization.lua
+Locales\ARLocalization.lua
+
+# Clean dispatcher
+Core\ChatDispatcher.lua
+
+# Libraries 
+Lib\LibStub\LibStub.lua
+Lib\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Lib\AceSerializer-3.0\AceSerializer-3.0.lua
+Lib\LibDataBroker-1.1\LibDataBroker-1.1.lua
+Lib\LibDBIcon-1.0\LibDBIcon-1.0.lua
+
+# Core Files
+Core\Config.lua
+Core\Data.lua
+Core\BuiltInProfiles.lua
+Modules\GeneratedSoundCatalog.lua
+Core\BlizzardSettings.lua
+Core\Core.lua
+Modules\MacroRegistry.lua
+Modules\IconPicker.lua
+
+# Feature Modules
+Modules\Sounds.lua
+Modules\Animations.lua
+Modules\Emotes.lua
+Modules\ChatMessages.lua
+Modules\Toys.lua
+Modules\Mounts.lua
+Modules\Triggers.lua
+Modules\Triggers\Core\Macros.lua
+Modules\Triggers\Core\Execution.lua
+Modules\Triggers\UI\Dashboard.lua
+Modules\Triggers\UI\TriggerCard.lua
+Modules\Triggers\UI\ActionsTab.lua
+Modules\Triggers\UI\MacroTab.lua
+Modules\Triggers\UI\Pickers.lua
+Modules\Triggers\UI\ZoneTab.lua
+Modules\Triggers\Aura.lua
+Modules\Triggers\SpellCast.lua
+Modules\Triggers\Encounter.lua
+Modules\Triggers\Interrupt.lua
+Modules\Triggers\EatBuff.lua
+Modules\Triggers\Summon.lua
+Modules\Triggers\Control.lua
+Modules\Triggers\Pet.lua
+Modules\Triggers\General.lua
+Modules\ActionHub.lua
+Modules\Experimental.lua
+Modules\Rings\OxedRing.lua
+Modules\Rings\OxedRingEditor.lua
+Modules\Search.lua
+Modules\MinimapButton.lua
+UI\Components\Panel.lua
+UI\Components\Button.lua
+UI\Components\Scroll.lua
+UI\Components\Navigation.lua
+UI\Components\Search.lua
+UI\UI.lua
+
+# Media folders
+# OxedHub_CustomMedia/ - Place custom .mp3/.ogg files here
+# Media/Animations/ - Place TGA sprite sheets here
+# Media/Textures/ - Place textures and icons here

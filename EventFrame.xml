@@ -1,0 +1,29 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Frame name="OxedHubEventFrame" parent="UIParent" hidden="true">
+		<Scripts>
+			<OnLoad>
+				self:RegisterEvent("PLAYER_LOGIN")
+				self:RegisterEvent("PLAYER_DEAD")
+				self:RegisterEvent("PLAYER_ALIVE")
+				self:RegisterEvent("RESURRECT_REQUEST")
+				self:RegisterEvent("ENCOUNTER_END")
+				self:RegisterEvent("CONFIRM_SUMMON")
+				self:RegisterEvent("ACHIEVEMENT_EARNED")
+				self:RegisterEvent("LOSS_OF_CONTROL_UPDATE")
+				self:RegisterEvent("UNIT_PET")
+				self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+				self:RegisterEvent("PLAYER_TARGET_CHANGED")
+				self:RegisterEvent("UNIT_AURA")
+				self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+				self:RegisterEvent("PLAYER_REGEN_DISABLED")
+				self:RegisterEvent("PLAYER_REGEN_ENABLED")
+				self:RegisterEvent("PLAYER_ENTERING_WORLD")
+			</OnLoad>
+			<OnEvent>
+				if OxedHubEventFrame_OnEvent then
+					OxedHubEventFrame_OnEvent(self, event, ...)
+				end
+			</OnEvent>
+		</Scripts>
+	</Frame>
+</Ui>
