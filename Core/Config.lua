@@ -2,8 +2,15 @@ local addonName, OxedHub = ...
 
 -- Configuration and Constants
 OxedHub.CONFIG = {
-    VERSION = "2.0.5",
+    VERSION = "2.2.39",
     DB_VERSION = 1,
+
+    -- Shown in the Export/Import "About" panel. Edit freely.
+    CREDITS = {
+        author = "Oxed",
+        thanks = "Thanks to everyone testing & sharing profiles.",
+        links = nil, -- e.g. "Discord: discord.gg/xxxx"
+    },
     
     -- UI Dimensions
     MAIN_FRAME_WIDTH = 1320,
@@ -11,10 +18,21 @@ OxedHub.CONFIG = {
     SIDEBAR_WIDTH = 200,
     CONTENT_WIDTH = 1090,
     
+    -- Trigger categories for the two-step Event Type picker. "advanced" events
+    -- need a spell ID (or similar) to be configured; everything else is
+    -- ready to use as soon as it's selected.
+    EVENT_CATEGORIES = {
+        { value = "preset", label = "Basic Triggers", desc = "Ready-to-use events that need no extra configuration" },
+        { value = "advanced", label = "Advanced Triggers", desc = "Events that you configure with a specific spell or aura" },
+    },
+
     -- Event Types (technical -> human-readable mapping with descriptions)
+    -- category defaults to "preset" when omitted.
     EVENT_TYPES = {
-        { value = "UNIT_AURA", label = "Aura Gained/Lost", desc = "When you gain or lose a buff/debuff" },
-        { value = "UNIT_SPELLCAST_SUCCEEDED", label = "Spell Cast Success", desc = "When you successfully cast a spell (e.g., Sprint, Hearthstone, Portals)" },
+        { value = "UNIT_AURA", label = "Aura Gained/Lost", desc = "When you gain or lose a buff/debuff", category = "advanced" },
+        { value = "SELF_AURA", label = "My Buff (by Spell ID)", desc = "Detect one of YOUR buffs by spell ID (e.g. Power Infusion). Works out of combat now; sound also plays IN COMBAT on WoW 12.1+ (native aura sound).", category = "advanced" },
+        { value = "SPELL_PROC", label = "Spell Proc Glow (by Spell ID)", desc = "Fires when a spell's proc/activation glow appears on your bar (e.g. Sudden Doom lighting up Death Coil). Uses the game's proc-glow event, so it works IN COMBAT.", category = "advanced" },
+        { value = "UNIT_SPELLCAST_SUCCEEDED", label = "Spell Cast Success", desc = "When you successfully cast a spell (e.g., Sprint, Hearthstone, Portals)", category = "advanced" },
         { value = "SUMMON", label = "Summon", desc = "When a summon appears, is accepted, or is declined" },
         { value = "PLAYER_DEAD", label = "Player Died", desc = "When your character dies" },
         { value = "ENCOUNTER_START", label = "Boss Encounter Start", desc = "When a boss fight begins" },
@@ -32,7 +50,15 @@ OxedHub.CONFIG = {
         { value = "PET_SUMMONED", label = "Pet Summoned", desc = "When your pet is summoned" },
         { value = "PET_DISMISSED", label = "Pet Dismissed", desc = "When your pet is dismissed" },
         { value = "SPELL_INTERRUPTED", label = "Spell Interrupted", desc = "When your spell is interrupted" },
-        -- { value = "RAID_TOOL", label = "Raid Tool Used", desc = "When raid utilities are used (Mage Table, Soulwell, Repair Bot)" },
+        { value = "PARTY_MEMBER_DEATH", label = "Party Member Died", desc = "When a party member dies" },
+        { value = "PLAYER_LEVEL_UP", label = "Level Up", desc = "When you gain a level" },
+        { value = "NEW_MAIL", label = "New Mail", desc = "When you receive new mail" },
+        { value = "REACH_FLY_DESTINATION", label = "Reach Fly Destination", desc = "When you land from a flight path" },
+        { value = "MOUNT", label = "Mount Up / Dismount", desc = "When you mount up, dismount, or shapeshift into Travel Form" },
+        { value = "COMBAT_STATE", label = "Enter/Exit Combat", desc = "When you enter or leave combat" },
+        { value = "PVP_KILL", label = "PvP Kill", desc = "When you land a killing blow on an enemy player" },
+        { value = "PVP_MULTIKILL", label = "PvP Multi-Kill", desc = "Double / Triple / Multi kill within 10 seconds" },
+        { value = "PVP_SPREE", label = "PvP Killing Spree", desc = "Killing Spree / Dominating / Unstoppable / Godlike" },
     },
     
     -- Zone Types

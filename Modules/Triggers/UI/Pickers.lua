@@ -82,13 +82,16 @@ function Triggers:RefreshPickerList(picker, actionType)
 
     -- Get options based on type (handle success/fail variants)
     local baseType = actionType
-    if actionType == "sound" or actionType == "successSound" or actionType == "failSound" then 
+    if actionType:match("Sound$") or actionType == "sound" then 
         baseType = "sound" 
-    elseif actionType == "animation" or actionType == "successAnimation" or actionType == "failAnimation" then 
+    elseif actionType:match("Animation$") or actionType:match("Anim$") or actionType == "animation" then 
         baseType = "animation" 
-    elseif actionType == "chatMessage" or actionType == "startChatMessage" or actionType == "stopChatMessage"
-        or actionType == "summonIncomingChatMessage" or actionType == "summonAcceptedChatMessage" or actionType == "summonDeclinedChatMessage" then 
+    elseif actionType:match("Emote$") or actionType == "emote" then
+        baseType = "emote"
+    elseif actionType:match("ChatMessage$") or actionType:match("Chat$") or actionType == "chatMessage" then 
         baseType = "chatMessage" 
+    elseif actionType:match("Toy$") or actionType == "toy" then
+        baseType = "toy"
     end
     
     if baseType == "sound" then
@@ -225,43 +228,7 @@ function Triggers:RefreshPickerList(picker, actionType)
         end
         table.sort(options, function(a, b) return a.label < b.label end)
     elseif baseType == "toy" then
-        picker.collapsedCategories = picker.collapsedCategories or {}
-
-        -- Toy Mixes category
-        local mixes = {}
-        for id, data in pairs(OxedHub.db.profile.toyMixes or {}) do
-            local label = data.name or id
-            if query == "" or string.find(normalizeSearchText(label), query, 1, true) then
-                local icon1, icon2
-                if OxedHub.Toys and OxedHub.Toys.GetMixSlotIcons then
-                    icon1, icon2 = OxedHub.Toys:GetMixSlotIcons(id)
-                end
-                table.insert(mixes, { value = id, label = label, isMix = true, mixIcon1 = icon1, mixIcon2 = icon2 })
-            end
-        end
-        table.sort(mixes, function(a, b) return a.label < b.label end)
-
-        local mixCollapsed = picker.collapsedCategories["Toy Mixes"]
-        if mixCollapsed == nil then mixCollapsed = false end
-        if query ~= "" then mixCollapsed = false end
-        picker.collapsedCategories["Toy Mixes"] = mixCollapsed
-
-        if #mixes > 0 then
-            table.insert(options, {
-                isHeader = true,
-                label = (mixCollapsed and "> " or "v ") .. "Toy Mixes (" .. #mixes .. ")",
-                catName = "Toy Mixes",
-                isCollapsed = mixCollapsed,
-            })
-            if not mixCollapsed then
-                for _, opt in ipairs(mixes) do
-                    table.insert(options, opt)
-                end
-            end
-        end
-
-        -- Individual Owned Toys category
-        local toys = {}
+        -- Individual Owned Toys directly
         local numToys = C_ToyBox.GetNumTotalDisplayedToys and C_ToyBox.GetNumTotalDisplayedToys() or 0
         for i = 1, numToys do
             local itemID = C_ToyBox.GetToyFromIndex(i)
@@ -269,31 +236,12 @@ function Triggers:RefreshPickerList(picker, actionType)
                 local _, toyName, toyIcon = C_ToyBox.GetToyInfo(itemID)
                 if toyName and toyName ~= "" then
                     if query == "" or string.find(normalizeSearchText(toyName), query, 1, true) then
-                        table.insert(toys, { value = "toyid:" .. itemID, label = toyName, itemID = itemID, toyIcon = toyIcon })
+                        table.insert(options, { value = "toyid:" .. itemID, label = toyName, itemID = itemID, toyIcon = toyIcon })
                     end
                 end
             end
         end
-        table.sort(toys, function(a, b) return a.label < b.label end)
-
-        local toysCollapsed = picker.collapsedCategories["Owned Toys"]
-        if toysCollapsed == nil then toysCollapsed = true end
-        if query ~= "" then toysCollapsed = false end
-        picker.collapsedCategories["Owned Toys"] = toysCollapsed
-
-        if #toys > 0 then
-            table.insert(options, {
-                isHeader = true,
-                label = (toysCollapsed and "> " or "v ") .. "Owned Toys (" .. #toys .. ")",
-                catName = "Owned Toys",
-                isCollapsed = toysCollapsed,
-            })
-            if not toysCollapsed then
-                for _, opt in ipairs(toys) do
-                    table.insert(options, opt)
-                end
-            end
-        end
+        table.sort(options, function(a, b) return a.label < b.label end)
     end
 
     for index, option in ipairs(options) do
@@ -343,6 +291,7 @@ function Triggers:RefreshPickerList(picker, actionType)
             row.useButton:SetPoint("LEFT", row, "LEFT", indent, 0)
             row.useButton.optionValue = option.value
             row.useButton.actionType = actionType
+            row.useButton.itemID = option.itemID
             row.useButton.isHeader = false
             row.useButton.catName = nil
             row.playButton.optionValue = option.value
@@ -358,20 +307,27 @@ function Triggers:RefreshPickerList(picker, actionType)
                 local coord = 1 / grid
                 row.icon:SetTexCoord(0, coord, 0, coord)
                 row.useButton:SetPoint("LEFT", row, "LEFT", 36, 0)
-            elseif baseType == "toy" and option.isMix and option.mixIcon1 then
-                -- Split icon for toy mixes
-                row.icon:Hide()
-                if not row.splitIcon then
-                    row.splitIcon = OxedHub.Toys:CreateSplitIcon(row, 22, option.mixIcon1, option.mixIcon2)
+            elseif baseType == "toy" and option.isMix then
+                if option.customIcon then
+                    row.icon:Show()
+                    row.icon:SetTexture(option.customIcon)
+                    row.icon:SetTexCoord(0, 1, 0, 1)
+                    row.useButton:SetPoint("LEFT", row, "LEFT", 30, 0)
+                elseif option.mixIcon1 then
+                    -- Split icon for toy mixes
+                    row.icon:Hide()
+                    if not row.splitIcon then
+                        row.splitIcon = OxedHub.Toys:CreateSplitIcon(row, 22, option.mixIcon1, option.mixIcon2)
+                    end
+                    row.splitIcon.leftTexture:SetTexture(option.mixIcon1)
+                    row.splitIcon.leftTexture:SetTexCoord(0, 0.5, 0, 1)
+                    row.splitIcon.rightTexture:SetTexture(option.mixIcon2 or option.mixIcon1)
+                    row.splitIcon.rightTexture:SetTexCoord(0.5, 1, 0, 1)
+                    row.splitIcon:ClearAllPoints()
+                    row.splitIcon:SetPoint("LEFT", row, "LEFT", 4, 0)
+                    row.splitIcon:Show()
+                    row.useButton:SetPoint("LEFT", row, "LEFT", 30, 0)
                 end
-                row.splitIcon.leftTexture:SetTexture(option.mixIcon1)
-                row.splitIcon.leftTexture:SetTexCoord(0, 0.5, 0, 1)
-                row.splitIcon.rightTexture:SetTexture(option.mixIcon2 or option.mixIcon1)
-                row.splitIcon.rightTexture:SetTexCoord(0.5, 1, 0, 1)
-                row.splitIcon:ClearAllPoints()
-                row.splitIcon:SetPoint("LEFT", row, "LEFT", 4, 0)
-                row.splitIcon:Show()
-                row.useButton:SetPoint("LEFT", row, "LEFT", 30, 0)
             elseif baseType == "toy" and option.toyIcon then
                 -- Single icon for individual toys
                 row.icon:Show()
@@ -433,6 +389,19 @@ function Triggers:CreatePickerRow(picker, actionType)
         fs:SetJustifyH("LEFT")
     end
 
+    useButton:SetScript("OnEnter", function(self)
+        if self.itemID then
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetItemByID(self.itemID)
+            GameTooltip:Show()
+        end
+    end)
+    useButton:SetScript("OnLeave", function(self)
+        if self.itemID then
+            GameTooltip:Hide()
+        end
+    end)
+
     local playButton = CreateFrame("Button", nil, row)
     playButton:SetSize(18, 18)
     playButton:SetPoint("RIGHT", row, "RIGHT", -6, 0)
@@ -482,13 +451,16 @@ function Triggers:CreatePickerRow(picker, actionType)
         if not self.optionValue then return end
         local at = self.actionType or self:GetParent().actionType
         local baseType = at
-        if at == "sound" or at == "successSound" or at == "failSound" then 
+        if at:match("Sound$") or at == "sound" then 
             baseType = "sound" 
-        elseif at == "animation" then 
+        elseif at:match("Animation$") or at:match("Anim$") or at == "animation" then 
             baseType = "animation" 
-        elseif at == "chatMessage" or at == "startChatMessage" or at == "stopChatMessage"
-            or at == "summonIncomingChatMessage" or at == "summonAcceptedChatMessage" or at == "summonDeclinedChatMessage" then 
+        elseif at:match("Emote$") or at == "emote" then
+            baseType = "emote"
+        elseif at:match("ChatMessage$") or at:match("Chat$") or at == "chatMessage" then 
             baseType = "chatMessage" 
+        elseif at:match("Toy$") or at == "toy" then
+            baseType = "toy"
         end
         if baseType == "sound" and OxedHub.Sounds then
             OxedHub.Sounds:Play(self.optionValue)

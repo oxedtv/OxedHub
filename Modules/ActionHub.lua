@@ -501,6 +501,333 @@ local function GetToyAssignmentMode(slot)
     return "mix"
 end
 
+-- Is this slot currently usable? Mirrors Blizzard action bar behaviour: a mount
+-- in a no-fly/no-mount zone, an unusable spell, etc. Returns true when we can't
+-- tell, so anything we don't understand keeps its normal look.
+local function IsSlotUsable(slot)
+    local ok, usable = pcall(function()
+        if not slot then return true end
+        local id = slot.id
+        if not id then return true end
+
+        if slot.type == "mount" then
+            local spellID, collectionUsable
+            if C_MountJournal and C_MountJournal.GetMountInfoByID then
+                local _, sid, _, _, isUsable = C_MountJournal.GetMountInfoByID(id)
+                spellID, collectionUsable = sid, isUsable
+            end
+
+            -- The journal's isUsable only covers "do you own and can you ride
+            -- this" (collected / faction / level) — it stays true indoors. The
+            -- zone restriction lives on the mount's spell, which is what the
+            -- default action bars grey out on.
+            if collectionUsable == false then return false end
+
+            if spellID and C_Spell and C_Spell.IsSpellUsable then
+                local spellUsable = C_Spell.IsSpellUsable(spellID)
+                if spellUsable ~= nil then return spellUsable and true or false end
+            end
+
+            -- Fallback for clients where the spell query gives nothing back.
+            if IsIndoors and IsIndoors() then return false end
+            return true
+        end
+
+        if slot.type == "spell" then
+            if C_Spell and C_Spell.IsSpellUsable then
+                local isUsable = C_Spell.IsSpellUsable(id)
+                if isUsable ~= nil then return isUsable and true or false end
+            end
+            return true
+        end
+
+        if slot.type == "toy" and GetToyAssignmentMode(slot) == "direct" then
+            if C_ToyBox and C_ToyBox.IsToyUsable then
+                local isUsable = C_ToyBox.IsToyUsable(id)
+                -- IsToyUsable returns nil while the toy is still loading; treat
+                -- only an explicit false as unusable.
+                if isUsable ~= nil then return isUsable and true or false end
+            end
+            return true
+        end
+
+        if slot.type == "item" then
+            if C_Item and C_Item.IsUsableItem then
+                local isUsable = C_Item.IsUsableItem(id)
+                if isUsable ~= nil then return isUsable and true or false end
+            end
+            return true
+        end
+
+        return true
+    end)
+    if ok then return usable end
+    return true
+end
+
+-- Turn a stored binding ("ALT-CTRL-1", "SHIFT-F3", "BUTTON4") into a short
+-- readable label like "Alt+1" / "A+C+1", mirroring the default action bars.
+local BINDING_KEY_SHORT = {
+    MOUSEWHEELUP = "WU", MOUSEWHEELDOWN = "WD",
+    BUTTON3 = "M3", BUTTON4 = "M4", BUTTON5 = "M5",
+    PAGEUP = "PU", PAGEDOWN = "PD",
+    SPACE = "Sp", ESCAPE = "Esc", INSERT = "Ins", DELETE = "Del",
+    HOME = "Hm", END = "End", BACKSPACE = "BS", ENTER = "Ent", TAB = "Tab",
+}
+
+local function FormatBindingText(binding)
+    if not binding or binding == "" then return nil end
+
+    local mods = {}
+    local key = binding
+    while true do
+        local mod, rest = key:match("^(ALT)%-(.+)$")
+        if not mod then mod, rest = key:match("^(CTRL)%-(.+)$") end
+        if not mod then mod, rest = key:match("^(SHIFT)%-(.+)$") end
+        if not mod then break end
+        table.insert(mods, mod)
+        key = rest
+    end
+
+    -- Numpad and function keys keep a compact form.
+    key = key:gsub("^NUMPAD", "N"):gsub("^NUMLOCK", "NL")
+    key = BINDING_KEY_SHORT[key] or key
+
+    if #mods == 0 then
+        return key
+    end
+
+    -- One modifier spells out ("Alt+1"); several abbreviate so the text still
+    -- fits on the node ("A+C+1").
+    local prettyMods = {}
+    for _, mod in ipairs(mods) do
+        if #mods == 1 then
+            table.insert(prettyMods, mod:sub(1, 1) .. mod:sub(2):lower())
+        else
+            table.insert(prettyMods, mod:sub(1, 1))
+        end
+    end
+
+    return table.concat(prettyMods, "+") .. "+" .. key
+end
+
+-- Show the slot's keybinding on the node, like the default UI. Square nodes get
+-- it in the top-right corner; round ("ring") nodes get it centred and nudged
+-- down so the text stays inside the circle instead of hanging off the corner.
+local function UpdateBindingLabel(btn, slot, size, style)
+    local text = slot and FormatBindingText(slot.binding)
+    if not text then
+        if btn.bindingText then btn.bindingText:Hide() end
+        return
+    end
+
+    if not btn.bindingText then
+        btn.bindingText = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmallGray")
+        -- Top sublevel so the cooldown swipe/text can't cover it.
+        btn.bindingText:SetDrawLayer("OVERLAY", 7)
+        btn.bindingText:SetShadowOffset(1, -1)
+        btn.bindingText:SetShadowColor(0, 0, 0, 1)
+        btn.bindingText:SetTextColor(1, 1, 1, 0.9)
+    end
+
+    btn.bindingText:ClearAllPoints()
+    if style == "ring" then
+        btn.bindingText:SetJustifyH("CENTER")
+        btn.bindingText:SetPoint("TOP", btn, "TOP", 0, -6)
+    else
+        btn.bindingText:SetJustifyH("RIGHT")
+        btn.bindingText:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -2, -2)
+    end
+    btn.bindingText:SetWidth((size or btn:GetWidth() or 44) - 4)
+    btn.bindingText:SetText(text)
+    btn.bindingText:Show()
+end
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- Proc glow: mirrors Blizzard's spell activation overlay. When the game says a
+-- spell has procced, any hub node that casts that spell lights up.
+-- ─────────────────────────────────────────────────────────────────────────
+local activeProcSpells = {}
+
+-- Which spell (if any) does this slot ultimately cast?
+local function GetSlotSpellID(slot)
+    if not slot or not slot.id then return nil end
+    local ok, spellID = pcall(function()
+        if slot.type == "spell" then
+            return slot.id
+        end
+        if slot.type == "mount" then
+            if C_MountJournal and C_MountJournal.GetMountInfoByID then
+                local _, sid = C_MountJournal.GetMountInfoByID(slot.id)
+                return sid
+            end
+            return nil
+        end
+        if slot.type == "toy" or slot.type == "item" then
+            local _, sid = GetItemSpell(slot.id)
+            return sid
+        end
+        if slot.type == "trigger" then
+            local trg = OxedHub.db.profile.triggers[slot.id]
+            if trg and OxedHub.Triggers and OxedHub.Triggers.GetTriggerCooldownSpellID then
+                return OxedHub.Triggers:GetTriggerCooldownSpellID(trg)
+            end
+        end
+        return nil
+    end)
+    return ok and spellID or nil
+end
+
+-- Is this spell currently proc-glowing? Blizzard often reports the glow against
+-- a spell's base or override form rather than the exact id sitting on the node,
+-- so check those variants too.
+local function Variant(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, result = pcall(fn, ...)
+    return ok and result or nil
+end
+
+-- Ask the game directly whether a spell is currently overlay-glowing. This is
+-- what the default action bars use, and it avoids the event-ID mismatch problem
+-- entirely (the glow event often reports a different id than the one on the bar).
+local function QueryOverlayed(spellID)
+    if not spellID then return false end
+    local overlayed = Variant(IsSpellOverlayed, spellID)
+    if overlayed == nil and C_SpellActivationOverlay then
+        overlayed = Variant(C_SpellActivationOverlay.IsSpellOverlayed, spellID)
+    end
+    return overlayed == true
+end
+
+local function IsSpellProcced(spellID)
+    if not spellID then return false end
+
+    -- Direct query first, then the ids we captured from the glow events, then
+    -- the spell's base / override forms for both.
+    local ids = { spellID }
+    local base = Variant(FindBaseSpellByID, spellID)
+    if base and base ~= spellID then table.insert(ids, base) end
+    local override = Variant(FindSpellOverrideByID, spellID)
+    if override and override ~= spellID then table.insert(ids, override) end
+    local override2 = Variant(C_Spell and C_Spell.GetOverrideSpell, spellID)
+    if override2 and override2 ~= spellID then table.insert(ids, override2) end
+
+    for _, id in ipairs(ids) do
+        if activeProcSpells[id] or QueryOverlayed(id) then
+            return true
+        end
+    end
+    return false
+end
+
+-- Create the proc highlight texture. Sizing happens in StyleButton alongside
+-- the move-mode glow, so it always matches the node's real size.
+local function EnsureProcGlow(btn)
+    if btn.procGlow then return btn.procGlow end
+
+    local g = btn:CreateTexture(nil, "OVERLAY", nil, 6)
+    g:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    g:SetBlendMode("ADD")
+    g:SetVertexColor(1, 0.9, 0.35, 1)
+    g:SetSize((btn:GetWidth() or 44) + 16, (btn:GetHeight() or 44) + 16)
+    g:Hide()
+
+    -- Gentle pulse so it reads as "ready now" without being distracting.
+    -- (Animations are created via CreateAnimation("Alpha"), not CreateAlpha.)
+    local anim = g:CreateAnimationGroup()
+    anim:SetLooping("BOUNCE")
+    local fade = anim:CreateAnimation("Alpha")
+    fade:SetFromAlpha(1)
+    fade:SetToAlpha(0.7)
+    fade:SetDuration(0.5)
+    fade:SetSmoothing("IN_OUT")
+    g.anim = anim
+
+    btn.procGlow = g
+    return g
+end
+
+-- Size and position the proc glow for a node of the given size. Squares get a
+-- noticeably larger halo nudged left and down so it sits over the icon nicely;
+-- rings stay centred on the circle.
+local function LayoutProcGlow(btn, size, style)
+    local g = btn.procGlow
+    if not g or not size or size <= 0 then return end
+
+    g:SetSize(size * 1.5, size * 1.5)
+    g:ClearAllPoints()
+    -- Both centred: the earlier square offset just made it look misaligned.
+    g:SetPoint("CENTER", btn, "CENTER", 0, 0)
+end
+
+-- Both styles use Blizzard's bright IconAlert glow, unmasked. A circular mask
+-- was tried here and looked wrong: it clips the texture's soft outer falloff,
+-- turning the glow into a hard-edged ring. Left unmasked, the halo fades out
+-- around a round node exactly like it does around a square one.
+-- Called from StyleButton, which knows the node's style.
+local function SetProcGlowShape(btn, style)
+    local g = btn.procGlow
+    if not g then return end
+
+    g:SetTexture("Interface\\SpellActivationOverlay\\IconAlert")
+    g:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
+
+    -- Clear the mask left over from earlier sessions / style switches.
+    if btn.procGlowMasked and btn.procGlowMask then
+        g:RemoveMaskTexture(btn.procGlowMask)
+        btn.procGlowMasked = false
+    end
+end
+
+-- Show / hide the pulsing proc highlight on a node.
+local function ApplyProcGlow(btn, isProcced)
+    if not isProcced then
+        if btn.procGlow then
+            btn.procGlow:Hide()
+            if btn.procGlow.anim then btn.procGlow.anim:Stop() end
+        end
+        return
+    end
+
+    -- Never light up a node that isn't laid out yet: an unsized pooled button
+    -- would stretch the texture across the screen.
+    local w = btn:GetWidth()
+    if not btn:IsShown() or not w or w < 8 then
+        if btn.procGlow then btn.procGlow:Hide() end
+        return
+    end
+
+    local g = EnsureProcGlow(btn)
+    SetProcGlowShape(btn, btn.nodeStyle)
+    LayoutProcGlow(btn, w, btn.nodeStyle)
+    g:Show()
+    if g.anim and not g.anim:IsPlaying() then
+        g.anim:Play()
+    end
+end
+
+-- Apply / clear the "can't use this right now" dimming on a button's icon(s).
+local function ApplyUsabilityShading(btn, usable)
+    local textures = {}
+    if btn.icon then table.insert(textures, btn.icon) end
+    if btn.splitIcon then
+        local texs = btn.splitIcon.texs
+        if not texs and btn.splitIcon.leftTexture then
+            texs = { btn.splitIcon.leftTexture, btn.splitIcon.rightTexture }
+        end
+        for _, t in ipairs(texs or {}) do table.insert(textures, t) end
+    end
+
+    for _, tex in ipairs(textures) do
+        if tex.SetDesaturated then tex:SetDesaturated(not usable) end
+        if usable then
+            tex:SetVertexColor(1, 1, 1)
+        else
+            tex:SetVertexColor(0.4, 0.4, 0.4)
+        end
+    end
+end
+
 local function GetDirectToyDisplay(itemID)
     local _, toyName, toyIcon = C_ToyBox.GetToyInfo(itemID)
     local icon = toyIcon
@@ -531,7 +858,9 @@ local function GetActionHubToyMacroText(slot)
 
     local mixData = OxedHub.db.profile.toyMixes and OxedHub.db.profile.toyMixes[slot.id]
     if mixData and OxedHub.Toys and OxedHub.Toys.GetMixMacroText then
-        return OxedHub.Toys:GetMixMacroText(mixData) or ""
+        -- resolveRandom=true: this runs on the click's PreClick, so random mode
+        -- resolves to a single usable /use <toy> instead of unreliable /castrandom.
+        return OxedHub.Toys:GetMixMacroText(mixData, true) or ""
     end
 
     return ""
@@ -542,6 +871,13 @@ function ActionHub:UpdateWidgetCooldowns()
     for _, w in ipairs(widgets) do
         if w and w.buttons then
             for _, btn in ipairs(w.buttons) do
+                -- Dim icons that can't be used right now (e.g. a mount while
+                -- indoors / in a no-mount zone), like the default action bars.
+                if btn and btn:IsShown() and btn.slotData then
+                    ApplyUsabilityShading(btn, IsSlotUsable(btn.slotData))
+                    ApplyProcGlow(btn, IsSpellProcced(GetSlotSpellID(btn.slotData)))
+                end
+
                 if btn and btn.cooldown1 and btn.cooldown2 and btn:IsShown() then
                     local slot = btn.slotData
                     local mixData
@@ -597,6 +933,47 @@ function ActionHub:UpdateWidgetCooldowns()
     end
 end
 
+-- Refresh only the proc highlights (cheap: no cooldown maths).
+function ActionHub:UpdateProcGlows()
+    for _, w in ipairs(self.widgets or {}) do
+        for _, btn in ipairs((w and w.buttons) or {}) do
+            if btn and btn:IsShown() and btn.slotData then
+                ApplyProcGlow(btn, IsSpellProcced(GetSlotSpellID(btn.slotData)))
+            elseif btn then
+                ApplyProcGlow(btn, false)
+            end
+        end
+    end
+end
+
+-- Two separate Blizzard systems fire on a proc:
+--   *_OVERLAY_GLOW_SHOW/HIDE  → the glow drawn on ACTION BUTTONS (what we want)
+--   *_OVERLAY_SHOW/HIDE       → the large screen-edge artwork
+-- Register both so a node lights up regardless of which one the spell uses.
+local procGlowFrame = CreateFrame("Frame")
+procGlowFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_SHOW")
+procGlowFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_HIDE")
+procGlowFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_SHOW")
+procGlowFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_HIDE")
+procGlowFrame:SetScript("OnEvent", function(_, event, spellID)
+    spellID = tonumber(spellID)
+    if not spellID then return end
+
+    local isShow = (event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW")
+        or (event == "SPELL_ACTIVATION_OVERLAY_SHOW")
+    activeProcSpells[spellID] = isShow or nil
+
+    if OxedHub.debug then
+        local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
+        print(("|cffffcc00[OxedHub-Debug]|r %s spellID=%d (%s)"):format(
+            event, spellID, info and info.name or "?"))
+    end
+
+    if OxedHub.ActionHub then
+        OxedHub.ActionHub:UpdateProcGlows()
+    end
+end)
+
 function ActionHub:QueueCooldownRefresh()
     self:UpdateWidgetCooldowns()
 
@@ -611,12 +988,56 @@ function ActionHub:QueueCooldownRefresh()
 end
 
 local function StyleButton(btn, style, size, isPreview)
+    -- Remembered so the proc glow can pick a matching shape when it's created
+    -- later (it's built lazily, the first time the node actually procs).
+    btn.nodeStyle = style
+    SetProcGlowShape(btn, style)
+
+    -- Round nodes need a round cooldown sweep, otherwise the dark wedge shows
+    -- square corners poking outside the circle.
+    for _, cd in ipairs({ btn.cooldown1, btn.cooldown2 }) do
+        if cd and cd.SetUseCircularEdge then
+            pcall(cd.SetUseCircularEdge, cd, style == "ring")
+        end
+    end
+
+    -- Per-hub background opacity (default 0.5). Lets users fade the dark square /
+    -- ring behind an icon (e.g. so an emoji doesn't sit on a black box).
+    local styleHubDB = (btn.slotHubIndex and ActionHub:GetHubDB(btn.slotHubIndex))
+        or (btn:GetParent() and btn:GetParent().hubIndex and ActionHub:GetHubDB(btn:GetParent().hubIndex))
+        or ActionHub:GetActiveHubDB()
+    local bgAlpha = 0.5
+    if styleHubDB and styleHubDB.nodeBackgroundAlpha ~= nil then
+        bgAlpha = styleHubDB.nodeBackgroundAlpha
+    end
+
     local innerSize = style == "ring" and (size - 2) or (size - 4)
-    btn.icon:SetSize(innerSize, innerSize)
+    local zoom = 8
+    local iconSize = innerSize + zoom
+    btn.icon:SetSize(iconSize, iconSize)
     if btn.splitIcon then
-        btn.splitIcon:SetSize(innerSize, innerSize)
-        if btn.splitIcon.leftTexture then btn.splitIcon.leftTexture:SetSize(innerSize/2, innerSize) end
-        if btn.splitIcon.rightTexture then btn.splitIcon.rightTexture:SetSize(innerSize/2, innerSize) end
+        btn.splitIcon:SetSize(iconSize, iconSize)
+        local texs = btn.splitIcon.texs
+        if not texs and btn.splitIcon.leftTexture then
+            texs = {btn.splitIcon.leftTexture, btn.splitIcon.rightTexture}
+        end
+        if texs then
+            local numTexs = #texs
+            local hw = iconSize / 2
+            if numTexs == 2 then
+                texs[1]:SetSize(hw, iconSize)
+                texs[2]:SetSize(hw, iconSize)
+            elseif numTexs == 3 then
+                texs[1]:SetSize(hw, iconSize)
+                texs[2]:SetSize(hw, hw)
+                texs[3]:SetSize(hw, hw)
+            elseif numTexs == 4 then
+                texs[1]:SetSize(hw, hw)
+                texs[2]:SetSize(hw, hw)
+                texs[3]:SetSize(hw, hw)
+                texs[4]:SetSize(hw, hw)
+            end
+        end
     end
 
     if style == "ring" then
@@ -649,29 +1070,31 @@ local function StyleButton(btn, style, size, isPreview)
         if not btn.ringMask then
             btn.ringMask = btn:CreateMaskTexture()
             btn.ringMask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-            btn.ringMask:SetAllPoints(btn.icon)
         end
+        btn.ringMask:ClearAllPoints()
+        btn.ringMask:SetAllPoints(btn.ringFill)
         btn.icon:AddMaskTexture(btn.ringMask)
         if btn.plus then btn.plus:AddMaskTexture(btn.ringMask) end
+        if btn.squareHighlight then btn.squareHighlight:AddMaskTexture(btn.ringMask) end
 
-        if btn.splitIcon and btn.splitIcon.leftTexture and btn.splitIcon.rightTexture then
-            if not btn.splitMaskL then
-                btn.splitMaskL = btn:CreateMaskTexture(nil, "ARTWORK")
-                btn.splitMaskL:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        if btn.splitIcon then
+            local texs = btn.splitIcon.texs
+            if not texs and btn.splitIcon.leftTexture then
+                texs = {btn.splitIcon.leftTexture, btn.splitIcon.rightTexture}
             end
-            if not btn.splitMaskR then
-                btn.splitMaskR = btn:CreateMaskTexture(nil, "ARTWORK")
-                btn.splitMaskR:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            if texs then
+                if not btn.splitMasks then btn.splitMasks = {} end
+                local sx, sy = btn.splitIcon:GetSize()
+                for i, t in ipairs(texs) do
+                    if not btn.splitMasks[i] then
+                        btn.splitMasks[i] = btn:CreateMaskTexture(nil, "ARTWORK")
+                        btn.splitMasks[i]:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+                    end
+                    btn.splitMasks[i]:ClearAllPoints()
+                    btn.splitMasks[i]:SetAllPoints(btn.ringFill)
+                    t:AddMaskTexture(btn.splitMasks[i])
+                end
             end
-            local sx, sy = btn.splitIcon:GetSize()
-            btn.splitMaskL:ClearAllPoints()
-            btn.splitMaskL:SetPoint("CENTER", btn.splitIcon, "CENTER")
-            btn.splitMaskL:SetSize(sx, sy)
-            btn.splitMaskR:ClearAllPoints()
-            btn.splitMaskR:SetPoint("CENTER", btn.splitIcon, "CENTER")
-            btn.splitMaskR:SetSize(sx, sy)
-            btn.splitIcon.leftTexture:AddMaskTexture(btn.splitMaskL)
-            btn.splitIcon.rightTexture:AddMaskTexture(btn.splitMaskR)
         end
 
         btn.ringBg:SetSize(size, size)
@@ -681,11 +1104,13 @@ local function StyleButton(btn, style, size, isPreview)
         
         local isSelected = isPreview and btn.slotIndex and ActionHub.pickerDialog and ActionHub.pickerDialog:IsShown() and ActionHub.pickerDialog.slotIndex == btn.slotIndex and ActionHub.pickerDialog.slotSide == btn.slotSide
         if isSelected then
-            btn.ringBg:SetVertexColor(1, 0.82, 0, 1)
+            btn.ringBg:SetVertexColor(1, 0.95, 0.4, 1)
         else
-            btn.ringBg:SetVertexColor(0.8, 0.8, 0.8, 0.2)
+            -- scaled so the default (bgAlpha 0.5) keeps the original 0.2 look
+            btn.ringBg:SetVertexColor(0.8, 0.8, 0.8, bgAlpha * 0.4)
         end
         
+        LayoutProcGlow(btn, size, style)
         if btn.glow then
             btn.glow:SetSize(size + 16, size + 16)
         end
@@ -696,13 +1121,14 @@ local function StyleButton(btn, style, size, isPreview)
             tile = false, edgeSize = 8,
             insets = { left = 2, right = 2, top = 2, bottom = 2 }
         })
-        btn:SetBackdropColor(0.1, 0.1, 0.1, 0.5)
-        
+        btn:SetBackdropColor(0.1, 0.1, 0.1, bgAlpha)
+
         local isSelected = isPreview and btn.slotIndex and ActionHub.pickerDialog and ActionHub.pickerDialog:IsShown() and ActionHub.pickerDialog.slotIndex == btn.slotIndex and ActionHub.pickerDialog.slotSide == btn.slotSide
         if isSelected then
-            btn:SetBackdropBorderColor(1, 0.82, 0, 1)
+            btn:SetBackdropBorderColor(1, 0.95, 0.4, 1)
         else
-            btn:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.8)
+            -- fade the border with the opacity slider (scaled so 0.5 keeps 0.8)
+            btn:SetBackdropBorderColor(0.5, 0.5, 0.5, math.min(1, bgAlpha * 1.6))
         end
 
         if btn.ringBg then btn.ringBg:Hide() end
@@ -710,12 +1136,23 @@ local function StyleButton(btn, style, size, isPreview)
         if btn.ringMask then 
             btn.icon:RemoveMaskTexture(btn.ringMask) 
             if btn.plus then btn.plus:RemoveMaskTexture(btn.ringMask) end
+            if btn.squareHighlight then btn.squareHighlight:RemoveMaskTexture(btn.ringMask) end
         end
-        if btn.splitIcon and btn.splitIcon.leftTexture and btn.splitIcon.rightTexture then
-            if btn.splitMaskL then btn.splitIcon.leftTexture:RemoveMaskTexture(btn.splitMaskL) end
-            if btn.splitMaskR then btn.splitIcon.rightTexture:RemoveMaskTexture(btn.splitMaskR) end
+        if btn.splitIcon then
+            local texs = btn.splitIcon.texs
+            if not texs and btn.splitIcon.leftTexture then
+                texs = {btn.splitIcon.leftTexture, btn.splitIcon.rightTexture}
+            end
+            if texs and btn.splitMasks then
+                for i, t in ipairs(texs) do
+                    if btn.splitMasks[i] then
+                        t:RemoveMaskTexture(btn.splitMasks[i])
+                    end
+                end
+            end
         end
         if btn.glow then btn.glow:SetSize(size + 24, size + 24) end
+        if btn.procGlow then btn.procGlow:SetSize(size + 24, size + 24) end
     end
 end
 
@@ -981,6 +1418,38 @@ function ActionHub:GetSlotsForSide(hubDB, side)
     return db.slots
 end
 
+-- Put a slot's content onto the WoW cursor (for shift-drag between nodes / off).
+-- Returns true if something was actually placed on the cursor. Toys are items,
+-- so C_Item.PickupItem works and GetCursorInfo reports them as "item" (the drop
+-- handler re-detects toys via C_ToyBox.GetToyInfo).
+function ActionHub:PickupSlotToCursor(slot)
+    if not slot or not slot.type then return false end
+    -- A toy slot in "mix" mode has a MIX NAME (string) as its id, not an itemID —
+    -- those can't go on the WoW cursor. Only numeric ids are pickup-able.
+    local numericId = type(slot.id) == "number" and slot.id or nil
+    ClearCursor()
+    if slot.type == "toy" then
+        if not numericId then return false end -- toy mix; use internal drag instead
+        if C_ToyBox and C_ToyBox.PickupToyBoxItem then
+            C_ToyBox.PickupToyBoxItem(numericId)
+        elseif C_Item and C_Item.PickupItem then
+            C_Item.PickupItem(numericId)
+        end
+    elseif slot.type == "item" then
+        if not numericId then return false end
+        if C_Item and C_Item.PickupItem then C_Item.PickupItem(numericId) end
+    elseif slot.type == "spell" then
+        if not numericId then return false end
+        if C_Spell and C_Spell.PickupSpell then C_Spell.PickupSpell(numericId) end
+    elseif slot.type == "macro" then
+        if PickupMacro then PickupMacro(slot.id) end
+    else
+        -- emotes / mounts / other types can't be round-tripped through the cursor
+        return false
+    end
+    return GetCursorInfo() ~= nil
+end
+
 function ActionHub:SetQuadrant(q)
     local db = self:GetActiveHubDB()
     db.quadrant = q
@@ -1181,6 +1650,13 @@ function ActionHub:BeginPreviewNodeDrag(btn)
         local newOffsetY = math.floor((self.dragStartOffsetY + deltaY) + 0.5)
 
         local previewParent = self:GetParent()
+        
+        local rawX = self.basePreviewX + newOffsetX
+        local rawY = self.basePreviewY + newOffsetY
+        rawX, rawY = ActionHub:SnapMovePosition(previewParent, rawX, rawY)
+        newOffsetX = rawX - self.basePreviewX
+        newOffsetY = rawY - self.basePreviewY
+
         local previewWidth = previewParent and previewParent:GetWidth() or 400
         local previewHeight = previewParent and previewParent:GetHeight() or 400
         local halfSize = (self:GetWidth() or 44) / 2
@@ -1297,8 +1773,9 @@ end
 function ActionHub:GetOrCreateMoveModeDoneFrame()
     if self.moveModeDoneFrame then return self.moveModeDoneFrame end
 
-    local f = CreateFrame("Frame", "OxedHubActionHubMoveDone", UIParent, "BackdropTemplate")
-    f:SetSize(300, 104)
+    -- Clean themed dialog (same style as the Pick Sound picker).
+    local f = CreateFrame("Frame", "OxedHubActionHubMoveDone", UIParent, "BasicFrameTemplateWithInset")
+    f:SetSize(360, 280)
     f:SetPoint("TOP", UIParent, "TOP", 0, -130)
     f:SetFrameStrata("TOOLTIP")
     f:SetFrameLevel(300)
@@ -1307,19 +1784,8 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", function(self) self:StartMoving() end)
     f:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
-    f:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
-    f:SetBackdropColor(0.05, 0.06, 0.09, 0.96)
-    f:SetBackdropBorderColor(0.3, 0.6, 1, 1)
-
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    title:SetPoint("TOP", f, "TOP", 0, -8)
-    title:SetText(L["AH_MOVE_MODE_DRAG_SCREEN"] or "Move Mode â€” drag nodes on screen")
-    title:SetTextColor(0.8, 0.9, 1, 1)
+    if f.TitleText then f.TitleText:SetText(L["AH_MOVE_MODE_DRAG_SCREEN"] or "Move Mode — drag nodes on screen") end
+    if f.CloseButton then f.CloseButton:SetScript("OnClick", function() ActionHub:ExitMinimizedMoveMode() end) end
 
     local function updateGridButtons()
         local t = ActionHub.moveGridType or "off"
@@ -1329,13 +1795,22 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
         local snapText = ActionHub.moveSnap and L["SNAP_ON"] or L["SNAP_OFF"]
         f.snapBtn:SetText(string.format(L["AH_SNAP_LABEL"] or "Snap: %s", snapText))
         if t == "off" then f.snapBtn:Disable() else f.snapBtn:Enable() end
+        -- Sliders drive both square AND radial spacing, so keep them fully visible
+        -- and usable for any active grid.
+        local gridActive = (t ~= "off")
+        for _, s in ipairs({ f.hSpacingSlider, f.vSpacingSlider }) do
+            if s then
+                if gridActive then s:Enable() else s:Disable() end
+                s:SetAlpha(1)
+            end
+        end
     end
     f.updateGridButtons = updateGridButtons
 
     -- Row 1: Grid type + Snap toggle
     local gridBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    gridBtn:SetSize(135, 24)
-    gridBtn:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -24)
+    gridBtn:SetSize(160, 24)
+    gridBtn:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -34)
     gridBtn:SetText(string.format(L["AH_GRID_LABEL"] or "Grid: %s", L["GRID_OFF"] or "Off"))
     gridBtn:SetScript("OnClick", function()
         local t = ActionHub.moveGridType or "off"
@@ -1346,8 +1821,8 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
     f.gridBtn = gridBtn
 
     local snapBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    snapBtn:SetSize(135, 24)
-    snapBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -24)
+    snapBtn:SetSize(160, 24)
+    snapBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -34)
     snapBtn:SetText(string.format(L["AH_SNAP_LABEL"] or "Snap: %s", L["SNAP_OFF"] or "Off"))
     snapBtn:SetScript("OnClick", function()
         ActionHub.moveSnap = not ActionHub.moveSnap
@@ -1355,16 +1830,67 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
     end)
     f.snapBtn = snapBtn
 
+    -- Snap-spacing sliders (Square grid): horizontal + vertical gap between snaps.
+    local function MakeSpacingSlider(labelText, axisKey, anchorTo, yOff)
+        local lbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        lbl:SetPoint("TOPLEFT", anchorTo, "BOTTOMLEFT", 0, yOff)
+        lbl:SetText(labelText)
+        lbl:SetTextColor(0.8, 0.9, 1)
+
+        local valTxt = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        valTxt:SetPoint("LEFT", lbl, "RIGHT", 6, 0)
+
+        local slider = CreateFrame("Slider", nil, f, "OptionsSliderTemplate")
+        slider:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 4, -12)
+        slider:SetWidth(300)
+        slider:SetMinMaxValues(24, 120)
+        slider:SetValueStep(2)
+        slider:SetObeyStepOnDrag(true)
+        if slider.Low then slider.Low:SetText("") end
+        if slider.High then slider.High:SetText("") end
+        if slider.Text then slider.Text:SetText("") end
+        slider.axisKey = axisKey
+        slider.valTxt = valTxt
+        slider:SetScript("OnValueChanged", function(self, value)
+            value = math.floor(value + 0.5)
+            self.valTxt:SetText(value)
+            if self.isSyncing then return end
+            local hub = ActionHub.minimizedMoveModeHub or ActionHub:GetActiveHubIndex()
+            local db = hub and ActionHub:GetHubDB(hub)
+            if db then db[axisKey] = value end
+            ActionHub:UpdateMoveGrid()
+        end)
+        return slider
+    end
+
+    f.hSpacingSlider = MakeSpacingSlider("Horizontal snap spacing", "snapStepX", gridBtn, -22)
+    f.vSpacingSlider = MakeSpacingSlider("Vertical snap spacing", "snapStepY", f.hSpacingSlider, -30)
+
+    -- Sync the sliders to the current hub's stored (or default) spacing.
+    f.SyncSpacingSliders = function()
+        local hub = ActionHub.minimizedMoveModeHub or ActionHub:GetActiveHubIndex()
+        local db = hub and ActionHub:GetHubDB(hub)
+        local base = ActionHub:GetDefaultSnapStep()
+        local sx = (db and db.snapStepX) or base
+        local sy = (db and db.snapStepY) or base
+        for slider, v in pairs({ [f.hSpacingSlider] = sx, [f.vSpacingSlider] = sy }) do
+            slider.isSyncing = true
+            slider:SetValue(math.min(120, math.max(24, v)))
+            slider.isSyncing = false
+            slider.valTxt:SetText(math.floor(v + 0.5))
+        end
+    end
+
     -- Row 2: Reset + Done
     local resetBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    resetBtn:SetSize(135, 24)
-    resetBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 12, 10)
+    resetBtn:SetSize(160, 24)
+    resetBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14, 14)
     resetBtn:SetText(L["SETTINGS_BTN_RESET"] or "Reset")
     resetBtn:SetScript("OnClick", function() ActionHub:ResetMoveModePositions() end)
 
     local doneBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    doneBtn:SetSize(135, 24)
-    doneBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 10)
+    doneBtn:SetSize(160, 24)
+    doneBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 14)
     doneBtn:SetText(L["AH_DONE_POSITIONING"] or "Done Positioning")
     doneBtn:SetScript("OnClick", function() ActionHub:ExitMinimizedMoveMode() end)
 
@@ -1399,6 +1925,45 @@ end
 local MOVE_GRID_SQUARE_STEP = 40
 local MOVE_GRID_RADIAL_RSTEP = 40
 local MOVE_GRID_RADIAL_ASTEP = math.rad(30)  -- 12 spokes
+local MOVE_GRID_SQUARE_GAP = 8  -- extra px between snapped square nodes
+
+-- Square grid step per axis. Defaults to node size (+ gap) so squares never
+-- overlap, but the user can override the horizontal/vertical spacing via the two
+-- move-mode sliders (stored per hub in snapStepX / snapStepY).
+-- Default snap step: centered in the 24–120 slider range (so the handle starts in
+-- the middle) while never smaller than a node (+ gap) so squares can't overlap.
+local SNAP_STEP_DEFAULT = 72
+function ActionHub:GetDefaultSnapStep()
+    local hub = self.minimizedMoveModeHub or self:GetActiveHubIndex()
+    local db = hub and self:GetHubDB(hub)
+    local nodeSize = (db and db.globalNodeSize) or 44
+    return math.max(SNAP_STEP_DEFAULT, nodeSize + MOVE_GRID_SQUARE_GAP)
+end
+function ActionHub:GetSquareGridStepXY()
+    local hub = self.minimizedMoveModeHub or self:GetActiveHubIndex()
+    local db = hub and self:GetHubDB(hub)
+    local base = self:GetDefaultSnapStep()
+    local sx = (db and db.snapStepX) or base
+    local sy = (db and db.snapStepY) or base
+    return sx, sy
+end
+-- Radial grid steps driven by the same two sliders: V (snapStepY) = ring spacing,
+-- H (snapStepX) = angular spacing (larger = fewer spokes).
+function ActionHub:GetRadialSteps()
+    local hub = self.minimizedMoveModeHub or self:GetActiveHubIndex()
+    local db = hub and self:GetHubDB(hub)
+    local base = self:GetDefaultSnapStep()
+    local rstep = (db and db.snapStepY) or base
+    local aDeg = ((db and db.snapStepX) or base) / 4  -- ~18° at the default
+    aDeg = math.max(6, math.min(90, aDeg))            -- clamp spoke density
+    return rstep, math.rad(aDeg)
+end
+
+-- Back-compat single-value accessor (uses the horizontal step).
+function ActionHub:GetSquareGridStep()
+    local sx = self:GetSquareGridStepXY()
+    return sx
+end
 
 -- Snap a node position (w TOPLEFT coords) to the active grid, if snap is on.
 function ActionHub:SnapMovePosition(w, posX, posY)
@@ -1411,14 +1976,15 @@ function ActionHub:SnapMovePosition(w, posX, posY)
     local relX = posX - centerX
     local relY = posY - centerY
     if gridType == "square" then
-        local s = MOVE_GRID_SQUARE_STEP
-        relX = math.floor(relX / s + 0.5) * s
-        relY = math.floor(relY / s + 0.5) * s
+        local sx, sy = self:GetSquareGridStepXY()
+        relX = math.floor(relX / sx + 0.5) * sx
+        relY = math.floor(relY / sy + 0.5) * sy
     elseif gridType == "radial" then
+        local rstep, astep = self:GetRadialSteps()
         local r = math.sqrt(relX * relX + relY * relY)
         local theta = math.atan2(relY, relX)
-        r = math.floor(r / MOVE_GRID_RADIAL_RSTEP + 0.5) * MOVE_GRID_RADIAL_RSTEP
-        theta = math.floor(theta / MOVE_GRID_RADIAL_ASTEP + 0.5) * MOVE_GRID_RADIAL_ASTEP
+        r = math.floor(r / rstep + 0.5) * rstep
+        theta = math.floor(theta / astep + 0.5) * astep
         relX = r * math.cos(theta)
         relY = r * math.sin(theta)
     end
@@ -1456,22 +2022,75 @@ function ActionHub:UpdateMoveGrid()
     end
 
     if gridType == "square" then
-        local s = MOVE_GRID_SQUARE_STEP
-        local n = math.floor(zoneHalf / s)
-        for i = -n, n do
-            for j = -n, n do
-                dot(i * s, j * s)
+        local sx, sy = self:GetSquareGridStepXY()
+        local nx = math.floor(zoneHalf / sx)
+        local ny = math.floor(zoneHalf / sy)
+        for i = -nx, nx do
+            for j = -ny, ny do
+                dot(i * sx, j * sy)
             end
         end
     elseif gridType == "radial" then
         dot(0, 0)
-        local rings = math.floor(zoneHalf / MOVE_GRID_RADIAL_RSTEP)
+        local rstep, astep = self:GetRadialSteps()
+        local rings = math.floor(zoneHalf / rstep)
         for ring = 1, rings do
-            local r = ring * MOVE_GRID_RADIAL_RSTEP
+            local r = ring * rstep
             local a = 0
             while a < math.pi * 2 - 0.001 do
                 dot(r * math.cos(a), r * math.sin(a))
-                a = a + MOVE_GRID_RADIAL_ASTEP
+                a = a + astep
+            end
+        end
+    end
+end
+
+function ActionHub:UpdatePreviewMoveGrid(tab)
+    if not tab or not tab.moveOverlay then return end
+    local overlay = tab.moveOverlay
+    overlay.gridDots = overlay.gridDots or {}
+    for _, d in ipairs(overlay.gridDots) do d:Hide() end
+
+    local gridType = self.moveGridType or "off"
+    if gridType == "off" then return end
+
+    local zoneHalf = 205
+    local idx = 0
+    local function dot(gx, gy)
+        if math.abs(gx) > zoneHalf or math.abs(gy) > zoneHalf then return end
+        idx = idx + 1
+        local d = overlay.gridDots[idx]
+        if not d then
+            d = overlay:CreateTexture(nil, "ARTWORK")
+            d:SetTexture("Interface\\Buttons\\WHITE8X8")
+            overlay.gridDots[idx] = d
+        end
+        d:SetSize(4, 4)
+        d:SetVertexColor(0.6, 0.85, 1, 0.55)
+        d:ClearAllPoints()
+        d:SetPoint("CENTER", overlay, "CENTER", gx, gy)
+        d:Show()
+    end
+
+    if gridType == "square" then
+        local sx, sy = self:GetSquareGridStepXY()
+        local nx = math.floor(zoneHalf / sx)
+        local ny = math.floor(zoneHalf / sy)
+        for i = -nx, nx do
+            for j = -ny, ny do
+                dot(i * sx, j * sy)
+            end
+        end
+    elseif gridType == "radial" then
+        dot(0, 0)
+        local rstep, astep = self:GetRadialSteps()
+        local rings = math.floor(zoneHalf / rstep)
+        for ring = 1, rings do
+            local r = ring * rstep
+            local a = 0
+            while a < math.pi * 2 - 0.001 do
+                dot(r * math.cos(a), r * math.sin(a))
+                a = a + astep
             end
         end
     end
@@ -1495,6 +2114,7 @@ function ActionHub:EnterMinimizedMoveMode()
     local doneFrame = self:GetOrCreateMoveModeDoneFrame()
     doneFrame:Show()
     if doneFrame.updateGridButtons then doneFrame.updateGridButtons() end
+    if doneFrame.SyncSpacingSliders then doneFrame.SyncSpacingSliders() end
     self:RefreshWidget()
 end
 
@@ -1532,6 +2152,17 @@ local function GetPreviewButtonDragIconTexture(btn)
     end
 
     return "Interface\\Icons\\INV_Misc_QuestionMark"
+end
+
+-- Swap a node's CONTENT while keeping its own layout (position/size/binding), so
+-- swapping two nodes doesn't make them jump to each other's positions.
+local WIDGET_SLOT_LAYOUT_KEYS = { "nodeSize", "nodePositionX", "nodePositionY", "binding" }
+local function BuildSlotWithLayout(layoutSource, contentSource)
+    local out = CloneSlotData(contentSource)
+    for _, k in ipairs(WIDGET_SLOT_LAYOUT_KEYS) do
+        out[k] = layoutSource and layoutSource[k] or nil
+    end
+    return out
 end
 
 function ActionHub:BeginPreviewAssignmentDrag(btn)
@@ -1619,11 +2250,13 @@ function ActionHub:EndPreviewAssignmentDrag(btn)
         return
     end
 
-    local sourceCopy = CloneSlotData(sourceSlot)
-    local targetCopy = CloneSlotData(targetSlot)
+    -- Swap CONTENT only; each node keeps its own on-screen layout so the icons
+    -- don't jump to each other's positions when swapped.
+    local sourceContent = CloneSlotData(sourceSlot)
+    local targetContent = CloneSlotData(targetSlot)
 
-    sourceSlots[dragData.sourceSlotIndex] = targetCopy
-    targetSlots[dropTarget.slotIndex] = sourceCopy
+    sourceSlots[dragData.sourceSlotIndex] = BuildSlotWithLayout(sourceSlot, targetContent)
+    targetSlots[dropTarget.slotIndex] = BuildSlotWithLayout(targetSlot, sourceContent)
 
     if btn then
         btn.wasAssignmentDragged = true
@@ -1633,6 +2266,96 @@ function ActionHub:EndPreviewAssignmentDrag(btn)
     self:RefreshPickerList()
     self:RefreshWidget()
     self:RefreshTab()
+end
+
+-- ── On-screen widget shift-drag (works for ALL node types) ──────────────────
+-- The WoW cursor can only carry toys/spells/items/macros, not toy-mixes, emotes
+-- or mounts. So on-screen nodes use an INTERNAL drag: a floating icon follows the
+-- cursor and, on release over another node, the two nodes' CONTENT is swapped
+-- (each node keeps its own position/size/binding). Released over nothing = remove.
+function ActionHub:BeginWidgetSlotDrag(btn)
+    if InCombatLockdown() then return false end
+    local w = btn:GetParent()
+    if not (w and w.hubIndex and btn.slotIndex and btn.slotSide) then return false end
+    local slots = self:GetSlotsForSide(self:GetHubDB(w.hubIndex), btn.slotSide)
+    local slot = slots and slots[btn.slotIndex]
+    if not (slot and slot.type) then return false end
+
+    self.widgetDragData = {
+        hubIndex = w.hubIndex,
+        slotIndex = btn.slotIndex,
+        slotSide = btn.slotSide,
+    }
+
+    if not self.dragIcon then
+        local f = CreateFrame("Frame", nil, UIParent)
+        f:SetSize(36, 36)
+        f:SetFrameStrata("TOOLTIP")
+        local t = f:CreateTexture(nil, "OVERLAY")
+        t:SetAllPoints()
+        f.tex = t
+        self.dragIcon = f
+    end
+    self.dragIcon.tex:SetTexture(GetPreviewButtonDragIconTexture(btn))
+    self.dragIcon:Show()
+    self.dragIcon:SetScript("OnUpdate", function(self)
+        local cx, cy = GetCursorPosition()
+        local s = UIParent:GetEffectiveScale()
+        self:ClearAllPoints()
+        self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx / s, cy / s)
+    end)
+    return true
+end
+
+function ActionHub:EndWidgetSlotDrag()
+    if self.dragIcon then
+        self.dragIcon:Hide()
+        self.dragIcon:SetScript("OnUpdate", nil)
+    end
+    local drag = self.widgetDragData
+    self.widgetDragData = nil
+    if not drag or InCombatLockdown() then return end
+
+    local srcSlots = self:GetSlotsForSide(self:GetHubDB(drag.hubIndex), drag.slotSide)
+    local srcSlot = srcSlots and srcSlots[drag.slotIndex]
+    if not srcSlot then return end
+
+    -- Find the widget node currently under the cursor.
+    local target
+    for _, w in ipairs(self.widgets or {}) do
+        if w.buttons then
+            for _, b in ipairs(w.buttons) do
+                if b and b:IsShown() and b.slotIndex and b.slotSide and MouseIsOver(b) then
+                    target = b
+                    break
+                end
+            end
+        end
+        if target then break end
+    end
+
+    if target then
+        local tgtHub = target:GetParent().hubIndex
+        if drag.hubIndex == tgtHub and drag.slotSide == target.slotSide and drag.slotIndex == target.slotIndex then
+            return -- dropped on itself, no change
+        end
+        local tgtSlots = self:GetSlotsForSide(self:GetHubDB(tgtHub), target.slotSide)
+        local tgtSlot = tgtSlots and tgtSlots[target.slotIndex]
+        if not tgtSlot then return end
+        -- swap CONTENT, keep each node's own layout
+        local srcContent = CloneSlotData(srcSlot)
+        local tgtContent = CloneSlotData(tgtSlot)
+        srcSlots[drag.slotIndex] = BuildSlotWithLayout(srcSlot, tgtContent)
+        tgtSlots[target.slotIndex] = BuildSlotWithLayout(tgtSlot, srcContent)
+    else
+        -- released over empty space: clear the node (keep its layout)
+        srcSlots[drag.slotIndex] = BuildSlotWithLayout(srcSlot, nil)
+    end
+
+    self:RefreshAllWidgets()
+    if self.pickerDialog and self.pickerDialog:IsShown() then
+        self:RefreshTab()
+    end
 end
 
 function ActionHub:RefreshAllWidgets()
@@ -1731,13 +2454,34 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
     local baseRadius = 65
     local radiusStep = db.nodeLineSize or 48
 
+    -- Commands that MUST stay in the secure macro because they are protected
+    -- (can only run from a secure button click). Everything else — /say, /yell,
+    -- /emote and other social commands — is deliberately dropped here because the
+    -- button's PostClick handler already fires chat/emote/sound/animation via
+    -- SendChatMessage/DoEmote. Leaving them in the macro too caused DOUBLE chat.
+    local ALLOWED_MACRO_CMDS = {
+        ["/use"] = true, ["/cast"] = true, ["/castrandom"] = true,
+        ["/castsequence"] = true, ["/userandom"] = true, ["/cancelaura"] = true,
+        ["/cancelqueuedspell"] = true, ["/stopmacro"] = true, ["/stopcasting"] = true,
+        ["/target"] = true, ["/cleartarget"] = true, ["/focus"] = true,
+        ["/petattack"] = true, ["/startattack"] = true, ["/click"] = true,
+    }
     local function StripRestrictedMacroLines(text)
         if not text then return nil end
         local lines = {}
         for line in text:gmatch("[^\n]+") do
             local trimmed = line:match("^%s*(.-)%s*$")
-            if trimmed ~= "" and not trimmed:match("^/run") and not trimmed:match("^/script") and not trimmed:match("^/console") then
-                table.insert(lines, trimmed)
+            if trimmed ~= "" then
+                if trimmed:match("^#") then
+                    -- keep macro directives like #showtooltip
+                    table.insert(lines, trimmed)
+                else
+                    local cmd = trimmed:match("^(/%S+)")
+                    if cmd and ALLOWED_MACRO_CMDS[cmd:lower()] then
+                        table.insert(lines, trimmed)
+                    end
+                    -- else: social/effect line — handled by PostClick, drop it
+                end
             end
         end
         return table.concat(lines, "\n")
@@ -1760,12 +2504,12 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
         btn:SetSize(initSize, initSize)
 
         local icon = btn:CreateTexture(nil, "ARTWORK")
-        icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+        icon:SetPoint("CENTER", btn, "CENTER", 0, -1)
         icon:SetSize(32, 32)
         btn.icon = icon
 
         local plus = btn:CreateTexture(nil, "OVERLAY")
-        plus:SetPoint("CENTER", btn, "CENTER", 0, 0)
+        plus:SetPoint("CENTER", btn, "CENTER", 0, -3)
         plus:SetSize(24, 24)
         plus:SetTexture("Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\add.tga")
         btn.plus = plus
@@ -1781,13 +2525,16 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
         glow:Hide()
         btn.glow = glow
 
+        -- Clockwise darkening sweep while on cooldown, like the default bars.
+        -- SetReverse(false) makes it wind down clockwise instead of filling up.
         local cd1 = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
         cd1:SetAllPoints()
         cd1:SetFrameLevel(btn:GetFrameLevel() + 5)
         cd1:SetDrawBling(false)
         cd1:SetDrawEdge(false)
-        cd1:SetDrawSwipe(false)
-        cd1:SetReverse(true)
+        cd1:SetDrawSwipe(true)
+        cd1:SetSwipeColor(0, 0, 0, 0.65)
+        cd1:SetReverse(false)
         cd1:EnableMouse(false)
         cd1:Hide()
         StyleCooldownText(cd1, 6)
@@ -1798,12 +2545,23 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
         cd2:SetFrameLevel(btn:GetFrameLevel() + 6)
         cd2:SetDrawBling(false)
         cd2:SetDrawEdge(false)
-        cd2:SetDrawSwipe(false)
-        cd2:SetReverse(true)
+        cd2:SetDrawSwipe(true)
+        cd2:SetSwipeColor(0, 0, 0, 0.65)
+        cd2:SetReverse(false)
         cd2:EnableMouse(false)
         cd2:Hide()
         StyleCooldownText(cd2, -6)
         btn.cooldown2 = cd2
+
+        local hlFrame = CreateFrame("Frame", nil, btn)
+        hlFrame:SetAllPoints()
+        hlFrame:SetFrameLevel(btn:GetFrameLevel() + 20)
+        local hlTex = hlFrame:CreateTexture(nil, "OVERLAY")
+        hlTex:SetAllPoints()
+        hlTex:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+        hlTex:SetBlendMode("ADD")
+        hlTex:Hide()
+        btn.squareHighlight = hlTex
 
         btn:SetScript("OnEnter", function(self)
             local s = self.slotData
@@ -1825,15 +2583,20 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
                     GameTooltip:SetText(string.format(L["TOOLTIP_MOUNT_FORMAT"] or "Mount: %s", tostring(s.label or s.id)))
                 elseif s.type == "item" then
                     GameTooltip:SetText(string.format(L["TOOLTIP_ITEM_FORMAT"] or "Item: %s", tostring(s.label or s.id)))
+                elseif s.type == "spell" then
+                    GameTooltip:SetText(string.format("Spell: %s", tostring(s.label or s.id)))
+                elseif s.type == "macro" then
+                    GameTooltip:SetText(string.format("Macro: %s", tostring(s.label or s.id)))
                 end
                 GameTooltip:Show()
             end
             local currentStyle = db.style or "square"
             if currentStyle == "ring" and self.ringBg then
-                self.ringBg:SetVertexColor(1, 0.82, 0, 1)
+                self.ringBg:SetVertexColor(1, 0.95, 0.4, 1)
             else
-                self:SetBackdropBorderColor(1, 0.82, 0, 1)
+                self:SetBackdropBorderColor(1, 0.95, 0.4, 1)
             end
+            if self.squareHighlight then self.squareHighlight:Show() end
         end)
         btn:SetScript("OnLeave", function(self)
             GameTooltip:Hide()
@@ -1843,13 +2606,89 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
             else
                 self:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.8)
             end
+            if self.squareHighlight then self.squareHighlight:Hide() end
         end)
 
-        -- Drag-and-drop: accept emote drags from the picker grid
+        -- Drag-and-drop: accept emote drags from the picker grid, plus external game cursor drops
         btn:RegisterForDrag("LeftButton")
         btn:SetScript("OnReceiveDrag", function(self)
-            -- no-op: we handle drops via OnDragStop on the source
+            if InCombatLockdown() then
+                print("|cffff0000OxedHub:|r Cannot assign slots during combat.")
+                ClearCursor()
+                return
+            end
+
+            local infoType, info1, info2, info3 = GetCursorInfo()
+            if not infoType then return end
+
+            local w = self:GetParent()
+            local hubIndex = w.hubIndex
+            local hubDB = ActionHub:GetHubDB(hubIndex)
+            local slots = ActionHub:GetSlotsForSide(hubDB, self.slotSide)
+            local currentSlot = slots[self.slotIndex] or {}
+
+            -- Preserve the displaced content so we can swap it onto the cursor.
+            local displaced = (currentSlot and currentSlot.type) and currentSlot or nil
+
+            local newSlot = {
+                nodeSize = currentSlot.nodeSize,
+                nodePositionX = currentSlot.nodePositionX,
+                nodePositionY = currentSlot.nodePositionY,
+                binding = currentSlot.binding
+            }
+
+            if infoType == "item" then
+                local itemID = info1
+                if C_ToyBox.GetToyInfo(itemID) then
+                    newSlot.type = "toy"
+                    newSlot.id = itemID
+                    newSlot.mode = "direct"
+                else
+                    newSlot.type = "item"
+                    newSlot.id = itemID
+                    newSlot.icon = C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(itemID) or GetItemIcon(itemID)
+                    newSlot.label = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID) or GetItemInfo(itemID) or tostring(itemID)
+                end
+            elseif infoType == "mount" then
+                local mountID = info1
+                local name, _, icon = C_MountJournal.GetMountInfoByID(mountID)
+                newSlot.type = "mount"
+                newSlot.id = mountID
+                newSlot.icon = icon
+                newSlot.label = name
+            elseif infoType == "spell" then
+                local spellID = info3
+                local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
+                newSlot.type = "spell"
+                newSlot.id = spellID
+                newSlot.icon = spellInfo and spellInfo.iconID
+                newSlot.label = spellInfo and spellInfo.name
+            elseif infoType == "macro" then
+                local macroIndex = info1
+                local name, icon, body = GetMacroInfo(macroIndex)
+                newSlot.type = "macro"
+                newSlot.id = macroIndex
+                newSlot.icon = icon
+                newSlot.label = name
+                newSlot.body = body
+            else
+                return -- unsupported type, ignore
+            end
+
+            slots[self.slotIndex] = newSlot
+            ClearCursor()
+            -- Swap: if this node already held something, put it on the cursor so the
+            -- player can drop it on another node (or discard it), like WoW bars.
+            if displaced then
+                ActionHub:PickupSlotToCursor(displaced)
+            end
+            ActionHub:RefreshWidget(w)
+
+            if ActionHub.pickerDialog and ActionHub.pickerDialog:IsShown() and ActionHub.pickerDialog.hubIndex == hubIndex then
+                ActionHub:RefreshTab()
+            end
         end)
+        
         -- We attach drop logic via OnUpdate on the source's OnDragStop,
         -- so also detect via the hover approach below:
         btn.acceptDrop = true
@@ -1859,16 +2698,30 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
         btn:SetScript("OnDragStart", function(self)
             if ActionHub:IsMinimizedMoveMode(w.hubIndex) then
                 ActionHub:BeginWidgetNodeDrag(self)
+            elseif IsShiftKeyDown() and not InCombatLockdown() then
+                -- Internal drag: works for every node type (mixes, emotes, mounts,
+                -- toys, spells...) since it moves DB slot content, not the WoW cursor.
+                self._widgetSlotDragging = ActionHub:BeginWidgetSlotDrag(self)
             end
         end)
         btn:SetScript("OnDragStop", function(self)
-            ActionHub:EndWidgetNodeDrag(self)
+            if self._widgetSlotDragging then
+                self._widgetSlotDragging = nil
+                ActionHub:EndWidgetSlotDrag()
+            else
+                ActionHub:EndWidgetNodeDrag(self)
+            end
         end)
 
         -- PreClick: Regenerate macro text to ensure toy/spell names are fresh (fixes login data issue)
+        -- NOTE: must run on the DOWN phase too — the button is registered for
+        -- "AnyDown", so the secure action executes on key-down. Skipping down here
+        -- made every press run the PREVIOUS press's resolved random toy (off-by-one).
         btn:SetScript("PreClick", function(self, button, down)
             if ActionHub:IsMinimizedMoveMode(w.hubIndex) then return end
-            if InCombatLockdown() or down or not self._cachedSlot then return end
+            if InCombatLockdown() or not self._cachedSlot then return end
+            -- Only regenerate once per press: on the phase that actually fires.
+            if not down then return end
             
             local slot = self._cachedSlot
             if slot and slot.type == "toy" then
@@ -1887,9 +2740,18 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
                 if slot.id then
                     self:SetAttribute("macrotext1", "/use item:" .. slot.id)
                 end
+            elseif slot and slot.type == "spell" then
+                local spellName = slot.label
+                if (not spellName or spellName == "") and slot.id and C_Spell and C_Spell.GetSpellInfo then
+                    local info = C_Spell.GetSpellInfo(slot.id)
+                    spellName = info and info.name
+                end
+                if spellName and spellName ~= "" then
+                    self:SetAttribute("macrotext1", "/cast " .. spellName)
+                end
             end
         end)
-        
+
         btn:SetScript("PostClick", function(self, button, down)
             if down then return end
 
@@ -1994,18 +2856,25 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
                     btn.icon:SetTexture(icon or "Interface\\Icons\\INV_Misc_QuestionMark")
                     btn.icon:Show()
                 else
-                    local icon1, icon2
-                    if OxedHub.Toys and OxedHub.Toys.GetMixSlotIcons then
-                        icon1, icon2 = OxedHub.Toys:GetMixSlotIcons(slot.id)
-                    end
-                    if icon1 and icon2 and OxedHub.Toys and OxedHub.Toys.CreateSplitIcon then
-                        btn.icon:Hide()
-                        btn.splitIcon = OxedHub.Toys:CreateSplitIcon(btn, 32, icon1, icon2)
-                        btn.splitIcon:SetPoint("CENTER", btn, "CENTER", 0, 0)
-                        btn.splitIcon:Show()
-                    else
-                        btn.icon:SetTexture(icon1 or "Interface\\Icons\\INV_Misc_QuestionMark")
+                    -- Check for custom icon override first
+                    local customIcon = OxedHub.Toys and OxedHub.Toys.GetMixCustomIcon and OxedHub.Toys:GetMixCustomIcon(slot.id)
+                    if customIcon then
+                        btn.icon:SetTexture(customIcon)
                         btn.icon:Show()
+                    else
+                        local icon1, icon2, icon3, icon4
+                        if OxedHub.Toys and OxedHub.Toys.GetMixSlotIcons then
+                            icon1, icon2, icon3, icon4 = OxedHub.Toys:GetMixSlotIcons(slot.id)
+                        end
+                        if icon1 and icon2 and OxedHub.Toys and OxedHub.Toys.CreateSplitIcon then
+                            btn.icon:Hide()
+                            btn.splitIcon = OxedHub.Toys:CreateSplitIcon(btn, 40, icon1, icon2, icon3, icon4)
+                            btn.splitIcon:SetPoint("CENTER", btn, "CENTER", 0, -1)
+                            btn.splitIcon:Show()
+                        else
+                            btn.icon:SetTexture(icon1 or "Interface\\Icons\\INV_Misc_QuestionMark")
+                            btn.icon:Show()
+                        end
                     end
                 end
             elseif slot.type == "emote" then
@@ -2040,6 +2909,19 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
                 btn.icon:Show()
                 if slot.id then
                     macroText = "/use item:" .. slot.id
+                end
+            elseif slot.type == "spell" then
+                btn.icon:SetTexture(slot.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                btn.icon:Show()
+                if slot.id then
+                    local spellName = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(slot.id)) or slot.label or slot.id
+                    macroText = "/cast " .. spellName
+                end
+            elseif slot.type == "macro" then
+                btn.icon:SetTexture(slot.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                btn.icon:Show()
+                if slot.body then
+                    macroText = slot.body
                 end
             end
         else
@@ -2078,6 +2960,8 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
         local size = (slot and slot.nodeSize) or db.globalNodeSize or 44
         btn:SetSize(size, size)
         StyleButton(btn, db.style or "square", size, false)
+        -- Not a protected operation, so this still updates during combat lockdown.
+        UpdateBindingLabel(btn, slot, size, db.style or "square")
     end
 
     local buttonCursor = 1
@@ -2367,9 +3251,9 @@ function ActionHub:CreateTab(contentArea)
     tab.ringContainer = ringContainer
 
     local moveOverlay = CreateFrame("Frame", nil, ringContainer, "BackdropTemplate")
-    -- ~10% wider than the preview container so the move zone has breathing room
-    moveOverlay:SetPoint("TOPLEFT", ringContainer, "TOPLEFT", -22, 0)
-    moveOverlay:SetPoint("BOTTOMRIGHT", ringContainer, "BOTTOMRIGHT", 22, 0)
+    -- wider than the preview container so the move zone has breathing room
+    moveOverlay:SetPoint("TOPLEFT", ringContainer, "TOPLEFT", -52, 0)
+    moveOverlay:SetPoint("BOTTOMRIGHT", ringContainer, "BOTTOMRIGHT", 52, 0)
     moveOverlay:SetFrameLevel(ringContainer:GetFrameLevel() + 1)
     moveOverlay:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -2389,6 +3273,62 @@ function ActionHub:CreateTab(contentArea)
     moveOverlayText:SetText(L["AH_MOVE_MODE_DRAG"] or "Move Mode: Drag selected node")
     moveOverlayText:SetTextColor(0.7, 0.9, 1, 1)
     tab.moveOverlayText = moveOverlayText
+
+    -- Two vertical sliders (placed OUTSIDE the blue move zone, on its right) that
+    -- control horizontal / vertical snap spacing. Changing one also rescales the
+    -- already-placed nodes on that axis so a connected block moves together.
+    local function MakePreviewSpacingSlider(labelText, axisKey, posKey, xOffset)
+        local slider = CreateFrame("Slider", nil, moveOverlay, "OptionsSliderTemplate")
+        slider:SetOrientation("VERTICAL")
+        slider:SetSize(22, 170)
+        slider:SetPoint("LEFT", moveOverlay, "RIGHT", xOffset, -6)
+        slider:SetMinMaxValues(24, 120)
+        slider:SetValueStep(2)
+        slider:SetObeyStepOnDrag(true)
+        if slider.Low then slider.Low:SetText("") end
+        if slider.High then slider.High:SetText("") end
+        if slider.Text then slider.Text:SetText("") end
+
+        local lbl = moveOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        lbl:SetPoint("BOTTOM", slider, "TOP", 0, 4)
+        lbl:SetText(labelText)
+        lbl:SetTextColor(1, 0.9, 0.4)
+        local valTxt = moveOverlay:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        valTxt:SetPoint("TOP", slider, "BOTTOM", 0, -3)
+
+        slider.axisKey = axisKey
+        slider.posKey = posKey
+        slider.valTxt = valTxt
+        slider:SetScript("OnValueChanged", function(self, value)
+            value = math.floor(value + 0.5)
+            valTxt:SetText(value)
+            if self.isSyncing then return end
+            local db = ActionHub:GetActiveHubDB()
+            if db then db[axisKey] = value end
+            -- Only the grid dots change; placed nodes stay where they are.
+            ActionHub:UpdatePreviewMoveGrid(tab)
+        end)
+        return slider
+    end
+
+    -- V first (closer to the panel), then H to its right — matching the drawing.
+    tab.vSpacingSlider = MakePreviewSpacingSlider("V", "snapStepY", "nodePositionY", 30)
+    tab.hSpacingSlider = MakePreviewSpacingSlider("H", "snapStepX", "nodePositionX", 60)
+
+
+    tab.SyncSpacingSliders = function()
+        local db = ActionHub:GetActiveHubDB()
+        local base = ActionHub:GetDefaultSnapStep()
+        local sx = (db and db.snapStepX) or base
+        local sy = (db and db.snapStepY) or base
+        for slider, v in pairs({ [tab.hSpacingSlider] = sx, [tab.vSpacingSlider] = sy }) do
+            slider.isSyncing = true
+            slider:SetValue(math.min(120, math.max(24, v)))
+            slider.isSyncing = false
+            slider._appliedValue = v
+            slider.valTxt:SetText(math.floor(v + 0.5))
+        end
+    end
 
     tab.ringButtons = {}
 
@@ -2529,8 +3469,54 @@ function ActionHub:CreateTab(contentArea)
         local slots = GetEditSlots()
         local maxNodes = GetEffectiveNodeLimit(db, ActionHub:GetEditedSide())
         if #slots >= maxNodes then return end
-        table.insert(slots, { type = nil, id = nil })
+
+        local moveMode = ActionHub.pickerDialog and ActionHub.pickerDialog.moveNodeMode
+        local hasMoved = false
+        for _, s in ipairs(slots) do
+            if s and (s.nodePositionX ~= nil or s.nodePositionY ~= nil) then
+                hasMoved = true
+                break
+            end
+        end
+
+        local shouldPreserve = (moveMode or hasMoved) and tab.ringButtons
+        local absolutePositions = {}
+        
+        -- If in move mode or custom layout exists, capture current absolute positions so we can compensate for layout shift
+        if shouldPreserve then
+            for _, btn in ipairs(tab.ringButtons) do
+                if btn:IsShown() and btn.slotData and btn.slotSide == ActionHub:GetEditedSide() then
+                    absolutePositions[btn.slotData] = {
+                        x = btn.basePreviewX + (btn.slotData.nodePositionX or 0),
+                        y = btn.basePreviewY + (btn.slotData.nodePositionY or 0)
+                    }
+                end
+            end
+        end
+
+        local newNode = { type = nil, id = nil }
+        table.insert(slots, newNode)
         ActionHub:RefreshTab()
+
+        if shouldPreserve then
+            local prevLastNode = #slots > 1 and slots[#slots - 1] or nil
+            for _, btn in ipairs(tab.ringButtons) do
+                if btn:IsShown() and btn.slotData and btn.slotSide == ActionHub:GetEditedSide() then
+                    if absolutePositions[btn.slotData] then
+                        local old = absolutePositions[btn.slotData]
+                        btn.slotData.nodePositionX = old.x - btn.basePreviewX
+                        btn.slotData.nodePositionY = old.y - btn.basePreviewY
+                    elseif btn.slotData == newNode and prevLastNode and absolutePositions[prevLastNode] then
+                        -- Spawn newly added node next to the previously last node
+                        local old = absolutePositions[prevLastNode]
+                        btn.slotData.nodePositionX = (old.x + 48) - btn.basePreviewX
+                        btn.slotData.nodePositionY = old.y - btn.basePreviewY
+                    end
+                end
+            end
+            ActionHub:RefreshTab()
+            ActionHub:RefreshWidget()
+        end
     end)
     tab.addBtn = addBtn
 
@@ -2542,11 +3528,50 @@ function ActionHub:CreateTab(contentArea)
     removeBtn:SetScript("OnClick", function()
         local slots = GetEditSlots()
         if #slots > 0 then
+            local moveMode = ActionHub.pickerDialog and ActionHub.pickerDialog.moveNodeMode
+            local hasMoved = false
+            for _, s in ipairs(slots) do
+                if s and (s.nodePositionX ~= nil or s.nodePositionY ~= nil) then
+                    hasMoved = true
+                    break
+                end
+            end
+
+            local shouldPreserve = (moveMode or hasMoved) and tab.ringButtons
+            local absolutePositions = {}
+            
+            if shouldPreserve then
+                for _, btn in ipairs(tab.ringButtons) do
+                    if btn:IsShown() and btn.slotData and btn.slotSide == ActionHub:GetEditedSide() then
+                        absolutePositions[btn.slotData] = {
+                            x = btn.basePreviewX + (btn.slotData.nodePositionX or 0),
+                            y = btn.basePreviewY + (btn.slotData.nodePositionY or 0)
+                        }
+                    end
+                end
+            end
+
             table.remove(slots, #slots)
+            
             if ActionHub.pickerDialog and ActionHub.pickerDialog.slotSide == ActionHub:GetEditedSide() and ActionHub.pickerDialog.slotIndex and ActionHub.pickerDialog.slotIndex > #slots then
                 ActionHub:ShowSlotPicker(nil)
             end
+            
             ActionHub:RefreshTab()
+
+            if shouldPreserve then
+                for _, btn in ipairs(tab.ringButtons) do
+                    if btn:IsShown() and btn.slotData and btn.slotSide == ActionHub:GetEditedSide() then
+                        if absolutePositions[btn.slotData] then
+                            local old = absolutePositions[btn.slotData]
+                            btn.slotData.nodePositionX = old.x - btn.basePreviewX
+                            btn.slotData.nodePositionY = old.y - btn.basePreviewY
+                        end
+                    end
+                end
+                ActionHub:RefreshTab()
+                ActionHub:RefreshWidget()
+            end
         end
     end)
     tab.removeBtn = removeBtn
@@ -2615,11 +3640,72 @@ function ActionHub:CreateTab(contentArea)
     minimizeBtn:Hide()
     tab.minimizeBtn = minimizeBtn
 
+    local gridMenuBtn = CreateFrame("DropdownButton", nil, tab, "WowStyle1DropdownTemplate")
+    gridMenuBtn:SetPoint("LEFT", minimizeBtn, "RIGHT", 6, 0)
+    gridMenuBtn:SetSize(110, 26)
+    gridMenuBtn:Hide()
+    
+    local function UpdateGridText()
+        local t = ActionHub.moveGridType or "off"
+        local gridText = t == "square" and (L["GRID_SQUARE"] or "Square") or t == "radial" and (L["GRID_RADIAL"] or "Radial") or (L["GRID_OFF"] or "Off")
+        gridMenuBtn:OverrideText(string.format(L["AH_GRID_LABEL"] or "Grid: %s", gridText))
+    end
+    UpdateGridText()
+    
+    gridMenuBtn:SetupMenu(function(dropdown, rootDescription)
+        rootDescription:CreateTitle(L["AH_GRID_LABEL"] or "Grid Type")
+        rootDescription:CreateRadio(L["GRID_OFF"] or "Off", function() return (ActionHub.moveGridType or "off") == "off" end, function() ActionHub.moveGridType = "off"; UpdateGridText(); ActionHub:UpdatePreviewMoveGrid(tab); ActionHub:UpdateMoveGrid() end)
+        rootDescription:CreateRadio(L["GRID_SQUARE"] or "Square", function() return (ActionHub.moveGridType or "off") == "square" end, function() ActionHub.moveGridType = "square"; UpdateGridText(); ActionHub:UpdatePreviewMoveGrid(tab); ActionHub:UpdateMoveGrid() end)
+        rootDescription:CreateRadio(L["GRID_RADIAL"] or "Radial", function() return (ActionHub.moveGridType or "off") == "radial" end, function() ActionHub.moveGridType = "radial"; UpdateGridText(); ActionHub:UpdatePreviewMoveGrid(tab); ActionHub:UpdateMoveGrid() end)
+        rootDescription:CreateDivider()
+        rootDescription:CreateCheckbox(L["AH_SNAP_LABEL"] or "Snap to Grid", function() return ActionHub.moveSnap end, function() ActionHub.moveSnap = not ActionHub.moveSnap end)
+    end)
+    tab.gridMenuBtn = gridMenuBtn
+
     tab:Hide()
     contentArea.ActionHub = tab
     self.tab = tab
     
     return tab
+end
+
+-- Popup to rename a hub. Stored in hubs[idx].name; empty name resets to "Hub N".
+function ActionHub:ShowRenameHubDialog(hubIndex)
+    local hubs = self:GetHubs()
+    local hub = hubs and hubs[hubIndex]
+    if not hub then return end
+    local current = hub.name
+    if not current or current:match("^Hub %d+$") then current = "Hub " .. hubIndex end
+
+    StaticPopupDialogs["OXEDHUB_RENAME_HUB"] = {
+        text = "Rename this hub to:",
+        button1 = ACCEPT or "Accept",
+        button2 = CANCEL or "Cancel",
+        hasEditBox = true,
+        maxLetters = 24,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+        OnShow = function(self)
+            local eb = self.editBox or self.EditBox
+            if eb then eb:SetText(current); eb:HighlightText(); eb:SetFocus() end
+        end,
+        EditBoxOnEnterPressed = function(self)
+            local name = (self:GetText() or ""):gsub("^%s*(.-)%s*$", "%1")
+            hubs[hubIndex].name = (name ~= "" and name) or nil
+            ActionHub:RefreshTab()
+            local p = self:GetParent()
+            if p and p.Hide then p:Hide() end
+        end,
+        OnAccept = function(self)
+            local eb = self.editBox or self.EditBox
+            local name = ((eb and eb:GetText()) or ""):gsub("^%s*(.-)%s*$", "%1")
+            hubs[hubIndex].name = (name ~= "" and name) or nil
+            ActionHub:RefreshTab()
+        end,
+    }
+    StaticPopup_Show("OXEDHUB_RENAME_HUB")
 end
 
 function ActionHub:RefreshTab()
@@ -2650,19 +3736,44 @@ function ActionHub:RefreshTab()
                 hubName = "Hub " .. i
             end
             hb:SetText(hubName)
+            hb:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
-            if i == activeIdx then
-                hb:GetFontString():SetTextColor(1, 0.82, 0)
-                hb:SetEnabled(false)
-            else
-                hb:GetFontString():SetTextColor(1, 1, 1)
+            local function ShowHubTooltip(owner)
+                GameTooltip:SetOwner(owner, "ANCHOR_TOP")
+                GameTooltip:SetText(hubName, 1, 0.82, 0)
+                GameTooltip:AddLine("|cff00ff00Left-click:|r switch  |cff00ff00Right-click:|r rename", 1, 1, 1)
+                GameTooltip:Show()
             end
 
-            hb:SetScript("OnClick", function()
-                if self.pickerDialog then self.pickerDialog:Hide() end
-                self:SetActiveHubIndex(i)
-                self:RefreshTab()
-            end)
+            if i == activeIdx then
+                -- Active hub: keep the original grayed/disabled look (only Disable()
+                -- gives that on this 3-slice button). A disabled button can't be
+                -- clicked, so overlay a transparent right-click catcher for rename.
+                hb:GetFontString():SetTextColor(1, 0.82, 0)
+                hb:Disable()
+
+                local rc = CreateFrame("Button", nil, hb)
+                rc:SetAllPoints(hb)
+                rc:SetFrameLevel(hb:GetFrameLevel() + 5)
+                rc:RegisterForClicks("RightButtonUp")
+                rc:SetScript("OnClick", function() ActionHub:ShowRenameHubDialog(i) end)
+                rc:SetScript("OnEnter", function(self) ShowHubTooltip(self) end)
+                rc:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            else
+                hb:GetFontString():SetTextColor(1, 1, 1)
+                hb:Enable()
+                hb:SetScript("OnClick", function(_, button)
+                    if button == "RightButton" then
+                        ActionHub:ShowRenameHubDialog(i)
+                        return
+                    end
+                    if self.pickerDialog then self.pickerDialog:Hide() end
+                    self:SetActiveHubIndex(i)
+                    self:RefreshTab()
+                end)
+                hb:SetScript("OnEnter", function(self) ShowHubTooltip(self) end)
+                hb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            end
 
             tab.hubBtns[i] = hb
             xOffset = xOffset + 74
@@ -2755,6 +3866,34 @@ function ActionHub:RefreshTab()
         ["top-left"] = L["QUAD_TOP_LEFT"] or "Top Left"
     }
     if tab.quadBtn then tab.quadBtn:OverrideText(quadNames[quadrant] or "Bottom Right") end
+
+    -- Disable Side dropdown if any custom node positions exist
+    local hasCustomPositions = false
+    if db.slots then
+        for _, s in ipairs(db.slots) do
+            if s and (s.nodePositionX ~= nil or s.nodePositionY ~= nil) then
+                hasCustomPositions = true
+                break
+            end
+        end
+    end
+    if not hasCustomPositions and db.secondarySlots then
+        for _, s in ipairs(db.secondarySlots) do
+            if s and (s.nodePositionX ~= nil or s.nodePositionY ~= nil) then
+                hasCustomPositions = true
+                break
+            end
+        end
+    end
+
+    if tab.quadBtn then
+        tab.quadBtn:SetEnabled(not hasCustomPositions)
+        tab.quadBtn:SetAlpha(hasCustomPositions and 0.5 or 1.0)
+    end
+    if tab.dualLayoutBtn then
+        tab.dualLayoutBtn:SetEnabled(not hasCustomPositions)
+        tab.dualLayoutBtn:SetAlpha(hasCustomPositions and 0.5 or 1.0)
+    end
     -- Update style dropdown text
     local styleNames = {
         square = L["STYLE_SQUARES"] or "Squares",
@@ -2885,6 +4024,57 @@ function ActionHub:RefreshTab()
         end)
         btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         btn:RegisterForDrag("LeftButton")
+        btn:SetScript("OnReceiveDrag", function(self)
+            local infoType, info1, info2, info3 = GetCursorInfo()
+            if not infoType then return end
+
+            local activeDB = ActionHub:GetActiveHubDB()
+            local slots = ActionHub:GetSlotsForSide(activeDB, self.slotSide)
+            local currentSlot = slots[self.slotIndex]
+            if not currentSlot then return end
+
+            if infoType == "item" then
+                local itemID = info1
+                if C_ToyBox.GetToyInfo(itemID) then
+                    currentSlot.type = "toy"
+                    currentSlot.id = itemID
+                    currentSlot.mode = "direct"
+                else
+                    currentSlot.type = "item"
+                    currentSlot.id = itemID
+                    currentSlot.icon = C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(itemID) or GetItemIcon(itemID)
+                    currentSlot.label = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID) or GetItemInfo(itemID) or tostring(itemID)
+                end
+            elseif infoType == "mount" then
+                local mountID = info1
+                local name, _, icon = C_MountJournal.GetMountInfoByID(mountID)
+                currentSlot.type = "mount"
+                currentSlot.id = mountID
+                currentSlot.icon = icon
+                currentSlot.label = name
+            elseif infoType == "spell" then
+                local spellID = info3
+                local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
+                currentSlot.type = "spell"
+                currentSlot.id = spellID
+                currentSlot.icon = spellInfo and spellInfo.iconID
+                currentSlot.label = spellInfo and spellInfo.name
+            elseif infoType == "macro" then
+                local macroIndex = info1
+                local name, icon, body = GetMacroInfo(macroIndex)
+                currentSlot.type = "macro"
+                currentSlot.id = macroIndex
+                currentSlot.icon = icon
+                currentSlot.label = name
+                currentSlot.body = body
+            else
+                return -- unsupported type, ignore
+            end
+            
+            ClearCursor()
+            ActionHub:RefreshWidget()
+            ActionHub:RefreshTab()
+        end)
         btn:SetScript("OnDragStart", function(self)
             if ActionHub:IsPreviewMoveModeActiveForButton(self) then
                 ActionHub:BeginPreviewNodeDrag(self)
@@ -2905,6 +4095,12 @@ function ActionHub:RefreshTab()
                 return
             end
             if button == "LeftButton" and ActionHub:IsPreviewMoveModeActiveForButton(self) then
+                return
+            end
+            local infoType = GetCursorInfo()
+            if infoType and button == "LeftButton" then
+                local handler = self:GetScript("OnReceiveDrag")
+                if handler then handler(self) end
                 return
             end
             if button == "RightButton" then
@@ -2953,18 +4149,25 @@ function ActionHub:RefreshTab()
                         btn.icon:SetTexture(icon or "Interface\\Icons\\INV_Misc_QuestionMark")
                         btn.icon:Show()
                     else
-                        local icon1, icon2
-                        if OxedHub.Toys and OxedHub.Toys.GetMixSlotIcons then
-                            icon1, icon2 = OxedHub.Toys:GetMixSlotIcons(slot.id)
-                        end
-                        if icon1 and icon2 and OxedHub.Toys and OxedHub.Toys.CreateSplitIcon then
-                            btn.icon:Hide()
-                            btn.splitIcon = OxedHub.Toys:CreateSplitIcon(btn, 32, icon1, icon2)
-                            btn.splitIcon:SetPoint("CENTER", btn, "CENTER", 0, 0)
-                            btn.splitIcon:Show()
-                        else
-                            btn.icon:SetTexture(icon1 or "Interface\\Icons\\INV_Misc_QuestionMark")
+                        -- Check for custom icon override first
+                        local customIcon = OxedHub.Toys and OxedHub.Toys.GetMixCustomIcon and OxedHub.Toys:GetMixCustomIcon(slot.id)
+                        if customIcon then
+                            btn.icon:SetTexture(customIcon)
                             btn.icon:Show()
+                        else
+                            local icon1, icon2, icon3, icon4
+                            if OxedHub.Toys and OxedHub.Toys.GetMixSlotIcons then
+                                icon1, icon2, icon3, icon4 = OxedHub.Toys:GetMixSlotIcons(slot.id)
+                            end
+                            if icon1 and icon2 and OxedHub.Toys and OxedHub.Toys.CreateSplitIcon then
+                                btn.icon:Hide()
+                                btn.splitIcon = OxedHub.Toys:CreateSplitIcon(btn, 32, icon1, icon2, icon3, icon4)
+                                btn.splitIcon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+                                btn.splitIcon:Show()
+                            else
+                                btn.icon:SetTexture(icon1 or "Interface\\Icons\\INV_Misc_QuestionMark")
+                                btn.icon:Show()
+                            end
                         end
                     end
                 elseif slot.type == "emote" then
@@ -2989,6 +4192,17 @@ function ActionHub:RefreshTab()
                 elseif slot.type == "item" then
                     btn.icon:SetTexture(slot.icon or "Interface\\Icons\\INV_Misc_Bag_08")
                     btn.icon:Show()
+                elseif slot.type == "spell" then
+                    local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(slot.id)
+                    btn.icon:SetTexture((info and info.iconID) or slot.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                    btn.icon:Show()
+                elseif slot.type == "macro" then
+                    btn.icon:SetTexture(slot.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                    btn.icon:Show()
+                else
+                    -- Unknown type: fall back to a stored icon rather than a blank node.
+                    btn.icon:SetTexture(slot.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                    btn.icon:Show()
                 end
             else
                 btn.icon:Hide()
@@ -3000,6 +4214,8 @@ function ActionHub:RefreshTab()
             local size = (slot and slot.nodeSize) or db.globalNodeSize or 44
             btn:SetSize(size, size)
             StyleButton(btn, style, size, true)
+            -- Show the same keybind label as the on-screen widget nodes.
+            UpdateBindingLabel(btn, slot, size, style)
 
             if self.pickerDialog and self.pickerDialog:IsShown() and self.pickerDialog.slotIndex == i and self.pickerDialog.slotSide == sideKey then
                 btn.glow:Show()
@@ -3029,6 +4245,10 @@ function ActionHub:RefreshTab()
 
     if tab.moveOverlay then
         tab.moveOverlay:SetShown(moveModeActive and true or false)
+        if moveModeActive then
+            ActionHub:UpdatePreviewMoveGrid(tab)
+            if tab.SyncSpacingSliders then tab.SyncSpacingSliders() end
+        end
     end
     if tab.moveBtn then
         if dialog and dialog:IsShown() and dialog.slotIndex then
@@ -3042,6 +4262,9 @@ function ActionHub:RefreshTab()
     end
     if tab.minimizeBtn then
         tab.minimizeBtn:SetShown(moveModeActive and true or false)
+    end
+    if tab.gridMenuBtn then
+        tab.gridMenuBtn:SetShown(moveModeActive and true or false)
     end
 
     if maxSlots > 0 and (not self.pickerDialog or not self.pickerDialog:IsShown()) then
@@ -3065,12 +4288,16 @@ function ActionHub:RefreshSidebarCategories()
         marker = true,
         mount = false,
         item = false,
+        spell = false,
         settings = true,
     }
     activeDB.visibleTabs.settings = true
+    -- Spellbook tab is opt-in: default OFF for existing hubs too (nil would read as
+    -- "shown"). Only nil is migrated so a toggled choice persists.
+    if activeDB.visibleTabs.spell == nil then activeDB.visibleTabs.spell = false end
 
     if not activeDB.visibleTabs[dialog.selectedType] then
-        for _, catType in ipairs({"toy", "emote", "trigger", "marker", "mount", "item", "settings"}) do
+        for _, catType in ipairs({"toy", "emote", "trigger", "marker", "mount", "item", "spell", "settings"}) do
             if activeDB.visibleTabs[catType] then
                 dialog.selectedType = catType
                 break
@@ -3255,6 +4482,7 @@ function ActionHub:ShowSlotPicker(slotIndex, slotSide)
             { name = "Markers",   type = "marker",   icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8" },
             { name = "Mounts",    type = "mount",    icon = "Interface\\Icons\\MountJournalPortrait" },
             { name = "Items",     type = "item",     icon = 3753262 },
+            { name = "Spells",    type = "spell",    icon = "Interface\\Icons\\INV_Misc_Book_09" },
             { name = "Settings",  type = "settings", icon = 4548872 }
         }
 
@@ -4346,8 +5574,69 @@ function ActionHub:ShowSlotPicker(slotIndex, slotSide)
         textSizeVal:SetPoint("BOTTOM", textSizeSlider, "TOP", 0, 2)
         dialog.textSizeVal = textSizeVal
 
+        -- Node Background Opacity (fade the dark square / ring behind icons)
+        local bgAlphaLabel = settingsChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        bgAlphaLabel:SetPoint("TOPLEFT", textSizeSlider, "BOTTOMLEFT", -4, -30)
+        bgAlphaLabel:SetText(L["AH_NODE_BG_ALPHA"] or "Background Opacity")
+        bgAlphaLabel:SetTextColor(1, 0.82, 0)
+
+        local bgAlphaSlider = CreateFrame("Slider", nil, settingsChild, "OptionsSliderTemplate")
+        bgAlphaSlider:SetPoint("TOPLEFT", bgAlphaLabel, "BOTTOMLEFT", 4, -14)
+        bgAlphaSlider:SetWidth(110)
+        bgAlphaSlider:SetMinMaxValues(0, 100)
+        bgAlphaSlider:SetValueStep(5)
+        bgAlphaSlider:SetObeyStepOnDrag(true)
+        if bgAlphaSlider.Low then bgAlphaSlider.Low:SetText("0%") end
+        if bgAlphaSlider.High then bgAlphaSlider.High:SetText("100%") end
+        if bgAlphaSlider.Text then bgAlphaSlider.Text:SetText("") end
+        bgAlphaSlider:SetScript("OnValueChanged", function(self, value)
+            value = math.floor(value + 0.5)
+            if dialog.bgAlphaInput and not dialog.bgAlphaInput:HasFocus() then
+                dialog.bgAlphaInput:SetText(tostring(value))
+            end
+            if dialog.bgAlphaVal then dialog.bgAlphaVal:SetText(value .. "%") end
+            if self.isSyncing then return end
+            local activeDB = ActionHub:GetActiveHubDB()
+            activeDB.nodeBackgroundAlpha = value / 100
+            ActionHub:RefreshAllWidgets()
+            ActionHub:RefreshTab()
+        end)
+        dialog.bgAlphaSlider = bgAlphaSlider
+
+        local bgAlphaInput = CreateNumericInput(settingsChild, bgAlphaSlider)
+        dialog.bgAlphaInput = bgAlphaInput
+
+        local bgAlphaResetBtn = CreateFrame("Button", nil, settingsChild, "UIPanelButtonTemplate")
+        bgAlphaResetBtn:SetSize(22, 22)
+        bgAlphaResetBtn:SetPoint("LEFT", bgAlphaInput, "RIGHT", 10, 0)
+        local bgAlphaResetIcon = bgAlphaResetBtn:CreateTexture(nil, "ARTWORK")
+        bgAlphaResetIcon:SetSize(14, 14)
+        bgAlphaResetIcon:SetPoint("CENTER", bgAlphaResetBtn, "CENTER", 0, 0)
+        bgAlphaResetIcon:SetTexture("Interface\\AddOns\\OxedHub\\Media\\Textures\\Icons\\reload.tga")
+        bgAlphaResetBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L["SETTINGS_BTN_RESET"] or "Reset")
+            GameTooltip:Show()
+        end)
+        bgAlphaResetBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        bgAlphaResetBtn:SetScript("OnClick", function()
+            local activeDB = ActionHub:GetActiveHubDB()
+            activeDB.nodeBackgroundAlpha = nil
+            dialog.bgAlphaSlider.isSyncing = true
+            dialog.bgAlphaSlider:SetValue(50)
+            dialog.bgAlphaSlider.isSyncing = false
+            if dialog.bgAlphaInput then dialog.bgAlphaInput:SetText("50") end
+            if dialog.bgAlphaVal then dialog.bgAlphaVal:SetText("50%") end
+            ActionHub:RefreshAllWidgets()
+            ActionHub:RefreshTab()
+        end)
+
+        local bgAlphaVal = settingsChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        bgAlphaVal:SetPoint("BOTTOM", bgAlphaSlider, "TOP", 0, 2)
+        dialog.bgAlphaVal = bgAlphaVal
+
         local allowAnimCheck = CreateFrame("CheckButton", nil, settingsChild, "UICheckButtonTemplate")
-        allowAnimCheck:SetPoint("TOPLEFT", textSizeSlider, "BOTTOMLEFT", -4, -14)
+        allowAnimCheck:SetPoint("TOPLEFT", bgAlphaSlider, "BOTTOMLEFT", -4, -14)
         allowAnimCheck:SetSize(22, 22)
         allowAnimCheck:SetScript("OnClick", function(self)
             local activeDB = ActionHub:GetActiveHubDB()
@@ -4376,6 +5665,21 @@ function ActionHub:ShowSlotPicker(slotIndex, slotSide)
         showTooltipLabel:SetText(L["AH_SHOW_TOOLTIP"] or "Show Tooltip")
         showTooltipLabel:SetTextColor(0.9, 0.9, 0.9)
 
+        local showTooltipInfo = CreateFrame("Button", nil, settingsChild)
+        showTooltipInfo:SetSize(14, 14)
+        showTooltipInfo:SetPoint("LEFT", showTooltipLabel, "RIGHT", 4, 0)
+        local showTooltipInfoIcon = showTooltipInfo:CreateTexture(nil, "ARTWORK")
+        showTooltipInfoIcon:SetAllPoints()
+        showTooltipInfoIcon:SetTexture("Interface\\FriendsFrame\\InformationIcon")
+        showTooltipInfo:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L["AH_SHOW_TOOLTIP_INFO"] or "you can drag and drop spells on your screen while holding shift", nil, nil, nil, nil, true)
+            GameTooltip:Show()
+        end)
+        showTooltipInfo:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+
         -- Sidebar Tabs Visibility Settings
         local tabsHeader = settingsChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         tabsHeader:SetPoint("TOPLEFT", showTooltipCheck, "BOTTOMLEFT", 4, -20)
@@ -4390,6 +5694,7 @@ function ActionHub:ShowSlotPicker(slotIndex, slotSide)
             { key = "marker",   label = L["TAB_MARKERS"] or "Markers" },
             { key = "mount",    label = L["TAB_MOUNTS"] or "Mounts" },
             { key = "item",     label = L["TAB_ITEMS"] or "Items" },
+            { key = "spell",    label = L["TAB_SPELLS"] or "Spellbook" },
         }
 
         local prevAnchor = tabsHeader
@@ -4416,13 +5721,14 @@ function ActionHub:ShowSlotPicker(slotIndex, slotSide)
                     marker = true,
                     mount = false,
                     item = false,
+                    spell = false,
                     settings = true,
                 }
                 activeDB.visibleTabs[def.key] = self:GetChecked()
-                
+
                 -- Ensure at least one tab is shown
                 local anyShown = false
-                for _, k in ipairs({"toy", "emote", "trigger", "marker", "mount", "item"}) do
+                for _, k in ipairs({"toy", "emote", "trigger", "marker", "mount", "item", "spell"}) do
                     if activeDB.visibleTabs[k] then
                         anyShown = true
                         break
@@ -4528,6 +5834,14 @@ function ActionHub:ShowSlotPicker(slotIndex, slotSide)
             ActionHub:UpdateWidgetCooldowns()
         end)
         dialog.textSizeSlider = textSizeSlider
+
+        BindSliderInput(bgAlphaSlider, bgAlphaInput, 0, 100, 5, function(value)
+            local activeDB = ActionHub:GetActiveHubDB()
+            activeDB.nodeBackgroundAlpha = value / 100
+            dialog.bgAlphaVal:SetText(value .. "%")
+            ActionHub:RefreshAllWidgets()
+            ActionHub:RefreshTab()
+        end)
 
         local testBtn = CreateFrame("Button", nil, editor, "UIPanelButtonTemplate")
         testBtn:SetSize(70, 24)
@@ -4706,12 +6020,18 @@ function ActionHub:RefreshPickerList()
                 end
 
                 if show then
-                    local icon1 = "Interface\\Icons\\INV_Misc_QuestionMark"
-                    local icon2 = "Interface\\Icons\\INV_Misc_QuestionMark"
-                    if OxedHub.Toys and OxedHub.Toys.GetMixSlotIcons then
-                        icon1, icon2 = OxedHub.Toys:GetMixSlotIcons(mixName)
+                    local customIcon = OxedHub.Toys and OxedHub.Toys.GetMixCustomIcon and OxedHub.Toys:GetMixCustomIcon(mixName)
+                    local icon1, icon2, icon3, icon4
+                    if customIcon then
+                        icon1 = customIcon
+                    else
+                        icon1 = "Interface\\Icons\\INV_Misc_QuestionMark"
+                        icon2 = "Interface\\Icons\\INV_Misc_QuestionMark"
+                        if OxedHub.Toys and OxedHub.Toys.GetMixSlotIcons then
+                            icon1, icon2, icon3, icon4 = OxedHub.Toys:GetMixSlotIcons(mixName)
+                        end
                     end
-                    table.insert(items, { type = "toy", assignmentMode = "mix", id = mixName, name = mixName, icon1 = icon1, icon2 = icon2 })
+                    table.insert(items, { type = "toy", assignmentMode = "mix", id = mixName, name = mixName, icon1 = icon1, icon2 = icon2, icon3 = icon3, icon4 = icon4 })
                 end
             end
         end
@@ -4737,7 +6057,7 @@ function ActionHub:RefreshPickerList()
 
             local q = "Interface\\Icons\\INV_Misc_QuestionMark"
             if item.icon2 and item.icon1 ~= q and item.icon2 ~= q and OxedHub.Toys and OxedHub.Toys.CreateSplitIcon then
-                local splitIcon = OxedHub.Toys:CreateSplitIcon(btn, btnSize - 6, item.icon1, item.icon2)
+                local splitIcon = OxedHub.Toys:CreateSplitIcon(btn, btnSize - 6, item.icon1, item.icon2, item.icon3, item.icon4)
                 splitIcon:SetPoint("CENTER", btn, "CENTER", 0, 0)
             else
                 local iconTex = btn:CreateTexture(nil, "ARTWORK")
@@ -5589,6 +6909,142 @@ function ActionHub:RefreshPickerList()
         local rows = math.max(math.ceil(#items / cols), 1)
         child:SetHeight(rows * (btnSize + spacing) + 20)
         child:SetWidth(cols * (btnSize + spacing))
+    elseif dialog.selectedType == "spell" then
+        dialog.scroll:Show()
+        dialog.editor:Hide()
+        dialog.settingsTabFrame:Hide()
+        dialog.showToysCheck:Hide()
+        dialog.showToysLabel:Hide()
+        dialog.allTriggersCheck:Hide()
+        dialog.allTriggersLabel:Hide()
+        dialog.allTriggersHelp:Hide()
+        dialog.toySearchBox:Hide()
+        dialog.sectionInfo:SetText(L["RING_PICK_SPELL"] or "Pick a spell from your spellbook")
+
+        for _, c in ipairs({child:GetChildren()}) do
+            c:Hide(); c:SetParent(nil)
+        end
+
+        -- Reuse the shared spellbook scanner (OxedRing built it first).
+        local items = {}
+        if OxedHub.OxedRingEditor and OxedHub.OxedRingEditor.GetPlayerSpellList then
+            items = OxedHub.OxedRingEditor:GetPlayerSpellList() or {}
+        end
+
+        local btnSize = 42
+        local spacing = 2
+        local cols = 5
+        local x, y = 0, 0
+
+        for i, item in ipairs(items) do
+            local btn = CreateFrame("Button", nil, child, "BackdropTemplate")
+            btn:SetSize(btnSize, btnSize)
+            btn:SetPoint("TOPLEFT", child, "TOPLEFT", x * (btnSize + spacing) + 12, -(y * (btnSize + spacing)) - 4)
+            btn:SetBackdrop({
+                bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+                edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                tile = true, tileSize = 16, edgeSize = 8,
+            })
+            btn:SetBackdropColor(0.2, 0.1, 0.05, 0.8)
+            btn:SetBackdropBorderColor(0.4, 0.25, 0.1, 1)
+
+            local iconTex = btn:CreateTexture(nil, "ARTWORK")
+            iconTex:SetSize(btnSize - 6, btnSize - 6)
+            iconTex:SetPoint("CENTER", btn, "CENTER", 0, 0)
+            iconTex:SetTexture(item.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+            iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+            btn:SetScript("OnEnter", function(self)
+                self:SetBackdropBorderColor(1, 0.82, 0, 0.8)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                if item.id then GameTooltip:SetSpellByID(item.id) else GameTooltip:SetText(item.name) end
+                GameTooltip:Show()
+            end)
+            btn:SetScript("OnLeave", function(self)
+                self:SetBackdropBorderColor(0.4, 0.25, 0.1, 1)
+                GameTooltip:Hide()
+            end)
+
+            btn:SetScript("OnClick", function()
+                local slots = ActionHub:GetSlotsForSide(ActionHub:GetActiveHubDB(), dialog.slotSide)
+                if slots[dialog.slotIndex] then
+                    slots[dialog.slotIndex].type = "spell"
+                    slots[dialog.slotIndex].id = item.id
+                    slots[dialog.slotIndex].label = item.name
+                    slots[dialog.slotIndex].icon = item.icon
+                    slots[dialog.slotIndex].assignmentMode = nil
+                    slots[dialog.slotIndex].requiresParty = nil
+                    slots[dialog.slotIndex].requiresTarget = nil
+                end
+                ActionHub:RefreshTab()
+                ActionHub:RefreshPickerList()
+                if ActionHub.RefreshWidget then ActionHub:RefreshWidget() end
+            end)
+
+            btn:RegisterForDrag("LeftButton")
+            btn:SetScript("OnDragStart", function(self)
+                ActionHub.dragData = { type = "spell", id = item.id, label = item.name, icon = item.icon }
+                if not ActionHub.dragIcon then
+                    local f = CreateFrame("Frame", nil, UIParent)
+                    f:SetSize(32, 32)
+                    f:SetFrameStrata("TOOLTIP")
+                    local t = f:CreateTexture(nil, "OVERLAY")
+                    t:SetAllPoints()
+                    f.tex = t
+                    ActionHub.dragIcon = f
+                end
+                ActionHub.dragIcon.tex:SetTexture(item.icon)
+                ActionHub.dragIcon:Show()
+                ActionHub.dragIcon:SetScript("OnUpdate", function(self)
+                    local cx, cy = GetCursorPosition()
+                    local s = UIParent:GetEffectiveScale()
+                    self:ClearAllPoints()
+                    self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx/s, cy/s)
+                end)
+            end)
+            btn:SetScript("OnDragStop", function(self)
+                if ActionHub.dragIcon then
+                    ActionHub.dragIcon:Hide()
+                    ActionHub.dragIcon:SetScript("OnUpdate", nil)
+                end
+                if ActionHub.dragData then
+                    local dropTarget = nil
+                    local tab = ActionHub.tab
+                    if tab and tab.ringButtons then
+                        for _, rb in ipairs(tab.ringButtons) do
+                            if rb and rb:IsShown() and rb.isActionHubSlot and rb.slotIndex and MouseIsOver(rb) then
+                                dropTarget = rb
+                                break
+                            end
+                        end
+                    end
+                    if dropTarget then
+                        local slots = ActionHub:GetSlotsForSide(ActionHub:GetActiveHubDB(), dropTarget.slotSide)
+                        local s = slots[dropTarget.slotIndex]
+                        if s then
+                            s.type = ActionHub.dragData.type
+                            s.id = ActionHub.dragData.id
+                            s.label = ActionHub.dragData.label
+                            s.icon = ActionHub.dragData.icon
+                            s.assignmentMode = nil
+                            s.requiresParty = nil
+                            s.requiresTarget = nil
+                        end
+                        ActionHub:RefreshTab()
+                        ActionHub:RefreshWidget()
+                    end
+                    ActionHub.dragData = nil
+                end
+                ClearCursor()
+            end)
+
+            x = x + 1
+            if x >= cols then x = 0 y = y + 1 end
+        end
+
+        local rows = math.max(math.ceil(#items / cols), 1)
+        child:SetHeight(rows * (btnSize + spacing) + 20)
+        child:SetWidth(cols * (btnSize + spacing))
     elseif dialog.selectedType == "trigger" then
         -- Show Trigger Grid
         dialog.scroll:Show()
@@ -5990,6 +7446,17 @@ function ActionHub:RefreshPickerList()
             dialog.textSizeInput:SetText(tostring(tSize))
         end
 
+        if dialog.bgAlphaSlider then
+            local a = ActionHub:GetActiveHubDB().nodeBackgroundAlpha
+            if a == nil then a = 0.5 end
+            local pct = math.floor(a * 100 + 0.5)
+            dialog.bgAlphaSlider.isSyncing = true
+            dialog.bgAlphaSlider:SetValue(pct)
+            dialog.bgAlphaSlider.isSyncing = false
+            dialog.bgAlphaVal:SetText(pct .. "%")
+            if dialog.bgAlphaInput then dialog.bgAlphaInput:SetText(tostring(pct)) end
+        end
+
         local bindingText = (currentSlot and currentSlot.binding) or L["KEYBIND_NOT_BOUND"] or "Not Bound"
         dialog.bindBtn:SetText(bindingText)
 
@@ -6019,7 +7486,7 @@ function ActionHub:RefreshPickerList()
             for key, check in pairs(dialog.tabCheckboxes) do
                 local val = visibleTabs[key]
                 if val == nil then
-                    if key == "mount" or key == "item" then
+                    if key == "mount" or key == "item" or key == "spell" then
                         val = false
                     else
                         val = true

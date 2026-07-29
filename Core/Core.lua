@@ -130,10 +130,14 @@ local function SeedBuiltInProfiles()
     end
 
     OxedHubDB.profiles = OxedHubDB.profiles or {}
+    local deletedList = OxedHubDB.globalSettings and OxedHubDB.globalSettings.deletedBuiltInProfiles or {}
 
     local addedCount = 0
     for profileName, profileData in pairs(bundledProfiles) do
-        if profileName ~= "Starter Profile" and profileName ~= "Imported Profile" and OxedHubDB.profiles[profileName] == nil and type(profileData) == "table" then
+        if profileName ~= "Starter Profile" and profileName ~= "Imported Profile"
+            and OxedHubDB.profiles[profileName] == nil
+            and not deletedList[profileName]
+            and type(profileData) == "table" then
             OxedHubDB.profiles[profileName] = CopyTable(profileData)
             EnsureProfileUiStartsDisabled(OxedHubDB.profiles[profileName])
             addedCount = addedCount + 1
@@ -508,6 +512,8 @@ function Core:OnEvent(event, ...)
         self:OnSpellCooldownUpdate()
     elseif event == "CHALLENGE_MODE_COMPLETED" then
         self:OnChallengeModeCompleted()
+    elseif event == "PARTY_KILL" then
+        self:OnPartyKill(...)
     elseif event == "PLAYER_CONTROL_LOST" then
         self:OnPlayerControlLost()
     elseif event == "PLAYER_CONTROL_GAINED" then
@@ -525,7 +531,13 @@ function Core:OnEvent(event, ...)
         local unit = ...
         if unit == "pet" then
             self:OnPetEvent()
+        elseif unit and unit:match("^party%d$") then
+            self:OnPartyMemberHealth(unit)
         end
+    elseif event == "PLAYER_LEVEL_UP" then
+        self:OnPlayerLevelUp(...)
+    elseif event == "UPDATE_PENDING_MAIL" then
+        self:OnNewMail(...)
     elseif event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
         if self:HasEnabledTrigger("UNIT_AURA") or self:HasEnabledTrigger("EAT_BUFF") then
             self:BuildAuraSpellCache()
@@ -534,6 +546,7 @@ function Core:OnEvent(event, ...)
         if event == "PLAYER_REGEN_ENABLED" then
             self:SyncRingFramesAfterCombat()
         end
+        self:OnCombatStateChanged(event == "PLAYER_REGEN_DISABLED" and "enter" or "exit")
     end
 end
 
@@ -736,6 +749,19 @@ function Core:FixBuiltInAnimationSizes()
     end
 end
 
+function Core:MigrateAnimationsToPNG()
+    if not OxedHubDB or not OxedHubDB.profiles then return end
+    for _, profile in pairs(OxedHubDB.profiles) do
+        if profile.animations then
+            for id, anim in pairs(profile.animations) do
+                if type(anim.tgaPath) == "string" and anim.tgaPath:lower():find("%.tga$") then
+                    anim.tgaPath = anim.tgaPath:gsub("%.[tT][gG][aA]$", ".png")
+                end
+            end
+        end
+    end
+end
+
 -- Deferred startup
 function Core:Bootstrap()
     if isLoaded then
@@ -795,6 +821,7 @@ function Core:Bootstrap()
     self:CleanupPlaceholderSounds()
     self:CleanupPlaceholderAnimations()
     self:FixBuiltInAnimationSizes()
+    self:MigrateAnimationsToPNG()
     if OxedHub.Sounds and OxedHub.Sounds.SyncGeneratedCatalog then
         OxedHub.Sounds:SyncGeneratedCatalog()
     end
@@ -936,32 +963,41 @@ function OxedHub:SetProfileClassToken(name, classToken)
 end
 
 function OxedHub:GetProfileDisplayName(name)
-    local className = self:GetClassDisplayName(self:GetProfileClassToken(name))
-    if not className or className == name then
-        return name
-    end
+    -- The user explicitly requested to completely remove the "[Class]" suffix
+    -- so that they can totally rename it without the suffix being appended.
+    return name
+end
 
-    return string.format("%s [%s]", name, className)
+function OxedHub:GetProfileMetadata(name)
+    local profile = OxedHubDB and OxedHubDB.profiles and OxedHubDB.profiles[name]
+    if type(profile) == "table" then
+        profile.metadata = profile.metadata or {}
+        return profile.metadata
+    end
+    return nil
 end
 
 function OxedHub:GetProfileColoredName(name)
     local displayName = self:GetProfileDisplayName(name)
-    local classToken = self:GetProfileClassToken(name)
-    if not classToken then
-        return displayName
-    end
-
-    local classColors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
-    local color = classColors and classColors[classToken]
-    if not color then
-        return displayName
-    end
-
+    local metadata = self:GetProfileMetadata(name)
+    
     local colorCode
-    if color.GenerateHexColor then
-        colorCode = color:GenerateHexColor()
-    elseif color.colorStr then
-        colorCode = color.colorStr
+    if metadata and metadata.customColor then
+        local c = metadata.customColor
+        colorCode = string.format("|cff%02x%02x%02x", c.r * 255, c.g * 255, c.b * 255)
+    else
+        local classToken = self:GetProfileClassToken(name)
+        if classToken then
+            local classColors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
+            local color = classColors and classColors[classToken]
+            if color then
+                if color.GenerateHexColor then
+                    colorCode = color:GenerateHexColor()
+                elseif color.colorStr then
+                    colorCode = color.colorStr
+                end
+            end
+        end
     end
 
     if not colorCode or colorCode == "" then
@@ -1056,6 +1092,10 @@ function OxedHub:SwitchProfile(name, options)
         if mainFrame and hasContentArea and OxedHub.UI.RefreshProfileDropdown then
             OxedHub.UI.RefreshProfileDropdown()
         end
+        -- Keep the Settings > Profiles details/credits panel in sync.
+        if OxedHub.UI.RefreshProfileDetails then
+            OxedHub.UI:RefreshProfileDetails()
+        end
     end
 
     if not (options and options.silent) then
@@ -1136,6 +1176,15 @@ function OxedHub:DeleteProfile(name)
     -- Can't delete the active profile
     if name == OxedHubDB.activeProfile then return false end
 
+    -- If this is a built-in profile, remember that the user deleted it
+    -- so SeedBuiltInProfiles won't re-create it on next reload.
+    local bundledProfiles = OxedHub.BUILT_IN_PROFILES
+    if type(bundledProfiles) == "table" and bundledProfiles[name] then
+        OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+        OxedHubDB.globalSettings.deletedBuiltInProfiles = OxedHubDB.globalSettings.deletedBuiltInProfiles or {}
+        OxedHubDB.globalSettings.deletedBuiltInProfiles[name] = true
+    end
+
     OxedHubDB.profiles[name] = nil
     return true
 end
@@ -1152,6 +1201,15 @@ function OxedHub:RenameProfile(oldName, newName)
         OxedHubDB.activeProfile = newName
         OxedHubDB.profile = OxedHubDB.profiles[newName]
     end
+
+    if OxedHubDB.globalSettings and OxedHubDB.globalSettings.characterActiveProfiles then
+        for charKey, savedProfileName in pairs(OxedHubDB.globalSettings.characterActiveProfiles) do
+            if savedProfileName == oldName then
+                OxedHubDB.globalSettings.characterActiveProfiles[charKey] = newName
+            end
+        end
+    end
+
     return true
 end
 
@@ -1161,6 +1219,10 @@ function Core:OnPlayerLogin()
         return
     end
     isPlayerLoginHandled = true
+
+    -- Baseline for the honorable-kill counter, used to attribute kills in
+    -- instanced PvP where the attacker GUID is hidden.
+    self:InitPvPKillBaseline()
 
     self:ApplyAutoClassProfile()
 
@@ -1348,7 +1410,6 @@ local WELL_FED_ICON = 134062
 local secretTestTable = {}
 local function CheckSecretValue(val)
     if val == nil then return false end
-    if IsSecretValue then return IsSecretValue(val) end
     
     local ok = pcall(function() secretTestTable[val] = true end)
     if ok then
@@ -1387,20 +1448,17 @@ local function ScanUnitAuras(filter, buffer)
     -- Clear previous buffer contents
     for i=1, #buffer do buffer[i] = nil end
     
-    if C_UnitAuras.GetUnitAuras then
-        local auraList = C_UnitAuras.GetUnitAuras("player", filter)
-        if auraList then
-            for i=1, #auraList do
-                buffer[i] = auraList[i]
-            end
+    for i = 1, 40 do
+        local aura = C_UnitAuras.GetAuraDataByIndex("player", i, filter)
+        if not aura then 
+            if OxedHub.debug then print("[OxedHub-Debug] ScanUnitAuras broke at index:", i, "for filter:", filter) end
+            break 
         end
-    else
-        for i = 1, 40 do
-            local aura = C_UnitAuras.GetAuraDataByIndex("player", i, filter)
-            if not aura then break end
-            buffer[i] = aura
-        end
+        buffer[i] = aura
     end
+    
+    if OxedHub.debug then print("[OxedHub-Debug] ScanUnitAuras finished for filter:", filter, "found:", #buffer) end
+    
     return buffer
 end
 
@@ -1409,32 +1467,65 @@ local function ResolveAuraNameForFoodCheck(spellId)
         return nil
     end
 
-    if Core.spellCache and Core.spellCache[spellId] then
-        return Core.spellCache[spellId]
+    -- spellId can be a "secret" value that Blizzard forbids as a table key, so
+    -- every cache read/write has to be pcall-guarded (same as BuildAuraSpellCache).
+    local okCache, cached = pcall(function()
+        return Core.spellCache and Core.spellCache[spellId]
+    end)
+    if okCache and cached then
+        return cached
     end
 
-    local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellId)
-    local name = spellInfo and spellInfo.name
+    local okInfo, spellInfo = pcall(function()
+        return C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellId)
+    end)
+    local name = okInfo and spellInfo and spellInfo.name
     if name then
         Core.spellCache = Core.spellCache or {}
-        Core.spellCache[spellId] = name
+        pcall(function()
+            Core.spellCache[spellId] = name
+        end)
     end
 
     return name
 end
 
+-- Comparing a "secret" value (12.0 aura privacy) raises an error, so every
+-- equality test against aura data has to run inside a pcall.
+local function SafeEquals(value, expected)
+    local ok, isEqual = pcall(function() return value == expected end)
+    return ok and isEqual or false
+end
+
+-- Returns the matching literal from `list` (never the caller's possibly-secret
+-- value), so callers have a plain string safe to concatenate, store, or display.
+local function SafeMatchesAny(value, list)
+    if value == nil then return nil end
+    for _, expected in ipairs(list) do
+        if SafeEquals(value, expected) then
+            return expected
+        end
+    end
+    return nil
+end
+
+local FOOD_AURA_NAMES = { "Food", "Drink", "Food & Drink", "Refreshment" }
+local WELL_FED_AURA_NAMES = { "Well Fed", "Hearty Well Fed" }
+
+-- Each returns the plain matched name (e.g. "Drink") or nil.
 local function IsFoodAuraBySpellId(spellId)
-    local name = ResolveAuraNameForFoodCheck(spellId)
-    return name == "Food" or name == "Drink" or name == "Food & Drink" or name == "Refreshment"
+    return SafeMatchesAny(ResolveAuraNameForFoodCheck(spellId), FOOD_AURA_NAMES)
 end
 
 local function IsWellFedAuraBySpellId(spellId, icon)
-    if icon == WELL_FED_ICON then
-        return true
+    local name = SafeMatchesAny(ResolveAuraNameForFoodCheck(spellId), WELL_FED_AURA_NAMES)
+    if name then
+        return name
     end
-
-    local name = ResolveAuraNameForFoodCheck(spellId)
-    return name == "Well Fed" or name == "Hearty Well Fed"
+    if SafeEquals(icon, WELL_FED_ICON) then
+        return WELL_FED_AURA_NAMES[1]
+    end
+    return nil
 end
 
 function Core:ProcessFoodAuraOnly(now)
@@ -1451,21 +1542,23 @@ function Core:ProcessFoodAuraOnly(now)
 
         local spellId = aura.spellId
         local icon = aura.icon
-        local auraName = ResolveAuraNameForFoodCheck(spellId)
 
-        if IsFoodAuraBySpellId(spellId) then
-            isEatingNow = true
-            local key = "f" .. tostring(spellId or i)
-            currentFoodAuras[key] = auraName or key
-            if not foodAuraCache[key] and auraName then
-                newFoodNames[#newFoodNames + 1] = auraName
+        -- These return a plain literal ("Drink", "Well Fed", ...) or nil, never
+        -- the aura's own possibly-secret name, so they're safe to key and display.
+        local foodName = IsFoodAuraBySpellId(spellId)
+        local wellFedName = not foodName and IsWellFedAuraBySpellId(spellId, icon) or nil
+        local matchedName = foodName or wellFedName
+
+        if matchedName then
+            local key = (foodName and "f" or "w") .. matchedName
+            currentFoodAuras[key] = matchedName
+            if not foodAuraCache[key] then
+                newFoodNames[#newFoodNames + 1] = matchedName
             end
-        elseif IsWellFedAuraBySpellId(spellId, icon) then
-            hasWellFedNow = true
-            local key = "w" .. tostring(spellId or i)
-            currentFoodAuras[key] = auraName or key
-            if not foodAuraCache[key] and auraName then
-                newFoodNames[#newFoodNames + 1] = auraName
+            if foodName then
+                isEatingNow = true
+            else
+                hasWellFedNow = true
             end
         end
     end
@@ -1494,8 +1587,9 @@ end
 -- UNIT_AURA handler (Throttled and Optimized)
 local lastAuraUpdate = 0
 function Core:OnUnitAura(unit)
+    if OxedHub.debug then print("[OxedHub-Debug] OnUnitAura called for unit:", unit) end
     if unit ~= "player" then return end
-    local wantsUnitAura = self:HasEnabledTrigger("UNIT_AURA")
+    local wantsUnitAura = self:HasEnabledTrigger("UNIT_AURA") or self:HasEnabledTrigger("SELF_AURA")
     local wantsEatBuff = self:HasEnabledTrigger("EAT_BUFF")
     if not wantsUnitAura and not wantsEatBuff then
         return
@@ -1529,6 +1623,7 @@ function Core:OnUnitAura(unit)
     
     -- Anti-flicker safety check
     if #auraBuffer_Buffs == 0 and #auraBuffer_Debuffs == 0 and not UnitIsDeadOrGhost("player") and next(auraCache) ~= nil then
+        if OxedHub.debug then print("[OxedHub-Debug] Anti-flicker triggered, returning.") end
         return
     end
     
@@ -1540,22 +1635,70 @@ function Core:OnUnitAura(unit)
         for _, aura in ipairs(list) do
             local name = aura.name
             local spellId = aura.spellId
+            local instanceId = aura.auraInstanceID
             
-            -- Skip secret values safely
-            if not CheckSecretValue(spellId) then
-                if CheckSecretValue(name) then
-                    name = spellId and spellCache[spellId] or nil
-                elseif spellId and name then
-                    -- Update name cache for future secret lookups
-                    pcall(function() spellCache[spellId] = name end)
+            if OxedHub.debug then
+                print("[OxedHub-Debug] Raw Aura:", tostring(name), "ID:", tostring(spellId), "isSecretID:", tostring(CheckSecretValue(spellId)), "isSecretName:", tostring(CheckSecretValue(name)))
+            end
+            
+            if instanceId then
+                local realSpellID = nil
+                if not CheckSecretValue(spellId) then
+                    realSpellID = spellId
+                else
+                    local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellId)
+                    if info and info.spellID and not CheckSecretValue(info.spellID) then
+                        realSpellID = info.spellID
+                    end
                 end
 
-                if name and spellId then
-                    local key = (prefix or "") .. tostring(spellId)
-                    auraBuffer_Current[key] = { name = name, id = spellId }
+                -- If name is secret, try to resolve it using C_Spell (which accepts secret spellIds)
+                if CheckSecretValue(name) then
+                    local cachedName = realSpellID and spellCache[realSpellID] or nil
+                    if cachedName then
+                        name = cachedName
+                    else
+                        local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellId)
+                        if spellInfo and spellInfo.name then
+                            name = spellInfo.name
+                            if realSpellID then
+                                pcall(function() spellCache[realSpellID] = name end)
+                            end
+                        end
+                    end
+                elseif realSpellID and name then
+                    -- Update name cache for future secret lookups using primitive spellId
+                    pcall(function() spellCache[realSpellID] = name end)
+                end
+
+                if name and (spellId or realSpellID) then
+                    local safeInstanceId = nil
+                    if instanceId ~= nil and not CheckSecretValue(instanceId) then
+                        safeInstanceId = tostring(instanceId)
+                    elseif realSpellID ~= nil then
+                        safeInstanceId = "sp_" .. tostring(realSpellID)
+                    elseif name ~= nil and not CheckSecretValue(name) then
+                        safeInstanceId = "nm_" .. tostring(name)
+                    else
+                        safeInstanceId = "idx_" .. tostring(_ or 1)
+                    end
+
+                    local key = (prefix or "") .. safeInstanceId
+                    local applications = aura.applications or 0
+                    local expirationTime = aura.expirationTime or 0
+                    
+                    -- Store in current buffer
+                    auraBuffer_Current[key] = { 
+                        name = name, 
+                        id = realSpellID or spellId, 
+                        applications = applications, 
+                        expirationTime = expirationTime,
+                        instanceId = instanceId
+                    }
 
                     -- Food/Well Fed detection (cached results)
-                    local lowerName = name:lower()
+                    local safeName = not CheckSecretValue(name) and name or ""
+                    local lowerName = string.lower(safeName)
                     if lowerName:find("refreshment") or lowerName:find("food") or lowerName:find("drink") or lowerName:find("eating") or lowerName:find("drinking") then
                         isEatingNow = true
                         if not auraCache[key] then table.insert(auraBuffer_FoodNew, name) end
@@ -1565,14 +1708,45 @@ function Core:OnUnitAura(unit)
                         if not auraCache[key] then table.insert(auraBuffer_FoodNew, name) end
                     end
 
-                    -- Only fire for newly detected auras
-                    if not auraCache[key] then
+                    -- Fire for newly detected auras OR if stack count increased OR refreshed
+                    local isNewAura = not auraCache[key]
+                    local isStackIncrease = false
+                    local isRefreshed = false
+                    if auraCache[key] and type(auraCache[key]) == "table" then
+                        local oldApps = auraCache[key].applications or 0
+                        local oldExp = auraCache[key].expirationTime or 0
+                        -- applications/expirationTime can be "secret" values under
+                        -- WoW's aura privacy taint; comparing them directly throws.
+                        -- Guard with pcall and treat any failure as "no change" so a
+                        -- new aura still fires (isNewAura) even if stack/refresh
+                        -- detection isn't possible for this aura.
+                        local okApps, appsIncreased = pcall(function() return applications > oldApps end)
+                        if okApps and appsIncreased then
+                            isStackIncrease = true
+                        end
+                        local okExp, refreshed = pcall(function() return expirationTime > oldExp + 0.5 end)
+                        if okExp and refreshed then
+                            isRefreshed = true
+                        end
+                    end
+
+                    if isNewAura or isStackIncrease or isRefreshed then
+                        if OxedHub.debug then
+                            if isNewAura then
+                                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Gained: %s (ID: %s)", tostring(name), tostring(realSpellID or spellId)))
+                            elseif isStackIncrease then
+                                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Stack Increased: %s (ID: %s) to %d", tostring(name), tostring(realSpellID or spellId), applications))
+                            else
+                                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Refreshed: %s (ID: %s)", tostring(name), tostring(realSpellID or spellId)))
+                            end
+                        end
                         OxedHub.Triggers:ProcessEvent("UNIT_AURA", {
                             spellName = name,
-                            spellID = spellId,
+                            spellID = realSpellID or spellId,
                             icon = aura.icon,
                             duration = aura.duration,
                             expirationTime = aura.expirationTime,
+                            applications = applications,
                             isLost = false,
                         })
                     end
@@ -1588,6 +1762,9 @@ function Core:OnUnitAura(unit)
     for key, data in pairs(auraCache) do
         if not auraBuffer_Current[key] then
             if type(data) == "table" and data.name then
+                if OxedHub.debug then
+                    print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Lost: %s (ID: %s)", tostring(data.name), tostring(data.id)))
+                end
                 OxedHub.Triggers:ProcessEvent("UNIT_AURA", {
                     spellName = data.name,
                     spellID = data.id,
@@ -1621,10 +1798,75 @@ function Core:OnUnitAura(unit)
             })
         end
     end
+    
+    self:CheckMountState()
+end
+
+function Core:CheckMountState()
+    if not self:HasEnabledTrigger("MOUNT") then return end
+    
+    local okMounted, isMounted = pcall(IsMounted)
+    if not okMounted then isMounted = false end
+    
+    local okForm, formID = pcall(GetShapeshiftFormID)
+    if not okForm then formID = nil end
+    
+    local isDruidTravel = (formID == 3) or (formID == 4) or (formID == 27)
+    local currentState = isMounted or isDruidTravel
+    
+    if currentState ~= self.wasMounted then
+        self.wasMounted = currentState
+        
+        if currentState then
+            local currentType = "any"
+            if isDruidTravel then
+                if formID == 4 then currentType = "aquatic"
+                elseif formID == 27 then currentType = "flying"
+                else -- formID == 3 (Travel Form)
+                    if IsSubmerged() then currentType = "aquatic"
+                    elseif IsAdvancedFlyableArea and IsAdvancedFlyableArea() then currentType = "flying"
+                    elseif IsFlyableArea and IsFlyableArea() then currentType = "flying"
+                    else currentType = "ground"
+                    end
+                end
+            elseif C_MountJournal and C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+                -- Find mount aura
+                local mountTypeID = nil
+                for i = 1, 40 do
+                    local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
+                    if not aura then break end
+                    local mountID = C_MountJournal.GetMountFromSpell(aura.spellId)
+                    if mountID then
+                        local _, _, _, _, mountType = C_MountJournal.GetMountInfoExtraByID(mountID)
+                        mountTypeID = mountType
+                        break
+                    end
+                end
+                
+                if mountTypeID then
+                    if mountTypeID == 231 or mountTypeID == 232 or mountTypeID == 254 then
+                        currentType = "aquatic"
+                    elseif mountTypeID == 248 or mountTypeID == 402 or mountTypeID == 424 then
+                        currentType = "flying"
+                    elseif mountTypeID == 230 or mountTypeID == 241 or mountTypeID == 269 then
+                        currentType = "ground"
+                    end
+                end
+            end
+            
+            self.lastMountType = currentType
+            OxedHub.Triggers:ProcessEvent("MOUNT", { actionType = "up", mountType = currentType })
+        else
+            OxedHub.Triggers:ProcessEvent("MOUNT", { actionType = "down", mountType = self.lastMountType or "any" })
+        end
+    end
 end
 
 -- Player died handler
 function Core:OnPlayerDead()
+    -- Dying always ends a killing spree, whether or not a trigger wants the event.
+    self:ResetPvPStreak()
+
     if not self:HasEnabledTrigger("PLAYER_DEAD") then
         return
     end
@@ -1786,8 +2028,26 @@ function Core:OnBossKill(encounterID, encounterName, difficultyID, groupSize)
     })
 end
 
+-- Blizzard blocks addon chat while a Mythic+ run is active
+-- (Enum.AddOnRestrictionType.ChallengeMode). Returns false while that applies.
+function OxedHub:CanSendAutomatedChat()
+    if C_RestrictedActions and C_RestrictedActions.IsAddOnRestrictionActive
+        and Enum and Enum.AddOnRestrictionType and Enum.AddOnRestrictionType.ChallengeMode then
+        local ok, restricted = pcall(C_RestrictedActions.IsAddOnRestrictionActive,
+            Enum.AddOnRestrictionType.ChallengeMode)
+        if ok and restricted then
+            return false
+        end
+    end
+    return true
+end
+
 function Core:OnChallengeModeCompleted()
-    OxedHub.Triggers:ProcessEvent("CHALLENGE_MODE_COMPLETED", {})
+    -- Wait a moment so Blizzard's Mythic+ addon restriction has lifted before
+    -- any chat action fires; otherwise the message is silently dropped.
+    C_Timer.After(1, function()
+        OxedHub.Triggers:ProcessEvent("CHALLENGE_MODE_COMPLETED", {})
+    end)
 end
 
 function Core:BuildSummonEventData(state)
@@ -1857,6 +2117,12 @@ end
 
 -- Control lost handler (upgraded with C_LossOfControl support)
 function Core:OnPlayerControlLost(event)
+    C_Timer.After(0.5, function()
+        if UnitOnTaxi("player") then
+            self.wasOnTaxi = true
+        end
+    end)
+
     if not self:HasEnabledTrigger("CONTROL_LOST") then
         return
     end
@@ -1886,11 +2152,55 @@ end
 
 -- Control regained handler
 function Core:OnPlayerControlGained()
+    if self.wasOnTaxi then
+        C_Timer.After(0.5, function()
+            if not UnitOnTaxi("player") then
+                self.wasOnTaxi = false
+                if self:HasEnabledTrigger("REACH_FLY_DESTINATION") then
+                    OxedHub.Triggers:ProcessEvent("REACH_FLY_DESTINATION", {})
+                end
+            end
+        end)
+    end
+
     if not self:HasEnabledTrigger("CONTROL_GAINED") then
         return
     end
 
     OxedHub.Triggers:ProcessEvent("CONTROL_GAINED", {})
+end
+
+function Core:OnPlayerLevelUp(level)
+    if not self:HasEnabledTrigger("PLAYER_LEVEL_UP") then
+        return
+    end
+    OxedHub.Triggers:ProcessEvent("PLAYER_LEVEL_UP", { level = level })
+end
+
+function Core:OnNewMail()
+    if not self:HasEnabledTrigger("NEW_MAIL") then
+        return
+    end
+    OxedHub.Triggers:ProcessEvent("NEW_MAIL", {})
+end
+
+function Core:OnPartyMemberHealth(unit)
+    if not self:HasEnabledTrigger("PARTY_MEMBER_DEATH") then
+        return
+    end
+
+    self.deadPartyMembers = self.deadPartyMembers or {}
+    
+    local isDead = UnitIsDeadOrGhost(unit)
+    if isDead and not self.deadPartyMembers[unit] then
+        self.deadPartyMembers[unit] = true
+        local unitName = UnitName(unit)
+        if unitName then
+            OxedHub.Triggers:ProcessEvent("PARTY_MEMBER_DEATH", { unitName = unitName })
+        end
+    elseif not isDead and self.deadPartyMembers[unit] then
+        self.deadPartyMembers[unit] = false
+    end
 end
 
 -- Cooldown Ready detection.
@@ -2025,6 +2335,44 @@ function Core:HandleSlashCommand(msg)
         if OxedHub.MacroRegistry then
             OxedHub.MacroRegistry:SlashHandler(rest)
         end
+    elseif command == "debug" then
+        OxedHub.debug = not OxedHub.debug
+        print("|cff00ff00[OxedHub]|r General & Trigger debug logging " .. (OxedHub.debug and "|cff00ff00ENABLED|r" or "|cffff0000DISABLED|r"))
+        if OxedHub.Toys then
+            OxedHub.Toys.debug = OxedHub.debug
+        end
+    elseif command == "auratest" then
+        -- Ground-truth probe: can we detect a given aura by spell ID right now?
+        -- Run it in combat WITH the buff up to settle the "secret in combat" question.
+        local sid = tonumber(rest)
+        if not sid then
+            print("|cffff0000[OxedHub]|r Usage: /oxedhub auratest <spellID>   (run in combat with the buff active)")
+        else
+            local inCombat = InCombatLockdown()
+            print(("|cff00ff00[AuraTest]|r spellID=%d  inCombat=%s"):format(sid, tostring(inCombat)))
+            -- 1) targeted existence API
+            local ok1, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, sid)
+            print(("  GetPlayerAuraBySpellID: pcallOK=%s  returnedNil=%s"):format(tostring(ok1), tostring(aura == nil)))
+            if ok1 and aura then
+                -- try to read a couple of fields to see if they are secret
+                local okName = pcall(function() return "" .. tostring(aura.name) end)
+                local okApps = pcall(function() return (aura.applications or 0) + 0 end)
+                print(("    aura present! nameReadable=%s applicationsReadable=%s"):format(tostring(okName), tostring(okApps)))
+            end
+            -- 2) AuraUtil name/index fallback
+            if AuraUtil and AuraUtil.FindAuraByName then
+                local sName = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(sid)
+                sName = sName and sName.name
+                if sName then
+                    local ok2, found = pcall(AuraUtil.FindAuraByName, sName, "player", "HELPFUL")
+                    print(("  AuraUtil.FindAuraByName('%s'): pcallOK=%s found=%s"):format(tostring(sName), tostring(ok2), tostring(found ~= nil)))
+                end
+            end
+            -- 3) native registration API availability
+            print(("  API present: AddAuraAppliedSound=%s  AddPrivateAuraAppliedSound=%s"):format(
+                tostring(C_UnitAuras and C_UnitAuras.AddAuraAppliedSound ~= nil),
+                tostring(C_UnitAuras and C_UnitAuras.AddPrivateAuraAppliedSound ~= nil)))
+        end
     elseif command == "help" then
         print("|cff00ff00Oxed Hub Commands:|r")
         print("  /oxedhub or /ohub - Toggle main window")
@@ -2033,6 +2381,7 @@ function Core:HandleSlashCommand(msg)
         print("  /oxedhub emotion <name> - Trigger an emotion")
         print("  /oxedhub mix list - List saved mixes")
         print("  /oxedhub mix run <name> - Run a mix")
+        print("  /oxedhub debug - Toggle toy/mix macro debug logging")
         print("  /oxedhub help - Show this help")
     else
         print("Unknown command. Type |cffffff00/oxedhub help|r for available commands.")
@@ -2100,6 +2449,132 @@ function OxedHub:IsSpellRelevant(spellID)
     -- Check if it's a general/racial/item spell that everyone might have
     -- For now, if it's NOT known, we assume it's filtered if the setting is on.
     return false
+end
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- PvP kill tracking (PVP_KILL / PVP_MULTIKILL / PVP_SPREE).
+--
+-- WoW 12.0 removed COMBAT_LOG_EVENT_UNFILTERED for addons, so kills come from
+-- the standalone PARTY_KILL event. In instanced PvP the GUIDs are "secret"
+-- values, so we fall back to watching the honorable-kill achievement counter
+-- to tell whether the killing blow was ours.
+-- ─────────────────────────────────────────────────────────────────────────
+local PVP_MULTIKILL_WINDOW = 10   -- seconds between kills to count as a multi-kill
+local PVP_SPREE_TIMEOUT = 60      -- seconds of no kills before a streak lapses
+local PVP_MULTIKILL_TIERS = { 4, 3, 2 }        -- checked high → low
+local PVP_SPREE_TIERS = { 20, 15, 10, 5 }
+
+local pvpState = { killStreak = 0, lastKillTime = 0, kills = {}, baselineKills = nil }
+
+local function GetHonorableKillCount()
+    local ok, count = pcall(function()
+        -- Achievement 1487 = "Honorable Kills"; criteria 0 holds the running total.
+        local _, _, _, _, _, _, _, _, killCount = GetAchievementCriteriaInfoByID(1487, 0)
+        return killCount
+    end)
+    return (ok and tonumber(count)) or 0
+end
+
+local function IsSecretValue(v)
+    return issecretvalue and issecretvalue(v) or false
+end
+
+function Core:ResetPvPStreak()
+    pvpState.killStreak = 0
+    pvpState.kills = {}
+end
+
+function Core:InitPvPKillBaseline()
+    pvpState.baselineKills = GetHonorableKillCount()
+end
+
+-- Did we land this killing blow, and was the victim a player?
+local function IsOurPlayerKill(attackerGUID, targetGUID)
+    -- Victim check: a hidden GUID means instanced PvP, where it's a player.
+    local targetIsPlayer
+    if IsSecretValue(targetGUID) then
+        targetIsPlayer = true
+    else
+        local ok, found = pcall(function()
+            return targetGUID and tostring(targetGUID):find("^Player%-") ~= nil
+        end)
+        targetIsPlayer = ok and found or false
+    end
+    if not targetIsPlayer then return false end
+
+    -- Attacker check: compare GUIDs when we can see them, otherwise watch our
+    -- honorable-kill total for an increase.
+    if IsSecretValue(attackerGUID) then
+        local current = GetHonorableKillCount()
+        if pvpState.baselineKills and current > pvpState.baselineKills then
+            pvpState.baselineKills = current
+            return true
+        end
+        return false
+    end
+
+    local ok, isUs = pcall(function() return attackerGUID == UnitGUID("player") end)
+    return ok and isUs or false
+end
+
+function Core:OnPartyKill(attackerGUID, targetGUID)
+    if not (self:HasEnabledTrigger("PVP_KILL")
+        or self:HasEnabledTrigger("PVP_MULTIKILL")
+        or self:HasEnabledTrigger("PVP_SPREE")) then
+        return
+    end
+    if not IsOurPlayerKill(attackerGUID, targetGUID) then return end
+
+    local now = GetTime()
+
+    -- A long gap since the last kill ends the streak.
+    if pvpState.lastKillTime > 0 and (now - pvpState.lastKillTime) > PVP_SPREE_TIMEOUT then
+        self:ResetPvPStreak()
+    end
+    pvpState.lastKillTime = now
+    pvpState.killStreak = pvpState.killStreak + 1
+    table.insert(pvpState.kills, now)
+
+    -- Drop kills that fell out of the multi-kill window.
+    while #pvpState.kills > 0 and (now - pvpState.kills[1]) > PVP_MULTIKILL_WINDOW do
+        table.remove(pvpState.kills, 1)
+    end
+    local multiKill = #pvpState.kills
+
+    local eventData = { killStreak = pvpState.killStreak, multiKill = multiKill }
+
+    OxedHub.Triggers:ProcessEvent("PVP_KILL", eventData)
+
+    -- Multi-kill: report the highest tier this kill reached.
+    for _, tier in ipairs(PVP_MULTIKILL_TIERS) do
+        if multiKill >= tier then
+            OxedHub.Triggers:ProcessEvent("PVP_MULTIKILL", {
+                killStreak = pvpState.killStreak, multiKill = multiKill, tier = tier,
+            })
+            break
+        end
+    end
+
+    -- Spree: only on the kill that actually hits the milestone, so a 12-kill
+    -- streak doesn't keep re-firing "Dominating" on every subsequent kill.
+    for _, tier in ipairs(PVP_SPREE_TIERS) do
+        if pvpState.killStreak == tier then
+            OxedHub.Triggers:ProcessEvent("PVP_SPREE", {
+                killStreak = pvpState.killStreak, multiKill = multiKill, tier = tier,
+            })
+            break
+        end
+    end
+end
+
+-- Enter / leave combat handler. state is "enter" or "exit".
+function Core:OnCombatStateChanged(state)
+    if not self:HasEnabledTrigger("COMBAT_STATE") then
+        return
+    end
+    OxedHub.Triggers:ProcessEvent("COMBAT_STATE", {
+        combatState = state,
+    })
 end
 
 -- Spell Interrupted handler

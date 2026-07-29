@@ -5,6 +5,7 @@ local ChatMessages = {}
 OxedHub.ChatMessages = ChatMessages
 
 -- Local references
+local L = OxedHub.L
 local SendChatMessage = SendChatMessage
 local GetTime = GetTime
 local UnitName = UnitName
@@ -581,13 +582,18 @@ function ChatMessages:Send(templateIdOrName, channel, eventData)
         end
         
         if validChannel then
+            local isRestrictedChannel = (ch == "SAY" or ch == "YELL" or ch == "CHANNEL")
+            local isManual = (eventData and eventData.isManual)
+            
             -- Safety Check: Blizzard blocks ALL automated SendChatMessage during combat.
-            -- pcall cannot catch ADDON_ACTION_BLOCKED taint errors, so we must bail out early.
-            if InCombatLockdown() and not (eventData and eventData.isManual) then
-                print("|cff00ff00[OxedHub-Combat]|r (" .. ch .. ") " .. msg)
+            -- Furthermore, Blizzard STRICTLY blocks SAY/YELL/CHANNEL entirely without a direct hardware event (key press/mouse click).
+            -- Since triggers like Mount are automatic, sending to SAY/YELL will cause a Lua ADDON_ACTION_BLOCKED error.
+            if (InCombatLockdown() and not isManual) or (isRestrictedChannel and not isManual) then
+                -- print(string.format("|cffff0000[OxedHub-Blocked]|r Blizzard prevents automatic messages to %s. Local print: |cff00ff00%s|r", ch, msg))
+            elseif not OxedHub:CanSendAutomatedChat() then
+                -- Blizzard restricts addon chat inside Mythic+ runs.
             else
                 -- Route through the clean, untainted dispatcher (loaded before libraries).
-                -- This avoids the ADDON_ACTION_BLOCKED taint from AceDB/library code.
                 OxedHub_DispatchChat(msg, ch)
             end
         end

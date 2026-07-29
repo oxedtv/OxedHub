@@ -1,4 +1,4 @@
-local addonName, OxedHub = ...
+﻿local addonName, OxedHub = ...
 local L = OxedHub.L
 -- Sounds Module - Custom sound management and preview
 local Sounds = {}
@@ -37,7 +37,7 @@ local function BuildSoundFilePath(filename)
         end
     end
 
-    return string.format("Interface\\AddOns\\OxedHub_CustomMedia\\%s.mp3", filename)
+    return string.format("Interface\\AddOns\\OxedHub_CustomMedia\\%s.ogg", filename)
 end
 
 -- Initialize
@@ -665,7 +665,7 @@ function Sounds:ShowAddSoundDialog()
     -- Filename Input Label
     local fileLabel = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     fileLabel:SetPoint("TOPLEFT", nameInput, "BOTTOMLEFT", -6, -15)
-    fileLabel:SetText(L["SOUNDS_ADD_FILE_LBL"] or "Filename (e.g., 'cry3', 'cry3.mp3', or 'cry3.OGG'):")
+    fileLabel:SetText(L["SOUNDS_ADD_FILE_LBL"] or "Filename (e.g., 'cry3', 'cry3.ogg', or 'cry3.OGG'):")
     fileLabel:SetTextColor(1, 0.82, 0, 1)
 
     -- Filename Input Box
@@ -712,7 +712,7 @@ function Sounds:ShowAddSoundDialog()
     instText2:SetPoint("TOPLEFT", folderBox, "BOTTOMLEFT", -6, -10)
     instText2:SetWidth(390)
     instText2:SetJustifyH("LEFT")
-    instText2:SetText(L["SOUNDS_ADD_INST_2"] or "2. The full path should look like this:\n   |cffaaaaaaInterface\\AddOns\\OxedHub_CustomMedia\\|r\n\n3. Place your audio files (.mp3 or .ogg) into this folder.\n4. You MUST fully restart World of Warcraft to load new files.")
+    instText2:SetText(L["SOUNDS_ADD_INST_2"] or "2. The full path should look like this:\n   |cffaaaaaaInterface\\AddOns\\OxedHub_CustomMedia\\|r\n\n3. Place your audio files (.ogg or .ogg) into this folder.\n4. You MUST fully restart World of Warcraft to load new files.")
 
     -- Cancel button (bottom right)
     local cancelBtn = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
@@ -776,6 +776,25 @@ function Sounds:DeleteSound(id)
     if OxedHub.UI and OxedHub.UI:GetCurrentTab() == "Reactions" then
         OxedHub.UI:ShowSubTab("Sounds")
     end
+end
+
+-- Resolve a sound id/path/name to an actual file path (without playing it).
+-- Used by the native aura-sound registration (C_UnitAuras.AddAuraAppliedSound),
+-- which needs a real file path. Returns nil if it can't be resolved.
+function Sounds:GetFilePath(soundIdOrPath)
+    if not soundIdOrPath or soundIdOrPath == "" or soundIdOrPath == "None" then
+        return nil
+    end
+    local resolved = self:ResolvePathOrId(soundIdOrPath)
+    local filePath = resolved
+    local sounds = OxedHub.GetSharedCustomSounds and OxedHub:GetSharedCustomSounds() or OxedHub.db.profile.customSounds
+    if sounds and sounds[resolved] then
+        filePath = sounds[resolved].filePath
+    end
+    if type(filePath) == "string" and filePath ~= "" then
+        return filePath
+    end
+    return nil
 end
 
 -- Play sound

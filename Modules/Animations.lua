@@ -1001,7 +1001,7 @@ function Animations:ShowAdvancedUI(parent)
         if nm == "" then print("OxedHub: Enter a name!") return end
         
         local path = fileEdit:GetText()
-        if not path:lower():find("%.tga$") and not path:lower():find("%.png$") then path = path .. ".tga" end
+        if not path:lower():find("%.tga$") and not path:lower():find("%.png$") then path = path .. ".png" end
         
         local data = {
             id = Animations.saveTargetId,
@@ -1134,7 +1134,7 @@ function Animations:ShowAdvancedUI(parent)
         local seq = GetSortedSelection()
         local path = fileEdit:GetText()
         if path == "" then return end
-        if not path:lower():find("%.tga$") and not path:lower():find("%.png$") then path = path .. ".tga" end
+        if not path:lower():find("%.tga$") and not path:lower():find("%.png$") then path = path .. ".png" end
         local fullPath = ResolveAnimationPath(path)
         
         local c = tonumber(colsEdit:GetText()) or 5
@@ -1216,7 +1216,7 @@ function Animations:ShowAdvancedUI(parent)
         
         local path = fileEdit:GetText()
         if path ~= "" then
-            if not path:lower():find("%.tga$") and not path:lower():find("%.png$") then path = path .. ".tga" end
+            if not path:lower():find("%.tga$") and not path:lower():find("%.png$") then path = path .. ".png" end
             local fullPath = ResolveAnimationPath(path)
             previewTexture:SetTexture(fullPath)
 
@@ -1262,7 +1262,7 @@ function Animations:ShowAdvancedUI(parent)
         local path = fileEdit:GetText()
         if path == "" then return end
         
-        if not path:lower():find("%.tga$") and not path:lower():find("%.png$") then path = path .. ".tga" end
+        if not path:lower():find("%.tga$") and not path:lower():find("%.png$") then path = path .. ".png" end
         local fullPath = ResolveAnimationPath(path)
 
         local c = tonumber(colsEdit:GetText()) or 1
@@ -1922,10 +1922,10 @@ end
 function Animations:AddAnimation(data)
     local id = data.id or OxedHub:GenerateID("anim")
     
-    -- Ensure a recognized extension (default to .tga)
+    -- Ensure a recognized extension (default to .png)
     local filename = data.filename
     if not filename:lower():find("%.tga$") and not filename:lower():find("%.png$") then
-        filename = filename .. ".tga"
+        filename = filename .. ".png"
     end
 
     -- Honor a pre-resolved path (advanced engine), else resolve across both folders

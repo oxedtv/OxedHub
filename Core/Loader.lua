@@ -52,15 +52,21 @@ local function DoRegister()
     eventFrame:RegisterEvent("ENCOUNTER_END")
     eventFrame:RegisterEvent("BOSS_KILL")
     eventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
+    -- PvP kills. COMBAT_LOG_EVENT_UNFILTERED is gone for addons in 12.0, so the
+    -- standalone PARTY_KILL event is how kills are detected now.
+    eventFrame:RegisterEvent("PARTY_KILL")
     eventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
     eventFrame:RegisterEvent("PLAYER_CONTROL_LOST")
     eventFrame:RegisterEvent("PLAYER_CONTROL_GAINED")
     eventFrame:RegisterEvent("LOSS_OF_CONTROL_ADDED")
     eventFrame:RegisterEvent("LOSS_OF_CONTROL_UPDATE")
+    eventFrame:RegisterEvent("PLAYER_LEVEL_UP")
+    eventFrame:RegisterEvent("UPDATE_PENDING_MAIL")
     -- Pet tracking only needs player/pet-specific unit events, not global traffic.
     eventFrame:RegisterUnitEvent("UNIT_PET", "player")
     eventFrame:RegisterUnitEvent("UNIT_FLAGS", "pet")
-    eventFrame:RegisterUnitEvent("UNIT_HEALTH", "pet")
+    -- We track pet health and party health
+    eventFrame:RegisterUnitEvent("UNIT_HEALTH", "pet", "party1", "party2", "party3", "party4")
 end
 
 -- Wait exactly one frame to ensure we are out of the restricted load-time context

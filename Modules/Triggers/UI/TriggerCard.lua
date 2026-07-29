@@ -200,8 +200,34 @@ function Triggers:CreateTriggerCard(parent, trigger)
     eventLabel:SetTextColor(1, 0.82, 0, 1)
     eventLabel:SetText(L["TRIGGER_EVENT_TYPE"] or "Event Type:")
 
+    -- The event picker is two dropdowns: a category on the left ("Pre-Setuped"
+    -- vs "Advanced") and the matching events on the right.
+    local function GetEventCategory(eventValue)
+        for _, et in ipairs(OxedHub.CONFIG.EVENT_TYPES) do
+            if et.value == eventValue then return et.category or "preset" end
+        end
+        return "preset"
+    end
+
+    local function GetCategoryLabel(categoryValue)
+        for _, cat in ipairs(OxedHub.CONFIG.EVENT_CATEGORIES) do
+            if cat.value == categoryValue then return cat.label end
+        end
+        return categoryValue
+    end
+
+    -- Which category the picker is showing. Follows the trigger's own event so
+    -- reopening an existing trigger lands on the right list.
+    card.eventCategory = GetEventCategory(trigger.event or "UNIT_SPELLCAST_SUCCEEDED")
+
+    local categoryDropdown = CreateFrame("DropdownButton", nil, card, "WowStyle1DropdownTemplate")
+    categoryDropdown:SetPoint("TOPLEFT", eventLabel, "BOTTOMLEFT", 0, -2)
+    categoryDropdown:SetSize(220, 26)
+    categoryDropdown:OverrideText(GetCategoryLabel(card.eventCategory))
+    card.categoryDropdown = categoryDropdown
+
     local eventDropdown = CreateFrame("DropdownButton", nil, card, "WowStyle1DropdownTemplate")
-    eventDropdown:SetPoint("TOPLEFT", eventLabel, "BOTTOMLEFT", 0, -2)
+    eventDropdown:SetPoint("LEFT", categoryDropdown, "RIGHT", 8, 0)
     eventDropdown:SetSize(220, 26)
 
     local function GetCurrentEventLabel()
@@ -215,28 +241,58 @@ function Triggers:CreateTriggerCard(parent, trigger)
     card.eventDropdown = eventDropdown
     card.eventLabel = eventLabel
 
-    eventDropdown:SetupMenu(function(dropdown, rootDescription)
-        for _, eventType in ipairs(OxedHub.CONFIG.EVENT_TYPES) do
-            local btn = rootDescription:CreateRadio(
-                eventType.label,
-                function() return (trigger.event or "UNIT_SPELLCAST_SUCCEEDED") == eventType.value end,
+    local function SelectEvent(eventType)
+        trigger.event = eventType.value
+        if not Triggers:SupportsAdvancedMacros(trigger) and trigger.activeTab == "advanced" then
+            trigger.activeTab = "setup"
+        end
+        eventDropdown:OverrideText(eventType.label)
+        Triggers:RefreshTriggerCardConditions(card, trigger)
+        Triggers:RefreshTriggerCard(card.triggerId)
+        Triggers:RefreshTriggersList()
+        Triggers.ShowAutoSaved(card)
+    end
+
+    categoryDropdown:SetupMenu(function(dropdown, rootDescription)
+        for _, category in ipairs(OxedHub.CONFIG.EVENT_CATEGORIES) do
+            rootDescription:CreateRadio(
+                category.label,
+                function() return card.eventCategory == category.value end,
                 function()
-                    trigger.event = eventType.value
-                    if not Triggers:SupportsAdvancedMacros(trigger) and trigger.activeTab == "advanced" then
-                        trigger.activeTab = "setup"
+                    if card.eventCategory == category.value then return end
+                    card.eventCategory = category.value
+                    categoryDropdown:OverrideText(category.label)
+
+                    -- Switching category moves the trigger to that list's first
+                    -- event, so the two dropdowns never disagree.
+                    for _, et in ipairs(OxedHub.CONFIG.EVENT_TYPES) do
+                        if (et.category or "preset") == category.value and not et.disabled then
+                            SelectEvent(et)
+                            break
+                        end
                     end
-                    eventDropdown:OverrideText(eventType.label)
-                    Triggers:RefreshTriggerCardConditions(card, trigger)
-                    Triggers:RefreshTriggerCard(card.triggerId)
-                    Triggers:RefreshTriggersList()
-                    Triggers.ShowAutoSaved(card)
                 end,
-                eventType.value
+                category.value
             )
-            
         end
     end)
-    
+
+    eventDropdown:SetupMenu(function(dropdown, rootDescription)
+        for _, eventType in ipairs(OxedHub.CONFIG.EVENT_TYPES) do
+            if (eventType.category or "preset") == card.eventCategory then
+                local btn = rootDescription:CreateRadio(
+                    eventType.label,
+                    function() return (trigger.event or "UNIT_SPELLCAST_SUCCEEDED") == eventType.value end,
+                    function() SelectEvent(eventType) end,
+                    eventType.value
+                )
+                if eventType.disabled then
+                    btn:SetEnabled(false)
+                end
+            end
+        end
+    end)
+
     -- Modern Settings-style section box
     local function CreateSectionBox(parent, text, description, anchorFrame, yOffset)
         local box = CreateFrame("Frame", nil, parent, "BackdropTemplate")
@@ -273,7 +329,9 @@ function Triggers:CreateTriggerCard(parent, trigger)
     end
 
     -- Conditions area with section header
-    local conditionsBox, conditionsFrame, conditionsLabel, conditionsDescLabel = CreateSectionBox(card, "Conditions", "Define the requirements that must be met for this trigger to execute.", eventDropdown, -10)
+    -- Anchored to the category dropdown (the left-hand one) so the box still
+    -- starts at the card's left edge.
+    local conditionsBox, conditionsFrame, conditionsLabel, conditionsDescLabel = CreateSectionBox(card, "Conditions", "Define the requirements that must be met for this trigger to execute.", categoryDropdown, -10)
     conditionsFrame:SetHeight(60)
     card.conditionsBox = conditionsBox
     card.conditionsFrame = conditionsFrame
@@ -288,6 +346,12 @@ function Triggers:CreateTriggerCard(parent, trigger)
     card.actionsFrame = actionsFrame
     card.actionsLabel = actionsLabel
     card.actionsDescLabel = actionsDescLabel
+    
+    local isMount = (trigger.event == "MOUNT")
+    actionsBox:SetShown(not isMount)
+    actionsFrame:SetShown(not isMount)
+    actionsLabel:SetShown(not isMount)
+    if actionsDescLabel then actionsDescLabel:SetShown(not isMount) end
     
     -- Zone restrictions
     local zoneLabel = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -635,15 +699,18 @@ function Triggers:LayoutTriggerCard(card)
         if card.enableCheck then card.enableCheck:Show() end
         card.eventLabel:Show()
         card.eventDropdown:Show()
+        if card.categoryDropdown then card.categoryDropdown:Show() end
         card.conditionsBox:Show()
         card.conditionsFrame:Show()
         card.conditionsLabel:Show()
         if card.conditionsDescLabel then card.conditionsDescLabel:Show() end
         
-        card.actionsBox:Show()
-        card.actionsFrame:Show()
-        card.actionsLabel:Show()
-        if card.actionsDescLabel then card.actionsDescLabel:Show() end
+        local isMount = (trigger.event == "MOUNT")
+        card.actionsBox:SetShown(not isMount)
+        card.actionsFrame:SetShown(not isMount)
+        card.actionsLabel:SetShown(not isMount)
+        if card.actionsDescLabel then card.actionsDescLabel:SetShown(not isMount) end
+        
         card.zoneLabel:Hide()
         card.zoneFrame:Hide()
         if card.advancedFrame then card.advancedFrame:Hide() end
@@ -653,6 +720,7 @@ function Triggers:LayoutTriggerCard(card)
         if card.enableCheck then card.enableCheck:Hide() end
         card.eventLabel:Hide()
         card.eventDropdown:Hide()
+        if card.categoryDropdown then card.categoryDropdown:Hide() end
         card.conditionsBox:Hide()
         card.conditionsFrame:Hide()
         card.conditionsLabel:Hide()
@@ -671,6 +739,7 @@ function Triggers:LayoutTriggerCard(card)
         if card.enableCheck then card.enableCheck:Hide() end
         card.eventLabel:Hide()
         card.eventDropdown:Hide()
+        if card.categoryDropdown then card.categoryDropdown:Hide() end
         card.conditionsBox:Hide()
         card.conditionsFrame:Hide()
         card.conditionsLabel:Hide()
@@ -690,6 +759,7 @@ function Triggers:LayoutTriggerCard(card)
         if card.enableCheck then card.enableCheck:Hide() end
         card.eventLabel:Hide()
         card.eventDropdown:Hide()
+        if card.categoryDropdown then card.categoryDropdown:Hide() end
         card.conditionsBox:Hide()
         card.conditionsFrame:Hide()
         card.conditionsLabel:Hide()
@@ -760,11 +830,16 @@ function Triggers:RefreshTriggerCard(triggerId)
     if af.UpdateSuccessAnimButton then af.UpdateSuccessAnimButton() end
     if af.UpdateFailSoundButton then af.UpdateFailSoundButton() end
     if af.UpdateFailAnimButton then af.UpdateFailAnimButton() end
+    if af.UpdateEnterSoundButton then af.UpdateEnterSoundButton() end
+    if af.UpdateEnterAnimButton then af.UpdateEnterAnimButton() end
+    if af.UpdateExitSoundButton then af.UpdateExitSoundButton() end
+    if af.UpdateExitAnimButton then af.UpdateExitAnimButton() end
     if af.UpdateStartChatButtonText then af.UpdateStartChatButtonText() end
     if af.UpdateStopChatButtonText then af.UpdateStopChatButtonText() end
     if af.UpdateSummonIncomingChatButtonText then af.UpdateSummonIncomingChatButtonText() end
     if af.UpdateSummonAcceptedChatButtonText then af.UpdateSummonAcceptedChatButtonText() end
     if af.UpdateSummonDeclinedChatButtonText then af.UpdateSummonDeclinedChatButtonText() end
+    if af.UpdateToyButton then af.UpdateToyButton() end
     if af.RefreshActionVisibility then af.RefreshActionVisibility() end
     if af.UpdateMacroIconInternal then af.UpdateMacroIconInternal() end
     if af.UpdateAdvancedMacroUI then af.UpdateAdvancedMacroUI() end

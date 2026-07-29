@@ -42,6 +42,16 @@ function Triggers:IsChatAllowedForEvent(eventType)
     if eventType == "UNIT_SPELLCAST_SUCCEEDED" or eventType == "EAT_BUFF" then
         return OxedHub.db.profile.settings.allowChatOnSpellCast == true
     end
+    if eventType == "MOUNT" then
+        return true
+    end
+    -- M+ completion: safe to announce once the run has ended. Blizzard's
+    -- ChallengeMode addon restriction is checked at send time (see
+    -- OxedHub:CanSendAutomatedChat), and SAY/YELL are still filtered out by the
+    -- chat dispatcher because they need a hardware event.
+    if eventType == "CHALLENGE_MODE_COMPLETED" then
+        return true
+    end
     return false
 end
 
@@ -58,13 +68,26 @@ function Triggers:SearchPlayerSpells(searchText, maxResults, allClasses)
     if not searchText or searchText == "" then return {} end
     maxResults = maxResults or 10
     local results = {}
-    
+
+    -- Dedup: the same spell can appear in LibPlayerSpells, the local spellbook,
+    -- and flyouts (sometimes under multiple spell IDs with the same name). Collapse
+    -- by lower-cased name so the dropdown never lists a spell twice.
+    local seen = {}
+    local function addResult(name, id, icon)
+        if not name then return false end
+        local key = name:lower()
+        if seen[key] then return false end
+        seen[key] = true
+        table.insert(results, { name = name, id = id, icon = icon })
+        return true
+    end
+
     -- SAFETY: Direct ID lookup
     local numericId = tonumber(searchText)
     if numericId then
         local spellInfo = C_Spell.GetSpellInfo(numericId)
         if spellInfo and spellInfo.name then
-            table.insert(results, { name = spellInfo.name, id = numericId, icon = spellInfo.iconID })
+            addResult(spellInfo.name, numericId, spellInfo.iconID)
         end
     end
     
@@ -73,31 +96,40 @@ function Triggers:SearchPlayerSpells(searchText, maxResults, allClasses)
     -- Expanded Global Database (cross-class buffs). On by default; only skipped
     -- when "All Classes" is explicitly unchecked (allClasses == false).
     if allClasses ~= false then
-        local globalSpellIDs = {
-            2825,   -- Bloodlust (Horde Shaman)
-            32182,  -- Heroism (Alliance Shaman)
-            80353,  -- Time Warp (Mage)
-            390386, -- Fury of the Aspects (Evoker)
-            264667, -- Primal Rage (Hunter)
-            1243972,-- Void-touched Drums
-            90355,  -- Ancient Hysteria (Hunter pet - Core Hound)
-            10060,  -- Power Infusion
-            29166,  -- Innervate
-            1022,   -- Blessing of Protection
-            1044,   -- Blessing of Freedom
-            33206,  -- Pain Suppression
-            47788,  -- Guardian Spirit
-            431952, -- Tempered Potion
-        }
-        for _, id in ipairs(globalSpellIDs) do
-            local spellInfo = C_Spell.GetSpellInfo(id)
-            if spellInfo and spellInfo.name and spellInfo.name:lower():find(searchText, 1, true) then
-                table.insert(results, {
-                    name = spellInfo.name,
-                    id = id,
-                    icon = spellInfo.iconID
-                })
-                if #results >= maxResults then return results end
+        local LibPlayerSpells = LibStub and LibStub:GetLibrary("LibPlayerSpells-1.0", true)
+        if LibPlayerSpells then
+            -- Use LibPlayerSpells for comprehensive spell search across all classes
+            for id in LibPlayerSpells:IterateSpells() do
+                local spellInfo = C_Spell.GetSpellInfo(id)
+                if spellInfo and spellInfo.name and spellInfo.name:lower():find(searchText, 1, true) then
+                    addResult(spellInfo.name, id, spellInfo.iconID)
+                    if #results >= maxResults then return results end
+                end
+            end
+        else
+            -- Fallback to the hardcoded list if LibPlayerSpells is missing
+            local globalSpellIDs = {
+                2825,   -- Bloodlust (Horde Shaman)
+                32182,  -- Heroism (Alliance Shaman)
+                80353,  -- Time Warp (Mage)
+                390386, -- Fury of the Aspects (Evoker)
+                264667, -- Primal Rage (Hunter)
+                1243972,-- Void-touched Drums
+                90355,  -- Ancient Hysteria (Hunter pet - Core Hound)
+                10060,  -- Power Infusion
+                29166,  -- Innervate
+                1022,   -- Blessing of Protection
+                1044,   -- Blessing of Freedom
+                33206,  -- Pain Suppression
+                47788,  -- Guardian Spirit
+                431952, -- Tempered Potion
+            }
+            for _, id in ipairs(globalSpellIDs) do
+                local spellInfo = C_Spell.GetSpellInfo(id)
+                if spellInfo and spellInfo.name and spellInfo.name:lower():find(searchText, 1, true) then
+                    addResult(spellInfo.name, id, spellInfo.iconID)
+                    if #results >= maxResults then return results end
+                end
             end
         end
     end
@@ -120,11 +152,7 @@ function Triggers:SearchPlayerSpells(searchText, maxResults, allClasses)
                                 if isKnownSlot and flyoutSpellID then
                                     local flyoutSpellInfo = C_Spell.GetSpellInfo(flyoutSpellID)
                                     if flyoutSpellInfo and flyoutSpellInfo.name and flyoutSpellInfo.name:lower():find(searchText, 1, true) then
-                                        table.insert(results, {
-                                            name = flyoutSpellInfo.name,
-                                            id = flyoutSpellID,
-                                            icon = flyoutSpellInfo.iconID
-                                        })
+                                        addResult(flyoutSpellInfo.name, flyoutSpellID, flyoutSpellInfo.iconID)
                                         if #results >= maxResults then return results end
                                     end
                                 end
@@ -133,11 +161,7 @@ function Triggers:SearchPlayerSpells(searchText, maxResults, allClasses)
                     elseif spellInfo.spellID then
                         local spellName = C_SpellBook.GetSpellBookItemName(spellIndex, Enum.SpellBookSpellBank.Player)
                         if spellName and spellName:lower():find(searchText, 1, true) then
-                            table.insert(results, {
-                                name = spellName,
-                                id = spellInfo.spellID,
-                                icon = C_SpellBook.GetSpellBookItemTexture(spellIndex, Enum.SpellBookSpellBank.Player)
-                            })
+                            addResult(spellName, spellInfo.spellID, C_SpellBook.GetSpellBookItemTexture(spellIndex, Enum.SpellBookSpellBank.Player))
                             if #results >= maxResults then return results end
                         end
                     end
@@ -203,6 +227,18 @@ local function ShowAutoSaved(card)
     end
     card.autoSaveAnim:Stop()
     card.autoSaveAnim:Play()
+
+    -- Any trigger edit may have changed a SELF_AURA spell/sound — re-sync the
+    -- native aura-sound registrations (debounced; skipped in combat).
+    if Triggers.RefreshSelfAuraNativeSounds then
+        Triggers._selfAuraRefreshPending = true
+        C_Timer.After(0.4, function()
+            if Triggers._selfAuraRefreshPending then
+                Triggers._selfAuraRefreshPending = nil
+                Triggers:RefreshSelfAuraNativeSounds()
+            end
+        end)
+    end
 end
 
 Triggers.ShowAutoSaved = ShowAutoSaved
@@ -240,6 +276,9 @@ function Triggers:Init()
 
     self:SyncGeneratedTriggerMacros()
     self:InvalidateEnabledEventCache()
+    if self.RefreshSelfAuraNativeSounds then
+        self:RefreshSelfAuraNativeSounds()
+    end
 end
 
 function Triggers:InvalidateEnabledEventCache()
@@ -386,9 +425,42 @@ function Triggers:DeleteTrigger(id)
     StaticPopup_Show("OXEDHUB_CONFIRM_DELETE_TRIGGER", triggerName, nil, id)
 end
 
+-- Build a table-safe key for aura loop tracking. Aura spellIDs can be "secret"
+-- values (WoW aura-privacy taint) that cannot be concatenated or used as table
+-- keys; secret ids bucket to a constant marker so the create side and the cancel
+-- side still produce a matching key. Used by both ProcessEvent (cancel) and
+-- Execution (create).
+local auraLoopKeyTest = {}
+function Triggers:BuildAuraLoopKey(triggerId, spellID)
+    local part = "secret"
+    if spellID ~= nil then
+        local ok = pcall(function() auraLoopKeyTest[spellID] = true end)
+        if ok then
+            auraLoopKeyTest[spellID] = nil
+            part = tostring(spellID)
+        end
+    end
+    return tostring(triggerId) .. "_" .. part
+end
+
 -- Process event and execute matching triggers
 function Triggers:ProcessEvent(eventType, eventData)
     local profile = OxedHub.db.profile
+    
+    if eventType == "UNIT_AURA" and eventData and eventData.isLost and self.activeAuraLoops then
+        for id, trigger in pairs(profile.triggers) do
+            if trigger.event == "UNIT_AURA" or trigger.event == "SELF_AURA" then
+                local spellID = eventData.spellID or eventData.spellName
+                if spellID then
+                    local loopKey = self:BuildAuraLoopKey(id, spellID)
+                    if self.activeAuraLoops[loopKey] then
+                        self.activeAuraLoops[loopKey]:Cancel()
+                        self.activeAuraLoops[loopKey] = nil
+                    end
+                end
+            end
+        end
+    end
     
     for id, trigger in pairs(profile.triggers) do
         if trigger.enabled and self:ShouldTrigger(trigger, eventType, eventData) then
@@ -399,8 +471,9 @@ end
 
 -- Check if trigger should fire
 function Triggers:ShouldTrigger(trigger, eventType, eventData)
-    -- Check event type match
-    if trigger.event ~= eventType then
+    -- Check event type match (allow SELF_AURA triggers to match UNIT_AURA events)
+    local isTypeMatch = (trigger.event == eventType) or (eventType == "UNIT_AURA" and trigger.event == "SELF_AURA")
+    if not isTypeMatch then
         return false
     end
     
@@ -414,25 +487,116 @@ function Triggers:ShouldTrigger(trigger, eventType, eventData)
     
     -- Spell/Aura specific conditions (only evaluate if eventData has related fields)
     if eventData.spellID or eventData.spellName or eventType == "UNIT_AURA" or eventType == "UNIT_SPELLCAST_SUCCEEDED" or eventType == "CD_READY" or eventType:find("INTERRUPT") or eventType == "SPELL_INTERRUPTED" or eventType == "CONTROL_LOST" then
+        
+        -- Prevent unconfigured triggers from firing on every single spell/aura event
+        -- NOTE: SPELL_INTERRUPTED is deliberately NOT in this list. It only fires
+        -- when the player's own cast is actually interrupted (rare, not spammy),
+        -- so leaving the spell field empty means "any interrupted cast".
+        local requiresSpell = (eventType == "UNIT_SPELLCAST_SUCCEEDED" or eventType == "UNIT_AURA" or eventType == "CD_READY" or eventType == "INTERRUPT_SUCCESS")
+        local hasSpellCond = (conditions.spellID and conditions.spellID ~= "")
+        local hasAuraCond = (conditions.auraName and conditions.auraName ~= "")
+        if requiresSpell and not hasSpellCond and not hasAuraCond then
+            return false
+        end
+
         -- Spell ID condition (matches the primary OR any extra spell)
         if conditions.spellID and conditions.spellID ~= "" then
-            local matched = (tonumber(conditions.spellID) == eventData.spellID)
-            if not matched and conditions.extraSpellIDs then
-                for _, sid in ipairs(conditions.extraSpellIDs) do
-                    if tonumber(sid) == eventData.spellID then
+            local targetID = tonumber(conditions.spellID)
+            local matched = false
+            
+            -- 1. Try numeric/string equality comparison
+            if eventData.spellID and targetID then
+                local expectedStr = tostring(targetID)
+                local actualStr = tostring(eventData.spellID)
+                local ok, res = pcall(function() return expectedStr == actualStr end)
+                if ok and res then matched = true end
+            end
+            
+            -- 2. Match by spell name via C_Spell.GetSpellInfo(targetID) (safe against secret strings)
+            if not matched and targetID and eventData.spellName then
+                local expectedInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(targetID)
+                if expectedInfo and expectedInfo.name then
+                    local okEq, resEq = pcall(function() return expectedInfo.name == eventData.spellName end)
+                    if okEq and resEq then
                         matched = true
-                        break
+                    else
+                        local okLower, resLower = pcall(function() 
+                            return string.lower(tostring(expectedInfo.name)) == string.lower(tostring(eventData.spellName)) 
+                        end)
+                        if okLower and resLower then
+                            matched = true
+                        end
                     end
                 end
             end
+
+            -- 3. Match by checking player aura via Blizzard C_UnitAuras APIs (for aura gain events)
+            if not matched and targetID and C_UnitAuras and not (eventData and eventData.isLost) then
+                if C_UnitAuras.GetAuraDataBySpellID then
+                    local ok, aura = pcall(C_UnitAuras.GetAuraDataBySpellID, "player", targetID)
+                    if ok and aura then matched = true end
+                end
+                if not matched and C_UnitAuras.GetPlayerAuraBySpellID then
+                    local ok, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, targetID)
+                    if ok and aura then matched = true end
+                end
+            end
+
+            -- 4. Check extra spell IDs if configured
+            if not matched and conditions.extraSpellIDs then
+                for _, sid in ipairs(conditions.extraSpellIDs) do
+                    local extraID = tonumber(sid)
+                    if extraID and eventData.spellID then
+                        local okEx, resEx = pcall(function() return tostring(extraID) == tostring(eventData.spellID) end)
+                        if okEx and resEx then
+                            matched = true
+                            break
+                        end
+                    end
+                    if extraID and eventData.spellName then
+                        local extraInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(extraID)
+                        if extraInfo and extraInfo.name then
+                            local okEq, resEq = pcall(function() return extraInfo.name == eventData.spellName end)
+                            if okEq and resEq then
+                                matched = true
+                                break
+                            else
+                                local okLower, resLower = pcall(function() 
+                                    return string.lower(tostring(extraInfo.name)) == string.lower(tostring(eventData.spellName)) 
+                                end)
+                                if okLower and resLower then
+                                    matched = true
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    if extraID and C_UnitAuras and not (eventData and eventData.isLost) then
+                        if C_UnitAuras.GetAuraDataBySpellID then
+                            local okEx, auraEx = pcall(C_UnitAuras.GetAuraDataBySpellID, "player", extraID)
+                            if okEx and auraEx then matched = true; break end
+                        end
+                        if C_UnitAuras.GetPlayerAuraBySpellID then
+                            local okEx, auraEx = pcall(C_UnitAuras.GetPlayerAuraBySpellID, extraID)
+                            if okEx and auraEx then matched = true; break end
+                        end
+                    end
+                end
+            end
+            
             if not matched then
                 return false
             end
         end
         
-        -- Aura name condition
+        -- Aura name condition. eventData.spellName may be a "secret" string that
+        -- throws on :lower()/:find(); pcall-guard and treat any failure as no-match.
         if conditions.auraName and conditions.auraName ~= "" then
-            if not eventData.spellName or not eventData.spellName:lower():find(conditions.auraName:lower(), 1, true) then
+            local needle = conditions.auraName:lower()
+            local ok, found = pcall(function()
+                return eventData.spellName and eventData.spellName:lower():find(needle, 1, true) ~= nil
+            end)
+            if not ok or not found then
                 return false
             end
         end
@@ -663,7 +827,14 @@ function Triggers:CreateSpellSearchUI(frame, trigger, yOffset, isAura)
                 searchInput:ClearFocus()
                 resultsFrame:Hide()
                 if OxedHub.Triggers.ShowAutoSaved then OxedHub.Triggers.ShowAutoSaved(frame:GetParent()) end
+                -- Keep any already-created action-bar macro in sync with the new spell.
+                OxedHub.Triggers:RefreshExistingTriggerMacro(trigger)
+                -- `frame` is the conditions inner frame; the card (which owns
+                -- actionsFrame) is a couple levels up, so walk up to find it.
                 local card = frame:GetParent()
+                while card and not card.actionsFrame and card:GetParent() do
+                    card = card:GetParent()
+                end
                 if card and card.actionsFrame then
                     if card.actionsFrame.RefreshActionVisibility then card.actionsFrame.RefreshActionVisibility() end
                     if card.actionsFrame.UpdateMacroIconInternal then card.actionsFrame.UpdateMacroIconInternal() end
@@ -957,7 +1128,14 @@ function Triggers:CreateAuraSpellSearchUI(frame, trigger, yOffset)
                 resultsFrame:Hide()
                 restoreSearch()
                 if OxedHub.Triggers.ShowAutoSaved then OxedHub.Triggers.ShowAutoSaved(frame:GetParent()) end
+                -- Keep any already-created action-bar macro in sync with the new spell.
+                OxedHub.Triggers:RefreshExistingTriggerMacro(trigger)
+                -- `frame` is the conditions inner frame; the card (which owns
+                -- actionsFrame) is a couple levels up, so walk up to find it.
                 local card = frame:GetParent()
+                while card and not card.actionsFrame and card:GetParent() do
+                    card = card:GetParent()
+                end
                 if card and card.actionsFrame then
                     if card.actionsFrame.RefreshActionVisibility then card.actionsFrame.RefreshActionVisibility() end
                     if card.actionsFrame.UpdateMacroIconInternal then card.actionsFrame.UpdateMacroIconInternal() end

@@ -1,5 +1,0 @@
-package-as: OxedHub
-
-ignore:
-  - README.md
-  - .gitignore

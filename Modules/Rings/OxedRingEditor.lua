@@ -467,7 +467,10 @@ local function RefreshPreview()
                 local _, toyIcon = GetDirectToyDisplay(data.id)
                 displayIcon = toyIcon or displayIcon
             else
-                if OxedHub.Toys and OxedHub.Toys.GetMixSlotIcons then
+                local customIcon = OxedHub.Toys and OxedHub.Toys.GetMixCustomIcon and OxedHub.Toys:GetMixCustomIcon(data.id)
+                if customIcon then
+                    displayIcon = customIcon
+                elseif OxedHub.Toys and OxedHub.Toys.GetMixSlotIcons then
                     displayIcon = OxedHub.Toys:GetMixSlotIcons(data.id) or displayIcon
                 end
             end
@@ -680,9 +683,99 @@ function OxedRingEditor:GetCachedMounts(forceRefresh)
     return {}
 end
 
+-- Gather the player's castable (non-passive) spells from the spellbook, cached.
+-- Uses the modern C_SpellBook API (retail 11.0+/12.0).
+function OxedRingEditor:GetPlayerSpellList(forceRefresh)
+    if self._spellListCache and not forceRefresh then
+        return self._spellListCache
+    end
+
+    local spells = {}
+    local seen = {}
+    local bank = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player) or 0
+    local SPELL = Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Spell
+
+    if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines and C_SpellBook.GetSpellBookItemInfo then
+        local numLines = C_SpellBook.GetNumSpellBookSkillLines() or 0
+        for line = 1, numLines do
+            local lineInfo = C_SpellBook.GetSpellBookSkillLineInfo and C_SpellBook.GetSpellBookSkillLineInfo(line)
+            local offset = lineInfo and lineInfo.itemIndexOffset or 0
+            local count = lineInfo and lineInfo.numSpellBookItems or 0
+            for slot = offset + 1, offset + count do
+                local ok, itemInfo = pcall(C_SpellBook.GetSpellBookItemInfo, slot, bank)
+                if ok and itemInfo and not itemInfo.isPassive
+                    and (not SPELL or itemInfo.itemType == SPELL) then
+                    local spellID = itemInfo.spellID or itemInfo.actionID
+                    if spellID and not seen[spellID] then
+                        seen[spellID] = true
+                        local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
+                        local name = (info and info.name) or itemInfo.name
+                        local icon = (info and info.iconID) or itemInfo.iconID
+                        if name then
+                            table.insert(spells, { type = "spell", id = spellID, name = name, icon = icon })
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    table.sort(spells, function(a, b) return (a.name or "") < (b.name or "") end)
+    self._spellListCache = spells
+    return spells
+end
+
+function OxedRingEditor:UpdateSidebarVisibility()
+    local dialog = rightPanel
+    if not dialog or not dialog.sidebarButtons then return end
+
+    OxedHub.db.profile.oxedRingVisibleTabs = OxedHub.db.profile.oxedRingVisibleTabs or {
+        toy = true,
+        emote = true,
+        marker = true,
+        item = true,
+        mount = true,
+        spell = false,
+        settings = true,
+    }
+    local visibleTabs = OxedHub.db.profile.oxedRingVisibleTabs
+    visibleTabs.settings = true
+    -- Spellbook tab is opt-in: default it OFF for existing profiles too (a missing
+    -- key would otherwise read as "shown"). Only nil is migrated, so once the
+    -- player toggles it their choice sticks.
+    if visibleTabs.spell == nil then visibleTabs.spell = false end
+
+    if not visibleTabs[dialog.selectedType] then
+        for _, catType in ipairs({"toy", "emote", "marker", "item", "mount", "spell", "settings"}) do
+            if visibleTabs[catType] then
+                dialog.selectedType = catType
+                break
+            end
+        end
+    end
+
+    local visibleButtons = {}
+    for _, container in ipairs(dialog.sidebarButtons) do
+        local catType = container.catType
+        local isShown = (catType == "settings") or (visibleTabs[catType] ~= false)
+        container:SetShown(isShown)
+        if isShown then
+            table.insert(visibleButtons, container)
+        end
+    end
+
+    local startY = -120
+    for idx, container in ipairs(visibleButtons) do
+        container:ClearAllPoints()
+        container:SetPoint("TOPLEFT", dialog, "TOPLEFT", -34, startY - ((idx - 1) * 52))
+    end
+end
+
 function OxedRingEditor:RefreshPickerList()
     local dialog = rightPanel
     if not dialog then return end
+
+    self:UpdateSidebarVisibility()
 
     local child = self.assignmentScrollChild
     if not child then return end
@@ -701,7 +794,8 @@ function OxedRingEditor:RefreshPickerList()
     local function track(b) pickerChildren[#pickerChildren + 1] = b; return b end
 
     -- Update tab highlights
-    local selectedTabID = (dialog.selectedType == "toy") and 1 or (dialog.selectedType == "emote" and 2 or (dialog.selectedType == "marker" and 3 or (dialog.selectedType == "item" and 4 or 5)))
+    local tabIndexByType = { toy = 1, emote = 2, marker = 3, item = 4, mount = 5, spell = 6 }
+    local selectedTabID = tabIndexByType[dialog.selectedType] or 1
     if PanelTemplates_SetTab then
         PanelTemplates_SetTab(dialog, selectedTabID)
     end
@@ -733,7 +827,7 @@ function OxedRingEditor:RefreshPickerList()
             h:Hide()
         end
     end
-    if dialog.selectedType ~= "toy" and dialog.selectedType ~= "mount" then
+    if dialog.selectedType ~= "toy" and dialog.selectedType ~= "mount" and dialog.selectedType ~= "spell" then
         self.toySearchBox:Hide()
     end
 
@@ -1532,6 +1626,104 @@ function OxedRingEditor:RefreshPickerList()
         child:SetHeight(rows * (btnSize + spacing) + 16)
         child:SetWidth(cols * (btnSize + spacing))
 
+    elseif dialog.selectedType == "spell" then
+        self.assignmentScroll:ClearAllPoints()
+        self.assignmentScroll:SetPoint("TOPLEFT", rightPanel, "TOPLEFT", 16, -80)
+        self.assignmentScroll:SetPoint("BOTTOMRIGHT", rightPanel, "BOTTOMRIGHT", -55, 36)
+        self.assignmentScroll:Show()
+        self.assignmentScrollChild:Show()
+        self.assignmentInfo:SetText(L["RING_PICK_SPELL"] or "Pick a spell from your spellbook")
+
+        self.toySearchBox:Show()
+        local desiredSearch = dialog.toySearchText or ""
+        if self.toySearchBox:GetText() ~= desiredSearch then
+            self.toySearchBox.isSyncingText = true
+            self.toySearchBox:SetText(desiredSearch)
+            self.toySearchBox.isSyncingText = false
+        end
+
+        for _, c in ipairs({child:GetChildren()}) do c:Hide() end
+
+        -- Gather the player's active (non-passive) spells from the spellbook.
+        local items = self:GetPlayerSpellList()
+        local totalSpells = #items
+        local filterText = (dialog.toySearchText or ""):lower()
+        if filterText ~= "" then
+            local filtered = {}
+            for _, item in ipairs(items) do
+                if item.name and item.name:lower():find(filterText, 1, true) then
+                    table.insert(filtered, item)
+                end
+            end
+            items = filtered
+        end
+
+        if self.mountCountLabel then
+            local labelText = "Spells: " .. totalSpells
+            if filterText ~= "" then labelText = "Found: " .. #items .. " / " .. totalSpells end
+            self.mountCountLabel:SetText(labelText)
+            self.mountCountLabel:Show()
+        end
+
+        local btnSize = 42
+        local spacing = 2
+        local cols = 5
+        local x, y = 0, 0
+
+        for i, item in ipairs(items) do
+            local btn = track(CreateFrame("Button", nil, child, "BackdropTemplate"))
+            btn:SetSize(btnSize, btnSize)
+            btn:SetPoint("TOPLEFT", child, "TOPLEFT", x * (btnSize + spacing) + 12, -y * (btnSize + spacing) - 4)
+            btn:SetBackdrop({
+                bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+                edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                tile = true, tileSize = 16, edgeSize = 8,
+            })
+            btn:SetBackdropColor(0.1, 0.1, 0.1, 0.7)
+            btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+
+            local iconTex = btn:CreateTexture(nil, "ARTWORK")
+            iconTex:SetSize(btnSize - 6, btnSize - 6)
+            iconTex:SetPoint("CENTER", btn, "CENTER", 0, 0)
+            iconTex:SetTexture(item.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+            iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+            btn:SetScript("OnEnter", function(self)
+                self:SetBackdropBorderColor(1, 0.82, 0, 0.8)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                if item.id then GameTooltip:SetSpellByID(item.id) else GameTooltip:SetText(item.name) end
+                GameTooltip:AddLine("|cff00ff00Click to assign to this slot|r")
+                GameTooltip:Show()
+            end)
+            btn:SetScript("OnLeave", function(self)
+                self:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+                GameTooltip:Hide()
+            end)
+
+            btn:SetScript("OnClick", function()
+                if currentSlot then
+                    currentSlot.type = "spell"
+                    currentSlot.id = item.id
+                    currentSlot.label = item.name
+                    currentSlot.icon = item.icon
+                    currentSlot.assignmentMode = nil
+                    currentSlot.requiresParty = nil
+                    currentSlot.requiresTarget = nil
+                end
+                RefreshPreview()
+                OxedRingEditor:RefreshAssignmentPanel()
+            end)
+
+            MakeButtonDraggable(btn, { type = "spell", id = item.id, name = item.name, icon = item.icon })
+
+            x = x + 1
+            if x >= cols then x = 0 y = y + 1 end
+        end
+
+        local rows = math.max(math.ceil(#items / cols), 1)
+        child:SetHeight(rows * (btnSize + spacing) + 16)
+        child:SetWidth(cols * (btnSize + spacing))
+
     elseif dialog.selectedType == "settings" then
         self.assignmentScroll:SetScrollChild(rightPanel.settingsScrollChild)
         self.assignmentScroll:ClearAllPoints()
@@ -1586,6 +1778,15 @@ function OxedRingEditor:RefreshPickerList()
                 break
             end
         end
+
+        local vTabs = OxedHub.db.profile.oxedRingVisibleTabs or {
+            toy = true, emote = true, marker = true, item = true, mount = true, spell = false, settings = true
+        }
+        if dialog.sidebarCheckboxes then
+            for k, check in pairs(dialog.sidebarCheckboxes) do
+                check:SetChecked(vTabs[k] ~= false)
+            end
+        end
     end
     
     if OxedHub.UI and OxedHub.UI.ApplyGlobalTextSize then
@@ -1598,7 +1799,8 @@ local function CreateDisconnectedAssignmentTabs(panel)
     panel.tabs = {}
     panel.tabsArray = {}
 
-    local tabNames = { "Toys", "Reactions", "Markers", "Items", "Mounts", "Settings" }
+    local tabNames = { "Toys", "Reactions", "Markers", "Items", "Mounts", "Spells", "Settings" }
+    local tabTypeByIndex = { "toy", "emote", "marker", "item", "mount", "spell", "settings" }
     local isRetail = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE)
     local template = isRetail and "CharacterFrameTabTemplate" or "CharacterFrameTabButtonTemplate"
 
@@ -1607,8 +1809,7 @@ local function CreateDisconnectedAssignmentTabs(panel)
         tab:SetID(i)
         tab:SetText(name)
         tab:SetScript("OnClick", function()
-            -- 1=toy, 2=emote, 3=marker, 4=item, 5=mount, 6=settings
-            local newType = (i == 1) and "toy" or (i == 2 and "emote" or (i == 3 and "marker" or (i == 4 and "item" or (i == 5 and "mount" or "settings"))))
+            local newType = tabTypeByIndex[i] or "toy"
             if panel.selectedType ~= newType then
                 panel.toySearchText = ""
                 if OxedRingEditor.toySearchBox then
@@ -1835,6 +2036,7 @@ function OxedRingEditor:CreateTab(contentArea)
         { name = "Markers",   type = "marker",   icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8" },
         { name = "Items",     type = "item",     icon = 3753262 },
         { name = "Mounts",    type = "mount",    icon = 2143068 },
+        { name = "Spells",    type = "spell",    icon = "Interface\\Icons\\INV_Misc_Book_09" },
         { name = "Settings",  type = "settings", icon = 4548872 }
     }
 
@@ -2316,7 +2518,7 @@ function OxedRingEditor:CreateTab(contentArea)
     -- Settings scroll child â€” reuses the shared assignmentScroll (swapped in on tab switch)
     local settingsScrollChild = CreateFrame("Frame")
     settingsScrollChild:SetWidth(250)
-    settingsScrollChild:SetHeight(700)
+    settingsScrollChild:SetHeight(850)
     rightPanel.settingsScrollChild = settingsScrollChild
 
     -- Settings panel inputs & controls
@@ -2671,9 +2873,69 @@ function OxedRingEditor:CreateTab(contentArea)
     end)
     rightPanel.ringBindResetBtn = ringBindResetBtn
 
+    -- Sidebar Tabs Visibility Settings
+    local tabsHeader = settingsScrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    tabsHeader:SetPoint("TOPLEFT", ringBindBtn, "BOTTOMLEFT", 0, -18)
+    tabsHeader:SetText(L["AH_SIDEBAR_TABS"] or "Sidebar Tabs")
+    tabsHeader:SetTextColor(1, 0.82, 0)
+
+    local tabDefs = {
+        { key = "toy",    label = L["TAB_TOYMIX"] or "ToyMix" },
+        { key = "emote",  label = L["TAB_REACTIONS"] or "Reactions" },
+        { key = "marker", label = L["TAB_MARKERS"] or "Markers" },
+        { key = "mount",  label = L["TAB_MOUNTS"] or "Mounts" },
+        { key = "item",   label = L["TAB_ITEMS"] or "Items" },
+        { key = "spell",  label = L["TAB_SPELLS"] or "Spellbook" },
+    }
+
+    local prevAnchor = tabsHeader
+    rightPanel.sidebarCheckboxes = {}
+    for i, def in ipairs(tabDefs) do
+        local check = CreateFrame("CheckButton", nil, settingsScrollChild, "UICheckButtonTemplate")
+        if i == 1 then
+            check:SetPoint("TOPLEFT", prevAnchor, "BOTTOMLEFT", -4, -6)
+        else
+            check:SetPoint("TOPLEFT", prevAnchor, "BOTTOMLEFT", 0, -4)
+        end
+        check:SetSize(22, 22)
+        
+        local lbl = settingsScrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        lbl:SetPoint("LEFT", check, "RIGHT", 4, 0)
+        lbl:SetText(def.label)
+        lbl:SetTextColor(0.9, 0.9, 0.9)
+
+        check:SetScript("OnClick", function(self)
+            OxedHub.db.profile.oxedRingVisibleTabs = OxedHub.db.profile.oxedRingVisibleTabs or {
+                toy = true, emote = true, marker = true, item = true, mount = true, spell = false, settings = true
+            }
+            local vTabs = OxedHub.db.profile.oxedRingVisibleTabs
+            vTabs[def.key] = self:GetChecked()
+
+            -- Ensure at least one category tab remains shown
+            local anyShown = false
+            for _, k in ipairs({"toy", "emote", "marker", "item", "mount", "spell"}) do
+                if vTabs[k] then
+                    anyShown = true
+                    break
+                end
+            end
+            if not anyShown then
+                self:SetChecked(true)
+                vTabs[def.key] = true
+                return
+            end
+
+            OxedRingEditor:UpdateSidebarVisibility()
+            OxedRingEditor:RefreshPickerList()
+        end)
+
+        rightPanel.sidebarCheckboxes[def.key] = check
+        prevAnchor = check
+    end
+
     -- Refresh Toys / Mounts (data is cached once; this rebuilds it on demand)
     local refreshLabel = settingsScrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    refreshLabel:SetPoint("TOPLEFT", ringBindBtn, "BOTTOMLEFT", 0, -18)
+    refreshLabel:SetPoint("TOPLEFT", prevAnchor, "BOTTOMLEFT", 4, -18)
     refreshLabel:SetText(L["SETTINGS_REFRESH_COLLECTIONS"] or "Refresh Collections")
     refreshLabel:SetTextColor(1, 0.82, 0)
 
@@ -2733,4 +2995,17 @@ function OxedRingEditor:RefreshAssignmentPanel()
         rightPanel.selectedType = "toy"
     end
     self:RefreshPickerList()
+end
+
+-- Public entry point to re-render the ring preview + assignment panel from the
+-- current profile. Used after a profile import/switch so the ring shows up
+-- immediately instead of requiring a manual +/- (Slice Count) nudge.
+-- No-op until the tab (and its previewContainer) has actually been built.
+function OxedRingEditor:RefreshFromProfile()
+    if not self.previewContainer then return end
+    -- Clear stale selection so we don't point at a node index from the old profile.
+    selectedNodeIndex = nil
+    self.selectedEmoteId = nil
+    RefreshPreview()
+    self:RefreshAssignmentPanel()
 end

@@ -32,6 +32,9 @@ L["TAB_ACTIONHUB"] = "مركز الإجراءات"
 L["TAB_SETTINGS"] = "الإعدادات"
 L["TAB_EXPERIMENTAL"] = "تجريبي"
 L["TAB_ABOUT"] = "حول"
+L["TAB_SOUND"] = "صوت"
+L["TAB_ANIMATION"] = "مؤثر متحرك"
+L["TAB_CHAT"] = "دردشة"
 
 -- [Dashboard]
 L["DASHBOARD_TITLE"] = "لوحة التحكم"
@@ -175,7 +178,7 @@ L["ABOUT_TIPS_DESC"] =
 "• |cffffd100الملفات المخصصة:|r بعد إضافة ملفات صوتية مخصصة، يجب إعادة تشغيل اللعبة ليتم التعرف عليها.\n" ..
 "• |cffffd100الإعدادات:|r استخدم تبويب الإعدادات لاختيار قناة الصوت وإدارة ملفاتك الشخصية.\n" ..
 "• |cffffd100التعيينات:|r اسحب تعبيرات الشخصية أو الألعاب أو العلامات أو العناصر مباشرةً إلى عقد حلقة أوكسيد لتعيينها بسرعة."
-L["ABOUT_CARD_UPDATES"] = "أبرز التحسينات (الإصدار 2.0.5)"
+L["ABOUT_CARD_UPDATES"] = "أبرز التحسينات (الإصدار 2.0.8)"
 L["ABOUT_UPDATES_DESC"] =
 "• |cffffd100تحسينات الواجهة:|r إعادة ترتيب عناصر التحكم، وتحسين موضع شريط التمرير، وتطوير مظهر لوحة التعيينات باستخدام الخلفية الجديدة Assignments.png.\n" ..
 "• |cffffd100المؤثرات المتحركة:|r إضافة تأثير حلقي دائري إلى أداة دمج الألعاب، وإزالة تأثيرات التحويم من حلقة أوكسيد للحصول على تجربة أكثر سلاسة.\n" ..
@@ -238,7 +241,7 @@ L["TIP_MINIMAP"] =
 "مركز أوكسيد\n" ..
 "زر الفأرة الأيسر: إظهار/إخفاء النافذة\n" ..
 "زر الفأرة الأيمن: القائمة"
-L["MSG_SOUND_FOLDER"] = "ضع ملفات ‎.mp3 أو ‎.ogg داخل المجلد Interface/AddOns/OxedHub_CustomMedia/ ثم أعد تشغيل اللعبة."
+L["MSG_SOUND_FOLDER"] = "ضع ملفات ‎.ogg أو ‎.ogg داخل المجلد Interface/AddOns/OxedHub_CustomMedia/ ثم أعد تشغيل اللعبة."
 L["MSG_ANIMATION_TGA"] = "يجب تحويل ملفات GIF إلى مخططات TGA متحركة (Sprite Sheets) قبل استخدامها."
 L["MSG_RESTART_REQUIRED"] = "أعد تشغيل اللعبة لتحميل الملفات الصوتية الجديدة."
 L["ERR_SOUND_NOT_FOUND"] = "تعذر العثور على الملف الصوتي: %s"
@@ -250,8 +253,16 @@ L["ERR_INVALID_CONDITION"] = "شرط غير صالح لهذه اللعبة: %s"
 -- [Settings & Mixer Localization Additions]
 L["MIXER_PRIMARY_SLOT"] = "الخانة الأساسية"
 L["MIXER_SECONDARY_SLOT"] = "الخانة الثانوية"
+L["MIXER_EXTRA_SLOT"] = "خانة إضافية"
+L["MIXER_EXTRA_SLOT_HELP"] = "اضغط على لعبة أو تعويذة من القائمة لتحديدها."
+L["MIXER_EXTRA_RANDOM_HELP"] = "هذه الخانة نشطة فقط عند تفعيل وضع الألعاب العشوائية."
 L["MIXER_SLOT_HELP1"] = "اضغط على لعبة أو تعويذة من القائمة لتحديدها."
 L["MIXER_SLOT_HELP2"] = "يمكنك دمج لعبة مع تعويذة أو دمج لعبتين معًا."
+L["MIXER_RANDOM_TOYS"] = "ألعاب عشوائية"
+L["MIXER_RANDOM_TITLE"] = "وضع الألعاب العشوائية"
+L["MIXER_RANDOM_DESC1"] = "عند التفعيل، يتم إلقاء لعبة واحدة عشوائيًا بالضبط من قائمتك جنبًا إلى جنب مع تعويذتك في كل مرة."
+L["MIXER_RANDOM_DESC2"] = "عند التعطيل، يحاول إلقاء جميع العناصر في وقت واحد."
+L["MIXER_RANDOM_DESC3"] = "ملاحظة: إذا أضفت عدة ألعاب وقمت بتفعيل هذا الخيار، فسيتم اختيار لعبة واحدة فقط. لا يمكنه اختيار زوج عشوائي من الألعاب."
 
 L["SETTINGS_GLOBAL_NODE_SIZE"] = "الحجم العام للزر"
 L["SETTINGS_RING_RADIUS"] = "نصف قطر الحلقة"
@@ -285,6 +296,7 @@ L["AH_NODE_POS_Y"] = "موضع الزر (Y)"
 L["AH_ALLOW_ANIMATIONS"] = "السماح بالمؤثرات المتحركة"
 L["AH_SIDEBAR_TABS"] = "تبويبات الشريط الجانبي"
 L["AH_TEXT_SIZE"] = "حجم النص"
+L["AH_NODE_BG_ALPHA"] = "شفافية الخلفية"
 
 -- [Sidebar Tabs]
 L["TAB_TOYMIX"] = "دمج الألعاب"
@@ -299,6 +311,8 @@ L["TAB_TRIGGERS"] = "المحفزات"
 L["TAB_MARKERS"] = "العلامات"
 L["TAB_MOUNTS"] = "وسائل التنقل"
 L["TAB_ITEMS"] = "العناصر"
+L["TAB_SPELL"] = "التعويذات"
+L["TAB_SPELLS"] = "كتاب التعويذات"
 
 -- [ActionHub and OxedRing Editor Additions]
 L["AH_UNLOCK_POSITION"] = "إلغاء قفل الموضع"
@@ -350,6 +364,7 @@ L["BTN_CLEAR"] = "مسح"
 L["RING_SELECT_NODE_INFO"] = "حدد زرًا من القائمة اليسرى لتعيين إجراء."
 L["RING_PICK_RAID_TARGET"] = "اختر علامة غارة أو علامة عالمية أو تنبيه"
 L["RING_PICK_BAG_ITEM"] = "اختر جرعة أو إكسيرًا أو طعامًا من حقائبك"
+L["RING_PICK_SPELL"] = "اختر تعويذة من كتاب تعويذاتك"
 L["RING_CLEAR_CONFIRM"] = "هل أنت متأكد من رغبتك في مسح جميع أزرار الحلقة؟"
 
 L["NEW_REACTION_TITLE"] = "أدخل اسمًا للإجراء المخصص الجديد:"
@@ -603,6 +618,16 @@ L["MIXER_DRAG_TO_ACTION_BAR"] = "اسحب لشريط الأفعال"
 L["MIXER_NOT_SET"] = "لم يتم التعيين"
 L["MIXER_CLICK_TO_EDIT"] = "انقر للتعديل"
 L["MIXER_DEL"] = "حذف"
+L["MIXER_EDIT"] = "تعديل"
+L["MIXER_RENAME"] = "إعادة تسمية"
+L["MIXER_CLICK_TO_RENAME"] = "انقر لإعادة التسمية"
+L["MIXER_SORT_NEWEST"] = "الأحدث"
+L["MIXER_SORT_OLDEST"] = "الأقدم"
+L["MIXER_SORT_AZ"] = "أ - ي"
+L["MIXER_SORT_ZA"] = "ي - أ"
+L["MIXER_RENAME_PROMPT"] = "إعادة تسمية المزيج '%s' إلى:"
+L["MIXER_MIX_INFO_TITLE"] = "مزج الألعاب والتعويذات"
+L["MIXER_MIX_INFO_DESC"] = "لا يمكن مزج كل الألعاب مع التعويذات، ولا يمكن مزج كل التعويذات مع الألعاب. بعض الألعاب تشغّل رسمًا متحركًا أو تستخدم فترة تباطؤ عامة مخفية (مثل نداء الصياد)، لذا قد لا تعمل مع تعويذاتك. يوجد أكثر من 1000 لعبة في اللعبة، ونواصل العمل على الإضافة لتوفير مزيد من المعلومات عن كل لعبة لتسهيل المزج. في هذه الأثناء — جرّب واستعد!"
 L["MIXER_SOUND_LABEL"] = "صوت"
 L["MIXER_EMOTE_LABEL"] = "تعبير"
 L["MIXER_ANIM_LABEL"] = "حركة"
@@ -639,7 +664,7 @@ L["TR_PLAYER_CLASS"] = "فئة اللاعب: "
 
 L["SOUNDS_ADD_TITLE"] = "إضافة صوت مخصص"
 L["SOUNDS_ADD_NAME_LBL"] = "اسم الصوت:"
-L["SOUNDS_ADD_FILE_LBL"] = "اسم الملف (مثل 'cry3' أو 'cry3.mp3' أو 'cry3.OGG'):"
+L["SOUNDS_ADD_FILE_LBL"] = "اسم الملف (مثل 'cry3' أو 'cry3.ogg' أو 'cry3.OGG'):"
 L["SOUNDS_ADD_INST_HDR"] = "كيفية إضافة ملفات صوت مخصصة:"
 L["SOUNDS_ADD_INST_1"] = "1. قم بإنشاء مجلد جديد داخل دليل إضافات WoW باسم:"
 L["SOUNDS_ADD_INST_COPY"] = "(انقر واضغط CTRL+C للنسخ)"
@@ -699,3 +724,16 @@ L["AH_GUIDE_MOVABLE_NODE_TITLE"] = "زر عقدة قابل للنقل"
 L["AH_GUIDE_MOVABLE_NODE_DESC"] = "انقر فوق 'إلغاء القفل' في الإعدادات لسحب كل فتحة وتغيير حجمها ووضعها بشكل فردي على شاشتك."
 
 L["TOYS_CLICK_TO_SELECT_MIXER"] = "انقر للتحديد للخلاط"
+
+-- Mounts Trigger
+L["TR_MOUNTS_NAME"] = "الركوب / النزول من المطية"
+L["TR_MOUNTS_TRIGGER_ON"] = "تفعيل عند:"
+L["TR_MOUNTS_MOUNT_UP"] = "الركوب"
+L["TR_MOUNTS_DISMOUNT"] = "النزول"
+L["TR_MOUNTS_GROUND"] = "مطية أرضية"
+L["TR_MOUNTS_FLYING"] = "مطية طائرة"
+L["TR_MOUNTS_AQUATIC"] = "مطية مائية"
+L["TR_MOUNTS_SOUND"] = "الصوت:"
+L["TR_MOUNTS_ANIMATION"] = "حركة:"
+L["TR_MOUNTS_EMOTE"] = "تعبير:"
+L["TR_MOUNTS_EMOTE_NOTE"] = "ملاحظة: لا يمكن تشغيل جميع حركات التعبيرات أثناء الركوب على المطية، لذا قم بالتجربة!"
