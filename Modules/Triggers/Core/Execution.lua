@@ -60,10 +60,22 @@ function Triggers:CanRunTriggerEffects(trigger, actions, soundKey, animKey, chat
         return true
     end
 
-    return self:CanRunEffectsKeyed(trigger.id)
+    -- Determine if effects should run based on global effect delay (e.g. 5 seconds)
+    -- Skip delay entirely for simple slash commands and aura events. SELF_AURA must
+    -- be exempt too — otherwise the initial "gained" is throttled and, because the
+    -- loop-sound is started inside the effect gate, the loop never starts (buff
+    -- sound wouldn't play in combat until the throttle happened to clear).
+    local canRunEffects = false
+    if trigger.event == "SLASH_CMD" or trigger.event == "UNIT_AURA" or trigger.event == "SELF_AURA" or trigger.event == "SPELL_PROC" then
+        canRunEffects = true
+    else
+        canRunEffects = self:CanRunEffectsKeyed(trigger.id)
+    end
+    return canRunEffects
 end
 
 function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
+    if OxedHub.debug then print("[OxedHub-Debug] ExecuteTrigger called for trigger:", trigger.name or trigger.id, "event:", trigger.event) end
     local actions = trigger.actions
     if not actions then return end
 
@@ -80,6 +92,7 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
     -- Debounce to prevent double-firing (e.g., from both macro and event)
     local now = GetTime()
     if recentlyFired[trigger.id] and (now - recentlyFired[trigger.id] < 0.5) then
+        if OxedHub.debug then print("[OxedHub-Debug] ExecuteTrigger debounced (<0.5s)") end
         return
     end
     recentlyFired[trigger.id] = now
@@ -95,9 +108,28 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
             soundKey = actions.failSound and actions.failSound ~= "" and "failSound" or "sound"
             animKey = actions.failAnimation and actions.failAnimation ~= "" and "failAnimation" or "animation"
         end
+    elseif trigger.event == "MOUNT" and eventData and eventData.mountType then
+        local t = eventData.mountType
+        if t == "ground" or t == "flying" or t == "aquatic" then
+            soundKey = t .. "Sound"
+            animKey = t .. "Anim"
+        end
+    elseif trigger.event == "COMBAT_STATE" and eventData and eventData.combatState then
+        -- Only split the effects when the user ticked "different sound &
+        -- animation"; otherwise enter and exit share the normal Sound/Animation.
+        if trigger.conditions and trigger.conditions.separateEffects then
+            local prefix = eventData.combatState == "enter" and "enter" or "exit"
+            if actions[prefix .. "Sound"] and actions[prefix .. "Sound"] ~= "" then
+                soundKey = prefix .. "Sound"
+            end
+            if actions[prefix .. "Anim"] and actions[prefix .. "Anim"] ~= "" then
+                animKey = prefix .. "Anim"
+            end
+        end
     end
 
     local chatMsgKey = "chatMessage"
+    local emoteKey = "emote"
     if trigger.event == "SUMMON" and eventData and eventData.summonState then
         if eventData.summonState == "incoming" then
             chatMsgKey = "summonIncomingChatMessage"
@@ -106,15 +138,40 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
         elseif eventData.summonState == "declined" then
             chatMsgKey = "summonDeclinedChatMessage"
         end
+    elseif trigger.event == "MOUNT" and eventData and eventData.mountType then
+        local t = eventData.mountType
+        if t == "ground" or t == "flying" or t == "aquatic" then
+            chatMsgKey = t .. "Chat"
+            emoteKey = t .. "Emote"
+        end
     end
 
     local canRunEffects = self:CanRunTriggerEffects(trigger, actions, soundKey, animKey, chatMsgKey, skipChat)
+    if OxedHub.debug then print("[OxedHub-Debug] canRunEffects:", canRunEffects, "sound:", actions[soundKey]) end
     
     -- Play sound
     local soundVal = actions[soundKey]
     if canRunEffects and soundVal and soundVal ~= "" and soundVal ~= "None" then
         if OxedHub.Sounds then
+            if OxedHub.debug then print("[OxedHub-Debug] Actually playing sound:", soundVal) end
             OxedHub.Sounds:Play(soundVal)
+            
+            if (trigger.event == "UNIT_AURA" or trigger.event == "SELF_AURA" or trigger.event == "SPELL_PROC") and trigger.conditions and trigger.conditions.loopSound and eventData and not eventData.isLost then
+                local interval = tonumber(trigger.conditions.loopInterval) or 2
+                if interval > 0 then
+                    local spellID = eventData.spellID or eventData.spellName
+                    if spellID then
+                        Triggers.activeAuraLoops = Triggers.activeAuraLoops or {}
+                        local loopKey = Triggers:BuildAuraLoopKey(trigger.id, spellID)
+                        if Triggers.activeAuraLoops[loopKey] then
+                            Triggers.activeAuraLoops[loopKey]:Cancel()
+                        end
+                        Triggers.activeAuraLoops[loopKey] = C_Timer.NewTicker(interval, function()
+                            OxedHub.Sounds:Play(soundVal)
+                        end)
+                    end
+                end
+            end
         end
     end
     
@@ -129,11 +186,11 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
     -- Perform emote
     -- TODO(beta): Emote disabled for EAT_BUFF to avoid ADDON_ACTION_BLOCKED taint.
     -- Re-enable once a clean chat bridge addon is implemented.
-    if canRunEffects and not skipChat and actions.emote and actions.emote ~= "" and trigger.event ~= "EAT_BUFF" then
+    if canRunEffects and not skipChat and actions[emoteKey] and actions[emoteKey] ~= "" and trigger.event ~= "EAT_BUFF" then
         local whisper = actions.whisperTarget or false
         local targetName = eventData and eventData.targetName
         if OxedHub.Emotes then
-            OxedHub.Emotes:DoEmote(actions.emote, whisper, targetName)
+            OxedHub.Emotes:DoEmote(actions[emoteKey], whisper, targetName)
         end
     end
     
@@ -151,6 +208,23 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
                     print("|cff00ff00[OxedHub]|r " .. chatMsgVal)
                 end
             end
+        end
+    end
+    
+    if OxedHub.debug then
+        print(string.format("|cff00ffff[OxedHub-Debug]|r Trigger Executed: |cffffff00%s|r (Event: %s)", trigger.name or "Unknown", trigger.event or "Unknown"))
+        if soundVal and soundVal ~= "" and soundVal ~= "None" then
+            print(string.format("  - Sound: %s (Key: %s)", tostring(soundVal), soundKey))
+        end
+        if animVal and animVal ~= "" and animVal ~= "None" then
+            print(string.format("  - Animation: %s (Key: %s)", tostring(animVal), animKey))
+        end
+        if actions[emoteKey] and actions[emoteKey] ~= "" and actions[emoteKey] ~= "None" then
+            print(string.format("  - Emote: %s", tostring(actions[emoteKey])))
+        end
+        local chatMsgVal = actions[chatMsgKey]
+        if chatMsgVal and chatMsgVal ~= "" and chatMsgVal ~= "None" then
+            print(string.format("  - Chat: %s", tostring(chatMsgVal)))
         end
     end
     

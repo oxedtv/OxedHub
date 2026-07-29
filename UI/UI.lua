@@ -481,7 +481,7 @@ function UI:CreateMainFrame()
         end)
     end
     tinsert(UISpecialFrames, frame:GetName())
-    
+
     -- Drag functionality
     frame:SetScript("OnDragStart", function(self)
         self:StartMoving()
@@ -874,8 +874,10 @@ function UI:CreateDashboardTab()
             profileDropdown:SetupMenu(function(_, rootDescription)
                 if OxedHub and OxedHub.GetProfileList then
                     for _, name in ipairs(OxedHub:GetProfileList()) do
-                        local displayName = OxedHub.GetProfileDisplayName and OxedHub:GetProfileDisplayName(name) or name
-                        rootDescription:CreateRadio(
+                        local displayName = OxedHub.GetProfileColoredName and OxedHub:GetProfileColoredName(name)
+                            or (OxedHub.GetProfileDisplayName and OxedHub:GetProfileDisplayName(name))
+                            or name
+                        local radio = rootDescription:CreateRadio(
                             displayName,
                             function() return OxedHub:GetActiveProfileName() == name end,
                             function()
@@ -883,27 +885,44 @@ function UI:CreateDashboardTab()
                                 RefreshProfileDropdown()
                             end
                         )
+                        -- Hover tooltip: show where this profile's content was imported from.
+                        local pdb = OxedHubDB and OxedHubDB.profiles and OxedHubDB.profiles[name]
+                        local origin = pdb and UI.GetProfileOriginText and UI:GetProfileOriginText(pdb)
+                        if origin and radio and radio.SetTooltip then
+                            radio:SetTooltip(function(tooltip)
+                                if tooltip and tooltip.AddLine then
+                                    for line in origin:gmatch("[^\n]+") do tooltip:AddLine(line, 1, 1, 1, true) end
+                                end
+                            end)
+                        end
                     end
                 end
             end)
             -- Set button label to active profile name
             if profileDropdown.SetText then
-                local displayName = OxedHub.GetProfileDisplayName and OxedHub:GetProfileDisplayName(activeName) or activeName
+                local displayName = OxedHub.GetProfileColoredName and OxedHub:GetProfileColoredName(activeName)
+                    or (OxedHub.GetProfileDisplayName and OxedHub:GetProfileDisplayName(activeName))
+                    or activeName
                 profileDropdown:SetText(displayName)
             end
         else
             -- Legacy UIDropDownMenuTemplate fallback
+            local function ColoredProfileName(name)
+                return (OxedHub.GetProfileColoredName and OxedHub:GetProfileColoredName(name))
+                    or (OxedHub.GetProfileDisplayName and OxedHub:GetProfileDisplayName(name))
+                    or name
+            end
             UIDropDownMenu_SetWidth(profileDropdown, 150)
-            UIDropDownMenu_SetText(profileDropdown, activeName)
+            UIDropDownMenu_SetText(profileDropdown, ColoredProfileName(activeName))
             UIDropDownMenu_Initialize(profileDropdown, function(self, level)
                 if OxedHub and OxedHub.GetProfileList then
                     for _, name in ipairs(OxedHub:GetProfileList()) do
                         local info = UIDropDownMenu_CreateInfo()
-                        info.text = OxedHub.GetProfileDisplayName and OxedHub:GetProfileDisplayName(name) or name
+                        info.text = ColoredProfileName(name)
                         info.checked = (name == activeName)
                         info.func = function()
                             OxedHub:SwitchProfile(name)
-                            UIDropDownMenu_SetText(profileDropdown, name)
+                            UIDropDownMenu_SetText(profileDropdown, ColoredProfileName(name))
                         end
                         UIDropDownMenu_AddButton(info, level)
                     end
@@ -968,6 +987,12 @@ function UI:CreateDashboardTab()
 
     local stat4 = CreateDashboardStatCard(statsRow, L["DASHBOARD_STAT_PROFILES"], 160)
     stat4:SetPoint("LEFT", stat3, "RIGHT", 8, 0)
+
+    local stat5 = CreateDashboardStatCard(statsRow, L["DASHBOARD_STAT_SOUNDS"] or "Custom Sounds", 160)
+    stat5:SetPoint("LEFT", stat4, "RIGHT", 8, 0)
+
+    local stat6 = CreateDashboardStatCard(statsRow, L["DASHBOARD_STAT_ANIMATIONS"] or "Animations", 160)
+    stat6:SetPoint("LEFT", stat5, "RIGHT", 8, 0)
 
     local summaryText = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     summaryText:SetPoint("TOPLEFT", statsRow, "BOTTOMLEFT", 0, -22)
@@ -2034,7 +2059,7 @@ function UI:CreateDashboardTab()
     tab.heroTitle = heroTitle
     tab.heroSubtitle = heroSubtitle
     tab.heroMeta = heroMeta
-    tab.stats = { stat1, stat2, stat3, stat4 }
+    tab.stats = { stat1, stat2, stat3, stat4, stat5, stat6 }
     tab.summaryText = summaryText
     tab.showcaseContainer = showcaseContainer
     tab.scrollFrame = scrollFrame
@@ -2415,8 +2440,32 @@ function UI:CreateSettingsTab()
     tab:SetID(4)
     ApplyToysBackground(tab)
 
+    -- Page switcher + sub-tabs live on the tab frame itself (not inside the
+    -- scroll child) so they stay pinned while the content scrolls underneath.
+    -- Row 1: red Main / Profiles buttons, styled like the Toys Mixer buttons.
+    local pageButtonRow = CreateFrame("Frame", nil, tab)
+    pageButtonRow:SetPoint("TOPLEFT", tab, "TOPLEFT", THEMED_FRAME_INSETS.left + 10, -THEMED_FRAME_INSETS.top - 4)
+    pageButtonRow:SetPoint("RIGHT", tab, "RIGHT", -THEMED_FRAME_INSETS.right, 0)
+    pageButtonRow:SetHeight(25)
+    tab.pageButtonRow = pageButtonRow
+
+    -- Row 2: sub-tabs for the Profiles page.
+    local pageTabStrip = CreateFrame("Frame", nil, tab)
+    pageTabStrip:SetPoint("TOPLEFT", pageButtonRow, "BOTTOMLEFT", 0, -8)
+    pageTabStrip:SetPoint("RIGHT", tab, "RIGHT", -THEMED_FRAME_INSETS.right, 0)
+    pageTabStrip:SetHeight(26)
+    tab.pageTabStrip = pageTabStrip
+
+    -- Same subtle gold separator as the Toys category tabs: extends 12px past
+    -- the strip on the left and 20px on the right.
+    local pageTabLine = pageTabStrip:CreateTexture(nil, "ARTWORK")
+    pageTabLine:SetPoint("TOPLEFT", pageTabStrip, "BOTTOMLEFT", -12, 0)
+    pageTabLine:SetPoint("TOPRIGHT", pageTabStrip, "BOTTOMRIGHT", 20, 0)
+    pageTabLine:SetHeight(2)
+    pageTabLine:SetColorTexture(1, 0.82, 0, 0.05)
+
     local scrollFrame = CreateFrame("ScrollFrame", "OxedHubSettingsScrollFrame", tab, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", tab, "TOPLEFT", THEMED_FRAME_INSETS.left, -THEMED_FRAME_INSETS.top)
+    scrollFrame:SetPoint("TOPLEFT", pageTabStrip, "BOTTOMLEFT", -10, -8)
     scrollFrame:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -THEMED_FRAME_INSETS.right, THEMED_FRAME_INSETS.bottom)
     StyleScrollFrame(scrollFrame)
 
@@ -2434,6 +2483,9 @@ function UI:CreateSettingsTab()
     title:SetText(L["SETTINGS_TITLE"])
     title:Hide()
 
+    -- Page split (Main / Profiles): everything created after the Profiles
+    -- section header belongs to the Profiles page, everything before it to
+    -- Main. The two sets come from snapshotting scrollChild at that point.
     local audioSection = CreateSettingsSectionHeader(scrollChild, scrollChild, "TOPLEFT", 15, -8, L["SETTINGS_SECTION_AUDIO"])
 
     -- Sound Channel label
@@ -2901,8 +2953,19 @@ function UI:CreateSettingsTab()
     skipDelConfirmDesc:SetPoint("TOPLEFT", skipDelConfirmToggle, "BOTTOMLEFT", 28, -2)
     skipDelConfirmDesc:SetText(L["SETTINGS_AUTO_SKIP_DEL_DESC"])
 
+    -- Boundary between the two pages: everything built so far is "Main".
+    local function SnapshotWidgets(parent)
+        local set = {}
+        for _, child in ipairs({ parent:GetChildren() }) do set[child] = true end
+        for _, region in ipairs({ parent:GetRegions() }) do set[region] = true end
+        return set
+    end
+    local mainPageSet = SnapshotWidgets(scrollChild)
+
     -- ── Profile Switcher ─────────────────────────────────────────────────
-    local profilesSection = CreateSettingsSectionHeader(scrollChild, skipDelConfirmDesc, "BOTTOMLEFT", -28, -30, L["SETTINGS_SECTION_PROFILES"])
+    -- Anchored to the top of the scroll child (not the Main content above it)
+    -- because it is the first thing shown when the Profiles page is active.
+    local profilesSection = CreateSettingsSectionHeader(scrollChild, scrollChild, "TOPLEFT", 15, -8, L["SETTINGS_SECTION_PROFILES"])
 
     local profileLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     profileLabel:SetPoint("TOPLEFT", profilesSection, "BOTTOMLEFT", 18, -10)
@@ -2911,6 +2974,9 @@ function UI:CreateSettingsTab()
 
     local profileDesc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     profileDesc:SetPoint("TOPLEFT", profileLabel, "BOTTOMLEFT", 0, -4)
+    -- Wrapped so it can't run under the details panel on the right.
+    profileDesc:SetWidth(440)
+    profileDesc:SetJustifyH("LEFT")
     profileDesc:SetText(L["SETTINGS_PROFILES_DESC"])
 
     local autoSwitchToggle = CreateFrame("CheckButton", nil, scrollChild, "UICheckButtonTemplate")
@@ -2929,24 +2995,106 @@ function UI:CreateSettingsTab()
 
     local autoSwitchDesc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     autoSwitchDesc:SetPoint("TOPLEFT", autoSwitchToggle, "BOTTOMLEFT", 28, -2)
+    -- Wrapped so it can't run under the details panel on the right.
+    autoSwitchDesc:SetWidth(420)
+    autoSwitchDesc:SetJustifyH("LEFT")
     autoSwitchDesc:SetText(L["SETTINGS_PROFILES_AUTO_DESC"])
 
     -- Active profile dropdown
     local activeLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    activeLabel:SetPoint("TOP", autoSwitchDesc, "BOTTOM", 0, -14)
-    activeLabel:SetPoint("LEFT", profileLabel, "LEFT", 0, 0)
+    activeLabel:SetPoint("TOP", autoSwitchDesc, "BOTTOM", 0, -20)
+    activeLabel:SetPoint("LEFT", profileLabel, "LEFT", 6, 0)
     activeLabel:SetText(L["SETTINGS_PROFILES_ACTIVE"])
     activeLabel:SetTextColor(1, 1, 1, 1)
 
     local profileDropdown = CreateFrame("DropdownButton", "OxedHubProfileDropdown", scrollChild, "WowStyle1DropdownTemplate")
-    profileDropdown:SetPoint("LEFT", activeLabel, "RIGHT", 8, 0)
-    profileDropdown:SetSize(210, 22)
+    profileDropdown:SetPoint("LEFT", activeLabel, "RIGHT", 10, 0)
+    profileDropdown:SetSize(240, 26)
 
-    local selectedCreateClassToken = OxedHub.GetPlayerClassToken and OxedHub:GetPlayerClassToken() or false
+    local profileColorBtn = CreateFrame("Button", nil, scrollChild, "BackdropTemplate")
+    profileColorBtn:SetSize(28, 28)
+    profileColorBtn:SetPoint("LEFT", profileDropdown, "RIGHT", 10, 0)
+    profileColorBtn:SetBackdrop({
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 14,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    profileColorBtn:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+    local profileColorTex = profileColorBtn:CreateTexture(nil, "ARTWORK")
+    profileColorTex:SetPoint("TOPLEFT", 3, -3)
+    profileColorTex:SetPoint("BOTTOMRIGHT", -3, 3)
+    profileColorTex:SetColorTexture(1, 1, 1, 1)
+    profileColorBtn:SetScript("OnEnter", function(self)
+        self:SetBackdropBorderColor(1, 1, 1, 1)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Profile Color", 1, 0.82, 0)
+        GameTooltip:AddLine("Click to change this profile's name color.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    profileColorBtn:SetScript("OnLeave", function(self)
+        self:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+        GameTooltip:Hide()
+    end)
+
+    profileColorBtn:SetScript("OnClick", function()
+        local activeName = OxedHub:GetActiveProfileName()
+        local r, g, b = profileColorTex:GetVertexColor() -- GetColorTexture returns r,g,b,a but GetVertexColor is safer for textures
+        if not r then r, g, b = 1, 1, 1 end
+        
+        local function UpdateColor(nr, ng, nb)
+            OxedHub.db.profile.metadata = OxedHub.db.profile.metadata or {}
+            OxedHub.db.profile.metadata.customColor = {r = nr, g = ng, b = nb}
+            UI.RefreshProfileDropdown()
+        end
+        
+        if ColorPickerFrame.SetupColorPickerAndShow then
+            ColorPickerFrame:SetupColorPickerAndShow({
+                r = r, g = g, b = b, opacity = 1, hasOpacity = false,
+                swatchFunc = function()
+                    local nr, ng, nb = ColorPickerFrame:GetColorRGB()
+                    UpdateColor(nr, ng, nb)
+                end,
+                cancelFunc = function(prev)
+                    UpdateColor(prev.r, prev.g, prev.b)
+                end
+            })
+        else
+            ColorPickerFrame.func = function()
+                local nr, ng, nb = ColorPickerFrame:GetColorRGB()
+                UpdateColor(nr, ng, nb)
+            end
+            ColorPickerFrame.hasOpacity = false
+            ColorPickerFrame.cancelFunc = function(prev)
+                UpdateColor(prev.r, prev.g, prev.b)
+            end
+            ColorPickerFrame:SetColorRGB(r, g, b)
+            ColorPickerFrame:Show()
+        end
+    end)
+
+    -- Initialize from the active profile's saved class, not the player's class
+    local activeProfileName = OxedHub:GetActiveProfileName()
+    local selectedCreateClassToken = OxedHub:GetProfileClassToken(activeProfileName) or false
 
     local function RefreshProfileDropdown()
         local activeName = OxedHub:GetActiveProfileName()
         profileDropdown:OverrideText(OxedHub:GetProfileColoredName(activeName))
+        
+        -- Update color swatch button color
+        local metadata = OxedHub:GetProfileMetadata(activeName)
+        if metadata and metadata.customColor then
+            profileColorTex:SetColorTexture(metadata.customColor.r, metadata.customColor.g, metadata.customColor.b, 1)
+        else
+            local classToken = OxedHub:GetProfileClassToken(activeName)
+            local classColors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
+            local color = classToken and classColors and classColors[classToken]
+            if color then
+                profileColorTex:SetColorTexture(color.r, color.g, color.b, 1)
+            else
+                profileColorTex:SetColorTexture(1, 1, 1, 1)
+            end
+        end
+
         profileDropdown:SetupMenu(function(dropdown, rootDescription)
             local profiles = OxedHub:GetProfileList()
             for _, name in ipairs(profiles) do
@@ -2955,6 +3103,8 @@ function UI:CreateSettingsTab()
                     function() return name == OxedHub:GetActiveProfileName() end,
                     function()
                         OxedHub:SwitchProfile(name)
+                        -- Update the details/credits panel next to the dropdown.
+                        if UI.RefreshProfileDetails then UI:RefreshProfileDetails() end
                     end,
                     name
                 )
@@ -2967,16 +3117,16 @@ function UI:CreateSettingsTab()
 
     -- New profile row
     local newProfileInput = CreateFrame("EditBox", nil, scrollChild, "InputBoxTemplate")
-    newProfileInput:SetSize(150, 22)
-    newProfileInput:SetPoint("TOP", activeLabel, "BOTTOM", 0, -14)
-    newProfileInput:SetPoint("LEFT", profileLabel, "LEFT", 0, 0)
+    newProfileInput:SetSize(170, 26)
+    newProfileInput:SetPoint("TOP", activeLabel, "BOTTOM", 0, -20)
+    newProfileInput:SetPoint("LEFT", profileLabel, "LEFT", 6, 0)
     newProfileInput:SetAutoFocus(false)
     newProfileInput:SetMaxLetters(30)
     newProfileInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
     local createClassDropdown = CreateFrame("DropdownButton", "OxedHubCreateClassDropdown", scrollChild, "WowStyle1DropdownTemplate")
-    createClassDropdown:SetPoint("LEFT", newProfileInput, "RIGHT", 8, 0)
-    createClassDropdown:SetSize(140, 22)
+    createClassDropdown:SetPoint("LEFT", newProfileInput, "RIGHT", 10, 0)
+    createClassDropdown:SetSize(150, 26)
     SetupClassDropdown(
         createClassDropdown,
         function()
@@ -2984,20 +3134,26 @@ function UI:CreateSettingsTab()
         end,
         function(token)
             selectedCreateClassToken = token
+            -- Auto-save class to the active profile
+            local activeName = OxedHub:GetActiveProfileName()
+            if activeName then
+                OxedHub:SetProfileClassToken(activeName, token)
+                RefreshProfileDropdown()
+            end
         end
     )
 
     local createBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
     ApplyRedButtonStyle(createBtn)
-    createBtn:SetSize(70, 22)
-    createBtn:SetPoint("LEFT", createClassDropdown, "RIGHT", 8, 0)
+    createBtn:SetSize(90, 26)
+    createBtn:SetPoint("LEFT", createClassDropdown, "RIGHT", 10, 0)
     createBtn:SetText(L["SETTINGS_BTN_CREATE"])
     createBtn:SetNormalFontObject("GameFontNormalSmall")
 
     -- Add info tooltip button next to Create button
     local infoBtn = CreateFrame("Button", nil, scrollChild)
-    infoBtn:SetSize(18, 18)
-    infoBtn:SetPoint("LEFT", createBtn, "RIGHT", 6, 0)
+    infoBtn:SetSize(20, 20)
+    infoBtn:SetPoint("LEFT", createBtn, "RIGHT", 8, 0)
     
     local infoTex = infoBtn:CreateTexture(nil, "ARTWORK")
     infoTex:SetAllPoints(infoBtn)
@@ -3039,9 +3195,9 @@ function UI:CreateSettingsTab()
     -- Copy / Rename / Delete row
     local copyBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
     ApplyRedButtonStyle(copyBtn)
-    copyBtn:SetSize(70, 22)
-    copyBtn:SetPoint("TOP", newProfileInput, "BOTTOM", 0, -10)
-    copyBtn:SetPoint("LEFT", profileLabel, "LEFT", 0, 0)
+    copyBtn:SetSize(90, 26)
+    copyBtn:SetPoint("TOP", newProfileInput, "BOTTOM", 0, -16)
+    copyBtn:SetPoint("LEFT", profileLabel, "LEFT", 6, 0)
     copyBtn:SetText(L["SETTINGS_BTN_COPY"])
     copyBtn:SetNormalFontObject("GameFontNormalSmall")
     copyBtn:SetScript("OnClick", function()
@@ -3066,8 +3222,8 @@ function UI:CreateSettingsTab()
 
     local renameBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
     ApplyRedButtonStyle(renameBtn)
-    renameBtn:SetSize(70, 22)
-    renameBtn:SetPoint("LEFT", copyBtn, "RIGHT", 8, 0)
+    renameBtn:SetSize(90, 26)
+    renameBtn:SetPoint("LEFT", copyBtn, "RIGHT", 10, 0)
     renameBtn:SetText(L["SETTINGS_BTN_RENAME"])
     renameBtn:SetNormalFontObject("GameFontNormalSmall")
     renameBtn:SetScript("OnClick", function()
@@ -3089,8 +3245,8 @@ function UI:CreateSettingsTab()
 
     local deleteBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
     ApplyRedButtonStyle(deleteBtn)
-    deleteBtn:SetSize(70, 22)
-    deleteBtn:SetPoint("LEFT", renameBtn, "RIGHT", 8, 0)
+    deleteBtn:SetSize(90, 26)
+    deleteBtn:SetPoint("LEFT", renameBtn, "RIGHT", 10, 0)
     deleteBtn:SetText(L["SETTINGS_BTN_DELETE"])
     deleteBtn:SetNormalFontObject("GameFontNormalSmall")
     deleteBtn:SetScript("OnClick", function()
@@ -3123,8 +3279,12 @@ function UI:CreateSettingsTab()
         StaticPopup_Show("OXEDHUB_DELETE_PROFILE")
     end)
 
+    -- Second boundary: everything from here on is the Export/Import sub-page.
+    local profileManageSet = SnapshotWidgets(scrollChild)
+
     -- ── Export / Import section ───────────────────────────────────────────
-    local exportSection = CreateSettingsSectionHeader(scrollChild, copyBtn, "BOTTOMLEFT", -18, -32, L["SETTINGS_SECTION_EXPORT"])
+    -- Anchored to the top of the scroll child: it heads its own sub-page.
+    local exportSection = CreateSettingsSectionHeader(scrollChild, scrollChild, "TOPLEFT", 15, -8, L["SETTINGS_SECTION_EXPORT"])
 
     local exportImportLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     exportImportLabel:SetPoint("TOPLEFT", exportSection, "BOTTOMLEFT", 18, -10)
@@ -3140,18 +3300,18 @@ function UI:CreateSettingsTab()
         UI:ShowExportFrame()
     end)
 
-    local exportAllBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
-    ApplyRedButtonStyle(exportAllBtn)
-    exportAllBtn:SetPoint("LEFT", exportBtn, "RIGHT", 10, 0)
-    exportAllBtn:SetSize(100, 26)
-    exportAllBtn:SetText(L["SETTINGS_BTN_EXPORT_ALL"])
-    exportAllBtn:SetScript("OnClick", function()
-        UI:ShowExportSelectionFrame()
+    local scopedExportBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    ApplyRedButtonStyle(scopedExportBtn)
+    scopedExportBtn:SetPoint("LEFT", exportBtn, "RIGHT", 10, 0)
+    scopedExportBtn:SetSize(130, 26)
+    scopedExportBtn:SetText("Detailed Export")
+    scopedExportBtn:SetScript("OnClick", function()
+        UI:ShowScopedExportFrame()
     end)
 
     local importBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
     ApplyRedButtonStyle(importBtn)
-    importBtn:SetPoint("LEFT", exportAllBtn, "RIGHT", 10, 0)
+    importBtn:SetPoint("LEFT", scopedExportBtn, "RIGHT", 10, 0)
     importBtn:SetSize(100, 26)
     importBtn:SetText(L["SETTINGS_BTN_IMPORT"])
     importBtn:SetScript("OnClick", function()
@@ -3165,6 +3325,293 @@ function UI:CreateSettingsTab()
     importStatus:SetJustifyV("TOP")
     importStatus:SetText("")
     UI.importStatus = importStatus
+
+    -- Author name and realm are captured automatically on every export, so the
+    -- only thing worth asking for here is an optional note. Matches the
+    -- "Note (optional)" field in the Detailed Export dialog.
+    local exportNoteLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    exportNoteLabel:SetPoint("TOPLEFT", importStatus, "BOTTOMLEFT", 0, -40)
+    exportNoteLabel:SetText(L["SETTINGS_EXPORT_NOTE"] or "Note (optional):")
+    exportNoteLabel:SetTextColor(1, 0.82, 0, 1)
+
+    local exportNoteDesc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    exportNoteDesc:SetPoint("TOPLEFT", exportNoteLabel, "BOTTOMLEFT", 0, -4)
+    exportNoteDesc:SetText(L["SETTINGS_EXPORT_NOTE_DESC"]
+        or "*A short message shown to anyone importing what you export.")
+
+    local exportNoteBox = CreateFrame("EditBox", nil, scrollChild, "InputBoxTemplate")
+    exportNoteBox:SetPoint("TOPLEFT", exportNoteDesc, "BOTTOMLEFT", 6, -8)
+    exportNoteBox:SetSize(380, 22)
+    exportNoteBox:SetAutoFocus(false)
+    exportNoteBox:SetMaxLetters(120)
+    exportNoteBox:SetText(UI:GetExportNote() or "")
+    exportNoteBox:SetScript("OnEnterPressed", function(self)
+        UI:SetExportNote(self:GetText())
+        self:ClearFocus()
+    end)
+    exportNoteBox:SetScript("OnEditFocusLost", function(self)
+        UI:SetExportNote(self:GetText())
+    end)
+
+    -- ── Live info panel (Details + Credits) ───────────────────────────────
+    -- Sits to the right of the profile controls on the Manage page and updates
+    -- as soon as the active profile changes, so switching profiles shows what
+    -- each one contains without leaving the page.
+    local infoPanel = CreateFrame("Frame", nil, scrollChild, "BackdropTemplate")
+    -- Clear of the profile controls on the left (they run to roughly x=465).
+    infoPanel:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 520, -46)
+    infoPanel:SetPoint("RIGHT", scrollChild, "RIGHT", -20, 0)
+    infoPanel:SetHeight(400)
+    infoPanel:SetBackdrop({
+        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+        edgeFile = "Interface\\ChatFrame\\ChatFrameBackground",
+        tile = false, edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 },
+    })
+    infoPanel:SetBackdropColor(0, 0, 0, 0.35)
+    infoPanel:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.5)
+    infoPanel:Hide()
+
+    local detailsName = infoPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    detailsName:SetPoint("TOPLEFT", infoPanel, "TOPLEFT", 14, -12)
+
+    local detailsMeta = infoPanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    detailsMeta:SetPoint("TOPLEFT", detailsName, "BOTTOMLEFT", 0, -4)
+
+    local detailsHeader = infoPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    detailsHeader:SetPoint("TOPLEFT", detailsMeta, "BOTTOMLEFT", 0, -12)
+    detailsHeader:SetText(L["SETTINGS_SECTION_DETAILS"] or "Profile Details")
+    detailsHeader:SetTextColor(1, 0.82, 0, 1)
+
+    -- Details and Credits stack vertically so each gets the panel's full width
+    -- instead of fighting over two cramped columns.
+    local detailsBody = infoPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    detailsBody:SetPoint("TOPLEFT", detailsHeader, "BOTTOMLEFT", 0, -8)
+    detailsBody:SetPoint("RIGHT", infoPanel, "RIGHT", -14, 0)
+    detailsBody:SetJustifyH("LEFT")
+    detailsBody:SetJustifyV("TOP")
+    detailsBody:SetSpacing(3)
+
+    local creditsHeader = infoPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    creditsHeader:SetPoint("TOPLEFT", detailsBody, "BOTTOMLEFT", 0, -16)
+    creditsHeader:SetText(L["SETTINGS_SECTION_CREDITS"] or "Credits")
+    creditsHeader:SetTextColor(1, 0.82, 0, 1)
+
+    local creditsBody = infoPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    creditsBody:SetPoint("TOPLEFT", creditsHeader, "BOTTOMLEFT", 0, -8)
+    creditsBody:SetPoint("RIGHT", infoPanel, "RIGHT", -14, 0)
+    creditsBody:SetJustifyH("LEFT")
+    creditsBody:SetJustifyV("TOP")
+    creditsBody:SetSpacing(4)
+
+    local clearCreditsBtn = CreateFrame("Button", nil, infoPanel, "UIPanelButtonTemplate")
+    ApplyRedButtonStyle(clearCreditsBtn)
+    clearCreditsBtn:SetSize(130, 24)
+    clearCreditsBtn:SetPoint("BOTTOMLEFT", infoPanel, "BOTTOMLEFT", 14, 12)
+    clearCreditsBtn:SetText(L["SETTINGS_BTN_CLEAR_CREDITS"] or "Clear Credits")
+    clearCreditsBtn:SetScript("OnClick", function()
+        StaticPopupDialogs["OXEDHUB_CLEAR_CREDITS"] = {
+            text = "Clear the import history for the active profile?\nThis only removes the credits list, not the imported content.",
+            button1 = YES or "Yes",
+            button2 = NO or "No",
+            OnAccept = function()
+                local db = OxedHubDB.profiles and OxedHubDB.profiles[OxedHubDB.activeProfile]
+                if db then
+                    db.importSources = nil
+                    db.lastImport = nil
+                end
+                UI:RefreshProfileDetails()
+            end,
+            timeout = 0, whileDead = true, hideOnEscape = true,
+        }
+        StaticPopup_Show("OXEDHUB_CLEAR_CREDITS")
+    end)
+
+    -- Fill both panels from the active profile.
+    function UI:RefreshProfileDetails()
+        local name = OxedHubDB and OxedHubDB.activeProfile
+        local db = name and OxedHubDB.profiles and OxedHubDB.profiles[name]
+        if not db then
+            detailsName:SetText("|cffff5555No active profile|r")
+            detailsMeta:SetText("")
+            detailsBody:SetText("")
+            creditsBody:SetText("")
+            return
+        end
+
+        detailsName:SetText(OxedHub:GetProfileColoredName(name))
+
+        local meta = OxedHub:GetProfileMetadata(name) or {}
+        local metaBits = {}
+        local classToken = OxedHub:GetProfileClassToken(name)
+        if classToken then
+            table.insert(metaBits, "Class: " .. (OxedHub:GetClassDisplayName(classToken) or classToken))
+        end
+        if meta.addonVersion then table.insert(metaBits, "Made with v" .. meta.addonVersion) end
+        if db.lastImport and db.lastImport.date then
+            table.insert(metaBits, "Last import: " .. date("%Y-%m-%d", db.lastImport.date))
+        end
+        detailsMeta:SetText(table.concat(metaBits, "  |  "))
+
+        local s = UI:GetProfileStats(db)
+        local function Row(label, value, extra)
+            return string.format("|cffffd100%s:|r  %s%s", label, tostring(value), extra or "")
+        end
+        detailsBody:SetText(table.concat({
+            Row("Triggers", s.triggers, s.triggers > 0
+                and string.format(" |cff888888(%d on)|r", s.triggersEnabled) or ""),
+            Row("Ring nodes", s.ringNodes),
+            Row("Action Hubs", s.hubs),
+            Row("Toy mixes", s.toyMixes),
+            Row("Toy tabs", s.toyCategories),
+            Row("Custom sounds", s.customSounds),
+            Row("Animations", s.animations),
+            Row("Chat templates", s.chatTemplates),
+        }, "\n"))
+
+        local credits = UI:GetProfileCredits(db)
+        if #credits == 0 then
+            creditsBody:SetText("|cff888888Nothing has been imported into this profile yet.|r")
+            clearCreditsBtn:Hide()
+        else
+            local lines = {}
+            for _, entry in ipairs(credits) do
+                local scopeBits = {}
+                for scope, count in pairs(entry.scopes) do
+                    table.insert(scopeBits, count > 1 and (scope .. " x" .. count) or scope)
+                end
+                table.sort(scopeBits)
+                table.insert(lines, string.format("%s  |cff888888%s|r",
+                    UI:FormatAuthorName(entry.author, true),
+                    entry.lastDate > 0 and date("%Y-%m-%d", entry.lastDate) or ""))
+                table.insert(lines, "   |cff88ff88" .. table.concat(scopeBits, ", ") .. "|r")
+                for _, note in ipairs(entry.notes) do
+                    table.insert(lines, "   |cffffd100Note:|r |cffaaaaaa" .. note .. "|r")
+                end
+            end
+            creditsBody:SetText(table.concat(lines, "\n"))
+            clearCreditsBtn:Show()
+        end
+    end
+
+    -- ── Wire up the Main / Profiles pages ─────────────────────────────────
+    -- Anything created after the boundary snapshot belongs to the Profiles page.
+    -- Three groups, split by the two snapshots: Main, profile management, and
+    -- export/import. Details and Credits are their own frames, so they're
+    -- excluded here and toggled directly.
+    local mainWidgets, manageWidgets, exportWidgets = {}, {}, {}
+    local function Classify(widget)
+        if widget == infoPanel then return end
+        if mainPageSet[widget] then
+            table.insert(mainWidgets, widget)
+        elseif profileManageSet[widget] then
+            table.insert(manageWidgets, widget)
+        else
+            table.insert(exportWidgets, widget)
+        end
+    end
+    for _, child in ipairs({ scrollChild:GetChildren() }) do Classify(child) end
+    for _, region in ipairs({ scrollChild:GetRegions() }) do Classify(region) end
+
+    tab.activePage = tab.activePage or "main"
+    tab.activeProfileSubPage = tab.activeProfileSubPage or "manage"
+
+    local pageTabs, subTabs = {}, {}
+
+    local function ApplyVisibility()
+        local onProfiles = (tab.activePage == "profiles")
+        local sub = tab.activeProfileSubPage
+
+        for _, w in ipairs(mainWidgets) do w:SetShown(not onProfiles) end
+        for _, w in ipairs(manageWidgets) do w:SetShown(onProfiles and sub == "manage") end
+        for _, w in ipairs(exportWidgets) do w:SetShown(onProfiles and sub == "share") end
+        infoPanel:SetShown(onProfiles and sub == "manage")
+        -- The unused "title" fontstring must stay hidden on every page.
+        title:Hide()
+
+        for _, t in ipairs(subTabs) do
+            t:SetShown(onProfiles)
+            if t.subKey == sub then
+                PanelTemplates_SelectTab(t)
+                t:Enable()
+            else
+                PanelTemplates_DeselectTab(t)
+            end
+        end
+        -- Red buttons show their active state via a locked highlight, the same
+        -- way the Toys Mixer / My Mixes buttons do.
+        for _, b in ipairs(pageTabs) do
+            if b.pageKey == tab.activePage then
+                b:LockHighlight()
+            else
+                b:UnlockHighlight()
+            end
+        end
+
+        -- Collapse the sub-tab row on Main so the content moves up to meet it.
+        pageTabStrip:SetHeight(onProfiles and 26 or 1)
+        pageTabLine:SetShown(onProfiles)
+
+        if onProfiles and sub == "manage" then
+            UI:RefreshProfileDetails()
+        end
+
+        -- Size the scroll area to whichever page is showing.
+        local height = 920
+        if onProfiles then
+            height = (sub == "share") and 560 or 620
+        end
+        scrollChild:SetHeight(height)
+        scrollFrame:SetVerticalScroll(0)
+    end
+
+    local function ShowSettingsPage(pageKey)
+        tab.activePage = pageKey
+        ApplyVisibility()
+    end
+    tab.ShowSettingsPage = ShowSettingsPage
+
+    -- Sub-tabs on the second row, shown only while Profiles is active.
+    local prevSubTab
+    for _, sub in ipairs({
+        { key = "manage", label = L["SETTINGS_SUB_MANAGE"] or "Profiles" },
+        { key = "share",  label = L["SETTINGS_SUB_SHARE"] or "Export / Import" },
+    }) do
+        local subTab = CreateFrame("Button", nil, pageTabStrip, "PanelTopTabButtonTemplate")
+        subTab:SetText(sub.label)
+        subTab.subKey = sub.key
+        PanelTemplates_TabResize(subTab, 15, nil, 70)
+        if prevSubTab then
+            subTab:SetPoint("BOTTOMLEFT", prevSubTab, "BOTTOMRIGHT", 4, 0)
+        else
+            subTab:SetPoint("BOTTOMLEFT", pageTabStrip, "BOTTOMLEFT", 0, 0)
+        end
+        subTab:SetScript("OnClick", function(self)
+            tab.activeProfileSubPage = self.subKey
+            ApplyVisibility()
+        end)
+        table.insert(subTabs, subTab)
+        prevSubTab = subTab
+    end
+
+    -- Red page buttons, same style as the Toys "Mixer / My Mixes" pair.
+    local pageBtnX = 0
+    for _, page in ipairs({
+        { key = "main", label = L["SETTINGS_PAGE_MAIN"] or "Main" },
+        { key = "profiles", label = L["SETTINGS_PAGE_PROFILES"] or "Profiles" },
+    }) do
+        local pageBtn = CreateFrame("Button", nil, pageButtonRow, "UIPanelButtonTemplate")
+        ApplyRedButtonStyle(pageBtn)
+        pageBtn:SetSize(90, 25)
+        pageBtn:SetPoint("TOPLEFT", pageButtonRow, "TOPLEFT", pageBtnX, 0)
+        pageBtn:SetText(page.label)
+        pageBtn.pageKey = page.key
+        pageBtn:SetScript("OnClick", function(self) ShowSettingsPage(self.pageKey) end)
+        table.insert(pageTabs, pageBtn)
+        pageBtnX = pageBtnX + 95
+    end
+
+    ShowSettingsPage(tab.activePage)
 
     tab:Hide()
     contentArea.Settings = tab
@@ -3654,10 +4101,108 @@ function UI:ShowAnimationsSubTab(subTabName)
     self:ShowSubTab(subTabName == "Advanced" and "Advanced" or "Animations")
 end
 
+-- The main window contains secure children (mixer SecureActionButton etc.), so
+-- Hide()/Show() on it are protected in combat. In combat we "soft hide" (alpha 0
+-- + mouse off) and perform the real Hide() when combat ends.
+--
+-- We also remove the frame from UISpecialFrames while in combat so that WoW's
+-- built-in Escape handler doesn't call the protected Hide() directly.
+
+-- Helper: hide/show all PlayerModel children (SetAlpha doesn't affect 3D models).
+local function SetModelFramesShown(frame, shown)
+    for _, child in ipairs({ frame:GetChildren() }) do
+        if child:IsObjectType("PlayerModel") or child:IsObjectType("DressUpModel") or child:IsObjectType("CinematicModel") or child:IsObjectType("Model") then
+            if shown then
+                if child._oxedWasShown then
+                    child:Show()
+                    child._oxedWasShown = nil
+                end
+            else
+                if child:IsShown() then
+                    child._oxedWasShown = true
+                    child:Hide()
+                end
+            end
+        end
+        -- Recurse into children
+        SetModelFramesShown(child, shown)
+    end
+end
+
+-- Forward-declare; created after the combat handler below.
+local escapeHelper
+
+local combatHideFrame = CreateFrame("Frame")
+combatHideFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+combatHideFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+combatHideFrame:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+        -- Entering combat: remove from UISpecialFrames to prevent the
+        -- protected Hide() call when pressing Escape.
+        if mainFrame then
+            local frameName = mainFrame:GetName()
+            for i = #UISpecialFrames, 1, -1 do
+                if UISpecialFrames[i] == frameName then
+                    tremove(UISpecialFrames, i)
+                    break
+                end
+            end
+        end
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        -- Leaving combat: re-add to UISpecialFrames.
+        if mainFrame then
+            local frameName = mainFrame:GetName()
+            local found = false
+            for _, name in ipairs(UISpecialFrames) do
+                if name == frameName then found = true; break end
+            end
+            if not found then
+                tinsert(UISpecialFrames, frameName)
+            end
+        end
+        -- Perform the deferred real Hide() if it was soft-hidden.
+        if UI._pendingCombatHide and mainFrame then
+            UI._pendingCombatHide = nil
+            mainFrame:Hide()
+            mainFrame:SetAlpha(1)
+            mainFrame:EnableMouse(true)
+            SetModelFramesShown(mainFrame, true)
+        end
+    end
+end)
+
+-- Separate non-secure frame to intercept Escape during combat.
+-- It stays active at all times but only acts when the main frame is visible
+-- in combat. We never call SetPropagateKeyboardInput during combat to avoid
+-- taint; propagation stays true so all keys pass through normally.
+escapeHelper = CreateFrame("Frame", "OxedHubEscapeHelper", UIParent)
+escapeHelper:EnableKeyboard(true)
+escapeHelper:SetPropagateKeyboardInput(true)
+escapeHelper:SetScript("OnKeyDown", function(self, key)
+    if key == "ESCAPE" and InCombatLockdown() and mainFrame
+       and mainFrame:IsShown() and not UI._pendingCombatHide then
+        UI:HideMainWindow()
+    end
+    -- Propagation stays true (set at creation), so all keys pass through.
+end)
+
 -- Show main window
 function UI:ShowMainWindow()
     if mainFrame then
-        mainFrame:Show()
+        self._pendingCombatHide = nil
+        mainFrame:SetAlpha(1)
+        mainFrame:EnableMouse(true)
+        SetModelFramesShown(mainFrame, true)
+        if InCombatLockdown() then
+            -- Show() is equally protected; only possible if the frame is already
+            -- shown-but-soft-hidden. If it's truly hidden, we can't open in combat.
+            if not mainFrame:IsShown() then
+                print("|cffff0000[OxedHub]|r Cannot open the window during combat.")
+                return
+            end
+        else
+            mainFrame:Show()
+        end
         OxedHub.db.profile.settings.mainWindowVisible = true
     end
 end
@@ -3665,7 +4210,15 @@ end
 -- Hide main window
 function UI:HideMainWindow()
     if mainFrame then
-        mainFrame:Hide()
+        if InCombatLockdown() then
+            -- Protected in combat: hide visually now, really hide after combat.
+            mainFrame:SetAlpha(0)
+            mainFrame:EnableMouse(false)
+            SetModelFramesShown(mainFrame, false)
+            self._pendingCombatHide = true
+        else
+            mainFrame:Hide()
+        end
         OxedHub.db.profile.settings.mainWindowVisible = false
     end
 end
@@ -3742,20 +4295,37 @@ local EXPORT_CHUNK_PREFIX = "OHUBCHUNK1"
 local EXPORT_CHUNK_PAYLOAD_CHARS = EXPORT_MAX_CHARS
 local EXPORT_COMPRESSED_PREFIX = "OHUBX1:"
 
+-- Profile keys that must NOT travel with an export. Everything else in a profile
+-- is exported generically, so new features (OxedRing nodes, reactions, keybinds,
+-- etc.) are included automatically instead of being silently dropped by a
+-- hand-maintained allow-list that drifts out of date.
+local EXPORT_SKIP_KEYS = {
+    toyCollectionCache = true, -- character-specific toy-box scan cache; regenerated locally
+    testRing = true,           -- legacy pre-migration remnant
+}
+
+-- Reserved payload-envelope keys (added by the exporter, not part of profile data).
+local EXPORT_ENVELOPE_KEYS = {
+    version = true,
+    profileName = true,
+}
+
 local function BuildProfileExportPayload(profileName, db)
-    return {
+    local payload = {
         version = 1,
         profileName = profileName,
-        metadata = db.metadata,
-        triggers = db.triggers,
-        customSounds = db.customSounds,
-        animations = db.animations,
-        emotionMappings = db.emotionMappings,
-        chatTemplates = db.chatTemplates,
-        settings = db.settings,
-        actionHub = db.actionHub,
-        toyMixes = db.toyMixes,
+        -- Author stamp so plain profile exports are credited too, not just the
+        -- v3 scoped envelopes. Filled by UI.CaptureAuthorMeta, which is declared
+        -- further down this file. Nickname, character-realm, class and region
+        -- are always captured; the note comes from the Export/Import page.
+        _author = UI.CaptureAuthorMeta and UI.CaptureAuthorMeta(UI:GetExportNote()),
     }
+    for key, value in pairs(db) do
+        if not EXPORT_SKIP_KEYS[key] and not EXPORT_ENVELOPE_KEYS[key] then
+            payload[key] = value
+        end
+    end
+    return payload
 end
 
 function UI:SerializeProfile(activeOnly)
@@ -3806,6 +4376,715 @@ function UI:SerializeSelectedProfiles(profileNames)
     end
 
     return AceSerializer:Serialize(export)
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Scoped export/import (format v3). A typed envelope lets us export/import
+-- specific slices (triggers, OxedRing, toy mixes, hubs) and carry author info
+-- for attribution. v1/v2 profile strings still import via UI:ApplyImport below.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- Profile keys that make up the OxedRing configuration.
+local OXEDRING_KEYS = {
+    "oxedRingNodes", "oxedRingBackupNodes", "oxedRingRadius", "oxedRingStyle",
+    "oxedRingBinding", "oxedRingShowNodeTitles", "oxedRingNodeTitleSize",
+    "oxedRingGlobalNodeSize", "oxedRingVisibleTabs",
+}
+
+-- Snapshot of who/where produced an export, embedded in every v3 envelope.
+-- Optional display name attached to exports, so shared content can be credited
+-- to a handle rather than just character-realm. Stored globally (not per-profile)
+-- because it describes the player, not the profile.
+function UI:GetExportNickname()
+    local gs = OxedHubDB and OxedHubDB.globalSettings
+    local nick = gs and gs.exportNickname
+    if type(nick) == "string" and nick:gsub("%s", "") ~= "" then
+        return nick
+    end
+    return nil
+end
+
+function UI:SetExportNickname(nick)
+    OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+    nick = type(nick) == "string" and nick:gsub("^%s*(.-)%s*$", "%1") or ""
+    OxedHubDB.globalSettings.exportNickname = (nick ~= "") and nick or nil
+end
+
+-- Default note attached to exports made from the Export/Import page.
+function UI:GetExportNote()
+    local gs = OxedHubDB and OxedHubDB.globalSettings
+    local note = gs and gs.exportNote
+    if type(note) == "string" and note:gsub("%s", "") ~= "" then
+        return note
+    end
+    return nil
+end
+
+function UI:SetExportNote(note)
+    OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+    note = type(note) == "string" and note:gsub("^%s*(.-)%s*$", "%1") or ""
+    OxedHubDB.globalSettings.exportNote = (note ~= "") and note or nil
+end
+
+local function CaptureAuthorMeta(note)
+    local name = UnitName("player")
+    local realm = GetRealmName()
+    local _, classToken = UnitClass("player")
+    local faction = UnitFactionGroup("player")
+    local region
+    if GetCurrentRegionName then
+        local ok, r = pcall(GetCurrentRegionName)
+        if ok then region = r end
+    end
+    note = note and note:gsub("^%s*(.-)%s*$", "%1") or ""
+    return {
+        character = name,
+        realm = realm,
+        region = region,
+        class = classToken,
+        faction = faction,
+        nickname = UI:GetExportNickname(),
+        date = time(),
+        dateStr = date("%Y-%m-%d"),
+        addonVersion = (OxedHub.CONFIG and OxedHub.CONFIG.VERSION) or "?",
+        note = (note ~= "") and note or nil,
+    }
+end
+
+-- Exposed so code declared earlier in the file (BuildProfileExportPayload) can
+-- reach it at call time.
+UI.CaptureAuthorMeta = CaptureAuthorMeta
+
+-- Display name for a recorded author: nickname when they set one, otherwise
+-- character-realm. Used by the credits list and import preview.
+function UI:FormatAuthorName(author, colorize)
+    if type(author) ~= "table" then return "unknown" end
+    local base = author.nickname
+    if not base then
+        base = author.character and (author.character .. "-" .. tostring(author.realm or "?")) or "unknown"
+    elseif author.character then
+        base = base .. " |cff888888(" .. author.character .. "-" .. tostring(author.realm or "?") .. ")|r"
+    end
+    if colorize and author.class then
+        local colors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
+        local c = colors and colors[author.class]
+        if c then
+            local hex = c.GenerateHexColor and c:GenerateHexColor()
+                or (c.colorStr and "ff" .. c.colorStr:sub(-6))
+                or string.format("ff%02x%02x%02x", (c.r or 1) * 255, (c.g or 1) * 255, (c.b or 1) * 255)
+            return "|c" .. hex .. base .. "|r"
+        end
+    end
+    return base
+end
+
+-- What a profile actually contains, for the Details panel.
+function UI:GetProfileStats(db)
+    local stats = {
+        triggers = 0, triggersEnabled = 0,
+        ringNodes = 0, hubs = 0, toyMixes = 0,
+        customSounds = 0, animations = 0, chatTemplates = 0,
+        toyCategories = 0,
+    }
+    if type(db) ~= "table" then return stats end
+
+    for _, trig in pairs(db.triggers or {}) do
+        stats.triggers = stats.triggers + 1
+        if trig.enabled ~= false then
+            stats.triggersEnabled = stats.triggersEnabled + 1
+        end
+    end
+    for _, node in pairs(db.oxedRingNodes or {}) do
+        if type(node) == "table" and node.type then
+            stats.ringNodes = stats.ringNodes + 1
+        end
+    end
+    stats.hubs = #((db.actionHub and db.actionHub.hubs) or {})
+    for _ in pairs(db.toyMixes or {}) do stats.toyMixes = stats.toyMixes + 1 end
+    for _ in pairs(db.customSounds or {}) do stats.customSounds = stats.customSounds + 1 end
+    for _ in pairs(db.animations or {}) do stats.animations = stats.animations + 1 end
+    for _ in pairs(db.chatTemplates or {}) do stats.chatTemplates = stats.chatTemplates + 1 end
+    stats.toyCategories = #(db.toyCategories or {})
+
+    return stats
+end
+
+-- Collapse importSources into one entry per contributor, listing everything
+-- they contributed. Newest contribution first.
+function UI:GetProfileCredits(db)
+    if type(db) ~= "table" or type(db.importSources) ~= "table" then return {} end
+
+    local byAuthor, order = {}, {}
+    for _, src in ipairs(db.importSources) do
+        local a = src.author or {}
+        local key = (a.nickname or "?") .. "|" .. tostring(a.character) .. "-" .. tostring(a.realm)
+        local entry = byAuthor[key]
+        if not entry then
+            entry = { author = a, scopes = {}, count = 0, lastDate = 0, notes = {}, noteSeen = {} }
+            byAuthor[key] = entry
+            table.insert(order, entry)
+        end
+        entry.count = entry.count + 1
+        entry.scopes[src.scope or "?"] = (entry.scopes[src.scope or "?"] or 0) + 1
+        local when = src.date or a.date or 0
+        if when > entry.lastDate then entry.lastDate = when end
+        if a.note and not entry.noteSeen[a.note] then
+            entry.noteSeen[a.note] = true
+            table.insert(entry.notes, a.note)
+        end
+    end
+
+    table.sort(order, function(x, y) return (x.lastDate or 0) > (y.lastDate or 0) end)
+    return order
+end
+
+-- All scopes the export dropdown offers. `needs` names the extra target the UI
+-- must collect (a profile / a trigger set / a hub); nil = no target needed.
+UI.EXPORT_SCOPES = {
+    { key = "profile_current", scope = "profile", label = "Current Profile", needs = nil },
+    { key = "profile_specific", scope = "profiles", label = "Specific Profile", needs = "profile" },
+    { key = "triggers_all", scope = "triggers", label = "All Triggers", needs = nil },
+    { key = "triggers_selected", scope = "triggers", label = "Selected Triggers", needs = "triggers" },
+    { key = "oxedring", scope = "oxedring", label = "OxedRing", needs = nil },
+    { key = "toymixes", scope = "toymixes", label = "Toy Mixer", needs = nil },
+    { key = "hubs_all", scope = "hubs", label = "All Hubs", needs = nil },
+    { key = "hub_specific", scope = "hubs", label = "Specific Hub", needs = "hub" },
+}
+
+-- Human-readable summary of what an envelope contains (for the import preview).
+function UI:DescribeEnvelope(env)
+    if type(env) ~= "table" then return "Unknown data" end
+    local scope = env.scope
+    local p = env.payload or {}
+    if scope == "profiles" then
+        local n = 0
+        for _ in pairs(p.profiles or {}) do n = n + 1 end
+        return string.format("%d profile(s)", n)
+    elseif scope == "profile" then
+        return "1 profile (" .. tostring(p.profileName or "?") .. ")"
+    elseif scope == "triggers" then
+        local n = 0
+        for _ in pairs(p.triggers or {}) do n = n + 1 end
+        return string.format("%d trigger(s)", n)
+    elseif scope == "oxedring" then
+        local n = #(p.oxedRingNodes or {})
+        return string.format("OxedRing config (%d nodes)", n)
+    elseif scope == "toymixes" then
+        local n = 0
+        for _ in pairs(p.toyMixes or {}) do n = n + 1 end
+        return string.format("%d toy mix(es)", n)
+    elseif scope == "hubs" then
+        return string.format("%d ActionHub(s)", #(p.hubs or {}))
+    end
+    return "Unknown scope"
+end
+
+-- Everything the confirmation popup needs to describe an incoming import:
+-- what it contains, who made it, and where it will land.
+function UI:BuildImportSummary(data)
+    if type(data) ~= "table" then
+        return "Unknown import data.", false
+    end
+
+    -- One "Triggers 12  •  Ring nodes 8  •  ..." line describing a profile
+    -- payload. Payloads carry the same keys as a live profile db, so the
+    -- Details-panel stats function works on them directly.
+    local function ProfileContents(payloadDB, indent)
+        local s = self:GetProfileStats(payloadDB)
+        local bits = {}
+        local function Add(label, n)
+            if n and n > 0 then table.insert(bits, label .. " |cffffffff" .. n .. "|r") end
+        end
+        Add("Triggers", s.triggers)
+        Add("Ring nodes", s.ringNodes)
+        Add("Hubs", s.hubs)
+        Add("Toy mixes", s.toyMixes)
+        Add("Sounds", s.customSounds)
+        Add("Animations", s.animations)
+        Add("Chat", s.chatTemplates)
+        if #bits == 0 then return (indent or "") .. "|cff888888(empty)|r" end
+        return (indent or "") .. "|cffaaaaaa" .. table.concat(bits, "  •  ") .. "|r"
+    end
+
+    local function DescribeProfileSet(profiles)
+        local out, count = {}, 0
+        for name, pdb in pairs(profiles or {}) do
+            count = count + 1
+            if count <= 5 then
+                table.insert(out, "|cff88ff88" .. tostring(name) .. "|r")
+                table.insert(out, ProfileContents(pdb, "   "))
+            end
+        end
+        if count > 5 then
+            table.insert(out, "|cff888888…and " .. (count - 5) .. " more|r")
+        end
+        return out, count
+    end
+
+    local lines = {}
+    local isPartial = false
+
+    if data.formatVersion == 3 and data.scope then
+        local scope = data.scope
+        local p = data.payload or {}
+        isPartial = not (scope == "profile" or scope == "profiles")
+
+        if scope == "profile" then
+            table.insert(lines, "|cffffd100Profile:|r |cff88ff88"
+                .. tostring(p.profileName or "?") .. "|r")
+            table.insert(lines, ProfileContents(p, "   "))
+        elseif scope == "profiles" then
+            local rows, count = DescribeProfileSet(p.profiles)
+            table.insert(lines, string.format("|cffffd100Contains:|r %d profile(s)", count))
+            for _, row in ipairs(rows) do table.insert(lines, row) end
+        else
+            table.insert(lines, "|cffffd100Contains:|r " .. self:DescribeEnvelope(data))
+        end
+
+        local author = data.author
+        if author then
+            table.insert(lines, "|cffffd100From:|r " .. self:FormatAuthorName(author))
+            local bits = {}
+            if author.class then table.insert(bits, author.class) end
+            if author.region then table.insert(bits, author.region) end
+            if author.dateStr then table.insert(bits, author.dateStr) end
+            if author.addonVersion then table.insert(bits, "v" .. author.addonVersion) end
+            if #bits > 0 then
+                table.insert(lines, "|cff888888" .. table.concat(bits, ", ") .. "|r")
+            end
+            if author.note then
+                table.insert(lines, "|cffaaaaaa\"" .. author.note .. "\"|r")
+            end
+        end
+    else
+        -- v1 (single profile) / v2 (multi-profile) legacy payloads.
+        if data.profiles then
+            local rows, count = DescribeProfileSet(data.profiles)
+            table.insert(lines, string.format("|cffffd100Contains:|r %d profile(s)", count))
+            for _, row in ipairs(rows) do table.insert(lines, row) end
+        else
+            table.insert(lines, "|cffffd100Profile:|r |cff88ff88"
+                .. tostring(data.profileName or "?") .. "|r")
+            table.insert(lines, ProfileContents(data, "   "))
+        end
+    end
+
+    if isPartial then
+        local target = UI.importTargetProfile or (OxedHubDB and OxedHubDB.activeProfile) or "?"
+        table.insert(lines, "|cffffd100Imports into:|r " .. target)
+        table.insert(lines, "|cffff8800Existing items with the same name or ID will be overwritten.|r")
+    else
+        table.insert(lines, "|cffffd100Imports into:|r new profile(s)")
+    end
+
+    return table.concat(lines, "\n"), isPartial
+end
+
+-- Structured breakdown of an import, used by the confirmation dialog's table.
+-- Returns: headerText, rows { {label, value} }, authorLines, isPartial, scopeText
+function UI:GetImportDetails(data)
+    local rows, authorLines = {}, {}
+    local header, scopeText = "Unknown data", nil
+    local isPartial = false
+
+    local function StatRows(payloadDB)
+        local s = self:GetProfileStats(payloadDB)
+        return {
+            { "Triggers", s.triggers > 0
+                and string.format("%d |cff888888(%d enabled)|r", s.triggers, s.triggersEnabled)
+                or "0" },
+            { "OxedRing nodes", s.ringNodes },
+            { "Action Hubs", s.hubs },
+            { "Toy mixes", s.toyMixes },
+            { "Toy tabs", s.toyCategories },
+            { "Custom sounds", s.customSounds },
+            { "Animations", s.animations },
+            { "Chat templates", s.chatTemplates },
+        }
+    end
+
+    if type(data) ~= "table" then
+        return header, rows, authorLines, false, nil
+    end
+
+    if data.formatVersion == 3 and data.scope then
+        local scope, p = data.scope, data.payload or {}
+        isPartial = not (scope == "profile" or scope == "profiles")
+
+        if scope == "profile" then
+            header = "Profile: |cff88ff88" .. tostring(p.profileName or "?") .. "|r"
+            rows = StatRows(p)
+        elseif scope == "profiles" then
+            local count = 0
+            for name, pdb in pairs(p.profiles or {}) do
+                count = count + 1
+                local s = self:GetProfileStats(pdb)
+                table.insert(rows, { "|cff88ff88" .. tostring(name) .. "|r",
+                    string.format("%d triggers, %d ring, %d hubs, %d mixes",
+                        s.triggers, s.ringNodes, s.hubs, s.toyMixes) })
+            end
+            header = string.format("%d profile(s)", count)
+        else
+            header = self:DescribeEnvelope(data)
+            scopeText = scope
+            if scope == "triggers" then
+                for id, trig in pairs(p.triggers or {}) do
+                    table.insert(rows, { trig.name or id,
+                        (trig.event or "?") .. (trig.enabled == false and " |cff888888(off)|r" or "") })
+                end
+            elseif scope == "toymixes" then
+                for name in pairs(p.toyMixes or {}) do
+                    table.insert(rows, { name, "toy mix" })
+                end
+            elseif scope == "oxedring" then
+                local filled = 0
+                for _, node in pairs(p.oxedRingNodes or {}) do
+                    if type(node) == "table" and node.type then filled = filled + 1 end
+                end
+                table.insert(rows, { "Ring nodes", filled })
+                table.insert(rows, { "Radius", p.oxedRingRadius or "default" })
+                table.insert(rows, { "Keybind", p.oxedRingBinding or "none" })
+            elseif scope == "hubs" then
+                for i, hub in ipairs(p.hubs or {}) do
+                    local slots = 0
+                    for _, s in pairs(hub.slots or {}) do
+                        if type(s) == "table" and s.type then slots = slots + 1 end
+                    end
+                    table.insert(rows, { hub.name or ("Hub " .. i), slots .. " slots" })
+                end
+            end
+        end
+
+        local a = data.author
+        if a then
+            table.insert(authorLines, "|cffffd100From:|r " .. self:FormatAuthorName(a, true))
+            local bits = {}
+            if a.class then table.insert(bits, a.class) end
+            if a.region then table.insert(bits, a.region) end
+            if a.dateStr then table.insert(bits, a.dateStr) end
+            if a.addonVersion then table.insert(bits, "OxedHub v" .. a.addonVersion) end
+            if #bits > 0 then
+                table.insert(authorLines, "|cff888888" .. table.concat(bits, "  •  ") .. "|r")
+            end
+            if a.note then
+                table.insert(authorLines, "|cffaaaaaa\"" .. a.note .. "\"|r")
+            end
+        end
+    else
+        -- Legacy v1 / v2 payloads.
+        if data.profiles then
+            local count = 0
+            for name, pdb in pairs(data.profiles) do
+                count = count + 1
+                local s = self:GetProfileStats(pdb)
+                table.insert(rows, { "|cff88ff88" .. tostring(name) .. "|r",
+                    string.format("%d triggers, %d ring, %d hubs, %d mixes",
+                        s.triggers, s.ringNodes, s.hubs, s.toyMixes) })
+            end
+            header = string.format("%d profile(s)", count)
+        else
+            header = "Profile: |cff88ff88" .. tostring(data.profileName or "?") .. "|r"
+            rows = StatRows(data)
+        end
+
+        -- v1/v2 exports carry the author on _author rather than in an envelope.
+        local a = data._author
+        if a then
+            table.insert(authorLines, "|cffffd100From:|r " .. self:FormatAuthorName(a, true))
+            local bits = {}
+            if a.class then table.insert(bits, a.class) end
+            if a.region then table.insert(bits, a.region) end
+            if a.dateStr then table.insert(bits, a.dateStr) end
+            if a.addonVersion then table.insert(bits, "OxedHub v" .. a.addonVersion) end
+            if #bits > 0 then
+                table.insert(authorLines, "|cff888888" .. table.concat(bits, "  •  ") .. "|r")
+            end
+            if a.note then
+                table.insert(authorLines, "|cffaaaaaa\"" .. a.note .. "\"|r")
+            end
+        end
+    end
+
+    if #authorLines == 0 then
+        table.insert(authorLines, "|cff888888From: unknown (export has no author info)|r")
+    end
+
+    return header, rows, authorLines, isPartial, scopeText
+end
+
+-- Roomy confirmation dialog: shows the contents as a scrollable table, who sent
+-- it, and where it lands, with Import / New Profile / Cancel.
+function UI:ShowImportConfirm(data, onImported)
+    local f = UI.importConfirmFrame
+    if not f then
+        f = CreateFrame("Frame", "OxedHubImportConfirmFrame", UIParent, "BasicFrameTemplateWithInset")
+        f:SetSize(560, 480)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:SetToplevel(true)
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        tinsert(UISpecialFrames, "OxedHubImportConfirmFrame")
+        if f.TitleText then f.TitleText:SetText("Confirm Import") end
+        if f.CloseButton then f.CloseButton:SetScript("OnClick", function() f:Hide() end) end
+
+        f.header = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        f.header:SetPoint("TOPLEFT", 16, -34)
+        f.header:SetTextColor(1, 0.82, 0, 1)
+
+        f.author = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        f.author:SetPoint("TOPLEFT", f.header, "BOTTOMLEFT", 0, -6)
+        f.author:SetWidth(510)
+        f.author:SetJustifyH("LEFT")
+        f.author:SetSpacing(2)
+
+        -- Scrollable contents table.
+        local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", f.author, "BOTTOMLEFT", 0, -10)
+        scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -34, 84)
+        StyleScrollFrame(scroll)
+        local child = CreateFrame("Frame", nil, scroll)
+        child:SetSize(490, 1)
+        scroll:SetScrollChild(child)
+        f.scroll, f.tableChild = scroll, child
+        f.rowPool = {}
+
+        f.targetLine = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        f.targetLine:SetPoint("BOTTOMLEFT", 16, 50)
+        f.targetLine:SetWidth(510)
+        f.targetLine:SetJustifyH("LEFT")
+        f.targetLine:SetJustifyV("BOTTOM")
+        f.targetLine:SetSpacing(2)
+
+        f.cancelBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        ApplyRedButtonStyle(f.cancelBtn)
+        f.cancelBtn:SetSize(100, 26)
+        f.cancelBtn:SetPoint("BOTTOMRIGHT", -14, 16)
+        f.cancelBtn:SetText(CANCEL or "Cancel")
+        f.cancelBtn:SetScript("OnClick", function() f:Hide() end)
+
+        f.newProfileBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        ApplyRedButtonStyle(f.newProfileBtn)
+        f.newProfileBtn:SetSize(140, 26)
+        f.newProfileBtn:SetPoint("RIGHT", f.cancelBtn, "LEFT", -8, 0)
+        f.newProfileBtn:SetText("New Profile")
+
+        f.importBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        ApplyRedButtonStyle(f.importBtn)
+        f.importBtn:SetSize(100, 26)
+        f.importBtn:SetPoint("RIGHT", f.newProfileBtn, "LEFT", -8, 0)
+        f.importBtn:SetText("Import")
+
+        UI.importConfirmFrame = f
+    end
+
+    local header, rows, authorLines, isPartial = self:GetImportDetails(data)
+    f.header:SetText(header)
+    f.author:SetText(table.concat(authorLines, "\n"))
+
+    -- Rebuild the table rows (pooled so repeated opens don't leak frames).
+    for _, row in ipairs(f.rowPool) do row:Hide() end
+    local y = 0
+    for i, entry in ipairs(rows) do
+        local row = f.rowPool[i]
+        if not row then
+            row = CreateFrame("Frame", nil, f.tableChild)
+            row:SetHeight(20)
+            row.bg = row:CreateTexture(nil, "BACKGROUND")
+            row.bg:SetAllPoints()
+            row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            row.label:SetPoint("LEFT", row, "LEFT", 6, 0)
+            row.label:SetJustifyH("LEFT")
+            row.label:SetWidth(280)
+            row.value = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            row.value:SetPoint("LEFT", row, "LEFT", 292, 0)
+            row.value:SetJustifyH("LEFT")
+            row.value:SetWidth(190)
+            f.rowPool[i] = row
+        end
+        row:SetParent(f.tableChild)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", f.tableChild, "TOPLEFT", 0, -y)
+        row:SetPoint("RIGHT", f.tableChild, "RIGHT", 0, 0)
+        -- Zebra striping so long lists stay readable.
+        row.bg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.03 or 0)
+        row.label:SetText(tostring(entry[1]))
+        row.value:SetText(tostring(entry[2]))
+        row:Show()
+        y = y + 20
+    end
+    f.tableChild:SetHeight(math.max(y, 1))
+    f.scroll:SetVerticalScroll(0)
+
+    local target = UI.importTargetProfile or (OxedHubDB and OxedHubDB.activeProfile) or "?"
+    local targetText
+    if isPartial then
+        -- Partial data merges into a profile you pick, so overwriting is real.
+        targetText = "|cffffd100Imports into:|r " .. target
+            .. "\n|cffff8800Items with the same name or ID will be overwritten.|r"
+        f.newProfileBtn:Show()
+    else
+        -- Full profiles always land in a new profile; a clashing name gets a
+        -- suffix rather than replacing what you already have.
+        local incoming = "?"
+        local p = (data.formatVersion == 3 and data.payload) or data
+        if p and p.profileName then incoming = p.profileName end
+
+        if OxedHubDB.profiles and OxedHubDB.profiles[incoming] then
+            targetText = "|cffffd100Creates profile:|r " .. incoming .. " (Imported)"
+                .. "\n|cff888888You already have a profile called '" .. incoming
+                .. "' — it will not be touched.|r"
+        else
+            targetText = "|cffffd100Creates profile:|r " .. incoming
+        end
+        -- Nothing for the button to do here: the import is already non-destructive.
+        f.newProfileBtn:Hide()
+    end
+
+    -- Warn about sounds/animations this client doesn't have.
+    local missingSounds, missingAnimations = self:ValidateImport(data)
+    local missing = {}
+    if #missingSounds > 0 then
+        table.insert(missing, #missingSounds .. " sound(s)")
+    end
+    if #missingAnimations > 0 then
+        table.insert(missing, #missingAnimations .. " animation(s)")
+    end
+    if #missing > 0 then
+        targetText = targetText .. "\n|cffffcc00Missing on this client: "
+            .. table.concat(missing, ", ") .. "|r"
+    end
+    f.targetLine:SetText(targetText)
+
+    f.importBtn:SetScript("OnClick", function()
+        f:Hide()
+        UI:ApplyImport(data)
+        if onImported then onImported() end
+    end)
+
+    -- Partial data into a fresh empty profile, leaving existing ones untouched.
+    -- (Only offered for partial scopes; full profiles already create their own.)
+    f.newProfileBtn:SetScript("OnClick", function()
+        local base, name, n = "Imported", "Imported", 1
+        while OxedHubDB.profiles[name] do
+            n = n + 1
+            name = base .. " " .. n
+        end
+
+        local ok, err = OxedHub:CreateProfile(name, false)
+        if not ok then
+            print("|cffff0000Oxed Hub:|r Could not create a profile"
+                .. (err == "max_profiles" and " — profile limit reached." or "."))
+            return
+        end
+
+        UI.importTargetProfile = name
+        f:Hide()
+        UI:ApplyImport(data)
+        if onImported then onImported() end
+        print("|cff00ff00Oxed Hub:|r Imported into new profile |cffffff00" .. name .. "|r.")
+    end)
+
+    f:Show()
+    f:Raise()
+end
+
+-- Build a v3 envelope (serialized). opts: { note, profileNames, triggerIDs, hubIndex }
+function UI:SerializeScoped(scope, opts)
+    opts = opts or {}
+    local activeName = OxedHubDB.activeProfile
+    local profile = OxedHubDB.profiles and OxedHubDB.profiles[activeName]
+    if not profile then return nil, "No active profile." end
+
+    local envelope = {
+        oxedhub = true,
+        formatVersion = 3,
+        scope = scope,
+        author = CaptureAuthorMeta(opts.note),
+        payload = {},
+    }
+
+    if scope == "profile" then
+        envelope.payload = BuildProfileExportPayload(activeName, profile)
+    elseif scope == "profiles" then
+        local out = { profiles = {}, activeProfile = activeName }
+        local names = opts.profileNames
+        if names and #names > 0 then
+            for _, n in ipairs(names) do
+                if OxedHubDB.profiles[n] then out.profiles[n] = BuildProfileExportPayload(n, OxedHubDB.profiles[n]) end
+            end
+        else
+            for n, db in pairs(OxedHubDB.profiles) do out.profiles[n] = BuildProfileExportPayload(n, db) end
+        end
+        if not next(out.profiles) then return nil, "No profiles to export." end
+        envelope.payload = out
+    elseif scope == "triggers" then
+        local out = {}
+        local src = profile.triggers or {}
+        if opts.triggerIDs and #opts.triggerIDs > 0 then
+            for _, id in ipairs(opts.triggerIDs) do if src[id] then out[id] = src[id] end end
+        else
+            for id, t in pairs(src) do out[id] = t end
+        end
+        if not next(out) then return nil, "No triggers to export." end
+        envelope.payload = { triggers = out }
+    elseif scope == "oxedring" then
+        local out = {}
+        for _, k in ipairs(OXEDRING_KEYS) do out[k] = profile[k] end
+        envelope.payload = out
+    elseif scope == "toymixes" then
+        if not (profile.toyMixes and next(profile.toyMixes)) then return nil, "No toy mixes to export." end
+        envelope.payload = { toyMixes = profile.toyMixes }
+    elseif scope == "hubs" then
+        local ah = profile.actionHub or {}
+        local hubs = ah.hubs or {}
+        if opts.hubIndex then
+            local one = hubs[opts.hubIndex]
+            if not one then return nil, "Hub not found." end
+            envelope.payload = { hubs = { one } }
+        else
+            if #hubs == 0 then return nil, "No hubs to export." end
+            envelope.payload = { hubs = hubs }
+        end
+    else
+        return nil, "Unknown export scope: " .. tostring(scope)
+    end
+
+    return AceSerializer:Serialize(envelope)
+end
+
+-- Build a human-readable "imported from…" summary for a profile's hover tooltip.
+-- Returns nil if the profile has no recorded import sources.
+function UI:GetProfileOriginText(db)
+    if type(db) ~= "table" or type(db.importSources) ~= "table" or #db.importSources == 0 then
+        return nil
+    end
+    local lines = { "|cffffd100Imported content:|r" }
+    for _, src in ipairs(db.importSources) do
+        local a = src.author or {}
+        local who = a.character and (a.character .. "-" .. tostring(a.realm or "?")) or "unknown"
+        local extra = {}
+        if a.class then table.insert(extra, a.class) end
+        if a.region then table.insert(extra, a.region) end
+        if a.dateStr then table.insert(extra, a.dateStr) end
+        local suffix = (#extra > 0) and (" (" .. table.concat(extra, ", ") .. ")") or ""
+        table.insert(lines, string.format("|cff88ff88%s|r: %s%s", tostring(src.scope), who, suffix))
+        if a.note then
+            table.insert(lines, "   |cffaaaaaa\"" .. a.note .. "\"|r")
+        end
+    end
+    return table.concat(lines, "\n")
+end
+
+-- Record where a piece of imported data came from (for the hover tooltip).
+function UI:StampImportSource(db, author, scope)
+    if not db or not author then return end
+    db.importSources = db.importSources or {}
+    table.insert(db.importSources, { author = author, scope = scope, date = time() })
+    db.lastImport = { author = author, scope = scope, date = time() }
 end
 
 local function CompressExportString(serialized)
@@ -3931,6 +5210,18 @@ function UI:BuildExportString(profileNames, forceMultiProfile)
     return exportString
 end
 
+-- Build the final (compressed, size-checked) export string for a scoped export.
+function UI:BuildScopedExportString(scope, opts)
+    local serialized, err = self:SerializeScoped(scope, opts)
+    if not serialized then return nil, err end
+    local exportString = BuildCompressedOrRawExport(serialized)
+    if not exportString then return nil, "Failed to build export string." end
+    if #exportString > EXPORT_MAX_CHARS then
+        return nil, string.format("Export is too large: %d / %d characters.", #exportString, EXPORT_MAX_CHARS)
+    end
+    return exportString
+end
+
 function UI:GetExportEstimate(profileNames, forceMultiProfile)
     local exportString, err = self:BuildExportStringUnbounded(profileNames, forceMultiProfile)
     if not exportString then
@@ -4014,6 +5305,10 @@ function UI:HandleChunkedImport(frame, chunkInfo)
 end
 
 function UI:ValidateImport(data)
+    -- Unwrap v3 envelopes so sound/animation checks see the actual payload.
+    if type(data) == "table" and data.formatVersion == 3 and data.payload then
+        data = data.payload
+    end
     local missingSounds = {}
     local missingAnimations = {}
     local localSounds = OxedHub.db.profile.customSounds or {}
@@ -4054,6 +5349,20 @@ function UI:ValidateImport(data)
     for k in pairs(missingAnimations) do table.insert(animList, k) end
     return soundList, animList
 end
+
+-- Keys the block below handles explicitly (special merge logic), plus the payload
+-- envelope and volatile caches. The generic pass at the end applies everything
+-- NOT in this set, so newly-added profile sections import without code changes.
+local IMPORT_HANDLED_KEYS = {
+    -- payload envelope (not profile data)
+    version = true, profileName = true,
+    -- volatile / character-specific — do not import
+    toyCollectionCache = true, testRing = true,
+    -- handled by dedicated blocks below
+    metadata = true, customSounds = true, animations = true, chatTemplates = true,
+    emotionMappings = true, triggers = true, settings = true, actionHub = true,
+    toyMixes = true,
+}
 
 function UI:_ApplySingleProfileData(db, data)
     if data.metadata then
@@ -4119,17 +5428,153 @@ function UI:_ApplySingleProfileData(db, data)
             db.toyMixes[id] = mix
         end
     end
+
+    -- Generic apply for every other profile field the special cases above don't
+    -- cover (OxedRing nodes/style/radius/bindings, customReactions, keybinds,
+    -- emoteMerges, showcase*, internalMacros, toyRingMappings, experimental, ...).
+    -- Without this, those sections were silently lost on import.
+    for key, value in pairs(data) do
+        if not IMPORT_HANDLED_KEYS[key] then
+            if type(value) == "table" then
+                db[key] = CopyTable(value)
+            else
+                db[key] = value
+            end
+        end
+    end
+
     if OxedHub.Core and OxedHub.Core.MigrateLegacySoundPathsAndIds then
         OxedHub.Core:MigrateLegacySoundPathsAndIds()
     end
 end
 
+-- Apply a v3 scoped envelope. Partial scopes REPLACE-by-key into the ACTIVE
+-- profile (imported item overwrites the same-keyed existing one; other items are
+-- left alone). Whole-section scopes (oxedring) replace the section entirely.
+function UI:ApplyScopedImport(env)
+    local scope = env.scope
+    local payload = env.payload or {}
+    local author = env.author
+
+    -- profile / profiles → create new profiles (delegate to the classic path).
+    -- The payload already carries version/profileName (or a profiles table), so it
+    -- imports through the existing v1/v2 logic; _author flows to the source stamp.
+    if scope == "profile" or scope == "profiles" then
+        payload._author = author
+        self:ApplyImport(payload)
+        return
+    end
+
+    -- Partial scopes go into the chosen target profile, defaulting to the active
+    -- one (which is what every earlier version did).
+    local targetName = UI.importTargetProfile
+    if not targetName or not (OxedHubDB.profiles and OxedHubDB.profiles[targetName]) then
+        targetName = OxedHubDB.activeProfile
+    end
+    local db = OxedHubDB.profiles and OxedHubDB.profiles[targetName]
+    if not db then
+        print("|cffff0000Oxed Hub:|r No profile to import into.")
+        return
+    end
+
+    local summary
+    if scope == "triggers" then
+        db.triggers = db.triggers or {}
+        local n = 0
+        for id, trig in pairs(payload.triggers or {}) do
+            trig.minimized = true
+            db.triggers[id] = trig      -- replace-by-id
+            n = n + 1
+        end
+        summary = n .. " trigger(s)"
+        if OxedHub.Triggers then
+            if OxedHub.Triggers.InvalidateEnabledEventCache then OxedHub.Triggers:InvalidateEnabledEventCache() end
+            if OxedHub.Triggers.RefreshTriggersList then OxedHub.Triggers:RefreshTriggersList() end
+        end
+
+    elseif scope == "oxedring" then
+        for _, k in ipairs(OXEDRING_KEYS) do
+            local v = payload[k]
+            -- Ring config is a mix of tables (nodes) and scalars (radius, style,
+            -- sizes, booleans). Only deep-copy tables; CopyTable errors on scalars.
+            if type(v) == "table" then
+                db[k] = CopyTable(v)
+            else
+                db[k] = v
+            end
+        end
+        summary = "OxedRing config"
+        if OxedHub.OxedRing and OxedHub.OxedRing.UpdateSecureAttributes then
+            OxedHub.OxedRing:UpdateSecureAttributes()
+        end
+        -- Re-render the ring preview nodes from the freshly imported config so the
+        -- ring appears immediately (previously only the picker grid was refreshed,
+        -- so nodes stayed blank until the user nudged +/- Slice Count).
+        if OxedHub.OxedRingEditor and OxedHub.OxedRingEditor.RefreshFromProfile then
+            pcall(function() OxedHub.OxedRingEditor:RefreshFromProfile() end)
+        elseif OxedHub.OxedRingEditor and OxedHub.OxedRingEditor.RefreshPickerList then
+            pcall(function() OxedHub.OxedRingEditor:RefreshPickerList() end)
+        end
+        if OxedHub.OxedRing and OxedHub.OxedRing.RebuildSlices then
+            pcall(function() OxedHub.OxedRing:RebuildSlices() end)
+        end
+
+    elseif scope == "toymixes" then
+        db.toyMixes = db.toyMixes or {}
+        local n = 0
+        for name, mix in pairs(payload.toyMixes or {}) do
+            db.toyMixes[name] = mix      -- replace-by-name
+            n = n + 1
+        end
+        summary = n .. " toy mix(es)"
+        if OxedHub.MacroRegistry and OxedHub.MacroRegistry.SaveMacro then
+            for name, mix in pairs(payload.toyMixes or {}) do
+                pcall(function() OxedHub.MacroRegistry:SaveMacro(name, mix) end)
+            end
+        end
+        if OxedHub.Toys and OxedHub.Toys.RefreshSavedMixesList then OxedHub.Toys:RefreshSavedMixesList() end
+
+    elseif scope == "hubs" then
+        db.actionHub = db.actionHub or { activeHub = 1, hubs = {} }
+        db.actionHub.hubs = db.actionHub.hubs or {}
+        local n = 0
+        for _, hub in ipairs(payload.hubs or {}) do
+            table.insert(db.actionHub.hubs, CopyTable(hub))   -- hubs always append
+            n = n + 1
+        end
+        summary = n .. " hub(s)"
+        if OxedHub.ActionHub then
+            if OxedHub.ActionHub.RefreshAllWidgets then OxedHub.ActionHub:RefreshAllWidgets() end
+            if OxedHub.ActionHub.RefreshTab then OxedHub.ActionHub:RefreshTab() end
+        end
+    else
+        print("|cffff0000Oxed Hub:|r Unknown import scope: " .. tostring(scope))
+        return
+    end
+
+    self:StampImportSource(db, author, scope)
+    local who = self:FormatAuthorName(author)
+    print(string.format("|cff00ff00Oxed Hub:|r Imported %s from |cffffff00%s|r into profile |cffffff00%s|r.",
+        summary or "data", who, targetName))
+    if UI.importStatus then
+        UI.importStatus:SetText(string.format("|cff00ff00Imported %s|r\nfrom %s into '%s'. Type /reload to apply.",
+            summary or "data", who, targetName))
+    end
+    if UI.RefreshProfileDetails then UI:RefreshProfileDetails() end
+end
+
 function UI:ApplyImport(data)
+    -- Route v3 scoped envelopes to the scoped importer (v1/v2 fall through).
+    if type(data) == "table" and data.formatVersion == 3 and data.scope then
+        return self:ApplyScopedImport(data)
+    end
+
     local importedCount = 0
     local lastProfileName = ""
     local skippedCount = 0
     local maxProfiles = OxedHub:GetMaxProfileCount()
-    
+    local _author = data._author
+
     -- Version 2+ supports multiple profiles
     if data.profiles then
         for name, profileData in pairs(data.profiles) do
@@ -4151,6 +5596,7 @@ function UI:ApplyImport(data)
                 if ok then
                     OxedHub:SwitchProfile(finalName)
                     self:_ApplySingleProfileData(OxedHub.db.profile, profileData)
+                    self:StampImportSource(OxedHub.db.profile, _author, "profile")
                     importedCount = importedCount + 1
                     lastProfileName = finalName
                 else
@@ -4162,8 +5608,15 @@ function UI:ApplyImport(data)
         -- Fallback for old version 1 single-profile imports
         local profileName = data.profileName or "Imported Profile"
         local finalName = profileName
+        -- Never overwrite an existing profile: keep suffixing until the name is
+        -- free (the multi-profile path above does the same).
         if OxedHubDB.profiles[finalName] then
             finalName = profileName .. " (Imported)"
+            local counter = 1
+            while OxedHubDB.profiles[finalName] do
+                finalName = profileName .. " (Imported " .. counter .. ")"
+                counter = counter + 1
+            end
         end
         if OxedHub:GetProfileCount() >= maxProfiles then
             skippedCount = 1
@@ -4172,6 +5625,7 @@ function UI:ApplyImport(data)
             if ok then
                 OxedHub:SwitchProfile(finalName)
                 self:_ApplySingleProfileData(OxedHub.db.profile, data)
+                self:StampImportSource(OxedHub.db.profile, _author, "profile")
                 importedCount = 1
                 lastProfileName = finalName
             else
@@ -4201,7 +5655,13 @@ function UI:ApplyImport(data)
         if OxedHub.Toys.RefreshSavedMixesList then OxedHub.Toys:RefreshSavedMixesList() end
         if OxedHub.Toys.RefreshQuickMixesGrid then OxedHub.Toys:RefreshQuickMixesGrid() end
     end
-    
+    if OxedHub.OxedRingEditor and OxedHub.OxedRingEditor.RefreshFromProfile then
+        pcall(function() OxedHub.OxedRingEditor:RefreshFromProfile() end)
+    end
+    if OxedHub.OxedRing and OxedHub.OxedRing.RebuildSlices then
+        pcall(function() OxedHub.OxedRing:RebuildSlices() end)
+    end
+
     if UI.importStatus then
         local statusText = "|cff00ff00Import completed successfully!|r\nImported |cffffff00" .. importedCount .. "|r profiles."
         if skippedCount > 0 then
@@ -4214,7 +5674,8 @@ end
 
 function UI:CreateImportExportPopup(titleText, isImport)
     local frameName = isImport and "OxedHubImportFrame" or "OxedHubExportFrame"
-    local f = CreateFrame("Frame", frameName, UIParent, "BackdropTemplate")
+    -- Clean themed dialog (same style as the export picker / Pick Sound).
+    local f = CreateFrame("Frame", frameName, UIParent, "BasicFrameTemplateWithInset")
     f:SetSize(600, 550)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
@@ -4225,7 +5686,6 @@ function UI:CreateImportExportPopup(titleText, isImport)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    ApplyOrnateFrame(f, nil, 0.96)
     f:SetScale(1.0)
     C_Timer.After(0.05, function() UI:ApplyGlobalTextSize() end)
     -- Avoid duplicate UISpecialFrames entries
@@ -4237,29 +5697,56 @@ function UI:CreateImportExportPopup(titleText, isImport)
         tinsert(UISpecialFrames, frameName)
     end
 
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", 0, -12)
-    title:SetText(titleText)
-    f.title = title
-
-    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", -4, -4)
-    close:SetScript("OnClick", function() f:Hide() end)
+    if f.TitleText then f.TitleText:SetText(titleText) end
+    f.title = f.TitleText  -- back-compat for callers that set f.title
+    if f.CloseButton then f.CloseButton:SetScript("OnClick", function() f:Hide() end) end
 
     local edit
     if isImport then
         -- Import: direct EditBox filling the popup, tall and clickable
-        edit = CreateFrame("EditBox", "OxedHubImportEdit", f, "BackdropTemplate")
-        edit:SetPoint("TOPLEFT", 12, -40)
-        edit:SetPoint("BOTTOMRIGHT", -12, 50)
-        edit:SetBackdrop({
+        -- Bordered container: the ScrollFrame inside it clips the EditBox, which
+        -- would otherwise grow past the dialog and draw over the whole screen.
+        local importBox = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        importBox:SetPoint("TOPLEFT", 12, -40)
+        -- Leaves room below for the target-profile row, status line and buttons.
+        importBox:SetPoint("BOTTOMRIGHT", -12, 86)
+        importBox:SetBackdrop({
             bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
             tile = true, tileSize = 16, edgeSize = 16,
             insets = { left = 6, right = 6, top = 6, bottom = 6 }
         })
-        edit:SetBackdropColor(0.06, 0.06, 0.06, 1)
-        edit:SetBackdropBorderColor(1, 0.82, 0, 1)
+        importBox:SetBackdropColor(0.06, 0.06, 0.06, 1)
+        importBox:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+        importBox:SetClipsChildren(true)
+
+        local importScroll = CreateFrame("ScrollFrame", nil, importBox)
+        importScroll:SetPoint("TOPLEFT", 8, -8)
+        importScroll:SetPoint("BOTTOMRIGHT", -8, 8)
+        importScroll:EnableMouseWheel(true)
+        importScroll:SetScript("OnMouseWheel", function(self, delta)
+            self:SetVerticalScroll(math.max(0, self:GetVerticalScroll() - delta * 30))
+        end)
+
+        edit = CreateFrame("EditBox", "OxedHubImportEdit", importScroll)
+        edit:SetPoint("TOPLEFT", 0, 0)
+        edit:SetWidth(548)
+        edit:SetHeight(3000)
+
+        -- Clicking anywhere in the black area focuses the edit box, so pasting
+        -- works even where the (fixed-width) EditBox itself isn't under the cursor.
+        importBox:EnableMouse(true)
+        importBox:SetScript("OnMouseDown", function()
+            edit:SetFocus()
+        end)
+        importScroll:EnableMouse(true)
+        importScroll:SetScript("OnMouseDown", function()
+            edit:SetFocus()
+        end)
+        -- Keep the text area as wide as the container so nothing is unreachable.
+        importScroll:SetScript("OnSizeChanged", function(self, width)
+            if width and width > 0 then edit:SetWidth(width) end
+        end)
         edit:SetTextColor(1, 1, 1, 1)
         edit:SetAutoFocus(false)
         edit:SetMultiLine(true)
@@ -4269,6 +5756,7 @@ function UI:CreateImportExportPopup(titleText, isImport)
         edit:SetMaxLetters(999999) -- Very high limit for modern WoW client compatibility
         edit:EnableMouse(true)
         edit:EnableKeyboard(true)
+        importScroll:SetScrollChild(edit)
         edit:SetTextInsets(8, 8, 8, 8)
         edit:SetScript("OnMouseDown", function(self)
             self:SetPropagateKeyboardInput(false)
@@ -4332,15 +5820,60 @@ function UI:CreateImportExportPopup(titleText, isImport)
     if isImport then
         local hint = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         hint:SetPoint("TOPLEFT", 12, -28)
-        hint:SetText("Paste export string here — import will run automatically")
+        hint:SetText("Paste export string here — you'll see what it contains before it's applied")
         hint:SetTextColor(1, 0.82, 0, 1)
 
+        -- Target profile for partial imports (ring / triggers / mixes / hubs).
+        -- Full-profile imports create their own profiles and ignore this.
+        local targetLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        targetLabel:SetPoint("BOTTOMLEFT", 14, 58)
+        targetLabel:SetText("Import into:")
+        targetLabel:SetTextColor(1, 0.82, 0, 1)
+
+        local targetDropdown = CreateFrame("DropdownButton", nil, f, "WowStyle1DropdownTemplate")
+        targetDropdown:SetPoint("LEFT", targetLabel, "RIGHT", 10, 0)
+        targetDropdown:SetSize(240, 26)
+        f.targetDropdown = targetDropdown
+
         local chunkStatus = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        chunkStatus:SetPoint("BOTTOMLEFT", 12, 18)
-        chunkStatus:SetWidth(420)
+        chunkStatus:SetPoint("BOTTOMLEFT", 14, 20)
+        chunkStatus:SetWidth(430)   -- stops short of the Import button
         chunkStatus:SetJustifyH("LEFT")
         chunkStatus:SetText("")
         f.chunkStatus = chunkStatus
+
+        -- Default to the active profile, matching the previous behaviour.
+        UI.importTargetProfile = OxedHubDB and OxedHubDB.activeProfile
+
+        local function RefreshTargetText()
+            local name = UI.importTargetProfile or (OxedHubDB and OxedHubDB.activeProfile) or "?"
+            targetDropdown:OverrideText(OxedHub:GetProfileColoredName(name))
+        end
+        RefreshTargetText()
+
+        targetDropdown:SetupMenu(function(_, rootDescription)
+            for _, name in ipairs(OxedHub:GetProfileList()) do
+                local isActive = (name == OxedHubDB.activeProfile)
+                rootDescription:CreateRadio(
+                    OxedHub:GetProfileColoredName(name) .. (isActive and " |cff888888(active)|r" or ""),
+                    function() return UI.importTargetProfile == name end,
+                    function()
+                        UI.importTargetProfile = name
+                        RefreshTargetText()
+                    end,
+                    name
+                )
+            end
+        end)
+
+        targetDropdown:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Where partial data goes")
+            GameTooltip:AddLine("Rings, triggers, toy mixes and hubs are imported into this profile.", 1, 1, 1, true)
+            GameTooltip:AddLine("Full-profile imports always create their own profile and ignore this.", 0.7, 0.7, 0.7, true)
+            GameTooltip:Show()
+        end)
+        targetDropdown:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
         local function DoImport(importedData)
             local data = importedData
@@ -4381,7 +5914,10 @@ function UI:CreateImportExportPopup(titleText, isImport)
                 end
 
                 local ok, deserialized = AceSerializer:Deserialize(text)
-                if not ok or type(deserialized) ~= "table" or not deserialized.version then
+                -- Accept v1/v2 (has .version/.profiles) AND v3 scoped envelopes (formatVersion==3).
+                local looksValid = ok and type(deserialized) == "table"
+                    and (deserialized.version or deserialized.formatVersion == 3 or deserialized.profiles or deserialized.profileName)
+                if not looksValid then
                     print("|cffff0000Oxed Hub:|r Invalid import string. Please ensure you copied the entire string.")
                     UI:UpdateChunkStatus(f, "Import failed. Check that all parts were pasted.", "error")
                     return
@@ -4389,33 +5925,9 @@ function UI:CreateImportExportPopup(titleText, isImport)
                 data = deserialized
             end
 
-            local missingSounds, missingAnimations = UI:ValidateImport(data)
-            if #missingSounds > 0 or #missingAnimations > 0 then
-                local msg = "|cffffcc00Import Warning:|r\n"
-                if #missingSounds > 0 then
-                    msg = msg .. "Missing Sounds: " .. table.concat(missingSounds, ", ") .. "\n"
-                end
-                if #missingAnimations > 0 then
-                    msg = msg .. "Missing Animations: " .. table.concat(missingAnimations, ", ") .. "\n"
-                end
-                msg = msg .. "Import anyway?"
-                StaticPopupDialogs["OXEDHUB_IMPORT_WARNING"] = {
-                    text = msg,
-                    button1 = "Yes",
-                    button2 = "No",
-                    OnAccept = function()
-                        UI:ApplyImport(data)
-                        f:Hide()
-                    end,
-                    timeout = 0,
-                    whileDead = true,
-                    hideOnEscape = true,
-                }
-                StaticPopup_Show("OXEDHUB_IMPORT_WARNING")
-            else
-                UI:ApplyImport(data)
-                f:Hide()
-            end
+            -- Always confirm before applying, in a dialog roomy enough to list
+            -- the contents as a table.
+            UI:ShowImportConfirm(data, function() f:Hide() end)
         end
 
         local importBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
@@ -4458,9 +5970,9 @@ function UI:CreateImportExportPopup(titleText, isImport)
                 return
             end
             
-            -- Quick validation: try to deserialize
+            -- Quick validation: try to deserialize (accept v1/v2 and v3 envelopes)
             local ok, data = AceSerializer:Deserialize(text)
-            if ok and type(data) == "table" and data.version then
+            if ok and type(data) == "table" and (data.version or data.formatVersion == 3 or data.profiles or data.profileName) then
                 importPending = true
                 -- Brief delay to ensure user finished pasting
                 C_Timer.After(0.3, function()
@@ -4589,6 +6101,223 @@ function UI:PopulateExportFrame(exportString, titleText)
         print("|cffffcc00Oxed Hub:|r Export was split into " .. #chunks .. " parts. Share all parts and paste them one by one when importing.")
     else
         print("|cff00ff00Oxed Hub:|r Export is ready for sharing.")
+    end
+end
+
+-- Scoped export dialog: pick WHAT to export (scope), an optional target, and a
+-- note, then generate the shareable string. Import uses the normal Import button
+-- (ApplyImport auto-detects the scope).
+function UI:ShowScopedExportFrame()
+    local f = UI.scopedExportFrame
+    if not f then
+        -- Clean themed dialog (same frame style as the Pick Sound picker).
+        f = CreateFrame("Frame", "OxedHubScopedExportFrame", UIParent, "BasicFrameTemplateWithInset")
+        f:SetSize(380, 470)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("DIALOG")
+        f:SetFrameLevel(220)
+        f:SetToplevel(true)
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        tinsert(UISpecialFrames, "OxedHubScopedExportFrame")
+        if f.TitleText then f.TitleText:SetText("Export") end
+        if f.CloseButton then f.CloseButton:SetScript("OnClick", function() f:Hide() end) end
+
+        local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        subtitle:SetPoint("TOPLEFT", 14, -32)
+        subtitle:SetText("Choose what to export:")
+        subtitle:SetTextColor(1, 0.82, 0)
+
+        -- Scrollable list of export scopes (row style like the sound picker).
+        local scopeScroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+        scopeScroll:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -6)
+        scopeScroll:SetPoint("TOPRIGHT", f, "TOPRIGHT", -34, -56)
+        scopeScroll:SetHeight(232)
+        if UI.StyleScrollFrame then UI:StyleScrollFrame(scopeScroll) end
+        local scopeChild = CreateFrame("Frame", nil, scopeScroll)
+        scopeChild:SetSize(320, 1)
+        scopeScroll:SetScrollChild(scopeChild)
+
+        f.selectedScope = f.selectedScope or UI.EXPORT_SCOPES[1]
+        f.scopeRows = {}
+        local rowH = 26
+        for i, sc in ipairs(UI.EXPORT_SCOPES) do
+            local row = CreateFrame("Button", nil, scopeChild)
+            row:SetHeight(rowH)
+            row:SetPoint("TOPLEFT", scopeChild, "TOPLEFT", 2, -(i - 1) * rowH)
+            row:SetPoint("RIGHT", scopeChild, "RIGHT", -2, 0)
+            row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+
+            local sel = row:CreateTexture(nil, "BACKGROUND")
+            sel:SetAllPoints()
+            sel:SetColorTexture(1, 0.82, 0, 0.18)
+            sel:Hide()
+            row.sel = sel
+
+            local txt = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            txt:SetPoint("LEFT", 8, 0)
+            txt:SetText(sc.label)
+            row.txt = txt
+
+            row:SetScript("OnClick", function()
+                f.selectedScope = sc
+                UI:RefreshScopedExportRows(f)
+                UI:RefreshScopedExportTarget(f)
+            end)
+            f.scopeRows[i] = row
+        end
+        scopeChild:SetHeight(#UI.EXPORT_SCOPES * rowH + 2)
+
+        -- Contextual target area (profile/hub dropdown or trigger checklist)
+        local targetArea = CreateFrame("Frame", nil, f)
+        targetArea:SetPoint("TOPLEFT", scopeScroll, "BOTTOMLEFT", 0, -6)
+        targetArea:SetPoint("RIGHT", f, "RIGHT", -16, 0)
+        targetArea:SetHeight(96)
+        f.targetArea = targetArea
+
+        -- Note field
+        local noteLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        noteLabel:SetPoint("TOPLEFT", targetArea, "BOTTOMLEFT", 0, -4)
+        noteLabel:SetText("Note (optional):")
+        noteLabel:SetTextColor(0.9, 0.9, 0.9)
+
+        local noteBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+        noteBox:SetPoint("TOPLEFT", noteLabel, "BOTTOMLEFT", 6, -6)
+        noteBox:SetSize(300, 22)
+        noteBox:SetAutoFocus(false)
+        noteBox:SetMaxLetters(120)
+        -- Pre-fill from the note saved on the Export/Import page so both export
+        -- paths default to the same message.
+        noteBox:SetText(UI:GetExportNote() or "")
+        f.noteBox = noteBox
+
+        -- Generate button → opens the standard export-string window (copy/chunks).
+        local genBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        if ApplyRedButtonStyle then ApplyRedButtonStyle(genBtn) end
+        genBtn:SetSize(180, 26)
+        genBtn:SetPoint("BOTTOM", 0, 14)
+        genBtn:SetText("Generate Export String")
+        genBtn:SetScript("OnClick", function() UI:GenerateScopedExport(f) end)
+
+        UI.scopedExportFrame = f
+    end
+
+    f:Show()
+    f:Raise()
+    UI:RefreshScopedExportRows(f)
+    UI:RefreshScopedExportTarget(f)
+end
+
+-- Highlight the selected scope row.
+function UI:RefreshScopedExportRows(f)
+    for i, row in ipairs(f.scopeRows or {}) do
+        local sc = UI.EXPORT_SCOPES[i]
+        local isSel = (sc == f.selectedScope)
+        row.sel:SetShown(isSel)
+        row.txt:SetTextColor(isSel and 1 or 0.9, isSel and 0.82 or 0.9, isSel and 0 or 0.9)
+    end
+end
+
+-- Rebuild the contextual target picker for the chosen scope.
+function UI:RefreshScopedExportTarget(f)
+    local area = f.targetArea
+    if area._children then
+        for _, c in ipairs(area._children) do c:Hide(); c:SetParent(nil) end
+    end
+    area._children = {}
+    local function track(c) table.insert(area._children, c); return c end
+    f.targetValue = nil
+
+    local needs = f.selectedScope and f.selectedScope.needs
+    if needs == "profile" then
+        local lbl = track(area:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"))
+        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText("Profile:")
+        local names = {}
+        for n in pairs(OxedHubDB.profiles or {}) do table.insert(names, n) end
+        table.sort(names)
+        f.targetValue = f.targetValue or names[1]
+        local pdd = track(CreateFrame("DropdownButton", nil, area, "WowStyle1DropdownTemplate"))
+        pdd:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -4); pdd:SetWidth(260)
+        local function upd() pdd:OverrideText(f.targetValue or "—") end
+        pdd:SetupMenu(function(_, root)
+            for _, n in ipairs(names) do
+                root:CreateRadio(n, function() return f.targetValue == n end, function() f.targetValue = n; upd() end)
+            end
+        end)
+        upd()
+    elseif needs == "hub" then
+        local lbl = track(area:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"))
+        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText("Hub:")
+        local profile = OxedHubDB.profiles[OxedHubDB.activeProfile]
+        local hubs = (profile.actionHub and profile.actionHub.hubs) or {}
+        f.targetValue = f.targetValue or (#hubs > 0 and 1 or nil)
+        local hdd = track(CreateFrame("DropdownButton", nil, area, "WowStyle1DropdownTemplate"))
+        hdd:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -4); hdd:SetWidth(260)
+        local function hubName(i) local h = hubs[i]; return (h and h.name) or ("Hub " .. i) end
+        local function upd() hdd:OverrideText(f.targetValue and hubName(f.targetValue) or "—") end
+        hdd:SetupMenu(function(_, root)
+            for i = 1, #hubs do
+                root:CreateRadio(hubName(i), function() return f.targetValue == i end, function() f.targetValue = i; upd() end)
+            end
+        end)
+        upd()
+    elseif needs == "triggers" then
+        local lbl = track(area:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"))
+        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText("Tick triggers to export:")
+        local scroll = track(CreateFrame("ScrollFrame", nil, area, "UIPanelScrollFrameTemplate"))
+        scroll:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -4)
+        scroll:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -26, 0)
+        if UI.StyleScrollFrame then UI:StyleScrollFrame(scroll) end
+        local child = CreateFrame("Frame", nil, scroll)
+        child:SetSize(240, 1)
+        scroll:SetScrollChild(child)
+        f.triggerChecks = {}
+        local profile = OxedHubDB.profiles[OxedHubDB.activeProfile]
+        local ids = {}
+        for id in pairs(profile.triggers or {}) do table.insert(ids, id) end
+        table.sort(ids, function(a, b)
+            return (profile.triggers[a].name or a) < (profile.triggers[b].name or b)
+        end)
+        local y = 0
+        for _, id in ipairs(ids) do
+            local cb = CreateFrame("CheckButton", nil, child, "UICheckButtonTemplate")
+            cb:SetPoint("TOPLEFT", 0, -y)
+            cb:SetSize(20, 20)
+            cb:SetChecked(true)
+            local t = child:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            t:SetPoint("LEFT", cb, "RIGHT", 2, 0)
+            t:SetText(profile.triggers[id].name or id)
+            f.triggerChecks[id] = cb
+            y = y + 22
+        end
+        child:SetHeight(math.max(y, 1))
+    end
+end
+
+-- Build the string for the current scope selection and show it.
+function UI:GenerateScopedExport(f)
+    local sc = f.selectedScope
+    local opts = { note = f.noteBox and f.noteBox:GetText() }
+    if sc.needs == "profile" then
+        opts.profileNames = f.targetValue and { f.targetValue } or nil
+    elseif sc.needs == "hub" then
+        opts.hubIndex = f.targetValue
+    elseif sc.needs == "triggers" then
+        local ids = {}
+        for id, cb in pairs(f.triggerChecks or {}) do if cb:GetChecked() then table.insert(ids, id) end end
+        opts.triggerIDs = ids
+    end
+
+    local str, err = UI:BuildScopedExportString(sc.scope, opts)
+    if str then
+        f:Hide()
+        -- reuse the standard export-string window (handles copy + chunking)
+        UI:PopulateExportFrame(str, "Export: " .. sc.label)
+    else
+        print("|cffff0000Oxed Hub:|r " .. (err or "Export failed."))
     end
 end
 
@@ -4864,6 +6593,12 @@ function UI:ShowImportFrame()
     UI.importFrame.editBox:SetText("")
     UI.importFrame:Show()
     UI.importFrame:Raise()
+    -- Focus the paste area so Ctrl+V works without clicking first.
+    C_Timer.After(0.05, function()
+        if UI.importFrame and UI.importFrame:IsShown() and UI.importFrame.editBox then
+            UI.importFrame.editBox:SetFocus()
+        end
+    end)
 end
 
 -- Global key listener for ring keybinds

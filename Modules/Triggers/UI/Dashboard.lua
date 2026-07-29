@@ -67,10 +67,34 @@ function Triggers:RefreshDashboard()
             eventTypeCount = eventTypeCount + 1
         end
 
+        -- Count unique sound IDs. The generated catalog's entries are also stored
+        -- in customSounds (flagged autoImported), so adding both totals would
+        -- double-count them and disagree with the Sounds tab.
+        local seenSounds = {}
+        local soundsCount = 0
+        local function CountSounds(tbl)
+            for id in pairs(tbl or {}) do
+                if not seenSounds[id] then
+                    seenSounds[id] = true
+                    soundsCount = soundsCount + 1
+                end
+            end
+        end
+        CountSounds(OxedHub.GENERATED_SOUND_CATALOG)
+        local sharedSounds = OxedHub.GetSharedCustomSounds and OxedHub:GetSharedCustomSounds() or (OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.customSounds) or {}
+        CountSounds(sharedSounds)
+
+        local animationsCount = 0
+        if OxedHub.DEFAULTS and OxedHub.DEFAULTS.animations then
+            for _ in pairs(OxedHub.DEFAULTS.animations) do animationsCount = animationsCount + 1 end
+        end
+
         tab.stats[1].value:SetText(tostring(count))
         tab.stats[2].value:SetText(tostring(disabledCount))
         tab.stats[3].value:SetText(tostring(eventTypeCount))
         tab.stats[4].value:SetText(tostring(profileCount))
+        if tab.stats[5] then tab.stats[5].value:SetText(tostring(soundsCount)) end
+        if tab.stats[6] then tab.stats[6].value:SetText(tostring(animationsCount)) end
     end
 
     if tab.summaryText then

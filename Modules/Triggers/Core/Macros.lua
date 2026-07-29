@@ -293,6 +293,20 @@ function Triggers:ExecuteTriggerByID(id, skipChat)
 end
 
 
+-- Update an ALREADY-created action-bar macro to match the trigger's current
+-- spell/actions. Does NOT create one if it doesn't exist (so it's safe to call on
+-- every edit). Fixes the icon/body staying on the old spell after you change it.
+function Triggers:RefreshExistingTriggerMacro(trigger)
+    if not trigger or InCombatLockdown() then return end
+    local macroName = self:GetTriggerMacroName(trigger)
+    local index = GetMacroIndexByName(macroName)
+    if not index or index <= 0 then return end -- no macro on the bar yet; nothing to update
+    local body = self:BuildTriggerMacroBody(trigger)
+    if not body then return end
+    local macroIcon = self:ResolveCustomMacroIcon(trigger.customMacroIcon) or "INV_MISC_QUESTIONMARK"
+    pcall(EditMacro, index, macroName, macroIcon, body)
+end
+
 function Triggers:CreateMacroForTrigger(trigger)
     if InCombatLockdown() then
         print("|cffff0000[OxedHub]|r Cannot create macros in combat.")

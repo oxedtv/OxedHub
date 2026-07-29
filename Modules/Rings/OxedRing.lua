@@ -260,6 +260,20 @@ function OxedRing:UpdateSecureAttributes()
                 OxedRing.hotkeyBtn:SetAttribute("slice" .. i .. "_id", nil)
                 OxedRing.hotkeyBtn:SetAttribute("slice" .. i .. "_macro", nil)
             end
+        elseif data.type == "spell" then
+            -- Cast by name via macro (works for all spells; name resolved at edit time)
+            local spellName = data.label
+            if not spellName and data.id and C_Spell and C_Spell.GetSpellInfo then
+                local info = C_Spell.GetSpellInfo(data.id)
+                spellName = info and info.name
+            end
+            if spellName then
+                OxedRing.hotkeyBtn:SetAttribute("slice" .. i .. "_id", data.id)
+                OxedRing.hotkeyBtn:SetAttribute("slice" .. i .. "_macro", "/cast " .. spellName)
+            else
+                OxedRing.hotkeyBtn:SetAttribute("slice" .. i .. "_id", nil)
+                OxedRing.hotkeyBtn:SetAttribute("slice" .. i .. "_macro", nil)
+            end
         else
             OxedRing.hotkeyBtn:SetAttribute("slice" .. i .. "_id", nil)
             OxedRing.hotkeyBtn:SetAttribute("slice" .. i .. "_macro", nil)
@@ -428,6 +442,10 @@ function OxedRing:CreateRingFrame()
                 self:SetAttribute("typerelease", "macro")
                 self:SetAttribute("macrotext", "/use item:" .. sId)
             elseif sType == "emote" and sMacro then
+                self:SetAttribute("type", "macro")
+                self:SetAttribute("typerelease", "macro")
+                self:SetAttribute("macrotext", sMacro)
+            elseif sType == "spell" and sMacro then
                 self:SetAttribute("type", "macro")
                 self:SetAttribute("typerelease", "macro")
                 self:SetAttribute("macrotext", sMacro)
@@ -697,7 +715,10 @@ function OxedRing:RebuildSlices()
                 local _, toyIcon = GetDirectToyDisplay(data.id)
                 displayIcon = toyIcon or displayIcon
             else
-                if OxedHub.Toys and OxedHub.Toys.GetMixSlotIcons then
+                local customIcon = OxedHub.Toys and OxedHub.Toys.GetMixCustomIcon and OxedHub.Toys:GetMixCustomIcon(data.id)
+                if customIcon then
+                    displayIcon = customIcon
+                elseif OxedHub.Toys and OxedHub.Toys.GetMixSlotIcons then
                     displayIcon = OxedHub.Toys:GetMixSlotIcons(data.id) or displayIcon
                 end
             end
@@ -718,6 +739,9 @@ function OxedRing:RebuildSlices()
             local mapping = OxedHub.db.profile.customReactions and OxedHub.db.profile.customReactions[data.id]
             local customIcon = mapping and mapping.icon
             displayIcon = data.icon or customIcon or "Interface\\Icons\\Spell_Holy_AshesToAshes"
+        elseif data.type == "spell" then
+            local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(data.id)
+            displayIcon = (info and info.iconID) or data.icon or displayIcon
         elseif data.type == "trigger" then
             local trg = OxedHub.db.profile.triggers[data.id]
             if trg then

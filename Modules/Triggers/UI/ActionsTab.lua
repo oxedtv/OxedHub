@@ -343,6 +343,81 @@ function Triggers:CreateActionsUI(frame, trigger)
     frame.successAnimButton = successAnimButton
     frame.successAnimLabel = successAnimLabel
     yOffset = yOffset - 28
+
+    -- COMBAT_STATE specific: separate Enter / Exit sound + animation. Only shown
+    -- when the trigger's "Different sound & animation" condition is ticked.
+    local function CreateCombatStateRow(labelKey, labelFallback, actionKey, isAnimation)
+        -- Same icon + label + button anatomy as the Sound/Animation rows so
+        -- RepositionVisibleActions aligns them into the shared column.
+        local icon = CreateActionIcon(frame, isAnimation
+            and "Interface\\Icons\\Ability_Rogue_Sprint"
+            or "Interface\\Icons\\INV_Misc_Horn_01")
+        icon:Hide()
+
+        local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+        label:SetText((L[labelKey] or labelFallback) .. ":")
+        label:Hide()
+
+        local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+        button:SetSize(150, 22)
+        button:SetPoint("LEFT", label, "RIGHT", 10, 0)
+        button:SetNormalFontObject("GameFontNormalSmall")
+        button:Hide()
+
+        local function UpdateText()
+            local text = L["NONE"] or "None"
+            local fullName = L["NONE"] or "None"
+            local id = actions[actionKey]
+            if id and id ~= "" then
+                local store = isAnimation and OxedHub.db.profile.animations
+                    or OxedHub.db.profile.customSounds
+                local data = store and store[id]
+                fullName = (data and data.name) or id
+                text = TruncateText(fullName, 20)
+            end
+            button:SetText(text)
+            button.fullText = fullName
+        end
+        UpdateText()
+
+        button:SetScript("OnEnter", function(self)
+            if self.fullText and self.fullText ~= "None" and self.fullText ~= L["NONE"] then
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(self.fullText)
+                GameTooltip:Show()
+            end
+        end)
+        button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        button:SetScript("OnClick", function()
+            if isAnimation then
+                Triggers:ShowAnimationPicker(trigger, actionKey)
+            else
+                Triggers:ShowSoundPicker(trigger, actionKey)
+            end
+        end)
+
+        yOffset = yOffset - 28
+        return label, button, UpdateText, icon
+    end
+
+    local enterSoundLabel, enterSoundButton, UpdateEnterSoundButton, enterSoundIcon =
+        CreateCombatStateRow("COMBAT_ENTER_SOUND", "Enter Sound", "enterSound", false)
+    local enterAnimLabel, enterAnimButton, UpdateEnterAnimButton, enterAnimIcon =
+        CreateCombatStateRow("COMBAT_ENTER_ANIMATION", "Enter Animation", "enterAnim", true)
+    local exitSoundLabel, exitSoundButton, UpdateExitSoundButton, exitSoundIcon =
+        CreateCombatStateRow("COMBAT_EXIT_SOUND", "Exit Sound", "exitSound", false)
+    local exitAnimLabel, exitAnimButton, UpdateExitAnimButton, exitAnimIcon =
+        CreateCombatStateRow("COMBAT_EXIT_ANIMATION", "Exit Animation", "exitAnim", true)
+
+    frame.enterSoundLabel, frame.enterSoundButton = enterSoundLabel, enterSoundButton
+    frame.enterAnimLabel, frame.enterAnimButton = enterAnimLabel, enterAnimButton
+    frame.exitSoundLabel, frame.exitSoundButton = exitSoundLabel, exitSoundButton
+    frame.exitAnimLabel, frame.exitAnimButton = exitAnimLabel, exitAnimButton
+    frame.UpdateEnterSoundButton = UpdateEnterSoundButton
+    frame.UpdateEnterAnimButton = UpdateEnterAnimButton
+    frame.UpdateExitSoundButton = UpdateExitSoundButton
+    frame.UpdateExitAnimButton = UpdateExitAnimButton
     
     -- EAT_BUFF specific: Start/Stop chat messages
     local startChatLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -670,13 +745,19 @@ function Triggers:CreateActionsUI(frame, trigger)
         local isChatAllowed = Triggers:IsChatAllowedForEvent(trigger.event)
         local hasChat = trigger.actions.chatMessage ~= nil
         local hasEmote = trigger.actions.emote ~= nil
+        local hasToy = trigger.actions.toy ~= nil and trigger.actions.toy ~= ""
         local hasSpell = trigger.conditions.spellID ~= nil
 
-        if not isChatAllowed or trigger.event == "INTERRUPT_USED" then
-            frame.macroWarning:Hide()
-            frame.macroAttention:Hide()
-            frame.macroIcon:Hide()
-        elseif (hasChat or hasEmote) and hasSpell then
+        local shouldShowMacro = false
+        if hasSpell and trigger.event ~= "INTERRUPT_USED" then
+            if (hasChat or hasEmote) and isChatAllowed then
+                shouldShowMacro = true
+            elseif hasToy and trigger.event == "UNIT_SPELLCAST_SUCCEEDED" then
+                shouldShowMacro = true
+            end
+        end
+
+        if shouldShowMacro then
             frame.macroWarning:Show()
             frame.macroAttention:Show()
             frame.macroIcon:Show()
@@ -702,6 +783,7 @@ function Triggers:CreateActionsUI(frame, trigger)
         local rows = {
             soundLabel, animLabel, emoteLabel, chatLabel, toyLabel,
             successSoundLabel, successAnimLabel, failSoundLabel, failAnimLabel,
+            enterSoundLabel, enterAnimLabel, exitSoundLabel, exitAnimLabel,
             startChatLabel, stopChatLabel,
             summonIncomingChatLabel, summonAcceptedChatLabel, summonDeclinedChatLabel,
         }
@@ -714,6 +796,10 @@ function Triggers:CreateActionsUI(frame, trigger)
         local height = visibleCount * 32 + 20
         if macroWarning and macroWarning:IsShown() then
             height = math.max(height, 150)
+        end
+        -- The four Enter/Exit rows need extra room so the last one isn't clipped.
+        if trigger.event == "COMBAT_STATE" and trigger.conditions and trigger.conditions.separateEffects then
+            height = height + 45
         end
         frame.naturalHeight = math.max(height, 90)
     end
@@ -730,6 +816,10 @@ function Triggers:CreateActionsUI(frame, trigger)
             {label = successAnimLabel, btn = successAnimButton},
             {label = failSoundLabel, btn = failSoundButton},
             {label = failAnimLabel, btn = failAnimButton},
+            {label = enterSoundLabel, btn = enterSoundButton, icon = enterSoundIcon},
+            {label = enterAnimLabel, btn = enterAnimButton, icon = enterAnimIcon},
+            {label = exitSoundLabel, btn = exitSoundButton, icon = exitSoundIcon},
+            {label = exitAnimLabel, btn = exitAnimButton, icon = exitAnimIcon},
             {label = startChatLabel, btn = startChatButton},
             {label = stopChatLabel, btn = stopChatButton},
             {label = summonIncomingChatLabel, btn = summonIncomingChatButton},
@@ -782,6 +872,21 @@ function Triggers:CreateActionsUI(frame, trigger)
         local isFood = (trigger.event == "EAT_BUFF")
         local isSummon = (trigger.event == "SUMMON")
 
+        -- Enter/Exit Combat: the split sound+animation rows live here in Actions,
+        -- driven by the "Different sound & animation" checkbox in Conditions.
+        local showCombatStateRows = (trigger.event == "COMBAT_STATE")
+            and trigger.conditions and trigger.conditions.separateEffects and true or false
+        for _, row in ipairs({
+            {enterSoundLabel, enterSoundButton}, {enterAnimLabel, enterAnimButton},
+            {exitSoundLabel, exitSoundButton}, {exitAnimLabel, exitAnimButton},
+        }) do
+            if showCombatStateRows then
+                row[1]:Show(); row[2]:Show()
+            else
+                row[1]:Hide(); row[2]:Hide()
+            end
+        end
+
         if isInterrupt then
             -- Hide basic sound/animation for interrupt events
             soundLabel:Hide(); soundButton:Hide()
@@ -816,15 +921,12 @@ function Triggers:CreateActionsUI(frame, trigger)
                 emoteLabel:Show(); emoteButton:Show()
                 chatLabel:Show(); chatButton:Show()
                 if frame.combatWarningLabel then frame.combatWarningLabel:Show() end
-                UpdateMacroIconInternal()
             else
                 emoteLabel:Hide(); emoteButton:Hide()
                 chatLabel:Hide(); chatButton:Hide()
                 if frame.combatWarningLabel then frame.combatWarningLabel:Hide() end
-                frame.macroWarning:Hide()
-                frame.macroAttention:Hide()
-                frame.macroIcon:Hide()
             end
+            UpdateMacroIconInternal()
         elseif isFood then
             -- For EAT_BUFF: only Sound + Animation for now.
             -- TODO(beta): Emote and Chat disabled to avoid ADDON_ACTION_BLOCKED taint.
@@ -870,10 +972,23 @@ function Triggers:CreateActionsUI(frame, trigger)
             frame.macroWarning:Hide(); frame.macroAttention:Hide(); frame.macroIcon:Hide()
             if frame.toyLabel then frame.toyLabel:Hide(); frame.toyButton:Hide() end
         else
-            -- Show basic actions for other events
-            soundLabel:Show(); soundButton:Show()
-            animLabel:Show(); animButton:Show()
-            
+            -- Show basic actions for other events. When Enter/Exit Combat uses
+            -- separate effects the shared Sound/Animation rows are unused, so
+            -- hide them and let the per-state rows above stand in.
+            if showCombatStateRows then
+                soundLabel:Hide(); soundButton:Hide()
+                animLabel:Hide(); animButton:Hide()
+            else
+                soundLabel:Show(); soundButton:Show()
+                -- SELF_AURA is sound-only (in combat WoW plays the sound natively; no
+                -- animation is possible there), so hide the animation picker for it.
+                if trigger.event == "SELF_AURA" then
+                    animLabel:Hide(); animButton:Hide()
+                else
+                    animLabel:Show(); animButton:Show()
+                end
+            end
+
             startChatLabel:Hide(); startChatButton:Hide()
             stopChatLabel:Hide(); stopChatButton:Hide()
             summonIncomingChatLabel:Hide(); summonIncomingChatButton:Hide()
@@ -900,15 +1015,12 @@ function Triggers:CreateActionsUI(frame, trigger)
                 emoteLabel:Show(); emoteButton:Show()
                 chatLabel:Show(); chatButton:Show()
                 if frame.combatWarningLabel then frame.combatWarningLabel:Show() end
-                UpdateMacroIconInternal()
             else
                 emoteLabel:Hide(); emoteButton:Hide()
                 chatLabel:Hide(); chatButton:Hide()
                 if frame.combatWarningLabel then frame.combatWarningLabel:Hide() end
-                frame.macroWarning:Hide()
-                frame.macroAttention:Hide()
-                frame.macroIcon:Hide()
             end
+            UpdateMacroIconInternal()
         end
 
         RepositionVisibleActions()

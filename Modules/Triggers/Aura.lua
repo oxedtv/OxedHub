@@ -36,6 +36,42 @@ OxedHub.Triggers:RegisterEventType("UNIT_AURA", {
             yOffset = OxedHub.Triggers:CreateAuraSpellSearchUI(frame, trigger, yOffset)
         end
         
+        local loopCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
+        loopCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
+        loopCheck:SetSize(20, 20)
+        loopCheck:SetChecked(conditions.loopSound or false)
+        loopCheck.text:SetText("Loop sound until lost")
+        
+        local loopIntervalLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        loopIntervalLabel:SetPoint("LEFT", loopCheck.text, "RIGHT", 10, 0)
+        loopIntervalLabel:SetText("Interval (s):")
+        
+        local loopIntervalEdit = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
+        loopIntervalEdit:SetPoint("LEFT", loopIntervalLabel, "RIGHT", 5, 0)
+        loopIntervalEdit:SetSize(30, 20)
+        loopIntervalEdit:SetAutoFocus(false)
+        loopIntervalEdit:SetNumeric(true)
+        loopIntervalEdit:SetText(tostring(conditions.loopInterval or 2))
+        
+        loopCheck:SetScript("OnClick", function(self)
+            conditions.loopSound = self:GetChecked()
+            if OxedHub.Triggers.ShowAutoSaved then
+                OxedHub.Triggers.ShowAutoSaved(frame:GetParent())
+            end
+        end)
+        
+        loopIntervalEdit:SetScript("OnTextChanged", function(self)
+            local val = tonumber(self:GetText())
+            if val and val > 0 then
+                conditions.loopInterval = val
+                if OxedHub.Triggers.ShowAutoSaved then
+                    OxedHub.Triggers.ShowAutoSaved(frame:GetParent())
+                end
+            end
+        end)
+        
+        yOffset = yOffset - 25
+
         local lostCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
         lostCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
         lostCheck:SetSize(20, 20)

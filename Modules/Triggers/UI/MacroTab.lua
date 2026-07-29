@@ -757,4 +757,10 @@ function Triggers:CreateAdvancedMacroUI(frame, trigger)
     infoDesc:SetText(L["ADV_MACRO_CUSTOM_DESC"] or "Custom macro code allows you to override or extend standard triggers (e.g. adding conditions or targeting commands).\nEnsure you keep the '/run OxedHub.Triggers:ExecuteTriggerByID' command, as it fires your trigger actions.")
 end
 
+-- Expose syntax highlighting utilities for reuse by other modules (e.g. Toys Mix Macro Editor)
+Triggers.BuildStyledMacroPreviewText = BuildStyledMacroPreviewText
+Triggers.BuildMacroLineNumberText = BuildMacroLineNumberText
+Triggers.GetCursorLineAndColumn = GetCursorLineAndColumn
+Triggers.GetCursorLineText = GetCursorLineText
+Triggers.GetCursorPositionFromLineAndX = GetCursorPositionFromLineAndX
 
