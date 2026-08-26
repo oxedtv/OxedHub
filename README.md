@@ -10,8 +10,8 @@ action bars, a toy organiser, and two trackers.
 ## Install
 
 Drop the `OxedHub` folder into `World of Warcraft/_retail_/Interface/AddOns/`,
-or install from [CurseForge](https://www.curseforge.com/wow/addons/oxedhub),
-[Wago](https://addons.wago.io/addons/oxedhub) or
+or install from [CurseForge](https://www.curseforge.com/projects/1543764),
+[Wago](https://addons.wago.io/addons/BNBmAqGx) or
 [WoWInterface](https://www.wowinterface.com/downloads/info27142.html).
 
 Type `/oxedhub` (or `/ohub`) to open it.
