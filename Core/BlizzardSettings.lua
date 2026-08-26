@@ -26,7 +26,7 @@ end
 
 function BlizzardSettings:Refresh()
     if self.versionText then
-        local version = OxedHub.CONFIG and OxedHub.CONFIG.VERSION or "2.2.39"
+        local version = OxedHub.CONFIG and OxedHub.CONFIG.VERSION or "2.2.70"
         self.versionText:SetText("Version: " .. version)
     end
 end
@@ -52,7 +52,7 @@ function BlizzardSettings:CreatePanel()
     logo:SetPoint("CENTER", panel, "CENTER", 0, 110)
     logo:SetTexture("Interface\\AddOns\\OxedHub\\Media\\Textures\\Backgrounds\\logo-settings.tga")
 
-    self.versionText = CreateCenteredText(panel, "Version: 2.2.39", "GameFontHighlight", -20)
+    self.versionText = CreateCenteredText(panel, "Version: 2.2.70", "GameFontHighlight", -20)
 
     local commandText = CreateCenteredText(panel, "Access options with /oxedhub or /ohub", "GameFontHighlightLarge", -50)
     commandText:SetTextColor(1, 1, 1, 1)

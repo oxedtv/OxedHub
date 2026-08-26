@@ -92,8 +92,9 @@ function Animations:ApplyPositionFramePosition()
             y = anim.customPositionY or 200
         end
     elseif self.positionFrame.onSaveCallback then
-        x = 0
-        y = 200
+        -- Callers can seed the starting point (used by per-trigger positions).
+        x = self.positionFrame.initialX or 0
+        y = self.positionFrame.initialY or 200
     end
     if not x then
         x, y = self:GetSavedAnimationPosition()
@@ -231,6 +232,7 @@ function Animations:CreatePositionFrame()
     frame:Hide()
     frame.targetAnimId = nil
     frame.onSaveCallback = nil
+    frame.onSizeCallback = nil
 
     -- Main window style: dark, semi-transparent with tooltip border
     frame:SetBackdrop({
@@ -336,12 +338,21 @@ function Animations:CreatePositionFrame()
         self._adjusting = true
         self:SetHeight(w / self.lockAspect)
         self._adjusting = false
+        local newW = math.max(8, math.floor((w - 6) / 3 + 0.5))
+        local newH = math.max(8, math.floor((w / self.lockAspect - 6) / 3 + 0.5))
+
         if self.targetAnimId then
             local a = OxedHub.db.profile.animations[self.targetAnimId]
             if a then
-                a.width = math.max(8, math.floor((w - 6) / 3 + 0.5))
-                a.height = math.max(8, math.floor((w / self.lockAspect - 6) / 3 + 0.5))
+                a.width = newW
+                a.height = newH
             end
+        elseif self.onSizeCallback then
+            -- Trigger mode: hand back the real on-screen size (the frame minus
+            -- its 6px padding), not the /3 source size — built-in animations
+            -- ignore source width entirely.
+            self.onSizeCallback(math.max(8, w - 6),
+                math.max(8, (w / self.lockAspect) - 6))
         end
     end)
     frame:SetScript("OnHide", function() Animations:StopPositionPreview() end)
@@ -383,6 +394,7 @@ function Animations:ShowPositionFrameForAnimation(animId)
     local frame = self.positionFrame
     frame.targetAnimId = animId
     frame.onSaveCallback = nil
+    frame.onSizeCallback = nil
 
     -- Size the frame to the animation's on-screen size (3x) and lock the aspect
     local dispW = (anim.width or 64) * 3
@@ -398,6 +410,77 @@ function Animations:ShowPositionFrameForAnimation(animId)
 
     local x = anim.customPositionX or 0
     local y = anim.customPositionY or 200
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", UIParent, "CENTER", x, y)
+
+    self:StartPositionPreview(anim)
+    frame:Show()
+end
+
+-- Move / Scale for the animation attached to a TRIGGER. Same dragging frame as
+-- the Animations tab, but the result is stored on the trigger's actions instead
+-- of the animation itself, so the same animation can sit in different places for
+-- different triggers.
+function Animations:ShowPositionFrameForTrigger(trigger, animKey)
+    if not trigger then return end
+    animKey = animKey or "animation"
+
+    local actions = trigger.actions or {}
+    local animId = actions[animKey]
+    if not animId or animId == "" or animId == "None" then
+        print("|cffff0000Oxed Hub:|r Pick an animation for this trigger first.")
+        return
+    end
+
+    local anim = OxedHub.db.profile.animations[animId]
+    if not anim then
+        print("|cffff0000Oxed Hub:|r That animation is no longer available.")
+        return
+    end
+
+    if not self.positionFrame then self:CreatePositionFrame() end
+    if not self.playerFrame then self:CreatePlayerFrame() end
+
+    local frame = self.positionFrame
+    frame.targetAnimId = nil
+
+    -- Fall back to the animation's own position so the frame opens where the
+    -- animation would normally appear.
+    local x = actions[animKey .. "PositionX"] or anim.customPositionX or 0
+    local y = actions[animKey .. "PositionY"] or anim.customPositionY or 200
+    frame.initialX, frame.initialY = x, y
+
+    frame.onSaveCallback = function(relX, relY)
+        trigger.actions = trigger.actions or {}
+        trigger.actions[animKey .. "PositionX"] = relX
+        trigger.actions[animKey .. "PositionY"] = relY
+        trigger.actions[animKey .. "UseCustomPosition"] = true
+    end
+
+    frame.onSizeCallback = function(w, h)
+        trigger.actions = trigger.actions or {}
+        trigger.actions[animKey .. "DisplayWidth"] = w
+        trigger.actions[animKey .. "DisplayHeight"] = h
+    end
+
+    -- Open at the size already set on this trigger, else the size the animation
+    -- would normally play at (128 for built-ins, 3x the source otherwise).
+    local dispW = actions[animKey .. "DisplayWidth"]
+    local dispH = actions[animKey .. "DisplayHeight"]
+    if not dispW then
+        local srcW = anim.width or 64
+        local srcH = anim.height or 64
+        local scale = anim.isBuiltIn and (128 / srcW) or 3
+        dispW, dispH = srcW * scale, srcH * scale
+    end
+    frame.lockAspect = dispW / math.max(1, dispH)
+    frame._adjusting = true
+    frame:SetSize(math.max(60, dispW + 6), math.max(40, dispH + 6))
+    frame._adjusting = false
+
+    if frame.crossV then frame.crossV:Hide(); frame.crossH:Hide() end
+    if frame.resizeGrip then frame.resizeGrip:Show() end
+
     frame:ClearAllPoints()
     frame:SetPoint("CENTER", UIParent, "CENTER", x, y)
 
@@ -568,14 +651,83 @@ local function AnimFileExists(path)
     return _fileTestTex:GetTexture() ~= nil
 end
 
--- Resolve an animation file: a bare filename is searched in OxedHub_CustomMedia first.
--- If not found, it falls back to the default Media/Animations folder. A full path is used as-is.
+-- Resolve an animation file: searched in OxedHub_MemePack first, then OxedHub_CustomMedia, then default.
 local function ResolveAnimationPath(filename)
     if not filename or filename == "" then return "" end
     if filename:find("\\") then return filename end  -- Full path provided, use as-is
+    local meme = "Interface\\AddOns\\OxedHub_MemePack\\Animations\\" .. filename
+    if AnimFileExists(meme) then return meme end
+    local memeRoot = "Interface\\AddOns\\OxedHub_MemePack\\" .. filename
+    if AnimFileExists(memeRoot) then return memeRoot end
     local custom = "Interface\\AddOns\\OxedHub_CustomMedia\\" .. filename
     if AnimFileExists(custom) then return custom end
     return "Interface\\AddOns\\OxedHub\\Media\\Animations\\" .. filename
+end
+
+function Animations:SyncMemePack()
+    local profile = OxedHub.db and OxedHub.db.profile
+    if not profile then return end
+    profile.animations = profile.animations or {}
+
+    local manifest = _G["OxedHubMemePack"] or _G["OxedHubTikTokPack"]
+    if type(manifest) == "table" and type(manifest.Animations) == "table" and #manifest.Animations > 0 then
+        for _, animData in ipairs(manifest.Animations) do
+            if type(animData) == "table" then
+                local id = animData.id or (animData.name and ("meme_" .. animData.name:lower():gsub("[^a-z0-9_]", "_")))
+                if id then
+                    local filename = animData.file or animData.tgaPath or ""
+                    local tgaPath = animData.tgaPath
+                    if not tgaPath or tgaPath == "" then
+                        if filename:find("\\") then
+                            tgaPath = filename
+                        else
+                            tgaPath = "Interface\\AddOns\\OxedHub_MemePack\\Animations\\" .. filename
+                        end
+                    end
+
+                    local cols = tonumber(animData.cols or animData.columns) or 1
+                    local rows = tonumber(animData.rows) or 1
+                    local frameCount = tonumber(animData.frameCount) or (cols * rows)
+                    local playSeq = animData.playSequence
+
+                    -- If frameCount was specified (e.g. 154) but no explicit playSequence, generate 0..frameCount-1
+                    if not playSeq and frameCount < (cols * rows) then
+                        playSeq = {}
+                        for f = 0, frameCount - 1 do
+                            table.insert(playSeq, f)
+                        end
+                    end
+
+                    local existing = profile.animations[id]
+                    profile.animations[id] = {
+                        name = animData.name or id,
+                        tgaPath = tgaPath,
+                        width = (existing and existing.width) or tonumber(animData.width) or 72,
+                        height = (existing and existing.height) or tonumber(animData.height) or 128,
+                        frameCount = frameCount,
+                        columns = cols,
+                        rows = rows,
+                        aspectRatio = animData.aspectRatio or (existing and existing.aspectRatio) or "9:16",
+                        fps = (existing and existing.fps) or tonumber(animData.fps) or 24,
+                        loopCount = (existing and existing.loopCount) or animData.loop or animData.loopCount or 1,
+                        playSequence = (existing and existing.playSequence) or playSeq,
+                        autoImportedFromMemePack = true,
+                        enabled = (existing and existing.enabled ~= nil) and existing.enabled or true,
+                        useCustomPosition = (existing and existing.useCustomPosition ~= nil) and existing.useCustomPosition or false,
+                        customPositionX = (existing and existing.customPositionX) or 0,
+                        customPositionY = (existing and existing.customPositionY) or 200,
+                    }
+                end
+            end
+        end
+    else
+        -- Clean up any MemePack auto-imported animations if the pack is not installed
+        for id, anim in pairs(profile.animations) do
+            if type(anim) == "table" and (anim.autoImportedFromMemePack or anim.autoImportedFromTikTokPack) then
+                profile.animations[id] = nil
+            end
+        end
+    end
 end
 
 -- Show Advanced Animations UI
@@ -846,6 +998,7 @@ function Animations:ShowAdvancedUI(parent)
     StylePremiumCard(canvas)
 
     local cellButtons = {}
+    local cellPool = {}      -- reused across Load Grid presses (frames can't be freed)
     local selectedFrames = {}
 
     -- Main Preview Frame (200x150 - Stacked Centered)
@@ -909,8 +1062,18 @@ function Animations:ShowAdvancedUI(parent)
     hEdit:Hide()
 
     -- Forward-declare SizePreviewTexture and previewState so aspect buttons can reference them
-    local SizePreviewTexture
-    local previewState
+    local currentAspectRatio = "9:16"
+    local aspectButtons = {}
+
+    local function UpdateAspectButtonsUI()
+        for _, ab in ipairs(aspectButtons) do
+            if ab.aspectValue == currentAspectRatio then
+                ab.text:SetTextColor(1, 0.82, 0)
+            else
+                ab.text:SetTextColor(0.6, 0.6, 0.6)
+            end
+        end
+    end
 
     -- Aspect ratio presets (moved up to replace Width/Height row)
     local aspectLabel = previewBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -926,13 +1089,23 @@ function Animations:ShowAdvancedUI(parent)
         local b = CreateFrame("Button", nil, previewBox, "UIPanelButtonTemplate")
         b:SetSize(44, 18)
         b:SetPoint("LEFT", lastAspect, "RIGHT", 6, 0)
-        b:SetText(ap.label)
-        b:SetNormalFontObject("GameFontNormalSmall")
+        b.aspectValue = ap.label
+
+        local text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        text:SetAllPoints()
+        text:SetText(ap.label)
+        b.text = text
+
         b:SetScript("OnClick", function()
+            currentAspectRatio = ap.label
             wEdit:SetText(tostring(ap.w))
             hEdit:SetText(tostring(ap.h))
-            SizePreviewTexture(previewState.scale)
+            UpdateAspectButtonsUI()
+            if SizePreviewTexture and previewState then
+                SizePreviewTexture(previewState.scale)
+            end
         end)
+        table.insert(aspectButtons, b)
         lastAspect = b
     end
 
@@ -1009,9 +1182,10 @@ function Animations:ShowAdvancedUI(parent)
             filename = path,
             width = tonumber(wEdit:GetText()) or 64,
             height = tonumber(hEdit:GetText()) or 64,
-            frameCount = tonumber(colsEdit:GetText()) * tonumber(rowsEdit:GetText()),
+            frameCount = #seq,
             columns = tonumber(colsEdit:GetText()),
             rows = tonumber(rowsEdit:GetText()),
+            aspectRatio = currentAspectRatio or "1:1",
             fps = tonumber(fpsEdit:GetText()) or 24,
             loopCount = tonumber(loopEdit:GetText()) or 1,
             playSequence = seq,
@@ -1254,19 +1428,67 @@ function Animations:ShowAdvancedUI(parent)
 
 
     -- Draw Grid function
+    -- Sprite sheets are one image, so a big grid means a big texture. WoW can't
+    -- load anything past 4096x4096 and very large sheets can take the client
+    -- down, so the grid is capped here rather than blindly building it.
+    local MAX_GRID_SIDE = 40
+    local MAX_GRID_CELLS = 350
+
+    -- There is no Lua API to read an image's pixel size, so an oversized sheet
+    -- can only be caught by the user. Anything past 4096x4096 crashes the
+    -- client outright inside SetTexture, so confirm before the first load of a
+    -- grid big enough to imply a large image.
+    local confirmedSheets = {}
+
     local function DrawGrid()
         for _, btn in ipairs(cellButtons) do btn:Hide() end
         cellButtons = {}
-        selectedFrames = {}
-        
+
+        local isInitialLoad = (next(selectedFrames) == nil)
+
         local path = fileEdit:GetText()
         if path == "" then return end
-        
+
         if not path:lower():find("%.tga$") and not path:lower():find("%.png$") then path = path .. ".png" end
         local fullPath = ResolveAnimationPath(path)
 
         local c = tonumber(colsEdit:GetText()) or 1
         local r = tonumber(rowsEdit:GetText()) or 1
+
+        c = math.max(1, math.min(c, MAX_GRID_SIDE))
+        r = math.max(1, math.min(r, MAX_GRID_SIDE))
+        if c * r > MAX_GRID_CELLS then
+            print(("|cffff0000OxedHub:|r Sprite sheet grid too large (%dx%d = %d frames). "
+                .. "Maximum is %d frames — split the sheet into smaller parts.")
+                :format(c, r, c * r, MAX_GRID_CELLS))
+            return
+        end
+        if colsEdit:GetText() ~= tostring(c) then colsEdit:SetText(tostring(c)) end
+        if rowsEdit:GetText() ~= tostring(r) then rowsEdit:SetText(tostring(r)) end
+
+        -- Warn once per sheet+grid before touching a potentially oversized image.
+        local confirmKey = fullPath .. ":" .. c .. "x" .. r
+        if (c >= 8 or r >= 8) and not confirmedSheets[confirmKey] then
+            local maxFrameW = math.floor(4096 / c)
+            local maxFrameH = math.floor(4096 / r)
+            StaticPopupDialogs["OXEDHUB_SPRITE_SIZE_WARNING"] = {
+                text = ("|cffff8800Check your sprite sheet size first.|r\n\n"
+                    .. "WoW cannot load images larger than 4096x4096 — it will crash the game, "
+                    .. "and the addon has no way to detect the size beforehand.\n\n"
+                    .. "For a %dx%d grid each frame must be at most |cffffffff%dx%d|r pixels "
+                    .. "(whole sheet under 4096x4096).\n\nLoad this sheet?")
+                    :format(c, r, maxFrameW, maxFrameH),
+                button1 = L["ANIM_LOAD_GRID"] or "Load Grid",
+                button2 = CANCEL or "Cancel",
+                OnAccept = function()
+                    confirmedSheets[confirmKey] = true
+                    DrawGrid()
+                end,
+                timeout = 0, whileDead = true, hideOnEscape = true, showAlert = true,
+            }
+            StaticPopup_Show("OXEDHUB_SPRITE_SIZE_WARNING")
+            return
+        end
         local canvasW, canvasH = canvas:GetWidth() - 16, canvas:GetHeight() - 16 -- 8px padding
         
         local spacing = 4
@@ -1276,45 +1498,64 @@ function Animations:ShowAdvancedUI(parent)
         for row=0, r-1 do
             for col=0, c-1 do
                 local index = row * c + col
-                local btn = CreateFrame("Button", nil, canvas, "BackdropTemplate")
+                -- Reuse cells across loads: frames can't be destroyed in WoW, so
+                -- rebuilding a 240-cell grid repeatedly would leak thousands.
+                local poolIndex = index + 1
+                local btn = cellPool[poolIndex]
+                if not btn then
+                    btn = CreateFrame("Button", nil, canvas, "BackdropTemplate")
+
+                    btn.previewTex = btn:CreateTexture(nil, "BACKGROUND")
+                    btn.previewTex:SetAllPoints()
+
+                    local hl = btn:CreateTexture(nil, "HIGHLIGHT")
+                    hl:SetColorTexture(1, 1, 1, 0.15)
+                    hl:SetAllPoints()
+
+                    btn.selBorder = CreateFrame("Frame", nil, btn, "BackdropTemplate")
+                    btn.selBorder:SetAllPoints()
+                    btn.selBorder:SetBackdrop({
+                        edgeFile = "Interface\\Buttons\\WHITE8X8",
+                        edgeSize = 2,
+                    })
+                    btn.selBorder:SetBackdropBorderColor(1, 0.82, 0, 1)
+
+                    btn.check = btn:CreateTexture(nil, "OVERLAY")
+                    btn.check:SetSize(12, 12)
+                    btn.check:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -2, -2)
+                    btn.check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+
+                    btn.idxText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    btn.idxText:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 2, 2)
+                    btn.idxText:SetTextColor(1, 1, 1, 0.8)
+
+                    cellPool[poolIndex] = btn
+                end
+
                 btn:SetSize(btnW, btnH)
+                btn:ClearAllPoints()
                 btn:SetPoint("TOPLEFT", canvas, "TOPLEFT", col * (btnW + spacing) + 8, -row * (btnH + spacing) - 8)
-                
-                local tex = btn:CreateTexture(nil, "BACKGROUND")
-                tex:SetAllPoints()
+                btn:Show()
+
+                local tex = btn.previewTex
                 tex:SetTexture(fullPath)
                 SetTextureToFrame(tex, index, c, r)
-                btn.previewTex = tex
+
+                local selBorder = btn.selBorder
+                local check = btn.check
+                btn.idxText:SetText(index + 1)
                 
-                local hl = btn:CreateTexture(nil, "HIGHLIGHT")
-                hl:SetColorTexture(1, 1, 1, 0.15)
-                hl:SetAllPoints()
-                
-                local selBorder = CreateFrame("Frame", nil, btn, "BackdropTemplate")
-                selBorder:SetAllPoints()
-                selBorder:SetBackdrop({
-                    edgeFile = "Interface\\Buttons\\WHITE8X8",
-                    edgeSize = 2,
-                })
-                selBorder:SetBackdropBorderColor(1, 0.82, 0, 1)
-                selBorder:Hide()
-                btn.selBorder = selBorder
-                
-                local check = btn:CreateTexture(nil, "OVERLAY")
-                check:SetSize(12, 12)
-                check:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -2, -2)
-                check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-                check:Hide()
-                btn.check = check
-                
-                local idxText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                idxText:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 2, 2)
-                idxText:SetText(index + 1)
-                idxText:SetTextColor(1, 1, 1, 0.8)
-                
-                selectedFrames[index] = true
-                selBorder:Show()
-                check:Show()
+                if isInitialLoad then
+                    selectedFrames[index] = true
+                end
+
+                if selectedFrames[index] then
+                    selBorder:Show()
+                    check:Show()
+                else
+                    selBorder:Hide()
+                    check:Hide()
+                end
                 
                 btn:SetScript("OnClick", function()
                     if selectedFrames[index] then
@@ -1338,7 +1579,10 @@ function Animations:ShowAdvancedUI(parent)
         PlayPreviewFrame(0)
     end
 
-    loadBtn:SetScript("OnClick", DrawGrid)
+    loadBtn:SetScript("OnClick", function()
+        selectedFrames = {}
+        DrawGrid()
+    end)
 
     local selectAllBtn = CreateFrame("Button", nil, controlsCard, "UIPanelButtonTemplate")
     selectAllBtn:SetSize(101, 20)
@@ -1482,34 +1726,45 @@ function Animations:ShowAdvancedUI(parent)
         local path = editData.tgaPath or ""
         local filename = path:match("([^/\\]+)$") or path
         
+        currentAspectRatio = editData.aspectRatio or "9:16"
+        UpdateAspectButtonsUI()
+
         fileEdit:SetText(filename)
         colsEdit:SetText(tostring(editData.columns or 5))
         rowsEdit:SetText(tostring(editData.rows or 5))
         
         nameEdit:SetText(editData.name or "")
-        wEdit:SetText(tostring(editData.width or 64))
-        hEdit:SetText(tostring(editData.height or 64))
+        wEdit:SetText(tostring(editData.width or 72))
+        hEdit:SetText(tostring(editData.height or 128))
         fpsEdit:SetText(tostring(editData.fps or 24))
         loopEdit:SetText(tostring(editData.loopCount or 1))
         
-        DrawGrid()
-        
-        if editData.playSequence then
-            for k in pairs(selectedFrames) do selectedFrames[k] = nil end
-            for _, btn in ipairs(cellButtons) do
-                btn.selBorder:Hide()
-                btn.check:Hide()
-            end
+        -- Pre-populate selectedFrames from playSequence or frameCount BEFORE DrawGrid
+        selectedFrames = {}
+        local c = tonumber(editData.columns) or tonumber(colsEdit:GetText()) or 1
+        local r = tonumber(editData.rows) or tonumber(rowsEdit:GetText()) or 1
+        local totalCells = c * r
 
+        if editData.playSequence then
             for _, idx in ipairs(editData.playSequence) do
                 selectedFrames[idx] = true
-                local btn = cellButtons[idx + 1]
-                if btn then
-                    btn.selBorder:Show()
-                    btn.check:Show()
-                end
+            end
+        elseif editData.frameCount and editData.frameCount < totalCells then
+            for idx = 0, editData.frameCount - 1 do
+                selectedFrames[idx] = true
+            end
+        else
+            for idx = 0, totalCells - 1 do
+                selectedFrames[idx] = true
             end
         end
+
+        -- Mark sheet as confirmed so popup doesn't block editing
+        local fullPath = ResolveAnimationPath(filename)
+        local confirmKey = fullPath .. ":" .. c .. "x" .. r
+        confirmedSheets[confirmKey] = true
+        
+        DrawGrid()
         
         UpdateTimeline()
         PlayPreviewFrame(0)
@@ -1619,8 +1874,12 @@ function Animations:ShowUI(parent)
         { key = "oxed",  name = L["ANIM_FILTER_GEN"] or "General" },
         { key = "male",  name = L["ANIM_FILTER_MALE"] or "Male" },
         { key = "female",name = L["ANIM_FILTER_FEMALE"] or "Female" },
-        { key = "users", name = L["ANIM_FILTER_USERS"] or "Users" },
     }
+    -- Only show Meme Pack filter if the pack addon is installed
+    if type(_G["OxedHubMemePack"]) == "table" or type(_G["OxedHubTikTokPack"]) == "table" then
+        table.insert(filterOptions, { key = "meme", name = L["ANIM_FILTER_MEME"] or "Meme Pack" })
+    end
+    table.insert(filterOptions, { key = "users", name = L["ANIM_FILTER_USERS"] or "Users" })
 
     local function IsFilterSelected(key)
         return (Animations.currentFilter or "all") == key
@@ -1679,6 +1938,9 @@ end
 
 -- Determine animation category for filtering
 function Animations:GetAnimationCategory(id, anim)
+    if anim.autoImportedFromMemePack or anim.autoImportedFromTikTokPack then
+        return "meme"
+    end
     if anim.isBuiltIn then
         local path = anim.tgaPath or ""
         if path:find("Oxed%-male%-") or path:find("oxed%-male%-") then
@@ -1979,7 +2241,7 @@ function Animations:AddAnimation(data)
 end
 
 -- Delete animation
-function Animations:DeleteAnimation(id)
+function Animations:_PerformDeleteAnimation(id)
     -- Stop if playing
     if activeAnimations[id] then
         self:Stop(id)
@@ -1991,6 +2253,30 @@ function Animations:DeleteAnimation(id)
     if OxedHub.UI and OxedHub.UI:GetCurrentTab() == "Reactions" then
         OxedHub.UI:ShowSubTab("Animations")
     end
+end
+
+function Animations:DeleteAnimation(id)
+    local anim = OxedHub.db.profile.animations and OxedHub.db.profile.animations[id]
+    if not anim then return end
+
+    if OxedHub.db.profile.settings and OxedHub.db.profile.settings.skipDeleteConfirmation then
+        self:_PerformDeleteAnimation(id)
+        return
+    end
+
+    local animName = anim.name or tostring(id)
+    StaticPopupDialogs["OXEDHUB_CONFIRM_DELETE_ANIMATION"] = {
+        text = L["ANIM_CONFIRM_DELETE"],
+        button1 = L["SETTINGS_BTN_YES"] or "Yes",
+        button2 = L["SETTINGS_BTN_NO"] or "No",
+        OnAccept = function(dialogFrame, data)
+            Animations:_PerformDeleteAnimation(data)
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+    }
+    StaticPopup_Show("OXEDHUB_CONFIRM_DELETE_ANIMATION", animName, nil, id)
 end
 
 -- Show position frame for dragging animation to desired position
@@ -2024,6 +2310,7 @@ function Animations:ShowPreviewOverlay(animId)
     local frame = self.positionFrame
     frame.targetAnimId = nil
     frame.onSaveCallback = nil
+    frame.onSizeCallback = nil
     frame._previewOnlyMode = true
     frame._previewOnlyAnimId = animId
 
@@ -2093,6 +2380,10 @@ end
 
 -- Play animation
 function Animations:Play(animationIdOrName, customPosData)
+    if OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.animationsEnabled == false then
+        return
+    end
+
     local anim = nil
     local id = nil
     
@@ -2111,7 +2402,18 @@ function Animations:Play(animationIdOrName, customPosData)
         end
     end
     
-    if not anim or not anim.enabled then
+    if not anim then
+        if OxedHub.debug then
+            print(("|cffff0000[OxedHub-Debug]|r Animation not found: %s")
+                :format(tostring(animationIdOrName)))
+        end
+        return
+    end
+    if not anim.enabled then
+        if OxedHub.debug then
+            print(("|cffff0000[OxedHub-Debug]|r Animation '%s' is DISABLED in Reactions > Animations — not playing.")
+                :format(tostring(anim.name or animationIdOrName)))
+        end
         return
     end
     
@@ -2124,6 +2426,12 @@ function Animations:Play(animationIdOrName, customPosData)
         playData.useCustomPosition = true
         playData.customPositionX = customPosData.x
         playData.customPositionY = customPosData.y
+        -- Per-trigger size, set by dragging the corner in trigger Move / Scale.
+        -- These are real on-screen pixels, applied verbatim by PlayAnimationDirect.
+        if customPosData.displayWidth then
+            playData.displayWidth = customPosData.displayWidth
+            playData.displayHeight = customPosData.displayHeight
+        end
     end
 
     self:PlayAnimationDirect(playData)
@@ -2196,12 +2504,23 @@ end
 
 -- Play animation using Soundie approach (supports multiple concurrent animations)
 function Animations:PlayAnimationDirect(animData)
+    if OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.animationsEnabled == false then
+        return
+    end
+
     local frame = self:AcquireAnimationFrame()
     if not frame then return end
 
-    -- Built-in animations display at 128x128 on-screen; user animations scale 3x
-    local scale = animData.isBuiltIn and (128 / animData.width) or 3
-    frame:SetSize(animData.width * scale, animData.height * scale)
+    -- An explicit display size (set per-trigger via Move / Scale) wins outright.
+    -- Without this branch built-ins are pinned to 128x128 by the formula below,
+    -- which silently cancels any width override.
+    if animData.displayWidth and animData.displayHeight then
+        frame:SetSize(animData.displayWidth, animData.displayHeight)
+    else
+        -- Built-in animations display at 128x128 on-screen; user animations scale 3x
+        local scale = animData.isBuiltIn and (128 / animData.width) or 3
+        frame:SetSize(animData.width * scale, animData.height * scale)
+    end
     frame.texture:SetTexture(animData.tgaPath)
     frame.currentFrame = 0
     frame.animData = animData

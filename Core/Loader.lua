@@ -55,6 +55,11 @@ local function DoRegister()
     -- PvP kills. COMBAT_LOG_EVENT_UNFILTERED is gone for addons in 12.0, so the
     -- standalone PARTY_KILL event is how kills are detected now.
     eventFrame:RegisterEvent("PARTY_KILL")
+    -- Group / party
+    eventFrame:RegisterEvent("GROUP_JOINED")
+    eventFrame:RegisterEvent("GROUP_LEFT")
+    eventFrame:RegisterEvent("PARTY_INVITE_REQUEST")
+    eventFrame:RegisterEvent("PARTY_LEADER_CHANGED")
     eventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
     eventFrame:RegisterEvent("PLAYER_CONTROL_LOST")
     eventFrame:RegisterEvent("PLAYER_CONTROL_GAINED")

@@ -1,0 +1,50 @@
+name: Bump version and release
+
+# One button on the Actions tab: type a version, and this writes it into every
+# file, commits, and tags.  The tag then triggers release.yml, which packages
+# and uploads.  Nothing here talks to Wago directly -- that stays in one place.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 2.3.31 (no leading v)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Reject a version that already exists
+        run: |
+          # Re-tagging a shipped version would silently replace a release, so
+          # stop before anything is written.
+          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "Tag v${{ inputs.version }} already exists." >&2
+            exit 1
+          fi
+
+      - name: Write the version into every file
+        run: |
+          chmod +x scripts/set-version.sh
+          ./scripts/set-version.sh "${{ inputs.version }}"
+
+      - name: Commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # If the files already carried this version there is nothing to
+          # commit, but the tag is still worth creating.
+          git add -A
+          git diff --staged --quiet || git commit -m "Release ${{ inputs.version }}"
+
+          git tag "v${{ inputs.version }}"
+          git push origin HEAD
+          git push origin "v${{ inputs.version }}"

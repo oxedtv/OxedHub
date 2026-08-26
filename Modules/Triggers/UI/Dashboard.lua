@@ -218,6 +218,13 @@ function Triggers:CreateDashboardRow(parent, name, event, actions, zone, isHeade
         enabledText:SetJustifyH("RIGHT")
         enabledText:SetTextColor(1, 0.82, 0, 1)
         enabledText:SetText(L["TRIGGERS_HEADER_ENABLE"] or "Enable")
+
+        local shareText = row:CreateFontString(nil, "OVERLAY", detailFont)
+        shareText:SetPoint("RIGHT", enabledText, "LEFT", -5, 0)
+        shareText:SetWidth(45)
+        shareText:SetJustifyH("RIGHT")
+        shareText:SetTextColor(1, 0.82, 0, 1)
+        shareText:SetText(L["BTN_SHARE"] or "Share")
     else
         -- Delete Button
         local delBtn = CreateFrame("Button", nil, row)
@@ -251,6 +258,33 @@ function Triggers:CreateDashboardRow(parent, name, event, actions, zone, isHeade
             end
         end)
         
+        -- Share Button: posts a chat announcement for this one trigger.
+        local shareBtn = CreateFrame("Button", nil, row)
+        shareBtn:SetSize(18, 18)
+        shareBtn:SetPoint("RIGHT", toggle, "LEFT", -12, 0)
+        shareBtn:SetNormalTexture("Interface\\Buttons\\UI-GuildButton-PublicNote-Up")
+        shareBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
+        shareBtn:SetScript("OnEnter", function()
+            GameTooltip:SetOwner(shareBtn, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L["BTN_SHARE"] or "Share", 1, 0.82, 0)
+            GameTooltip:AddLine("Share just this trigger in chat.", 1, 1, 1, true)
+            GameTooltip:AddLine("Others with Oxed Hub can click to import it.", 0.8, 0.8, 0.8, true)
+            GameTooltip:Show()
+        end)
+        shareBtn:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        shareBtn:SetScript("OnClick", function()
+            local Share = OxedHub.Share
+            if not Share then
+                print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+                return
+            end
+            local label = trigger and trigger.name
+            if not label or label == "" then label = "Trigger" end
+            Share:ShowChannelPicker("triggers", { triggerIDs = { triggerId } }, label)
+        end)
+
         -- Gold accent on left edge
         local edge = row:CreateTexture(nil, "OVERLAY")
         edge:SetSize(3, row:GetHeight())
@@ -287,6 +321,143 @@ function Triggers:CreateDashboardRow(parent, name, event, actions, zone, isHeade
     end
     
     return row
+end
+
+function Triggers:GetEventInfo(eventType)
+    if not eventType then return nil end
+    if not self._eventInfoCache then
+        self._eventInfoCache = {}
+        if OxedHub.CONFIG and OxedHub.CONFIG.EVENT_TYPES then
+            for _, et in ipairs(OxedHub.CONFIG.EVENT_TYPES) do
+                self._eventInfoCache[et.value] = et
+            end
+        end
+    end
+    return self._eventInfoCache[eventType]
+end
+
+function Triggers:GetEventDisplay(eventType)
+    local info = self:GetEventInfo(eventType)
+    if info and info.label then
+        return info.label, info.category or "custom", info.desc or ""
+    end
+    return eventType or "Unknown", "custom", ""
+end
+
+function Triggers:GetActionDetails(trigger)
+    local actions = trigger.actions or {}
+    local lines = {}
+    
+    if actions.sound and actions.sound ~= "" and actions.sound ~= "None" then
+        table.insert(lines, "|cffffd100Sound:|r " .. tostring(actions.sound))
+    end
+    if actions.animation and actions.animation ~= "" then
+        table.insert(lines, "|cffa335eeAnimation:|r " .. tostring(actions.animation))
+    end
+    if actions.emote and actions.emote ~= "" then
+        table.insert(lines, "|cff00ff00Emote:|r /" .. tostring(actions.emote))
+    end
+    if actions.chat and actions.chat ~= "" then
+        local chan = actions.chatChannel or "SAY"
+        table.insert(lines, "|cff00ccffChat (" .. chan .. "):|r " .. tostring(actions.chat))
+    end
+    if actions.toy and actions.toy ~= "" then
+        table.insert(lines, "|cffff8000Toy:|r " .. tostring(actions.toy))
+    end
+    if actions.cooldownAnimation then
+        table.insert(lines, "|cffff4040Cooldown Ready Animation|r")
+    end
+    
+    if #lines == 0 then
+        return "|cff888888No actions configured|r"
+    end
+    return table.concat(lines, "\n")
+end
+
+function Triggers:GetZoneDetails(trigger)
+    local zones = trigger.zones or {}
+    local lines = {}
+    
+    table.insert(lines, "|cffffd100Active in Zones:|r")
+    table.insert(lines, (zones.OPEN_WORLD and "|cff00ff00•|r Open World" or "|cff555555• Open World|r"))
+    table.insert(lines, (zones.PARTY and "|cff00ff00•|r Dungeons (Party)" or "|cff555555• Dungeons (Party)|r"))
+    table.insert(lines, (zones.DELVE and "|cff00ff00•|r Delves" or "|cff555555• Delves|r"))
+    table.insert(lines, (zones.RAID and "|cff00ff00•|r Raids" or "|cff555555• Raids|r"))
+    table.insert(lines, (zones.PVP and "|cff00ff00•|r Arenas (PvP)" or "|cff555555• Arenas (PvP)|r"))
+    table.insert(lines, (zones.BATTLEGROUND and "|cff00ff00•|r Battlegrounds" or "|cff555555• Battlegrounds|r"))
+    
+    return table.concat(lines, "\n")
+end
+
+function Triggers:GetFormattedActionsSummary(trigger)
+    local actions = trigger.actions or {}
+    local parts = {}
+    
+    if actions.sound and actions.sound ~= "" and actions.sound ~= "None" then
+        table.insert(parts, "|cffffd100[S]|r")
+    end
+    if actions.animation and actions.animation ~= "" then
+        table.insert(parts, "|cffa335ee[A]|r")
+    end
+    if actions.emote and actions.emote ~= "" then
+        table.insert(parts, "|cff00ff00[E]|r")
+    end
+    if actions.chat and actions.chat ~= "" then
+        table.insert(parts, "|cff00ccff[C]|r")
+    end
+    if actions.toy and actions.toy ~= "" then
+        table.insert(parts, "|cffff8000[T]|r")
+    end
+    if actions.cooldownAnimation then
+        table.insert(parts, "|cffff4040[CD]|r")
+    end
+    
+    if #parts == 0 then
+        return "|cff666666None|r"
+    end
+    return table.concat(parts, " ")
+end
+
+function Triggers:GetFormattedZoneSummary(trigger)
+    local zones = trigger.zones or {}
+    local parts = {}
+    
+    table.insert(parts, zones.OPEN_WORLD and "|cff55ff55W|r" or "|cff444444W|r")
+    table.insert(parts, zones.PARTY and "|cff33ccffD|r" or "|cff444444D|r")
+    table.insert(parts, zones.DELVE and "|cffffcc00V|r" or "|cff444444V|r")
+    table.insert(parts, zones.RAID and "|cffff6633R|r" or "|cff444444R|r")
+    table.insert(parts, zones.PVP and "|cffff3333P|r" or "|cff444444P|r")
+    table.insert(parts, zones.BATTLEGROUND and "|cffa335eeB|r" or "|cff444444B|r")
+    
+    return table.concat(parts, "")
+end
+
+function Triggers:EnableAllFiltered()
+    local count = 0
+    for _, trigger in pairs(OxedHub.db.profile.triggers or {}) do
+        if self._lastFilterMatch and self._lastFilterMatch(trigger) then
+            if not trigger.enabled then
+                trigger.enabled = true
+                count = count + 1
+            end
+        end
+    end
+    self:InvalidateEnabledEventCache()
+    self:RefreshTriggersList()
+end
+
+function Triggers:DisableAllFiltered()
+    local count = 0
+    for _, trigger in pairs(OxedHub.db.profile.triggers or {}) do
+        if self._lastFilterMatch and self._lastFilterMatch(trigger) then
+            if trigger.enabled then
+                trigger.enabled = false
+                count = count + 1
+            end
+        end
+    end
+    self:InvalidateEnabledEventCache()
+    self:RefreshTriggersList()
 end
 
 function Triggers:GetActionsSummary(trigger)
@@ -359,17 +530,58 @@ function Triggers:RefreshTriggersList()
         table.insert(sortedTriggers, trigger)
     end
     
-    table.sort(sortedTriggers, function(a, b)
-        -- Since IDs contain timestamp, sorting descending puts newest at top
-        return (a.id or "") > (b.id or "")
-    end)
+    local sortMode = OxedHub.db.profile.settings and OxedHub.db.profile.settings.triggerSortMode
+    if sortMode == "az" or sortMode == "za" then
+        table.sort(sortedTriggers, function(a, b)
+            local nameA = (a.name or ""):lower()
+            local nameB = (b.name or ""):lower()
+            if nameA == nameB then
+                return (a.id or "") < (b.id or "")   -- stable tiebreak
+            end
+            if sortMode == "za" then
+                return nameA > nameB
+            end
+            return nameA < nameB
+        end)
+    else
+        table.sort(sortedTriggers, function(a, b)
+            -- Since IDs contain timestamp, sorting descending puts newest at top
+            return (a.id or "") > (b.id or "")
+        end)
+    end
 
     local function TriggerMatchesSearch(trigger)
+        local testerOn = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.settings and OxedHub.db.profile.settings.testerMode == true
+        local info = Triggers:GetEventInfo(trigger.event)
+        if info and info.isTester and not testerOn then
+            return false
+        end
+
+        local statusFilter = OxedHub.db.profile.settings and OxedHub.db.profile.settings.triggerStatusFilter or "all"
+        if statusFilter == "enabled" and not trigger.enabled then
+            return false
+        elseif statusFilter == "disabled" and trigger.enabled then
+            return false
+        end
+
+        local catFilter = OxedHub.db.profile.settings and OxedHub.db.profile.settings.triggerCategoryFilter or "all"
+        if catFilter ~= "all" then
+            local category = info and info.category or "custom"
+            if category ~= catFilter then
+                return false
+            end
+        end
+
         local match = true
         if searchText ~= "" then
             match = false
             local name = (trigger.name or ""):lower()
             local event = (trigger.event or ""):lower()
+            local eventLabel = ""
+            local info = Triggers:GetEventInfo(trigger.event)
+            if info and info.label then
+                eventLabel = info.label:lower()
+            end
             local spellName = ""
             local spellId = ""
             if trigger.conditions and trigger.conditions.spellID then
@@ -386,6 +598,7 @@ function Triggers:RefreshTriggersList()
 
             if name:find(searchText, 1, true) or
                event:find(searchText, 1, true) or
+               eventLabel:find(searchText, 1, true) or
                spellName:find(searchText, 1, true) or
                spellId:find(searchText, 1, true) or
                soundName:find(searchText, 1, true) then
@@ -402,34 +615,42 @@ function Triggers:RefreshTriggersList()
         return match
     end
 
+    self._lastFilterMatch = TriggerMatchesSearch
+
     local selectedTrigger = self.selectedTriggerId and OxedHub.db.profile.triggers[self.selectedTriggerId] or nil
     if selectedTrigger then
         if tab.scrollBox then tab.scrollBox:Hide() end
         if tab.scrollBar then tab.scrollBar:Hide() end
         if tab.scrollFrame then 
             tab.scrollFrame:Show()
-            tab.scrollFrame:EnableMouseWheel(false)
-            tab.scrollFrame:SetVerticalScroll(0)
-            if tab.scrollFrame.ScrollBar then
-                tab.scrollFrame.ScrollBar:SetAlpha(0)
-                tab.scrollFrame.ScrollBar:Hide()
-            end
-            if tab.scrollFrame.oxedMinimalScrollBar then
-                tab.scrollFrame.oxedMinimalScrollBar:SetAlpha(0)
-                tab.scrollFrame.oxedMinimalScrollBar:Hide()
-            end
-            for _, child in ipairs({tab.scrollFrame:GetChildren()}) do
-                if child:GetObjectType() == "Slider" then
-                    child:SetAlpha(0)
-                    child:Hide()
-                end
-            end
+            tab.scrollFrame:EnableMouseWheel(true)
+            if tab.scrollFrame.ScrollBar then tab.scrollFrame.ScrollBar:Show() end
+            if tab.scrollFrame.scrollBar then tab.scrollFrame.scrollBar:Show() end
         end
         if tab.listIntro then tab.listIntro:Hide() end
         if tab.listDesc then tab.listDesc:Hide() end
 
         if tab.addBtn then
             tab.addBtn:Hide()
+        end
+        -- These belong to the list, not the single-trigger page.
+        if tab.sortDropdown then
+            tab.sortDropdown:Hide()
+        end
+        if tab.statusFilterDropdown then
+            tab.statusFilterDropdown:Hide()
+        end
+        if tab.categoryFilterDropdown then
+            tab.categoryFilterDropdown:Hide()
+        end
+        if tab.quickSetupBtn then
+            tab.quickSetupBtn:Hide()
+        end
+        if tab.enableAllBtn then
+            tab.enableAllBtn:Hide()
+        end
+        if tab.disableAllBtn then
+            tab.disableAllBtn:Hide()
         end
         if searchBox and searchBox:GetParent() then
             searchBox:GetParent():Hide()
@@ -483,19 +704,221 @@ function Triggers:RefreshTriggersList()
         card:SetPoint("TOPLEFT", backBtn, "BOTTOMLEFT", 0, -35)
         card:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", 22, 0)
         Triggers.triggerCards[selectedTrigger.id] = card
-        scrollChild:SetHeight(1) -- Foolproof way to force ScrollUtil to hide the scrollbar
+        scrollChild:SetHeight(card:GetHeight() + 20)
         return
     end
 
     if tab.addBtn then
         tab.addBtn:Show()
         tab.addBtn:SetText(L["TRIGGERS_BTN_ADD_NEW"] or "Add New Trigger")
+
+        -- A-Z / Z-A sort dropdown under Add New Trigger button
+        if not tab.sortDropdown then
+            local dd = CreateFrame("DropdownButton", "OxedHubTriggerSortDropdown", tab,
+                "WowStyle1DropdownTemplate")
+            dd:SetPoint("TOPRIGHT", tab.addBtn, "BOTTOMRIGHT", 0, -6)
+            dd:SetWidth(95)
+
+            local sortOptions = {
+                { text = L["MIXER_SORT_AZ"] or "A - Z", value = "az" },
+                { text = L["MIXER_SORT_ZA"] or "Z - A", value = "za" },
+            }
+
+            local function UpdateSortText()
+                local mode = OxedHub.db.profile.settings.triggerSortMode or "az"
+                for _, opt in ipairs(sortOptions) do
+                    if opt.value == mode then
+                        dd:OverrideText(opt.text)
+                        return
+                    end
+                end
+                dd:OverrideText(sortOptions[1].text)
+            end
+
+            dd:SetupMenu(function(dropdown, rootDescription)
+                for _, opt in ipairs(sortOptions) do
+                    rootDescription:CreateRadio(opt.text,
+                        function()
+                            return (OxedHub.db.profile.settings.triggerSortMode or "az") == opt.value
+                        end,
+                        function()
+                            OxedHub.db.profile.settings.triggerSortMode = opt.value
+                            UpdateSortText()
+                            Triggers:RefreshTriggersList()
+                        end
+                    )
+                end
+            end)
+
+            UpdateSortText()
+            tab.sortDropdown = dd
+        end
+        tab.sortDropdown:Show()
+
+        -- Status Filter (All / Enabled / Disabled)
+        if not tab.statusFilterDropdown then
+            local sdd = CreateFrame("DropdownButton", "OxedHubTriggerStatusFilterDropdown", tab,
+                "WowStyle1DropdownTemplate")
+            sdd:SetPoint("RIGHT", tab.sortDropdown, "LEFT", -6, 0)
+            sdd:SetWidth(120)
+
+            local statusOptions = {
+                { text = L["TRIGGERS_FILTER_STATUS_ALL"] or "All Status", value = "all" },
+                { text = L["TRIGGERS_FILTER_STATUS_ENABLED"] or "Enabled Only", value = "enabled" },
+                { text = L["TRIGGERS_FILTER_STATUS_DISABLED"] or "Disabled Only", value = "disabled" },
+            }
+
+            local function UpdateStatusText()
+                local cur = OxedHub.db.profile.settings.triggerStatusFilter or "all"
+                for _, opt in ipairs(statusOptions) do
+                    if opt.value == cur then
+                        sdd:OverrideText(opt.text)
+                        return
+                    end
+                end
+                sdd:OverrideText(statusOptions[1].text)
+            end
+
+            sdd:SetupMenu(function(dropdown, rootDescription)
+                for _, opt in ipairs(statusOptions) do
+                    rootDescription:CreateRadio(opt.text,
+                        function()
+                            return (OxedHub.db.profile.settings.triggerStatusFilter or "all") == opt.value
+                        end,
+                        function()
+                            OxedHub.db.profile.settings.triggerStatusFilter = opt.value
+                            UpdateStatusText()
+                            Triggers:RefreshTriggersList()
+                        end
+                    )
+                end
+            end)
+
+            UpdateStatusText()
+            tab.statusFilterDropdown = sdd
+        end
+        tab.statusFilterDropdown:Show()
+
+        -- Category Filter (All / Basic / Combat / PvP / Advanced)
+        if not tab.categoryFilterDropdown then
+            local cdd = CreateFrame("DropdownButton", "OxedHubTriggerCategoryFilterDropdown", tab,
+                "WowStyle1DropdownTemplate")
+            cdd:SetPoint("RIGHT", tab.statusFilterDropdown, "LEFT", -6, 0)
+            cdd:SetWidth(140)
+
+            local catOptions = {
+                { text = L["TRIGGERS_FILTER_CAT_ALL"] or "All Categories", value = "all" },
+                { text = L["TRIGGERS_FILTER_CAT_ADVANCED"] or "Advanced Spells", value = "advanced" },
+                { text = L["TRIGGERS_FILTER_CAT_COMBAT"] or "Combat Events", value = "combat" },
+                { text = L["TRIGGERS_FILTER_CAT_PVP"] or "PvP Alerts", value = "pvp" },
+                { text = L["TRIGGERS_FILTER_CAT_BASIC"] or "Basic Events", value = "basic" },
+            }
+
+            local function UpdateCatText()
+                local cur = OxedHub.db.profile.settings.triggerCategoryFilter or "all"
+                for _, opt in ipairs(catOptions) do
+                    if opt.value == cur then
+                        cdd:OverrideText(opt.text)
+                        return
+                    end
+                end
+                cdd:OverrideText(catOptions[1].text)
+            end
+
+            cdd:SetupMenu(function(dropdown, rootDescription)
+                for _, opt in ipairs(catOptions) do
+                    rootDescription:CreateRadio(opt.text,
+                        function()
+                            return (OxedHub.db.profile.settings.triggerCategoryFilter or "all") == opt.value
+                        end,
+                        function()
+                            OxedHub.db.profile.settings.triggerCategoryFilter = opt.value
+                            UpdateCatText()
+                            Triggers:RefreshTriggersList()
+                        end
+                    )
+                end
+            end)
+
+            UpdateCatText()
+            tab.categoryFilterDropdown = cdd
+        end
+        tab.categoryFilterDropdown:Show()
+
+        -- Quick Setup: build triggers straight from this character's spells.
+        if not tab.quickSetupBtn then
+            local qs = CreateFrame("Button", nil, tab, "UIPanelButtonTemplate")
+            qs:SetSize(120, 24)
+            qs:SetPoint("BOTTOMLEFT", tab.scrollBox, "TOPLEFT", 7, 20)
+            qs:SetText(L["QS_BUTTON"] or "Quick Setup")
+            qs:SetScript("OnClick", function()
+                if Triggers.QuickSetup then Triggers.QuickSetup:Show() end
+            end)
+            qs:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                GameTooltip:SetText(L["QS_BUTTON"] or "Quick Setup", 1, 0.82, 0)
+                GameTooltip:AddLine(L["QS_BUTTON_DESC"]
+                    or "Create triggers in bulk from the spells your character actually has.",
+                    1, 1, 1, true)
+                GameTooltip:Show()
+            end)
+            qs:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            tab.quickSetupBtn = qs
+        end
+        tab.quickSetupBtn:Show()
+
+        -- Bulk Enable All Button
+        if not tab.enableAllBtn then
+            local eb = CreateFrame("Button", nil, tab, "UIPanelButtonTemplate")
+            eb:SetSize(95, 24)
+            eb:SetPoint("LEFT", tab.quickSetupBtn, "RIGHT", 8, 0)
+            eb:SetText(L["TRIGGERS_BTN_ENABLE_ALL"] or "Enable All")
+            eb:SetScript("OnClick", function()
+                Triggers:EnableAllFiltered()
+            end)
+            eb:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText(L["TRIGGERS_BTN_ENABLE_ALL"] or "Enable All", 1, 0.82, 0)
+                GameTooltip:AddLine(L["TRIGGERS_BTN_ENABLE_ALL_DESC"] or "Enable all currently visible/filtered triggers.", 1, 1, 1, true)
+                GameTooltip:Show()
+            end)
+            eb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            tab.enableAllBtn = eb
+        end
+        tab.enableAllBtn:Show()
+
+        -- Bulk Disable All Button
+        if not tab.disableAllBtn then
+            local db = CreateFrame("Button", nil, tab, "UIPanelButtonTemplate")
+            db:SetSize(95, 24)
+            db:SetPoint("LEFT", tab.enableAllBtn, "RIGHT", 6, 0)
+            db:SetText(L["TRIGGERS_BTN_DISABLE_ALL"] or "Disable All")
+            db:SetScript("OnClick", function()
+                Triggers:DisableAllFiltered()
+            end)
+            db:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText(L["TRIGGERS_BTN_DISABLE_ALL"] or "Disable All", 1, 0.82, 0)
+                GameTooltip:AddLine(L["TRIGGERS_BTN_DISABLE_ALL_DESC"] or "Disable all currently visible/filtered triggers.", 1, 1, 1, true)
+                GameTooltip:Show()
+            end)
+            db:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            tab.disableAllBtn = db
+        end
+        tab.disableAllBtn:Show()
     end
     if searchBox and searchBox:GetParent() then
         searchBox:GetParent():Show()
     end
     if tab.title then
         tab.title:SetText("Trigger Rules")
+    end
+
+    local totalTriggers = 0
+    local totalEnabled = 0
+    for _, tr in pairs(OxedHub.db.profile.triggers or {}) do
+        totalTriggers = totalTriggers + 1
+        if tr.enabled then totalEnabled = totalEnabled + 1 end
     end
 
     if tab.scrollBox and tab.scrollBar and CreateDataProvider then
@@ -517,10 +940,6 @@ function Triggers:RefreshTriggersList()
             tab.listDesc:SetPoint("TOPLEFT", tab.listIntro, "BOTTOMLEFT", 0, -4)
             tab.listDesc:SetTextColor(0.72, 0.72, 0.72, 1)
         end
-        tab.listIntro:SetText(L["DASHBOARD_STAT_ACTIVE_TRIGGERS"] or "Active Triggers")
-        tab.listIntro:Show()
-        tab.listDesc:SetText(L["TRIGGERS_LIST_DESC"] or "Click any trigger to open its page. Create new ones with the button below.")
-        tab.listDesc:Show()
 
         local dataProvider = CreateDataProvider()
         dataProvider:Insert({
@@ -535,22 +954,36 @@ function Triggers:RefreshTriggersList()
         for _, trigger in ipairs(sortedTriggers) do
             if TriggerMatchesSearch(trigger) then
                 visibleCount = visibleCount + 1
+                local evLabel, evCat, evDesc = self:GetEventDisplay(trigger.event)
                 dataProvider:Insert({
                     id = trigger.id,
                     index = visibleCount,
                     name = trigger.name,
                     event = trigger.event,
+                    eventLabel = evLabel,
+                    eventCategory = evCat,
+                    eventDesc = evDesc,
                     actions = self:GetActionsSummary(trigger),
+                    formattedActions = self:GetFormattedActionsSummary(trigger),
+                    actionDetails = self:GetActionDetails(trigger),
+                    spellID = trigger.conditions and trigger.conditions.spellID,
                     zone = self:GetZoneSummary(trigger),
+                    formattedZone = self:GetFormattedZoneSummary(trigger),
+                    zoneDetails = self:GetZoneDetails(trigger),
                     enabled = trigger.enabled == true,
                 })
             end
         end
 
+        tab.listIntro:SetText((L["DASHBOARD_STAT_ACTIVE_TRIGGERS"] or "Active Triggers") .. " (" .. visibleCount .. " visible)")
+        tab.listIntro:Show()
+        tab.listDesc:SetText(string.format("Total: %d  |  Enabled: %d  |  Disabled: %d", totalTriggers, totalEnabled, totalTriggers - totalEnabled))
+        tab.listDesc:Show()
+
         if visibleCount == 0 then
             dataProvider:Insert({
                 isHeader = false,
-                name = searchText ~= "" and "No triggers match search" or "No triggers yet",
+                name = searchText ~= "" and "No triggers match search" or "No triggers match filters",
                 event = "",
                 actions = "",
                 zone = "",

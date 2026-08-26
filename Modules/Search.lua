@@ -8,6 +8,17 @@ OxedHub.Search = Search
 local CreateFrame = CreateFrame
 local C_Timer = C_Timer
 
+local function IsMouseOver(frame)
+    if not frame then return false end
+    if frame.IsMouseOver then
+        return frame:IsMouseOver()
+    elseif type(_G.MouseIsOver) == "function" then
+        return _G.MouseIsOver(frame)
+    end
+    return false
+end
+local MouseIsOver = IsMouseOver
+
 -- Search results dropdown
 local searchDropdown = nil
 local searchResults = {}

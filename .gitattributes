@@ -1,0 +1,24 @@
+# Shell scripts must keep LF endings.  Checked out with CRLF on Windows they
+# still commit fine, but the Linux runner then fails with
+# "bad interpreter: /bin/sh^M" and the release workflow dies before it starts.
+*.sh text eol=lf
+
+# Same reasoning for anything the CI reads directly.
+*.yml text eol=lf
+*.yaml text eol=lf
+.pkgmeta text eol=lf
+
+# Addon sources: let Git normalise to LF in the repository. WoW reads either.
+*.lua text
+*.toc text
+*.xml text
+*.md text
+
+# Never touch binary assets.
+*.png binary
+*.tga binary
+*.blp binary
+*.ogg binary
+*.mp3 binary
+*.ttf binary
+*.otf binary

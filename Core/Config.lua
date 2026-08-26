@@ -2,7 +2,7 @@ local addonName, OxedHub = ...
 
 -- Configuration and Constants
 OxedHub.CONFIG = {
-    VERSION = "2.2.39",
+    VERSION = "2.3.33",
     DB_VERSION = 1,
 
     -- Shown in the Export/Import "About" panel. Edit freely.
@@ -22,43 +22,66 @@ OxedHub.CONFIG = {
     -- need a spell ID (or similar) to be configured; everything else is
     -- ready to use as soon as it's selected.
     EVENT_CATEGORIES = {
-        { value = "preset", label = "Basic Triggers", desc = "Ready-to-use events that need no extra configuration" },
-        { value = "advanced", label = "Advanced Triggers", desc = "Events that you configure with a specific spell or aura" },
+        { value = "basic", label = "Basic Triggers", desc = "General events like mounts, leveling, mail, achievements, and party invites" },
+        { value = "combat", label = "Combat Triggers", desc = "Combat events like interrupts, boss encounters, deaths, and cooldowns" },
+        { value = "pvp", label = "PvP Triggers", desc = "Player versus Player kills, multi-kills, and sprees" },
+        { value = "advanced", label = "Advanced Triggers", desc = "Configurable triggers requiring spell IDs, aura names, or proc glows" },
     },
 
     -- Event Types (technical -> human-readable mapping with descriptions)
-    -- category defaults to "preset" when omitted.
     EVENT_TYPES = {
+        -- Advanced Triggers
         { value = "UNIT_AURA", label = "Aura Gained/Lost", desc = "When you gain or lose a buff/debuff", category = "advanced" },
         { value = "SELF_AURA", label = "My Buff (by Spell ID)", desc = "Detect one of YOUR buffs by spell ID (e.g. Power Infusion). Works out of combat now; sound also plays IN COMBAT on WoW 12.1+ (native aura sound).", category = "advanced" },
+        -- { value = "TEST_ICON_AURA", label = "Test Trigger (by Icon ID)", desc = "Monitors a buff by resolving the chosen spell to its icon, checking if any active buff shares that icon.", category = "advanced" },
         { value = "SPELL_PROC", label = "Spell Proc Glow (by Spell ID)", desc = "Fires when a spell's proc/activation glow appears on your bar (e.g. Sudden Doom lighting up Death Coil). Uses the game's proc-glow event, so it works IN COMBAT.", category = "advanced" },
         { value = "UNIT_SPELLCAST_SUCCEEDED", label = "Spell Cast Success", desc = "When you successfully cast a spell (e.g., Sprint, Hearthstone, Portals)", category = "advanced" },
-        { value = "SUMMON", label = "Summon", desc = "When a summon appears, is accepted, or is declined" },
-        { value = "PLAYER_DEAD", label = "Player Died", desc = "When your character dies" },
-        { value = "ENCOUNTER_START", label = "Boss Encounter Start", desc = "When a boss fight begins" },
-        { value = "ENCOUNTER_END", label = "Boss Encounter End", desc = "When a boss fight ends (win or wipe)" },
-        { value = "BOSS_KILL", label = "Boss Killed", desc = "When your group kills a boss" },
-        { value = "CHALLENGE_MODE_COMPLETED", label = "M+ Completed", desc = "When a Mythic+ dungeon is completed" },
-        -- { value = "SUMMON_ACCEPT", label = "Summon Accepted", desc = "When you accept a summon from another player" },
-        { value = "CD_READY", label = "Cooldown Ready", desc = "When a tracked spell's cooldown finishes" },
-        { value = "INTERRUPT_USED", label = "Interrupt", desc = "When you use your interrupt spell (cast, success, or fail)" },
-        { value = "EAT_BUFF", label = "Food/Drink Buff", desc = "When you eat or drink (Well Fed, Refreshment)" },
-        { value = "ACHIEVEMENT", label = "Achievement Earned", desc = "When you earn an achievement" },
-        { value = "CONTROL_LOST", label = "Control Lost", desc = "When you lose control (fear, MC, taxi)" },
-        { value = "CONTROL_GAINED", label = "Control Regained", desc = "When you regain control" },
-        { value = "PET_DIED", label = "Pet Died", desc = "When your pet dies" },
-        { value = "PET_SUMMONED", label = "Pet Summoned", desc = "When your pet is summoned" },
-        { value = "PET_DISMISSED", label = "Pet Dismissed", desc = "When your pet is dismissed" },
-        { value = "SPELL_INTERRUPTED", label = "Spell Interrupted", desc = "When your spell is interrupted" },
-        { value = "PARTY_MEMBER_DEATH", label = "Party Member Died", desc = "When a party member dies" },
-        { value = "PLAYER_LEVEL_UP", label = "Level Up", desc = "When you gain a level" },
-        { value = "NEW_MAIL", label = "New Mail", desc = "When you receive new mail" },
-        { value = "REACH_FLY_DESTINATION", label = "Reach Fly Destination", desc = "When you land from a flight path" },
-        { value = "MOUNT", label = "Mount Up / Dismount", desc = "When you mount up, dismount, or shapeshift into Travel Form" },
-        { value = "COMBAT_STATE", label = "Enter/Exit Combat", desc = "When you enter or leave combat" },
-        { value = "PVP_KILL", label = "PvP Kill", desc = "When you land a killing blow on an enemy player" },
-        { value = "PVP_MULTIKILL", label = "PvP Multi-Kill", desc = "Double / Triple / Multi kill within 10 seconds" },
-        { value = "PVP_SPREE", label = "PvP Killing Spree", desc = "Killing Spree / Dominating / Unstoppable / Godlike" },
+
+        -- Basic Triggers
+        { value = "SHATTERSIGHT", label = "Disenchant Insight", desc = "Analyze and track Disenchant values vs vendor prices directly on tooltips", category = "basic" },
+        { value = "SUMMON", label = "Summon", desc = "When a summon appears, is accepted, or is declined", category = "basic" },
+        { value = "EAT_BUFF", label = "Food/Drink Buff", desc = "When you eat or drink (Well Fed, Refreshment)", category = "basic" },
+        { value = "ACHIEVEMENT", label = "Achievement Earned", desc = "When you earn an achievement", category = "basic" },
+        { value = "PLAYER_LEVEL_UP", label = "Level Up", desc = "When you gain a level", category = "basic" },
+        { value = "NEW_MAIL", label = "New Mail", desc = "When you receive new mail", category = "basic" },
+        { value = "REACH_FLY_DESTINATION", label = "Reach Fly Destination", desc = "When you land from a flight path", category = "basic" },
+        { value = "MOUNT", label = "Mount Up / Dismount", desc = "When you mount up, dismount, or shapeshift into Travel Form", category = "basic" },
+        { value = "GROUP_JOINED", label = "Joined Group", desc = "When you join a party or raid", category = "basic" },
+        { value = "GROUP_LEFT", label = "Left Group", desc = "When you leave a party or raid", category = "basic" },
+        { value = "PARTY_INVITE_REQUEST", label = "Party Invite", desc = "When you receive a party invite", category = "basic" },
+        { value = "PARTY_LEADER_CHANGED", label = "Leader Changed", desc = "When the party leader changes", category = "basic" },
+        { value = "HEARTBEAT", label = "Heartbeat", desc = "Plays a heartbeat sound that speeds up as your health drops below a threshold", category = "basic" },
+        { value = "PREY_HUNT", label = "Prey Hunt", desc = "Track Prey Hunts, Astalor gossip achievement markers, stage alerts, and HUD bar", category = "basic" },
+
+        -- Combat Triggers
+        { value = "COMBAT_STATE", label = "Enter/Exit Combat", desc = "When you enter or leave combat", category = "combat" },
+        { value = "BLOODLUST", label = "Bloodlust / Heroism", desc = "When the Bloodlust/Heroism/Time Warp buff lands on you (works in combat)", category = "combat" },
+        { value = "BASIC_AURA_TRACKER", label = "My Target Debuffs", desc = "Native aura tracker that automatically monitors your target debuffs (no spell ID required).", category = "combat" },
+        { value = "CD_READY", label = "Cooldown Ready", desc = "When a tracked spell's cooldown finishes", category = "combat" },
+        { value = "INTERRUPT_USED", label = "Interrupt", desc = "When you use your interrupt spell (cast, success, or fail)", category = "combat" },
+        { value = "SPELL_INTERRUPTED", label = "Spell Interrupted", desc = "When your spell is interrupted", category = "combat" },
+        { value = "CONTROL_LOST", label = "Control Lost", desc = "When you lose control (fear, MC, taxi)", category = "combat" },
+        { value = "CONTROL_GAINED", label = "Control Regained", desc = "When you regain control", category = "combat" },
+        { value = "PLAYER_DEAD", label = "Player Died", desc = "When your character dies", category = "combat" },
+        { value = "PARTY_MEMBER_DEATH", label = "Party Member Died", desc = "When a party member dies", category = "combat" },
+        { value = "PET_DIED", label = "Pet Died", desc = "When your pet dies", category = "combat" },
+        { value = "PET_SUMMONED", label = "Pet Summoned", desc = "When your pet is summoned", category = "combat" },
+        { value = "PET_DISMISSED", label = "Pet Dismissed", desc = "When your pet is dismissed", category = "combat" },
+        { value = "ENCOUNTER_START", label = "Boss Encounter Start", desc = "When a boss fight begins", category = "combat" },
+        { value = "ENCOUNTER_END", label = "Boss Encounter End", desc = "When a boss fight ends (win or wipe)", category = "combat" },
+        { value = "BOSS_KILL", label = "Boss Killed", desc = "When your group kills a boss", category = "combat" },
+        { value = "CHALLENGE_MODE_COMPLETED", label = "M+ Completed", desc = "When a Mythic+ dungeon is completed", category = "combat" },
+
+        -- PvP Triggers
+        { value = "PVP_KILL", label = "PvP Kill", desc = "When you land a killing blow on an enemy player", category = "pvp" },
+        { value = "PVP_MULTIKILL", label = "PvP Multi-Kill", desc = "Double / Triple / Multi kill within 10 seconds", category = "pvp" },
+        { value = "PVP_SPREE", label = "PvP Killing Spree", desc = "Killing Spree / Dominating / Unstoppable / Godlike", category = "pvp" },
+        { value = "PVP_ENEMY_BUFF", label = "Enemy Buff Alert", desc = "Instantly plays a voice clip when your target, focus, or arena enemy gains an important buff (defensive, offensive, utility).", category = "pvp" },
+        { value = "PVP_SELF_CC", label = "Self CC Alert", desc = "Instantly plays a voice clip when you are hit by crowd control (stuns, fears, poly, silence, etc.).", category = "pvp" },
+        { value = "PVP_HEALER_CC", label = "Healer CC Alert", desc = "Plays an alert when a friendly healer in your party/raid is hit by crowd control.", category = "pvp" },
+        { value = "PVP_TRINKET", label = "Enemy Trinket Alert", desc = "Plays an alert when an enemy uses their PvP trinket or Adaptation.", category = "pvp" },
+        { value = "PVP_CONSUMABLE", label = "Enemy Consumable Alert", desc = "Plays an alert when an enemy drinks a healing potion or consumable.", category = "pvp" },
+        { value = "PVP_ANTI_AFK", label = "Anti-AFK BG Guard", desc = "Tracks idle time in Battlegrounds, displays an on-screen timer, and alerts with sounds and a MOVE banner.", category = "pvp" },
     },
     
     -- Zone Types
@@ -162,3 +185,81 @@ function OxedHub:GetString(key, ...)
     end
     return str
 end
+
+local LUST_SPELL_IDS = {
+    -- Haste Buffs
+    [2825]    = true, -- Bloodlust
+    [32182]   = true, -- Heroism
+    [80353]   = true, -- Time Warp
+    [390386]  = true, -- Fury of the Aspects
+    [264667]  = true, -- Primal Rage
+    [90355]   = true, -- Ancient Hysteria
+    [160452]  = true, -- Netherwinds
+    [381301]  = true, -- Feral Hide Drums
+    [230935]  = true, -- Drums of the Mountain
+    [256740]  = true, -- Drums of the Maelstrom
+    [309658]  = true, -- Drums of Deathly Ferocity
+    [466904]  = true, -- Harrier's Cry / Drums of War
+    [1243972] = true, -- Void-touched Drums
+
+    -- Sated / Exhaustion Debuffs (used in 12.1 combat existence tracking)
+    [57724]   = true, -- Sated (Bloodlust)
+    [57723]   = true, -- Exhaustion (Heroism)
+    [80354]   = true, -- Temporal Displacement (Time Warp)
+    [390435]  = true, -- Exhaustion (Fury of the Aspects)
+    [264689]  = true, -- Fatigued (Primal Rage / Drums)
+}
+
+function OxedHub.IsLustSpell(val)
+    if not val then return false end
+    local n = tonumber(val)
+    if n and LUST_SPELL_IDS[n] then
+        return true
+    end
+    local s = tostring(val):lower()
+    if LUST_SPELL_IDS[s] or s:find("bloodlust") or s:find("heroism") or s:find("time warp") or s:find("fury of the aspects") or s:find("primal rage") or s:find("drums") then
+        return true
+    end
+    return false
+end
+
+function OxedHub.IsLustTrigger(trigger)
+    if not trigger then return false end
+    local c = trigger.conditions or {}
+    if OxedHub.IsLustSpell(c.spellID) or OxedHub.IsLustSpell(c.spellName) then
+        return true
+    end
+    if c.extraSpellIDs then
+        for _, id in ipairs(c.extraSpellIDs) do
+            if OxedHub.IsLustSpell(id) then return true end
+        end
+    end
+    if c.extraSpellNames then
+        for _, name in ipairs(c.extraSpellNames) do
+            if OxedHub.IsLustSpell(name) then return true end
+        end
+    end
+    return false
+end
+
+function OxedHub.GetRingDB()
+    if OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.oxedRingUnique ~= false then
+        return OxedHub.db.profile
+    end
+    return OxedHub.db and OxedHub.db.globalSettings or {}
+end
+
+function OxedHub.GetEffectiveRingRadius(numNodes)
+    local baseRadius = (OxedHub.db and OxedHub.db.profile and OxedHub.GetRingDB().oxedRingRadius) or 100
+    local autoAdjust = (OxedHub.db and OxedHub.db.profile and OxedHub.GetRingDB().oxedRingAutoRadius)
+    if autoAdjust == nil then autoAdjust = true end
+    
+    if not autoAdjust or not numNodes or numNodes <= 1 then
+        return baseRadius
+    end
+    
+    local scale = math.min(1.0, math.max(0.45, (numNodes / 12) ^ 0.65))
+    local calcRadius = math.floor(baseRadius * scale)
+    return math.max(60, calcRadius)
+end
+

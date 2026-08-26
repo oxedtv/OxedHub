@@ -1,0 +1,16 @@
+# Reference addons kept locally for comparison, not part of this project.
+.outsource/
+
+# Stale nested copy of the addon (130 MB).
+OxedHub/
+
+# Manually built packages.
+*.zip
+.release/
+
+# Editor / OS noise.
+.vscode/
+.idea/
+*.bak
+Thumbs.db
+.DS_Store

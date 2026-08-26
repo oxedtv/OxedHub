@@ -16,20 +16,282 @@ local function DeepCopy(original)
     return copy
 end
 
+function Triggers:HasMultiActions(trigger)
+    if not trigger then return false end
+    if trigger.event == "MOUNT" or trigger.event == "SUMMON" then return true end
+    if trigger.event == "COMBAT_STATE" and trigger.conditions and trigger.conditions.separateEffects then return true end
+    if (trigger.event == "INTERRUPT_USED" or trigger.event == "SPELL_INTERRUPTED") and trigger.actions and ((trigger.actions.failSound and trigger.actions.failSound ~= "") or (trigger.actions.successSound and trigger.actions.successSound ~= "")) then return true end
+    return false
+end
+
+function Triggers:ShowMultiActionTestMenu(button, trigger)
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then
+        self:TestTrigger(trigger)
+        return
+    end
+
+    local trig = (trigger and trigger.id and OxedHub.db.profile.triggers[trigger.id]) or trigger
+
+    MenuUtil.CreateContextMenu(button, function(owner, root)
+        if trig.event == "MOUNT" then
+            root:CreateTitle(L["TR_MOUNTS_NAME"] or "Mount Test")
+            root:CreateButton(L["TR_MOUNTS_GROUND"] or "Ground Mount", function()
+                Triggers:TestTrigger(trig, "ground")
+            end)
+            root:CreateButton(L["TR_MOUNTS_FLYING"] or "Flying Mount", function()
+                Triggers:TestTrigger(trig, "flying")
+            end)
+            root:CreateButton(L["TR_MOUNTS_AQUATIC"] or "Aquatic Mount", function()
+                Triggers:TestTrigger(trig, "aquatic")
+            end)
+            root:CreateDivider()
+            root:CreateButton(L["TEST_ALL_SEQUENCE"] or "Test All in Sequence", function()
+                Triggers:TestTrigger(trig, "all")
+            end)
+
+        elseif trig.event == "SUMMON" then
+            root:CreateTitle(L["EVENT_SUMMON"] or "Summon Test")
+            root:CreateButton(L["LBL_SUMMON_CHAT"] or "Incoming Summon", function()
+                Triggers:TestTrigger(trig, "incoming")
+            end)
+            root:CreateButton(L["LBL_ACCEPT_CHAT"] or "Accept Summon", function()
+                Triggers:TestTrigger(trig, "accepted")
+            end)
+            root:CreateButton(L["LBL_DECLINE_CHAT"] or "Decline Summon", function()
+                Triggers:TestTrigger(trig, "declined")
+            end)
+            root:CreateDivider()
+            root:CreateButton(L["TEST_ALL_SEQUENCE"] or "Test All in Sequence", function()
+                Triggers:TestTrigger(trig, "all")
+            end)
+
+        elseif trig.event == "COMBAT_STATE" and trig.conditions and trig.conditions.separateEffects then
+            root:CreateTitle(L["EVT_COMBAT_STATE"] or "Combat Transitions")
+            root:CreateButton(L["COMBAT_ON_ENTER"] or "Enter Combat", function()
+                Triggers:TestTrigger(trig, "enter")
+            end)
+            root:CreateButton(L["COMBAT_ON_EXIT"] or "Exit Combat", function()
+                Triggers:TestTrigger(trig, "exit")
+            end)
+            root:CreateDivider()
+            root:CreateButton(L["TEST_ALL_SEQUENCE"] or "Test All in Sequence", function()
+                Triggers:TestTrigger(trig, "all")
+            end)
+
+        elseif trig.event == "INTERRUPT_USED" or trig.event == "SPELL_INTERRUPTED" then
+            root:CreateTitle(L["EVT_INTERRUPT_USED"] or "Interrupt Test")
+            root:CreateButton("Successful Interrupt", function()
+                Triggers:TestTrigger(trig, "success")
+            end)
+            root:CreateButton("Failed Interrupt", function()
+                Triggers:TestTrigger(trig, "failed")
+            end)
+            root:CreateDivider()
+            root:CreateButton(L["TEST_ALL_SEQUENCE"] or "Test All in Sequence", function()
+                Triggers:TestTrigger(trig, "all")
+            end)
+        else
+            Triggers:TestTrigger(trig)
+        end
+    end)
+end
+
+function Triggers:TestTrigger(trigger, subType, anchorButton)
+    if not trigger then return end
+    local trig = (trigger.id and OxedHub.db.profile.triggers[trigger.id]) or trigger
+
+    if not subType and anchorButton and self:HasMultiActions(trig) then
+        self:ShowMultiActionTestMenu(anchorButton, trig)
+        return
+    end
+
+    if subType == "all" then
+        if trig.event == "MOUNT" then
+            self:TestTrigger(trig, "ground")
+            C_Timer.After(1.3, function()
+                self:TestTrigger(trig, "flying")
+            end)
+            C_Timer.After(2.6, function()
+                self:TestTrigger(trig, "aquatic")
+            end)
+            return
+        elseif trig.event == "SUMMON" then
+            self:TestTrigger(trig, "incoming")
+            C_Timer.After(1.5, function()
+                self:TestTrigger(trig, "accepted")
+            end)
+            return
+        elseif trig.event == "COMBAT_STATE" then
+            self:TestTrigger(trig, "enter")
+            C_Timer.After(1.5, function()
+                self:TestTrigger(trig, "exit")
+            end)
+            return
+        elseif trig.event == "INTERRUPT_USED" then
+            self:TestTrigger(trig, "success")
+            C_Timer.After(1.5, function()
+                self:TestTrigger(trig, "failed")
+            end)
+            return
+        end
+    end
+
+    if trig.event == "PVP_ANTI_AFK" and OxedHub.AntiAFK then
+        OxedHub.AntiAFK:TriggerStageAlert(trig, "move")
+        OxedHub.AntiAFK.moveFrame:Show()
+        C_Timer.After(4, function()
+            if OxedHub.AntiAFK.moveFrame and not OxedHub.AntiAFK.moveFrame.isPreview then
+                OxedHub.AntiAFK.moveFrame:Hide()
+            end
+        end)
+        return
+    end
+
+    local actions = trig.actions or {}
+    local soundKey = "sound"
+    local animKey = "animation"
+    local emoteKey = "emote"
+    local iconKey = "icon"
+    local chatKey = "chatMessage"
+
+    if trig.event == "MOUNT" then
+        local prefix = (subType == "flying" or subType == "aquatic" or subType == "ground") and subType or "ground"
+        soundKey = prefix .. "Sound"
+        animKey = prefix .. "Anim"
+        emoteKey = prefix .. "Emote"
+    elseif trig.event == "SUMMON" then
+        if subType == "accepted" then
+            chatKey = "summonAcceptedChatMessage"
+        elseif subType == "declined" then
+            chatKey = "summonDeclinedChatMessage"
+        else
+            chatKey = "summonIncomingChatMessage"
+        end
+    elseif trig.event == "COMBAT_STATE" and trig.conditions and trig.conditions.separateEffects then
+        local prefix = (subType == "exit") and "exit" or "enter"
+        soundKey = prefix .. "Sound"
+        animKey = prefix .. "Anim"
+        iconKey = prefix .. "Icon"
+    elseif trig.event == "INTERRUPT_USED" or trig.event == "SPELL_INTERRUPTED" then
+        if subType == "failed" then
+            soundKey = (actions.failSound and actions.failSound ~= "") and "failSound" or "sound"
+            animKey = (actions.failAnimation and actions.failAnimation ~= "") and "failAnimation" or "animation"
+            iconKey = (actions.failIcon and actions.failIcon ~= "") and "failIcon" or "icon"
+        else
+            soundKey = (actions.successSound and actions.successSound ~= "") and "successSound" or "sound"
+            animKey = (actions.successAnimation and actions.successAnimation ~= "") and "successAnimation" or "animation"
+            iconKey = (actions.successIcon and actions.successIcon ~= "") and "successIcon" or "icon"
+        end
+    end
+
+    -- Play Sound
+    local soundVal = actions[soundKey]
+    if soundVal and soundVal ~= "" and soundVal ~= "None" then
+        if OxedHub.Sounds then OxedHub.Sounds:Play(soundVal) end
+    end
+
+    -- Play Animation
+    local animVal = actions[animKey]
+    if animVal and animVal ~= "" and animVal ~= "None" then
+        if OxedHub.Animations then
+            if actions[animKey .. "UseCustomPosition"] then
+                local pos = {
+                    x = actions[animKey .. "PositionX"] or 0,
+                    y = actions[animKey .. "PositionY"] or 200,
+                    displayWidth = actions[animKey .. "DisplayWidth"],
+                    displayHeight = actions[animKey .. "DisplayHeight"],
+                }
+                OxedHub.Animations:Play(animVal, pos)
+            else
+                OxedHub.Animations:Play(animVal)
+            end
+        end
+    end
+
+    -- Do Emote
+    local emoteVal = actions[emoteKey]
+    if emoteVal and emoteVal ~= "" and emoteVal ~= "None" then
+        if OxedHub.Emotes then OxedHub.Emotes:DoEmote(emoteVal, actions.whisperTarget or false) end
+    end
+
+    -- Show Icon
+    local hasIcon = actions.showIcon or (actions[iconKey] and actions[iconKey] ~= "" and actions[iconKey] ~= "None")
+    if hasIcon and OxedHub.Icons then
+        local posData = {}
+        if actions.iconUseCustomPosition then
+            posData.useCustomPosition = true
+            posData.x = actions.iconPositionX or 0
+            posData.y = actions.iconPositionY or 100
+            posData.size = actions.iconSize or 64
+        end
+        posData.style = actions.iconStyle or "SQUARE"
+        posData.showCooldown = actions.iconShowCooldown
+        posData.showDuration = actions.iconShowDuration
+        local isLustTrigger = OxedHub.IsLustTrigger and OxedHub.IsLustTrigger(trig)
+        posData.iconTextureType = actions.iconTextureType or (isLustTrigger and "FACTION" or "SPELL")
+        if isLustTrigger and posData.iconTextureType == "SPELL" then
+            posData.iconTextureType = "FACTION"
+        end
+        
+        local spellID = trig.conditions and trig.conditions.spellID
+        
+        local isPvP = (trig.event == "PVP_ENEMY_BUFF" or trig.event == "PVP_SELF_CC" or trig.event == "PVP_HEALER_CC" or trig.event == "PVP_TRINKET" or trig.event == "PVP_CONSUMABLE")
+        if isPvP and not spellID and OxedHub.PvPSpellDB then
+            local dbMap = {
+                PVP_ENEMY_BUFF = { db = OxedHub.PvPSpellDB.EnemyBuffSounds, key = "disabledEnemyBuffs" },
+                PVP_SELF_CC = { db = OxedHub.PvPSpellDB.SelfCcSounds, key = "disabledSelfCc" },
+                PVP_HEALER_CC = { db = OxedHub.PvPSpellDB.CcSpellIds, key = "disabledHealerCc" },
+                PVP_TRINKET = { db = OxedHub.PvPSpellDB.TrinketSpellIds, key = "disabledTrinkets" },
+                PVP_CONSUMABLE = { db = OxedHub.PvPSpellDB.ConsumableSpells, key = "disabledConsumables" },
+            }
+            local map = dbMap[trig.event]
+            if map and map.db then
+                local validSpells = {}
+                local disabled = trig.conditions and trig.conditions[map.key] or {}
+                for sID, _ in pairs(map.db) do
+                    if type(sID) == "number" then
+                        local disabledForSpell = disabled[tostring(sID)] or disabled[tonumber(sID)]
+                        if not disabledForSpell then
+                            table.insert(validSpells, sID)
+                        end
+                    end
+                end
+                if #validSpells > 0 then
+                    spellID = validSpells[math.random(1, #validSpells)]
+                end
+            end
+        end
+        
+        OxedHub.Icons:PlayScreenIcon(spellID, posData, 10, GetTime() + 10)
+    end
+
+    -- Test Chat Message
+    local chatVal = actions[chatKey]
+    if chatVal and chatVal ~= "" and chatVal ~= "None" and OxedHub.ChatMessages then
+        local chatData = OxedHub.db.profile.chatMessages and OxedHub.db.profile.chatMessages[chatVal]
+        local text = chatData and chatData.text or chatVal
+        print(string.format("|cFF00FFFF[OxedHub Test Chat - %s]:|r %s", subType or trig.name or "Trigger", text))
+    end
+end
+
 function Triggers:CreateTriggerCard(parent, trigger)
     local card = CreateFrame("Frame", "OxedHubTriggerCard" .. (trigger.id:gsub("%s+", ""):gsub("-", "")), parent)
     card:SetHeight(440)
     
     -- Background removed as requested
 
-    -- Replaced ornate border with a simple top line
-    -- Parent it to the tab (bypassing ScrollFrame clipping) so it can extend into the margins
-    local tab = parent:GetParent() and parent:GetParent():GetParent() or parent
-    local topLine = tab:CreateTexture(nil, "ARTWORK")
+    -- Simple top line instead of an ornate border.
+    --
+    -- It used to be parented to the tab so it could bleed into the margins,
+    -- while still being ANCHORED to the card.  That combination is what made it
+    -- slide across the screen on scroll: the anchor moved the line with the
+    -- card, but its parent sat outside the ScrollFrame, so nothing clipped it.
+    -- Parenting it to the card keeps it clipped like the rest of the content.
+    local topLine = card:CreateTexture(nil, "ARTWORK")
     topLine:SetPoint("TOPLEFT", card, "TOPLEFT", -14, -4)
     topLine:SetPoint("TOPRIGHT", card, "TOPRIGHT", 21, -4)
     topLine:SetHeight(2)
-    topLine:SetColorTexture(1, 0.82, 0, 0.05) -- Changed layer to ARTWORK and opacity to 0.05 so it's visible on top of background
+    topLine:SetColorTexture(1, 0.82, 0, 0.05)
     topLine:Show()
     card.topLine = topLine
 
@@ -204,9 +466,9 @@ function Triggers:CreateTriggerCard(parent, trigger)
     -- vs "Advanced") and the matching events on the right.
     local function GetEventCategory(eventValue)
         for _, et in ipairs(OxedHub.CONFIG.EVENT_TYPES) do
-            if et.value == eventValue then return et.category or "preset" end
+            if et.value == eventValue then return et.category or "basic" end
         end
-        return "preset"
+        return "basic"
     end
 
     local function GetCategoryLabel(categoryValue)
@@ -253,6 +515,10 @@ function Triggers:CreateTriggerCard(parent, trigger)
         Triggers.ShowAutoSaved(card)
     end
 
+    local function IsTesterModeEnabled()
+        return OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.settings and OxedHub.db.profile.settings.testerMode == true
+    end
+
     categoryDropdown:SetupMenu(function(dropdown, rootDescription)
         for _, category in ipairs(OxedHub.CONFIG.EVENT_CATEGORIES) do
             rootDescription:CreateRadio(
@@ -265,10 +531,13 @@ function Triggers:CreateTriggerCard(parent, trigger)
 
                     -- Switching category moves the trigger to that list's first
                     -- event, so the two dropdowns never disagree.
+                    local testerOn = IsTesterModeEnabled()
                     for _, et in ipairs(OxedHub.CONFIG.EVENT_TYPES) do
-                        if (et.category or "preset") == category.value and not et.disabled then
-                            SelectEvent(et)
-                            break
+                        if (et.category or "basic") == category.value and not et.disabled then
+                            if not et.isTester or testerOn then
+                                SelectEvent(et)
+                                break
+                            end
                         end
                     end
                 end,
@@ -278,16 +547,19 @@ function Triggers:CreateTriggerCard(parent, trigger)
     end)
 
     eventDropdown:SetupMenu(function(dropdown, rootDescription)
+        local testerOn = IsTesterModeEnabled()
         for _, eventType in ipairs(OxedHub.CONFIG.EVENT_TYPES) do
-            if (eventType.category or "preset") == card.eventCategory then
-                local btn = rootDescription:CreateRadio(
-                    eventType.label,
-                    function() return (trigger.event or "UNIT_SPELLCAST_SUCCEEDED") == eventType.value end,
-                    function() SelectEvent(eventType) end,
-                    eventType.value
-                )
-                if eventType.disabled then
-                    btn:SetEnabled(false)
+            if (eventType.category or "basic") == card.eventCategory then
+                if not eventType.isTester or testerOn then
+                    local btn = rootDescription:CreateRadio(
+                        eventType.label,
+                        function() return (trigger.event or "UNIT_SPELLCAST_SUCCEEDED") == eventType.value end,
+                        function() SelectEvent(eventType) end,
+                        eventType.value
+                    )
+                    if eventType.disabled then
+                        btn:SetEnabled(false)
+                    end
                 end
             end
         end
@@ -347,11 +619,11 @@ function Triggers:CreateTriggerCard(parent, trigger)
     card.actionsLabel = actionsLabel
     card.actionsDescLabel = actionsDescLabel
     
-    local isMount = (trigger.event == "MOUNT")
-    actionsBox:SetShown(not isMount)
-    actionsFrame:SetShown(not isMount)
-    actionsLabel:SetShown(not isMount)
-    if actionsDescLabel then actionsDescLabel:SetShown(not isMount) end
+    local hasNoActions = (trigger.event == "MOUNT" or trigger.event == "HEARTBEAT" or trigger.event == "BASIC_AURA_TRACKER" or trigger.event == "PREY_HUNT" or trigger.event == "PVP_ANTI_AFK" or trigger.event == "SHATTERSIGHT")
+    actionsBox:SetShown(not hasNoActions)
+    actionsFrame:SetShown(not hasNoActions)
+    actionsLabel:SetShown(not hasNoActions)
+    if actionsDescLabel then actionsDescLabel:SetShown(not hasNoActions) end
     
     -- Zone restrictions
     local zoneLabel = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -499,23 +771,58 @@ function Triggers:CreateTriggerCard(parent, trigger)
     end)
     card.dupBtn = dupBtn
 
+    -- Share button (Top Right): drops a clickable chat link for this one
+    -- trigger.  Only the share ID travels in chat; the data itself is sent
+    -- over the addon channel when the recipient clicks.
+    local shareBtn = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
+    shareBtn:SetPoint("RIGHT", dupBtn, "LEFT", -10, 0)
+    shareBtn:SetSize(80, 24)
+    shareBtn:SetText(L["BTN_SHARE"] or "Share")
+    shareBtn:SetScript("OnClick", function()
+        local Share = OxedHub.Share
+        if not Share then
+            print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+            return
+        end
+        local label = trigger.name
+        if not label or label == "" then label = "Trigger" end
+        Share:ShowChannelPicker("triggers", { triggerIDs = { trigger.id } }, label)
+    end)
+    shareBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L["BTN_SHARE"] or "Share")
+        GameTooltip:AddLine("Put a clickable link for this trigger in your chat box.", 1, 1, 1, true)
+        GameTooltip:AddLine("Anyone with Oxed Hub can click it to import.", 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    shareBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    card.shareBtn = shareBtn
+
     -- Test button (Top Right)
     local testBtn = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
-    testBtn:SetPoint("RIGHT", dupBtn, "LEFT", -10, 0)
+    testBtn:SetPoint("RIGHT", shareBtn, "LEFT", -10, 0)
     testBtn:SetSize(80, 24)
     testBtn:SetText(L["BTN_TEST"] or "Test")
-    testBtn:SetScript("OnClick", function()
-        local actions = trigger.actions or {}
-        if actions.sound and actions.sound ~= "" and actions.sound ~= "None" then
-            if OxedHub.Sounds then OxedHub.Sounds:Play(actions.sound) end
-        end
-        if actions.animation and actions.animation ~= "" and actions.animation ~= "None" then
-            if OxedHub.Animations then OxedHub.Animations:Play(actions.animation) end
-        end
-        if actions.emote and actions.emote ~= "" and actions.emote ~= "None" then
-            if OxedHub.Emotes then OxedHub.Emotes:DoEmote(actions.emote, actions.whisperTarget or false) end
+    testBtn:SetScript("OnClick", function(self)
+        local trig = (trigger and trigger.id and OxedHub.db.profile.triggers[trigger.id]) or trigger
+        if Triggers:HasMultiActions(trig) and MenuUtil and MenuUtil.CreateContextMenu then
+            Triggers:ShowMultiActionTestMenu(self, trig)
+        else
+            Triggers:TestTrigger(trig, nil, self)
         end
     end)
+    testBtn:SetScript("OnEnter", function(self)
+        local trig = (trigger and trigger.id and OxedHub.db.profile.triggers[trigger.id]) or trigger
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(L["BTN_TEST"] or "Test", 1, 0.82, 0)
+        if Triggers:HasMultiActions(trig) then
+            GameTooltip:AddLine("Click to choose which action/state to test (or test all in sequence).", 1, 1, 1, true)
+        else
+            GameTooltip:AddLine("Click to test trigger sounds, animations, and icons.", 1, 1, 1, true)
+        end
+        GameTooltip:Show()
+    end)
+    testBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     card.testBtn = testBtn
 
     -- New button (Top Right) - create a new trigger without returning to the list
@@ -705,11 +1012,11 @@ function Triggers:LayoutTriggerCard(card)
         card.conditionsLabel:Show()
         if card.conditionsDescLabel then card.conditionsDescLabel:Show() end
         
-        local isMount = (trigger.event == "MOUNT")
-        card.actionsBox:SetShown(not isMount)
-        card.actionsFrame:SetShown(not isMount)
-        card.actionsLabel:SetShown(not isMount)
-        if card.actionsDescLabel then card.actionsDescLabel:SetShown(not isMount) end
+        local hasNoActions = (trigger.event == "MOUNT" or trigger.event == "HEARTBEAT" or trigger.event == "BASIC_AURA_TRACKER" or trigger.event == "PREY_HUNT" or trigger.event == "PVP_ANTI_AFK" or trigger.event == "SHATTERSIGHT")
+        card.actionsBox:SetShown(not hasNoActions)
+        card.actionsFrame:SetShown(not hasNoActions)
+        card.actionsLabel:SetShown(not hasNoActions)
+        if card.actionsDescLabel then card.actionsDescLabel:SetShown(not hasNoActions) end
         
         card.zoneLabel:Hide()
         card.zoneFrame:Hide()
@@ -777,19 +1084,29 @@ function Triggers:LayoutTriggerCard(card)
     local cardHeight = 150
     if activeTab == "setup" then
         local conditionsHeight = card.conditionsFrame:GetHeight() or 60
-        local actionsHeight = card.actionsFrame and card.actionsFrame.naturalHeight or 150
-        
         local conditionsPadding = card.conditionsDescLabel and 50 or 36
         card.conditionsBox:SetHeight(conditionsHeight + conditionsPadding)
-        
-        local actionsPadding = card.actionsDescLabel and 50 or 36
-        card.actionsBox:ClearAllPoints()
-        card.actionsBox:SetPoint("TOPLEFT", card.conditionsBox, "BOTTOMLEFT", 0, -10)
-        card.actionsBox:SetPoint("RIGHT", card, "RIGHT", -10, 0)
-        card.actionsBox:SetHeight(actionsHeight + actionsPadding)
-        
-        -- Base fixed padding + dynamic heights
-        cardHeight = 110 + card.conditionsBox:GetHeight() + card.actionsBox:GetHeight() + 10
+
+        local hasNoActions = (trigger.event == "MOUNT" or trigger.event == "HEARTBEAT" or trigger.event == "BASIC_AURA_TRACKER" or trigger.event == "PREY_HUNT" or trigger.event == "PVP_ANTI_AFK" or trigger.event == "SHATTERSIGHT")
+        if hasNoActions then
+            card.actionsBox:Hide()
+            card.actionsFrame:Hide()
+            card.actionsLabel:Hide()
+            if card.actionsDescLabel then card.actionsDescLabel:Hide() end
+            cardHeight = 110 + card.conditionsBox:GetHeight() + 15
+        else
+            local actionsHeight = card.actionsFrame and card.actionsFrame.naturalHeight or 150
+            local actionsPadding = card.actionsDescLabel and 50 or 36
+            card.actionsBox:ClearAllPoints()
+            card.actionsBox:SetPoint("TOPLEFT", card.conditionsBox, "BOTTOMLEFT", 0, -10)
+            card.actionsBox:SetPoint("RIGHT", card, "RIGHT", -10, 0)
+            card.actionsBox:SetHeight(actionsHeight + actionsPadding)
+            card.actionsBox:Show()
+            card.actionsFrame:Show()
+            card.actionsLabel:Show()
+            if card.actionsDescLabel then card.actionsDescLabel:Show() end
+            cardHeight = 110 + card.conditionsBox:GetHeight() + card.actionsBox:GetHeight() + 10
+        end
     elseif activeTab == "zone" then
         card.zoneLabel:ClearAllPoints()
         card.zoneLabel:SetPoint("TOPLEFT", card, "TOPLEFT", 16, -26)
@@ -815,6 +1132,10 @@ function Triggers:LayoutTriggerCard(card)
     end
 
     card:SetHeight(cardHeight)
+    local parent = card:GetParent()
+    if parent and parent:GetParent() and parent:GetParent():GetObjectType() == "ScrollFrame" then
+        parent:SetHeight(cardHeight + 20)
+    end
 end
 
 function Triggers:RefreshTriggerCard(triggerId)
@@ -830,6 +1151,7 @@ function Triggers:RefreshTriggerCard(triggerId)
     if af.UpdateSuccessAnimButton then af.UpdateSuccessAnimButton() end
     if af.UpdateFailSoundButton then af.UpdateFailSoundButton() end
     if af.UpdateFailAnimButton then af.UpdateFailAnimButton() end
+    if af.RefreshAnimPositionControls then af.RefreshAnimPositionControls() end
     if af.UpdateEnterSoundButton then af.UpdateEnterSoundButton() end
     if af.UpdateEnterAnimButton then af.UpdateEnterAnimButton() end
     if af.UpdateExitSoundButton then af.UpdateExitSoundButton() end

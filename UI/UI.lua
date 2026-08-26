@@ -971,6 +971,68 @@ function UI:CreateDashboardTab()
         UI:ShowTab("Settings")
     end)
 
+    local animSwitch = CreateFrame("CheckButton", nil, hero, "UICheckButtonTemplate")
+    animSwitch:SetPoint("LEFT", settingsBtn, "RIGHT", 15, 0)
+    animSwitch:SetSize(26, 26)
+    
+    local animSwitchText = animSwitch:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    animSwitchText:SetPoint("LEFT", animSwitch, "RIGHT", 4, 1)
+    
+    animSwitch:SetScript("OnShow", function(self)
+        if OxedHub.db.profile.animationsEnabled == nil then
+            OxedHub.db.profile.animationsEnabled = true
+        end
+        self:SetChecked(OxedHub.db.profile.animationsEnabled)
+        if self:GetChecked() then
+            animSwitchText:SetText("|cff00ff00Animations: On|r")
+        else
+            animSwitchText:SetText("|cff888888Animations: Off|r")
+        end
+    end)
+    
+    animSwitch:SetScript("OnClick", function(self)
+        local isEnabled = self:GetChecked()
+        OxedHub.db.profile.animationsEnabled = isEnabled
+        if isEnabled then
+            animSwitchText:SetText("|cff00ff00Animations: On|r")
+            print("|cffffd100OxedHub:|r Animations have been turned |cff00ff00ON|r")
+        else
+            animSwitchText:SetText("|cff888888Animations: Off|r")
+            print("|cffffd100OxedHub:|r Animations have been turned |cffff0000OFF|r")
+        end
+    end)
+
+    local soundSwitch = CreateFrame("CheckButton", nil, hero, "UICheckButtonTemplate")
+    soundSwitch:SetPoint("LEFT", animSwitchText, "RIGHT", 15, -1)
+    soundSwitch:SetSize(26, 26)
+    
+    local soundSwitchText = soundSwitch:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    soundSwitchText:SetPoint("LEFT", soundSwitch, "RIGHT", 4, 1)
+    
+    soundSwitch:SetScript("OnShow", function(self)
+        if OxedHub.db.profile.soundsEnabled == nil then
+            OxedHub.db.profile.soundsEnabled = true
+        end
+        self:SetChecked(OxedHub.db.profile.soundsEnabled)
+        if self:GetChecked() then
+            soundSwitchText:SetText("|cff00ff00Sounds: On|r")
+        else
+            soundSwitchText:SetText("|cff888888Sounds: Off|r")
+        end
+    end)
+    
+    soundSwitch:SetScript("OnClick", function(self)
+        local isEnabled = self:GetChecked()
+        OxedHub.db.profile.soundsEnabled = isEnabled
+        if isEnabled then
+            soundSwitchText:SetText("|cff00ff00Sounds: On|r")
+            print("|cffffd100OxedHub:|r Sounds have been turned |cff00ff00ON|r")
+        else
+            soundSwitchText:SetText("|cff888888Sounds: Off|r")
+            print("|cffffd100OxedHub:|r Sounds have been turned |cffff0000OFF|r")
+        end
+    end)
+
     local statsRow = CreateFrame("Frame", nil, scrollChild)
     statsRow:SetPoint("TOPLEFT", hero, "BOTTOMLEFT", 0, -12)
     statsRow:SetPoint("TOPRIGHT", hero, "BOTTOMRIGHT", 0, -12)
@@ -1025,7 +1087,7 @@ function UI:CreateDashboardTab()
     sliderScroll:SetScrollChild(sliderContent)
 
     local cards = {}
-    local numCards = 4
+    local numCards = 5
     local activeCardIndex = 1
 
     -- Default inner dimensions (updated dynamically by OnSizeChanged)
@@ -1090,6 +1152,7 @@ function UI:CreateDashboardTab()
     local card2 = cards[2]
     local card3 = cards[3]
     local card4 = cards[4]
+    local card5 = cards[5]
 
     -- Responsive resizing of cards and content
     showcaseContainer:SetScript("OnSizeChanged", function(self, width, height)
@@ -1110,29 +1173,168 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: CHARACTER SHOWCASE
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.33)
     -- ───────────────────────────────────────────────────────────────
-    local showcaseTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
-    showcaseTitle:SetPoint("TOP", card1, "TOP", 0, -12)
+    local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
+    relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
+    relTitle:SetTextColor(1, 0.82, 0, 1)
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.33")
+    local rName, rHeight, rFlags = relTitle:GetFont()
+    if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
+
+    local relSubtitle = card1:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    relSubtitle:SetPoint("TOP", relTitle, "BOTTOM", 0, -4)
+    relSubtitle:SetTextColor(0.22, 0.18, 0.17, 1)
+    relSubtitle:SetText(L["RELEASE_SUBTITLE"] or "What's New in this Update")
+
+    local relLines = {
+        "•  Chat Share: share anything in chat - triggers, rings, toy mixes, hubs & profiles.",
+        "•  Prey Hunt Tracker (Beta / Test Mode): on-screen HUD bar & Blizzard widget mover.",
+        "•  Anti-AFK Tracker (Beta / Test Mode): on-screen timers & customizable sound alerts.",
+        "•  Disenchant Insight (Basic Trigger): Tooltip advice, expected value vs vendor & AH prices!",
+        "•  ToyBoxes: Custom boxes, on-screen floating dock, random hearthstones & quick mixer.",
+        "•  Click buttons to quickly setup triggers, copy Meme Pack link, or open ToyBoxes:",
+    }
+
+    local listPanel = CreateFrame("Frame", nil, card1)
+    listPanel:SetSize(620, 200)
+    listPanel:SetPoint("TOPLEFT", card1, "TOPLEFT", 45, -70)
+
+    for idx, lineText in ipairs(relLines) do
+        local lineFS = listPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        lineFS:SetPoint("TOPLEFT", listPanel, "TOPLEFT", 10, -((idx - 1) * 32))
+        lineFS:SetPoint("RIGHT", listPanel, "RIGHT", -10, 0)
+        lineFS:SetJustifyH("LEFT")
+        lineFS:SetText(lineText)
+        lineFS:SetTextColor(0.1, 0.1, 0.1, 1) -- Dark/Black color for readability
+        lineFS:SetShadowOffset(0, 0) -- Remove default shadow to prevent blurry/double text effect
+        
+        if idx == 6 then
+            -- Setup Disenchant Insight Trigger Button
+            local setupInsightBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
+            setupInsightBtn:SetSize(115, 22)
+            setupInsightBtn:SetPoint("LEFT", listPanel, "TOPLEFT", 14, -((idx) * 32) + 2)
+            setupInsightBtn:SetText("Setup Disenchant")
+            setupInsightBtn:SetNormalFontObject("GameFontNormalSmall")
+            setupInsightBtn:SetScript("OnClick", function()
+                local trigger = OxedHub.Triggers:CreateNewTrigger()
+                trigger.name = "Disenchant Insight"
+                trigger.event = "SHATTERSIGHT"
+                trigger.conditions = { enableTooltip = true, showBreakdown = true, autoScan = true }
+                OxedHub.Triggers.selectedTriggerId = trigger.id
+                OxedHub.Triggers:RefreshTriggersList()
+                OxedHub.UI:ShowTab("Triggers")
+            end)
+
+            -- Meme Pack Link Button
+            local memeLinkBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
+            memeLinkBtn:SetSize(115, 22)
+            memeLinkBtn:SetPoint("LEFT", setupInsightBtn, "RIGHT", 8, 0)
+            memeLinkBtn:SetText("Meme Pack Link")
+            memeLinkBtn:SetNormalFontObject("GameFontNormalSmall")
+            memeLinkBtn:SetScript("OnClick", function()
+                if not StaticPopupDialogs["OXEDHUB_MEMEPACK_URL"] then
+                    StaticPopupDialogs["OXEDHUB_MEMEPACK_URL"] = {
+                        text = "Copy CurseForge Meme Pack link (Ctrl+C):",
+                        button1 = "Done",
+                        hasEditBox = true,
+                        OnShow = function(dialog)
+                            dialog.EditBox:SetText("https://www.curseforge.com/wow/addons/oxed-hub-meme-pack")
+                            dialog.EditBox:HighlightText()
+                            dialog.EditBox:SetFocus()
+                        end,
+                        EditBoxOnEscapePressed = function(dialog)
+                            dialog:GetParent():Hide()
+                        end,
+                        timeout = 0,
+                        whileDead = true,
+                        hideOnEscape = true,
+                        preferredIndex = 3,
+                    }
+                end
+                StaticPopup_Show("OXEDHUB_MEMEPACK_URL")
+            end)
+
+            -- Open ToyBox Button
+            local toyBoxBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
+            toyBoxBtn:SetSize(105, 22)
+            toyBoxBtn:SetPoint("LEFT", memeLinkBtn, "RIGHT", 8, 0)
+            toyBoxBtn:SetText("Open ToyBox")
+            toyBoxBtn:SetNormalFontObject("GameFontNormalSmall")
+            toyBoxBtn:SetScript("OnClick", function()
+                OxedHub.UI:ShowTab("Toys")
+                -- Was calling Toys:SwitchSubTab, which does not exist -- the
+                -- guard made it a silent no-op, so this only ever opened the
+                -- Toys tab on whatever sub-tab happened to be active.
+                OxedHub.UI:ShowToysSubTab("ToyBoxes")
+            end)
+        end
+    end
+
+    local memePackBtn = CreateFrame("Button", nil, card1)
+    memePackBtn:SetSize(220, 220)
+    memePackBtn:SetPoint("RIGHT", card1, "RIGHT", -60, -10)
+    
+    local memePackImg = memePackBtn:CreateTexture(nil, "ARTWORK")
+    memePackImg:SetAllPoints()
+    memePackImg:SetTexture("Interface\\AddOns\\OxedHub\\Media\\Textures\\logo\\OxedHubMemePack.png")
+    
+    memePackBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("OxedHub Meme Pack", 1, 0.82, 0)
+        GameTooltip:AddLine("Click to copy CurseForge link", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    memePackBtn:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    memePackBtn:SetScript("OnClick", function()
+        if not StaticPopupDialogs["OXEDHUB_MEMEPACK_URL"] then
+            StaticPopupDialogs["OXEDHUB_MEMEPACK_URL"] = {
+                text = "Copy CurseForge Meme Pack link (Ctrl+C):",
+                button1 = "Done",
+                hasEditBox = true,
+                OnShow = function(dialog)
+                    dialog.EditBox:SetText("https://www.curseforge.com/wow/addons/oxed-hub-meme-pack")
+                    dialog.EditBox:HighlightText()
+                    dialog.EditBox:SetFocus()
+                end,
+                EditBoxOnEscapePressed = function(dialog)
+                    dialog:GetParent():Hide()
+                end,
+                timeout = 0,
+                whileDead = true,
+                hideOnEscape = true,
+                preferredIndex = 3,
+            }
+        end
+        StaticPopup_Show("OXEDHUB_MEMEPACK_URL")
+    end)
+
+    -- ───────────────────────────────────────────────────────────────
+    -- CARD 2: CHARACTER SHOWCASE
+    -- ───────────────────────────────────────────────────────────────
+    local showcaseTitle = card2:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
+    showcaseTitle:SetPoint("TOP", card2, "TOP", 0, -12)
     showcaseTitle:SetTextColor(1, 0.82, 0, 1)
     showcaseTitle:SetText(L["SHOWCASE_TITLE"])
     local fName, fHeight, fFlags = showcaseTitle:GetFont()
     if fName then showcaseTitle:SetFont(fName, fHeight * 1.1, fFlags) end
 
-    local showcaseSubtitle = card1:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    local showcaseSubtitle = card2:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     showcaseSubtitle:SetPoint("TOP", showcaseTitle, "BOTTOM", 0, -4)
     showcaseSubtitle:SetTextColor(0.22, 0.18, 0.17, 1)
     showcaseSubtitle:SetText(L["SHOWCASE_SUBTITLE"])
 
     -- 3D Player Model
-    local modelFrame = CreateFrame("PlayerModel", nil, card1)
+    local modelFrame = CreateFrame("PlayerModel", nil, card2)
     modelFrame:SetSize(200, 250)
-    modelFrame:SetPoint("CENTER", card1, "CENTER", -230, -15)
+    modelFrame:SetPoint("CENTER", card2, "CENTER", -230, -15)
     modelFrame:SetUnit("player")
     modelFrame:SetRotation(math.rad(-15))
     modelFrame:SetPortraitZoom(0)
     modelFrame:SetCamDistanceScale(1.2)
-    modelFrame:SetFrameLevel(card1:GetFrameLevel() + 2)
+    modelFrame:SetFrameLevel(card2:GetFrameLevel() + 2)
 
     -- Ensure showcase state is persisted
     if not OxedHub.db.profile.showcaseSlots then
@@ -1226,7 +1428,7 @@ function UI:CreateDashboardTab()
         local slot = CreateFrame("Button", nil, parent, "BackdropTemplate")
         slot:SetSize(140, 54)
         slot:SetPoint(anchor, modelFrame, anchor, xOff, yOff)
-        slot:SetFrameLevel(card1:GetFrameLevel() + 5)
+        slot:SetFrameLevel(parent:GetFrameLevel() + 5)
         slot:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8X8",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1373,10 +1575,10 @@ function UI:CreateDashboardTab()
     end
 
     -- Inline animation container on the right side of the card
-    local animContainer = CreateFrame("Frame", nil, card1)
+    local animContainer = CreateFrame("Frame", nil, card2)
     animContainer:SetSize(220, 260)
-    animContainer:SetPoint("CENTER", card1, "CENTER", 320, -10)
-    animContainer:SetFrameLevel(card1:GetFrameLevel() + 3)
+    animContainer:SetPoint("CENTER", card2, "CENTER", 320, -10)
+    animContainer:SetFrameLevel(card2:GetFrameLevel() + 3)
     animContainer:SetClipsChildren(true)
 
     local animTex = animContainer:CreateTexture(nil, "ARTWORK")
@@ -1394,16 +1596,16 @@ function UI:CreateDashboardTab()
     UpdateFirstAnimFrame()
 
     -- Create the 4 slot buttons around the character model
-    local slotTL = CreateSlotButton(card1, SLOT_DEFS[1], "TOPRIGHT",    -170, -40)   -- Top-Left of model
-    local slotTR = CreateSlotButton(card1, SLOT_DEFS[2], "TOPLEFT",      170, -40)   -- Top-Right of model
-    local slotBL = CreateSlotButton(card1, SLOT_DEFS[3], "BOTTOMRIGHT", -170,  40)   -- Bottom-Left of model
-    local slotBR = CreateSlotButton(card1, SLOT_DEFS[4], "BOTTOMLEFT",   170,  40)   -- Bottom-Right of model
+    local slotTL = CreateSlotButton(card2, SLOT_DEFS[1], "TOPRIGHT",    -170, -40)   -- Top-Left of model
+    local slotTR = CreateSlotButton(card2, SLOT_DEFS[2], "TOPLEFT",      170, -40)   -- Top-Right of model
+    local slotBL = CreateSlotButton(card2, SLOT_DEFS[3], "BOTTOMRIGHT", -170,  40)   -- Bottom-Left of model
+    local slotBR = CreateSlotButton(card2, SLOT_DEFS[4], "BOTTOMLEFT",   170,  40)   -- Bottom-Right of model
 
     -- Launch Button (centered in the card between model and animation area)
-    launchBtn = CreateFrame("Button", nil, card1, "UIPanelButtonTemplate")
+    launchBtn = CreateFrame("Button", nil, card2, "UIPanelButtonTemplate")
     launchBtn:SetSize(140, 36)
-    launchBtn:SetPoint("CENTER", card1, "CENTER", 125, -15)
-    launchBtn:SetFrameLevel(card1:GetFrameLevel() + 5)
+    launchBtn:SetPoint("CENTER", card2, "CENTER", 125, -15)
+    launchBtn:SetFrameLevel(card2:GetFrameLevel() + 5)
     launchBtn:SetText(L["SHOWCASE_BTN_LAUNCH"])
     launchBtn:SetEnabled(false)
 
@@ -1532,16 +1734,16 @@ function UI:CreateDashboardTab()
     UpdateLaunchState()
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 2: QUICK START GUIDE
+    -- CARD 3: QUICK START GUIDE
     -- ───────────────────────────────────────────────────────────────
-    local guideTitle = card2:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
-    guideTitle:SetPoint("TOP", card2, "TOP", 0, -12)
+    local guideTitle = card3:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
+    guideTitle:SetPoint("TOP", card3, "TOP", 0, -12)
     guideTitle:SetTextColor(1, 0.82, 0, 1)
     guideTitle:SetText(L["GUIDE_TITLE"])
     local gName, gHeight, gFlags = guideTitle:GetFont()
     if gName then guideTitle:SetFont(gName, gHeight * 1.1, gFlags) end
 
-    local guideSubtitle = card2:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    local guideSubtitle = card3:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     guideSubtitle:SetPoint("TOP", guideTitle, "BOTTOM", 0, -4)
     guideSubtitle:SetTextColor(0.22, 0.18, 0.17, 1)
     guideSubtitle:SetText(L["GUIDE_SUBTITLE"])
@@ -1577,9 +1779,9 @@ function UI:CreateDashboardTab()
     }
 
     for idx, step in ipairs(steps) do
-        local col = CreateFrame("Frame", nil, card2, "BackdropTemplate")
+        local col = CreateFrame("Frame", nil, card3, "BackdropTemplate")
         col:SetSize(280, 215)
-        col:SetPoint("CENTER", card2, "CENTER", (idx - 2) * 310, -15)
+        col:SetPoint("CENTER", card3, "CENTER", (idx - 2) * 310, -15)
         StyleCardSubPanel(col)
 
         local icon = col:CreateTexture(nil, "ARTWORK")
@@ -1603,24 +1805,24 @@ function UI:CreateDashboardTab()
     end
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 3: ACTIONHUB GUIDE
+    -- CARD 4: ACTIONHUB GUIDE
     -- ───────────────────────────────────────────────────────────────
-    local ahTitle = card3:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
-    ahTitle:SetPoint("TOP", card3, "TOP", 0, -12)
+    local ahTitle = card4:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
+    ahTitle:SetPoint("TOP", card4, "TOP", 0, -12)
     ahTitle:SetTextColor(1, 0.82, 0, 1)
     ahTitle:SetText(L["AH_GUIDE_TITLE"])
     local aName, aHeight, aFlags = ahTitle:GetFont()
     if aName then ahTitle:SetFont(aName, aHeight * 1.1, aFlags) end
 
-    local ahSubtitle = card3:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    local ahSubtitle = card4:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     ahSubtitle:SetPoint("TOP", ahTitle, "BOTTOM", 0, -4)
     ahSubtitle:SetTextColor(0.22, 0.18, 0.17, 1)
     ahSubtitle:SetText(L["AH_GUIDE_SUBTITLE"])
 
     -- Left panel: Explanations
-    local ahLeftPanel = CreateFrame("Frame", nil, card3, "BackdropTemplate")
+    local ahLeftPanel = CreateFrame("Frame", nil, card4, "BackdropTemplate")
     ahLeftPanel:SetSize(510, 190)
-    ahLeftPanel:SetPoint("TOPLEFT", card3, "TOPLEFT", 30, -70)
+    ahLeftPanel:SetPoint("TOPLEFT", card4, "TOPLEFT", 30, -70)
     StyleCardSubPanel(ahLeftPanel)
 
     local ahLeftHeader = ahLeftPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -1637,9 +1839,9 @@ function UI:CreateDashboardTab()
     ahExplanation:SetText(L["AH_GUIDE_EXPLANATION"])
 
     -- Right panel: Interactive Preview Ring
-    local previewRing = CreateFrame("Frame", nil, card3)
+    local previewRing = CreateFrame("Frame", nil, card4)
     previewRing:SetSize(300, 300)
-    previewRing:SetPoint("CENTER", card3, "TOPLEFT", 810, -155)
+    previewRing:SetPoint("CENTER", card4, "TOPLEFT", 810, -155)
 
     local cx, cy = 150, -150
     local baseRadius = 65
@@ -1856,27 +2058,24 @@ function UI:CreateDashboardTab()
     end
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 4: STATUS & QUICK COMMANDS
+    -- CARD 5: OXEDRING GUIDE
     -- ───────────────────────────────────────────────────────────────
-    -- ───────────────────────────────────────────────────────────────
-    -- CARD 4: OXEDRING GUIDE
-    -- ───────────────────────────────────────────────────────────────
-    local oxedRingTitle = card4:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
-    oxedRingTitle:SetPoint("TOP", card4, "TOP", 0, -12)
+    local oxedRingTitle = card5:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
+    oxedRingTitle:SetPoint("TOP", card5, "TOP", 0, -12)
     oxedRingTitle:SetTextColor(1, 0.82, 0, 1)
     oxedRingTitle:SetText(L["OR_GUIDE_TITLE"])
     local oName, oHeight, oFlags = oxedRingTitle:GetFont()
     if oName then oxedRingTitle:SetFont(oName, oHeight * 1.1, oFlags) end
 
-    local oxedRingSubtitle = card4:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    local oxedRingSubtitle = card5:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     oxedRingSubtitle:SetPoint("TOP", oxedRingTitle, "BOTTOM", 0, -4)
     oxedRingSubtitle:SetTextColor(0.22, 0.18, 0.17, 1)
     oxedRingSubtitle:SetText(L["OR_GUIDE_SUBTITLE"])
 
     -- Left panel: Explanations
-    local orLeftPanel = CreateFrame("Frame", nil, card4, "BackdropTemplate")
+    local orLeftPanel = CreateFrame("Frame", nil, card5, "BackdropTemplate")
     orLeftPanel:SetSize(510, 190)
-    orLeftPanel:SetPoint("TOPLEFT", card4, "TOPLEFT", 30, -70)
+    orLeftPanel:SetPoint("TOPLEFT", card5, "TOPLEFT", 30, -70)
     StyleCardSubPanel(orLeftPanel)
 
     local orLeftHeader = orLeftPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -1893,9 +2092,9 @@ function UI:CreateDashboardTab()
     orExplanation:SetText(L["OR_GUIDE_EXPLANATION"])
 
     -- Right panel: Interactive Preview Ring
-    local previewRing2 = CreateFrame("Frame", nil, card4)
+    local previewRing2 = CreateFrame("Frame", nil, card5)
     previewRing2:SetSize(240, 240)
-    previewRing2:SetPoint("CENTER", card4, "TOPLEFT", 740, -155)
+    previewRing2:SetPoint("CENTER", card5, "TOPLEFT", 740, -155)
 
     -- Ring background line
     local ringBg2 = previewRing2:CreateTexture(nil, "BACKGROUND")
@@ -1975,7 +2174,7 @@ function UI:CreateDashboardTab()
         if idx < 1 or idx > numCards then return end
         activeCardIndex = idx
 
-        if idx == 3 and UI.UpdateActionHubCardState then
+        if idx == 4 and UI.UpdateActionHubCardState then
             UI:UpdateActionHubCardState()
         end
         
@@ -2012,8 +2211,8 @@ function UI:CreateDashboardTab()
         end
         targetScroll = (idx - 1) * innerWidth
         
-        -- If sliding back to Card 1, show model immediately so it slides in nicely
-        if idx == 1 then
+        -- If sliding back to Card 2 (Character Showcase), show model immediately so it slides in nicely
+        if idx == 2 then
             modelFrame:Show()
         end
 
@@ -2024,8 +2223,8 @@ function UI:CreateDashboardTab()
                 if math.abs(diff) < 1 then
                     self:SetHorizontalScroll(targetScroll)
                     self:SetScript("OnUpdate", nil)
-                    -- If we completed slide away from Card 1, hide the 3D model frame to prevent clipping issues
-                    if activeCardIndex ~= 1 then
+                    -- If we completed slide away from Card 2, hide the 3D model frame to prevent clipping issues
+                    if activeCardIndex ~= 2 then
                         modelFrame:Hide()
                     end
                 else
@@ -2035,7 +2234,7 @@ function UI:CreateDashboardTab()
         else
             sliderScroll:SetScript("OnUpdate", nil)
             sliderScroll:SetHorizontalScroll(targetScroll)
-            if idx ~= 1 then
+            if idx ~= 2 then
                 modelFrame:Hide()
             end
         end
@@ -2156,8 +2355,30 @@ function UI:CreateTriggersTab()
                 row.actionsText:SetWidth(180)
                 row.actionsText:SetJustifyH("LEFT")
 
+                -- Spell column: icon + id of the spell this trigger watches, so
+                -- the list can be scanned without opening each trigger.
+                row.spellAnchor = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                row.spellAnchor:SetPoint("LEFT", row.actionsText, "RIGHT", 12, 0)
+                row.spellAnchor:SetWidth(90)
+                row.spellAnchor:SetJustifyH("LEFT")
+
+                -- Plain frame, mouse disabled: the row handles clicks to open
+                -- the trigger, and a mouse-enabled child would swallow them.
+                row.spellIconFrame = CreateFrame("Frame", nil, row)
+                row.spellIconFrame:SetSize(20, 20)
+                row.spellIconFrame:SetPoint("LEFT", row.spellAnchor, "LEFT", 0, 0)
+                row.spellIconFrame:EnableMouse(false)
+                row.spellIcon = row.spellIconFrame:CreateTexture(nil, "ARTWORK")
+                row.spellIcon:SetAllPoints()
+                row.spellIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+                row.spellIdText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                row.spellIdText:SetPoint("LEFT", row.spellIconFrame, "RIGHT", 5, 0)
+                row.spellIdText:SetWidth(64)
+                row.spellIdText:SetJustifyH("LEFT")
+
                 row.zoneText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                row.zoneText:SetPoint("LEFT", row.actionsText, "RIGHT", 12, 0)
+                row.zoneText:SetPoint("LEFT", row.spellAnchor, "RIGHT", 12, 0)
                 row.zoneText:SetWidth(170)
                 row.zoneText:SetJustifyH("LEFT")
 
@@ -2172,7 +2393,119 @@ function UI:CreateTriggersTab()
 
                 row.eventDivider = CreateColumnLine(row.eventText)
                 row.actionsDivider = CreateColumnLine(row.actionsText)
+                row.spellDivider = CreateColumnLine(row.spellAnchor)
                 row.zoneDivider = CreateColumnLine(row.zoneText)
+
+                if not row.eventHoverFrame then
+                    local ehf = CreateFrame("Frame", nil, row)
+                    ehf:SetPoint("TOPLEFT", row.eventText, "TOPLEFT", -2, 4)
+                    ehf:SetPoint("BOTTOMRIGHT", row.eventText, "BOTTOMRIGHT", 2, -4)
+                    ehf:EnableMouse(true)
+                    ehf:SetScript("OnEnter", function()
+                        if row.hoverHighlight and row.elementData and not row.elementData.isHeader then
+                            row.hoverHighlight:Show()
+                        end
+                        if row.elementData and row.elementData.event and not row.elementData.isHeader then
+                            GameTooltip:SetOwner(ehf, "ANCHOR_RIGHT")
+                            GameTooltip:SetText(row.elementData.eventLabel or row.elementData.event, 1, 0.82, 0)
+                            GameTooltip:AddLine("|cff888888Event:|r " .. tostring(row.elementData.event), 0.8, 0.8, 0.8, false)
+                            if row.elementData.eventDesc and row.elementData.eventDesc ~= "" then
+                                GameTooltip:AddLine(row.elementData.eventDesc, 1, 1, 1, true)
+                            end
+                            GameTooltip:Show()
+                        end
+                    end)
+                    ehf:SetScript("OnLeave", function()
+                        if row.hoverHighlight then row.hoverHighlight:Hide() end
+                        GameTooltip:Hide()
+                    end)
+                    ehf:SetScript("OnMouseUp", function(_, button)
+                        local script = row:GetScript("OnMouseUp")
+                        if script then script(row, button) end
+                    end)
+                    row.eventHoverFrame = ehf
+                end
+
+                if not row.actionsHoverFrame then
+                    local ahf = CreateFrame("Frame", nil, row)
+                    ahf:SetPoint("TOPLEFT", row.actionsText, "TOPLEFT", -2, 4)
+                    ahf:SetPoint("BOTTOMRIGHT", row.actionsText, "BOTTOMRIGHT", 2, -4)
+                    ahf:EnableMouse(true)
+                    ahf:SetScript("OnEnter", function()
+                        if row.hoverHighlight and row.elementData and not row.elementData.isHeader then
+                            row.hoverHighlight:Show()
+                        end
+                        if row.elementData and row.elementData.actionDetails and not row.elementData.isHeader then
+                            GameTooltip:SetOwner(ahf, "ANCHOR_RIGHT")
+                            GameTooltip:SetText(L["LBL_ACTIONS"] or "Actions", 1, 0.82, 0)
+                            GameTooltip:AddLine(row.elementData.actionDetails, 1, 1, 1, false)
+                            GameTooltip:Show()
+                        end
+                    end)
+                    ahf:SetScript("OnLeave", function()
+                        if row.hoverHighlight then row.hoverHighlight:Hide() end
+                        GameTooltip:Hide()
+                    end)
+                    ahf:SetScript("OnMouseUp", function(_, button)
+                        local script = row:GetScript("OnMouseUp")
+                        if script then script(row, button) end
+                    end)
+                    row.actionsHoverFrame = ahf
+                end
+
+                if not row.spellHoverFrame then
+                    local shf = CreateFrame("Frame", nil, row)
+                    shf:SetPoint("TOPLEFT", row.spellAnchor, "TOPLEFT", -2, 4)
+                    shf:SetPoint("BOTTOMRIGHT", row.spellAnchor, "BOTTOMRIGHT", 2, -4)
+                    shf:EnableMouse(true)
+                    shf:SetScript("OnEnter", function()
+                        if row.hoverHighlight and row.elementData and not row.elementData.isHeader then
+                            row.hoverHighlight:Show()
+                        end
+                        local spellID = row.elementData and tonumber(row.elementData.spellID)
+                        if spellID then
+                            GameTooltip:SetOwner(shf, "ANCHOR_RIGHT")
+                            GameTooltip:SetSpellByID(spellID)
+                            GameTooltip:Show()
+                        end
+                    end)
+                    shf:SetScript("OnLeave", function()
+                        if row.hoverHighlight then row.hoverHighlight:Hide() end
+                        GameTooltip:Hide()
+                    end)
+                    shf:SetScript("OnMouseUp", function(_, button)
+                        local script = row:GetScript("OnMouseUp")
+                        if script then script(row, button) end
+                    end)
+                    row.spellHoverFrame = shf
+                end
+
+                if not row.zoneHoverFrame then
+                    local zhf = CreateFrame("Frame", nil, row)
+                    zhf:SetPoint("TOPLEFT", row.zoneText, "TOPLEFT", -2, 4)
+                    zhf:SetPoint("BOTTOMRIGHT", row.zoneText, "BOTTOMRIGHT", 2, -4)
+                    zhf:EnableMouse(true)
+                    zhf:SetScript("OnEnter", function()
+                        if row.hoverHighlight and row.elementData and not row.elementData.isHeader then
+                            row.hoverHighlight:Show()
+                        end
+                        if row.elementData and row.elementData.zoneDetails and not row.elementData.isHeader then
+                            GameTooltip:SetOwner(zhf, "ANCHOR_RIGHT")
+                            GameTooltip:SetText(L["LBL_ZONE"] or "Zone", 1, 0.82, 0)
+                            GameTooltip:AddLine(row.elementData.zoneDetails, 1, 1, 1, false)
+                            GameTooltip:Show()
+                        end
+                    end)
+                    zhf:SetScript("OnLeave", function()
+                        if row.hoverHighlight then row.hoverHighlight:Hide() end
+                        GameTooltip:Hide()
+                    end)
+                    zhf:SetScript("OnMouseUp", function(_, button)
+                        local script = row:GetScript("OnMouseUp")
+                        if script then script(row, button) end
+                    end)
+                    row.zoneHoverFrame = zhf
+                end
 
                 row.deleteBtn = CreateFrame("Button", nil, row, "UIPanelCloseButton")
                 row.deleteBtn:SetPoint("RIGHT", row, "RIGHT", -8, 0)
@@ -2181,6 +2514,25 @@ function UI:CreateTriggersTab()
                 row.enabledCheck = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
                 row.enabledCheck:SetPoint("RIGHT", row.deleteBtn, "LEFT", -20, 0)
                 row.enabledCheck:SetSize(22, 22)
+
+                -- Share this single trigger as a chat link.
+                row.shareBtn = CreateFrame("Button", nil, row)
+                row.shareBtn:SetPoint("RIGHT", row.enabledCheck, "LEFT", -22, 0)
+                row.shareBtn:SetSize(18, 18)
+                row.shareBtn:SetNormalTexture("Interface\\Buttons\\UI-GuildButton-PublicNote-Up")
+                row.shareBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
+                row.shareBtn:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(L["BTN_SHARE"] or "Share", 1, 0.82, 0)
+                    GameTooltip:AddLine("Share just this trigger in chat.", 1, 1, 1, true)
+                    GameTooltip:AddLine("Others with Oxed Hub can click to import it.", 0.8, 0.8, 0.8, true)
+                    GameTooltip:Show()
+                end)
+                row.shareBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+                row.shareHeaderText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                row.shareHeaderText:SetPoint("CENTER", row, "RIGHT", -107, 0)
+                row.shareHeaderText:SetText(L["BTN_SHARE"] or "Share")
 
                 row.enabledHeaderText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
                 row.enabledHeaderText:SetPoint("CENTER", row, "RIGHT", -63, 0)
@@ -2193,7 +2545,7 @@ function UI:CreateTriggersTab()
 
             row.elementData = elementData
             local rowHeight = elementData.isHeader and 30 or 32
-if elementData.isHeader then
+            if elementData.isHeader then
                 row.bg:SetColorTexture(0, 0, 0, 0)
                 row.topLine:SetColorTexture(0, 0, 0, 0)
                 row.bottomLine:SetColorTexture(0.95, 0.74, 0.22, 0.65)
@@ -2210,11 +2562,46 @@ if elementData.isHeader then
             end
             row.eventDivider:SetColorTexture(0.58, 0.48, 0.34, elementData.isHeader and 0 or 0.18)
             row.actionsDivider:SetColorTexture(0.58, 0.48, 0.34, elementData.isHeader and 0 or 0.18)
+            row.spellDivider:SetColorTexture(0.58, 0.48, 0.34, elementData.isHeader and 0 or 0.18)
             row.zoneDivider:SetColorTexture(0.58, 0.48, 0.34, elementData.isHeader and 0 or 0.18)
             row.nameText:SetText(elementData.name or "")
-            row.eventText:SetText(elementData.event or "")
-            row.actionsText:SetText(elementData.actions or "")
-            row.zoneText:SetText(elementData.zone or "")
+
+            if elementData.isHeader then
+                row.eventText:SetText(elementData.event or "")
+                row.actionsText:SetText(elementData.actions or "")
+                row.zoneText:SetText(elementData.zone or "")
+            else
+                local cat = elementData.eventCategory or "custom"
+                local colorHex = "ffffff"
+                if cat == "advanced" then colorHex = "66ccff"
+                elseif cat == "combat" then colorHex = "ff9933"
+                elseif cat == "pvp" then colorHex = "ff5555"
+                elseif cat == "basic" then colorHex = "55ff55"
+                end
+                row.eventText:SetText("|cff" .. colorHex .. (elementData.eventLabel or elementData.event or "") .. "|r")
+                row.actionsText:SetText(elementData.formattedActions or elementData.actions or "")
+                row.zoneText:SetText(elementData.formattedZone or elementData.zone or "")
+            end
+
+            -- Spell column
+            if elementData.isHeader then
+                row.spellAnchor:SetText(L["LBL_SPELL"] or "Spell")
+                row.spellIconFrame:Hide()
+                row.spellIdText:SetText("")
+            else
+                row.spellAnchor:SetText("")
+                local spellID = tonumber(elementData.spellID)
+                if spellID then
+                    local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
+                    row.spellIcon:SetTexture((info and info.iconID)
+                        or "Interface\\Icons\\INV_Misc_QuestionMark")
+                    row.spellIconFrame:Show()
+                    row.spellIdText:SetText(tostring(spellID))
+                else
+                    row.spellIconFrame:Hide()
+                    row.spellIdText:SetText("")
+                end
+            end
             
             row.deleteBtn:SetShown((not elementData.isHeader) and elementData.id ~= nil)
             row.deleteBtn:SetScript("OnClick", function()
@@ -2223,6 +2610,19 @@ if elementData.isHeader then
                 end
             end)
             
+            row.shareBtn:SetShown((not elementData.isHeader) and elementData.id ~= nil)
+            row.shareBtn:SetScript("OnClick", function()
+                local Share = OxedHub.Share
+                if not Share then
+                    print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+                    return
+                end
+                if not elementData.id then return end
+                local label = elementData.name
+                if not label or label == "" then label = "Trigger" end
+                Share:ShowChannelPicker("triggers", { triggerIDs = { elementData.id } }, label)
+            end)
+
             row.enabledCheck:SetShown((not elementData.isHeader) and elementData.id ~= nil)
             row.enabledCheck:SetChecked(elementData.enabled == true)
             row.enabledCheck:SetScript("OnClick", function(check)
@@ -2246,16 +2646,22 @@ if elementData.isHeader then
                     row.deleteHeaderText:Show()
                     row.deleteHeaderText:SetTextColor(1, 0.86, 0.28, 1)
                 end
+                if row.shareHeaderText then
+                    row.shareHeaderText:Show()
+                    row.shareHeaderText:SetTextColor(1, 0.86, 0.28, 1)
+                end
             else
                 row.nameText:SetTextColor(1, 0.82, 0.12, 1)
-                row.eventText:SetTextColor(0.88, 0.84, 0.74, 1)
-                row.actionsText:SetTextColor(0.62, 0.84, 1, 1)
+                row.actionsText:SetTextColor(0.92, 0.92, 0.92, 1)
                 row.zoneText:SetTextColor(0.90, 0.76, 0.36, 1)
                 if row.enabledHeaderText then
                     row.enabledHeaderText:Hide()
                 end
                 if row.deleteHeaderText then
                     row.deleteHeaderText:Hide()
+                end
+                if row.shareHeaderText then
+                    row.shareHeaderText:Hide()
                 end
             end
             if row.hoverHighlight then
@@ -2387,17 +2793,19 @@ function UI:CreateToysTab()
     subTabs:SetHeight(30)
     
     -- Sub-tab buttons (natural dark-red WoW style, matching Triggers)
-    local subTabNames = { "Mixer", "Library" }
+    local subTabNames = { "Mixer", "Library", "ToyBoxes" }
     local xOffset = 25
 
     for i, name in ipairs(subTabNames) do
         local btn = CreateFrame("Button", nil, subTabs, "UIPanelButtonTemplate")
-        btn:SetSize(80, 25)
+        local btnWidth = (name == "ToyBoxes") and 90 or (name == "Library" and 85 or 80)
+        btn:SetSize(btnWidth, 25)
         btn:SetPoint("TOPLEFT", subTabs, "TOPLEFT", xOffset, 0)
         local label
-        if name == "Mixer" then label = L["TOYS_SUBTAB_MIXER"]
-        elseif name == "Library" then label = L["TOYS_SUBTAB_LIBRARY"]
-        else label = L["TOYS_SUBTAB_ICONS"] end
+        if name == "Mixer" then label = L["TOYS_SUBTAB_MIXER"] or "Mixer"
+        elseif name == "Library" then label = L["TOYS_SUBTAB_LIBRARY"] or "My Mixes"
+        elseif name == "ToyBoxes" then label = "ToyBoxes"
+        else label = name end
         btn:SetText(label)
         btn:SetScript("OnClick", function()
             UI:ShowToysSubTab(name)
@@ -2473,7 +2881,7 @@ function UI:CreateSettingsTab()
     local scrollWidth = scrollFrame:GetWidth()
     if scrollWidth <= 0 then scrollWidth = 600 end -- Fallback for initial load
     scrollChild:SetWidth(scrollWidth)
-    scrollChild:SetHeight(920) 
+    scrollChild:SetHeight(1060) 
     scrollFrame:SetScrollChild(scrollChild)
     tab.scrollChild = scrollChild
 
@@ -2953,6 +3361,125 @@ function UI:CreateSettingsTab()
     skipDelConfirmDesc:SetPoint("TOPLEFT", skipDelConfirmToggle, "BOTTOMLEFT", 28, -2)
     skipDelConfirmDesc:SetText(L["SETTINGS_AUTO_SKIP_DEL_DESC"])
 
+    local testerModeToggle = CreateFrame("CheckButton", nil, scrollChild, "UICheckButtonTemplate")
+    testerModeToggle:SetPoint("TOP", skipDelConfirmDesc, "BOTTOM", 0, -10)
+    testerModeToggle:SetPoint("LEFT", spellChatToggle, "LEFT", 0, 0)
+    testerModeToggle:SetSize(26, 26)
+
+    local testerModeSetting = false
+    if OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.settings and OxedHub.db.profile.settings.testerMode ~= nil then
+        testerModeSetting = OxedHub.db.profile.settings.testerMode
+    end
+    testerModeToggle:SetChecked(testerModeSetting)
+
+    local testerModeLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    testerModeLabel:SetPoint("LEFT", testerModeToggle, "RIGHT", 4, 0)
+    testerModeLabel:SetText(L["SETTINGS_TESTER_MODE"] or "Tester Mode")
+    testerModeLabel:SetTextColor(1, 1, 1, 1)
+
+    local testerModeDesc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    testerModeDesc:SetPoint("TOPLEFT", testerModeToggle, "BOTTOMLEFT", 28, -2)
+    testerModeDesc:SetText(L["SETTINGS_TESTER_MODE_DESC"] or "*Provides access to experimental functions and triggers that are currently under test.")
+
+    -- Tester Features Information Card (Shown when Tester Mode is enabled)
+    local testerFeaturesCard = CreateFrame("Frame", nil, scrollChild, "BackdropTemplate")
+    testerFeaturesCard:SetSize(620, 94)
+    testerFeaturesCard:SetPoint("TOPLEFT", testerModeDesc, "BOTTOMLEFT", -2, -14)
+    testerFeaturesCard:SetBackdrop({
+        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    testerFeaturesCard:SetBackdropColor(0.04, 0.05, 0.07, 0.90)
+    testerFeaturesCard:SetBackdropBorderColor(0.95, 0.74, 0.22, 0.8)
+
+    -- Prey Hunt and Anti-AFK graduated out of tester mode: both are on for
+    -- everyone now, so this card no longer lists them as test features.
+    local cardHeader = testerFeaturesCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    cardHeader:SetPoint("TOPLEFT", testerFeaturesCard, "TOPLEFT", 16, -10)
+    cardHeader:SetText("|cFFFFD900Everything is live!|r")
+
+    local f1Title = testerFeaturesCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f1Title:SetPoint("TOPLEFT", cardHeader, "BOTTOMLEFT", 0, -6)
+    f1Title:SetPoint("RIGHT", testerFeaturesCard, "RIGHT", -16, 0)
+    f1Title:SetJustifyH("LEFT")
+    f1Title:SetText("Thanks for testing the previous features — they have all shipped.")
+
+    local f2Title = testerFeaturesCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f2Title:SetPoint("TOPLEFT", f1Title, "BOTTOMLEFT", 0, -6)
+    f2Title:SetPoint("RIGHT", testerFeaturesCard, "RIGHT", -16, 0)
+    f2Title:SetJustifyH("LEFT")
+    f2Title:SetText("|cFFFFDD00Anti-AFK BG Guard|r and |cFFFFDD00Prey Hunt Tracker|r are now available to everyone.")
+
+    local hintText = testerFeaturesCard:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hintText:SetPoint("TOPLEFT", f2Title, "BOTTOMLEFT", 0, -8)
+    hintText:SetPoint("RIGHT", testerFeaturesCard, "RIGHT", -16, 0)
+    hintText:SetJustifyH("LEFT")
+    hintText:SetText("|cff00ff00* Nothing is gated behind this toggle right now. New test features will appear here.|r")
+
+    local function UpdateTesterCardVisibility()
+        local isChecked = testerModeToggle:GetChecked()
+        testerFeaturesCard:SetShown(isChecked)
+    end
+    UpdateTesterCardVisibility()
+
+    testerModeToggle:SetScript("OnClick", function(self)
+        local isEnabled = self:GetChecked()
+        if OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.settings then
+            OxedHub.db.profile.settings.testerMode = isEnabled
+        end
+        UpdateTesterCardVisibility()
+        if OxedHub.Triggers and OxedHub.Triggers.RefreshTriggersList then
+            OxedHub.Triggers:RefreshTriggersList()
+        end
+        if OxedHub.Triggers and OxedHub.Triggers.selectedTriggerId then
+            OxedHub.Triggers:RefreshTriggerCard(OxedHub.Triggers.selectedTriggerId)
+        end
+        if OxedHub.Prey and OxedHub.Prey.Engine and OxedHub.Prey.Engine.UpdateActiveHunt then
+            OxedHub.Prey.Engine:UpdateActiveHunt()
+        end
+        if not isEnabled and OxedHub.AntiAFK and OxedHub.AntiAFK.HUD then
+            OxedHub.AntiAFK.HUD:Hide()
+        end
+    end)
+
+    -- Defaults & Reset Section
+    local defaultsSection = CreateSettingsSectionHeader(scrollChild, testerFeaturesCard, "BOTTOMLEFT", 2, -26, L["SETTINGS_SECTION_DEFAULTS"] or "Defaults & Reset")
+
+    local resetDefaultsBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    resetDefaultsBtn:SetSize(210, 26)
+    resetDefaultsBtn:SetPoint("TOPLEFT", defaultsSection, "BOTTOMLEFT", 18, -12)
+    resetDefaultsBtn:SetText(L["SETTINGS_RESET_DEFAULTS"] or "Reset to Default Settings")
+    resetDefaultsBtn:SetNormalFontObject("GameFontNormalSmall")
+
+    local resetDesc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    resetDesc:SetPoint("TOPLEFT", resetDefaultsBtn, "BOTTOMLEFT", 0, -8)
+    resetDesc:SetWidth(560)
+    resetDesc:SetJustifyH("LEFT")
+    resetDesc:SetText(L["SETTINGS_RESET_DEFAULTS_DESC"] or "*Restores all addon settings in this profile back to their default values. Your triggers, sounds, and animations are not affected.")
+
+    resetDefaultsBtn:SetScript("OnClick", function()
+        if not StaticPopupDialogs["OXEDHUB_RESET_SETTINGS"] then
+            StaticPopupDialogs["OXEDHUB_RESET_SETTINGS"] = {
+                text = L["SETTINGS_RESET_CONFIRM_PROMPT"] or "Are you sure you want to reset all settings in this profile to their defaults?\n\n(Your triggers, custom sounds, and animations will NOT be deleted. The UI will reload to apply defaults).",
+                button1 = L["SETTINGS_BTN_RESET"] or L["BTN_RESET"] or "Reset",
+                button2 = L["SETTINGS_BTN_CANCEL"] or L["BTN_CANCEL"] or "Cancel",
+                OnAccept = function()
+                    if OxedHub.DEFAULTS and OxedHub.DEFAULTS.settings and OxedHub.db and OxedHub.db.profile then
+                        OxedHub.db.profile.settings = CopyTable(OxedHub.DEFAULTS.settings)
+                    end
+                    ReloadUI()
+                end,
+                timeout = 0,
+                whileDead = true,
+                hideOnEscape = true,
+                preferredIndex = 3,
+            }
+        end
+        StaticPopup_Show("OXEDHUB_RESET_SETTINGS")
+    end)
+
     -- Boundary between the two pages: everything built so far is "Main".
     local function SnapshotWidgets(parent)
         local set = {}
@@ -2962,67 +3489,77 @@ function UI:CreateSettingsTab()
     end
     local mainPageSet = SnapshotWidgets(scrollChild)
 
-    -- ── Profile Switcher ─────────────────────────────────────────────────
-    -- Anchored to the top of the scroll child (not the Main content above it)
-    -- because it is the first thing shown when the Profiles page is active.
+    -- ── Profile Switcher & Hero Card ─────────────────────────────────────
     local profilesSection = CreateSettingsSectionHeader(scrollChild, scrollChild, "TOPLEFT", 15, -8, L["SETTINGS_SECTION_PROFILES"])
 
-    local profileLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    profileLabel:SetPoint("TOPLEFT", profilesSection, "BOTTOMLEFT", 18, -10)
-    profileLabel:SetText(L["SETTINGS_PROFILES_LABEL"])
-    profileLabel:SetTextColor(1, 0.82, 0, 1)
-
-    local profileDesc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    profileDesc:SetPoint("TOPLEFT", profileLabel, "BOTTOMLEFT", 0, -4)
-    -- Wrapped so it can't run under the details panel on the right.
-    profileDesc:SetWidth(440)
-    profileDesc:SetJustifyH("LEFT")
-    profileDesc:SetText(L["SETTINGS_PROFILES_DESC"])
-
-    local autoSwitchToggle = CreateFrame("CheckButton", nil, scrollChild, "UICheckButtonTemplate")
-    autoSwitchToggle:SetPoint("TOPLEFT", profileDesc, "BOTTOMLEFT", -4, -8)
-    autoSwitchToggle:SetSize(26, 26)
-    autoSwitchToggle:SetChecked(OxedHubDB and OxedHubDB.globalSettings and OxedHubDB.globalSettings.autoSwitchClassProfile == true)
-    autoSwitchToggle:SetScript("OnClick", function(self)
-        OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
-        OxedHubDB.globalSettings.autoSwitchClassProfile = self:GetChecked()
-    end)
-
-    local autoSwitchLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    autoSwitchLabel:SetPoint("LEFT", autoSwitchToggle, "RIGHT", 4, 0)
-    autoSwitchLabel:SetText(L["SETTINGS_PROFILES_AUTO"])
-    autoSwitchLabel:SetTextColor(1, 1, 1, 1)
-
-    local autoSwitchDesc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    autoSwitchDesc:SetPoint("TOPLEFT", autoSwitchToggle, "BOTTOMLEFT", 28, -2)
-    -- Wrapped so it can't run under the details panel on the right.
-    autoSwitchDesc:SetWidth(420)
-    autoSwitchDesc:SetJustifyH("LEFT")
-    autoSwitchDesc:SetText(L["SETTINGS_PROFILES_AUTO_DESC"])
-
-    -- Active profile dropdown
-    local activeLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    activeLabel:SetPoint("TOP", autoSwitchDesc, "BOTTOM", 0, -20)
-    activeLabel:SetPoint("LEFT", profileLabel, "LEFT", 6, 0)
-    activeLabel:SetText(L["SETTINGS_PROFILES_ACTIVE"])
-    activeLabel:SetTextColor(1, 1, 1, 1)
-
-    local profileDropdown = CreateFrame("DropdownButton", "OxedHubProfileDropdown", scrollChild, "WowStyle1DropdownTemplate")
-    profileDropdown:SetPoint("LEFT", activeLabel, "RIGHT", 10, 0)
-    profileDropdown:SetSize(240, 26)
-
-    local profileColorBtn = CreateFrame("Button", nil, scrollChild, "BackdropTemplate")
-    profileColorBtn:SetSize(28, 28)
-    profileColorBtn:SetPoint("LEFT", profileDropdown, "RIGHT", 10, 0)
-    profileColorBtn:SetBackdrop({
+    -- Active Profile Hero Banner
+    local activeHeroCard = CreateFrame("Frame", nil, scrollChild, "BackdropTemplate")
+    activeHeroCard:SetSize(480, 115)
+    activeHeroCard:SetPoint("TOPLEFT", profilesSection, "BOTTOMLEFT", 10, -12)
+    activeHeroCard:SetBackdrop({
+        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 14,
+        tile = false, edgeSize = 14,
         insets = { left = 3, right = 3, top = 3, bottom = 3 },
     })
-    profileColorBtn:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+    activeHeroCard:SetBackdropColor(0.06, 0.06, 0.08, 0.90)
+    activeHeroCard:SetBackdropBorderColor(0.95, 0.74, 0.22, 0.75)
+
+    local heroAccent = activeHeroCard:CreateTexture(nil, "OVERLAY")
+    heroAccent:SetPoint("TOPLEFT", 4, -4)
+    heroAccent:SetPoint("BOTTOMLEFT", 4, 4)
+    heroAccent:SetWidth(4)
+    heroAccent:SetColorTexture(1, 0.82, 0, 0.9)
+
+    local heroIconFrame = CreateFrame("Frame", nil, activeHeroCard, "BackdropTemplate")
+    heroIconFrame:SetSize(46, 46)
+    heroIconFrame:SetPoint("TOPLEFT", activeHeroCard, "TOPLEFT", 18, -14)
+    heroIconFrame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    heroIconFrame:SetBackdropColor(0.05, 0.05, 0.05, 0.9)
+    heroIconFrame:SetBackdropBorderColor(0.95, 0.74, 0.22, 0.85)
+
+    local heroClassIcon = heroIconFrame:CreateTexture(nil, "ARTWORK")
+    heroClassIcon:SetPoint("TOPLEFT", heroIconFrame, "TOPLEFT", 2, -2)
+    heroClassIcon:SetPoint("BOTTOMRIGHT", heroIconFrame, "BOTTOMRIGHT", -2, 2)
+    heroClassIcon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+    heroClassIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+    local heroTitle = activeHeroCard:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
+    heroTitle:SetPoint("TOPLEFT", heroIconFrame, "TOPRIGHT", 14, -2)
+    heroTitle:SetPoint("RIGHT", activeHeroCard, "RIGHT", -16, 0)
+    heroTitle:SetJustifyH("LEFT")
+    heroTitle:SetText("Profile Name")
+
+    local heroSubtitle = activeHeroCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    heroSubtitle:SetPoint("TOPLEFT", heroTitle, "BOTTOMLEFT", 0, -4)
+    heroSubtitle:SetText("|cff00ff00• Active Profile|r")
+
+    local switchLabel = activeHeroCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    switchLabel:SetPoint("BOTTOMLEFT", activeHeroCard, "BOTTOMLEFT", 18, 14)
+    switchLabel:SetText(L["SETTINGS_PROFILE_SWITCH_LABEL"] or "Switch Profile:")
+    switchLabel:SetTextColor(1, 0.82, 0, 1)
+
+    local profileDropdown = CreateFrame("DropdownButton", "OxedHubProfileDropdown", activeHeroCard, "WowStyle1DropdownTemplate")
+    profileDropdown:SetPoint("LEFT", switchLabel, "RIGHT", 8, 0)
+    profileDropdown:SetSize(230, 24)
+
+    local profileColorBtn = CreateFrame("Button", nil, activeHeroCard, "BackdropTemplate")
+    profileColorBtn:SetSize(24, 24)
+    profileColorBtn:SetPoint("LEFT", profileDropdown, "RIGHT", 8, 0)
+    profileColorBtn:SetBackdrop({
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    profileColorBtn:SetBackdropBorderColor(0.8, 0.8, 0.8, 1)
     local profileColorTex = profileColorBtn:CreateTexture(nil, "ARTWORK")
-    profileColorTex:SetPoint("TOPLEFT", 3, -3)
-    profileColorTex:SetPoint("BOTTOMRIGHT", -3, 3)
+    profileColorTex:SetPoint("TOPLEFT", 2, -2)
+    profileColorTex:SetPoint("BOTTOMRIGHT", -2, 2)
     profileColorTex:SetColorTexture(1, 1, 1, 1)
     profileColorBtn:SetScript("OnEnter", function(self)
         self:SetBackdropBorderColor(1, 1, 1, 1)
@@ -3032,19 +3569,20 @@ function UI:CreateSettingsTab()
         GameTooltip:Show()
     end)
     profileColorBtn:SetScript("OnLeave", function(self)
-        self:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+        self:SetBackdropBorderColor(0.8, 0.8, 0.8, 1)
         GameTooltip:Hide()
     end)
 
     profileColorBtn:SetScript("OnClick", function()
         local activeName = OxedHub:GetActiveProfileName()
-        local r, g, b = profileColorTex:GetVertexColor() -- GetColorTexture returns r,g,b,a but GetVertexColor is safer for textures
+        local r, g, b = profileColorTex:GetVertexColor()
         if not r then r, g, b = 1, 1, 1 end
         
         local function UpdateColor(nr, ng, nb)
             OxedHub.db.profile.metadata = OxedHub.db.profile.metadata or {}
             OxedHub.db.profile.metadata.customColor = {r = nr, g = ng, b = nb}
             UI.RefreshProfileDropdown()
+            if UI.RefreshProfileDetails then UI:RefreshProfileDetails() end
         end
         
         if ColorPickerFrame.SetupColorPickerAndShow then
@@ -3072,20 +3610,246 @@ function UI:CreateSettingsTab()
         end
     end)
 
-    -- Initialize from the active profile's saved class, not the player's class
+    -- Auto-Switch Checkbox
+    local autoSwitchToggle = CreateFrame("CheckButton", nil, scrollChild, "UICheckButtonTemplate")
+    autoSwitchToggle:SetPoint("TOPLEFT", activeHeroCard, "BOTTOMLEFT", 0, -10)
+    autoSwitchToggle:SetSize(24, 24)
+    autoSwitchToggle:SetChecked(OxedHubDB and OxedHubDB.globalSettings and OxedHubDB.globalSettings.autoSwitchClassProfile == true)
+    autoSwitchToggle:SetScript("OnClick", function(self)
+        OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+        OxedHubDB.globalSettings.autoSwitchClassProfile = self:GetChecked()
+    end)
+
+    local autoSwitchLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    autoSwitchLabel:SetPoint("LEFT", autoSwitchToggle, "RIGHT", 4, 0)
+    autoSwitchLabel:SetText(L["SETTINGS_PROFILES_AUTO"])
+    autoSwitchLabel:SetTextColor(1, 1, 1, 1)
+
+    local autoSwitchDesc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    autoSwitchDesc:SetPoint("TOPLEFT", autoSwitchToggle, "BOTTOMLEFT", 28, -2)
+    autoSwitchDesc:SetWidth(440)
+    autoSwitchDesc:SetJustifyH("LEFT")
+    autoSwitchDesc:SetText(L["SETTINGS_PROFILES_AUTO_DESC"])
+
+    -- Divider 1
+    local divider1 = scrollChild:CreateTexture(nil, "BORDER")
+    divider1:SetPoint("TOPLEFT", autoSwitchDesc, "BOTTOMLEFT", -20, -14)
+    divider1:SetSize(480, 1)
+    divider1:SetColorTexture(0.58, 0.48, 0.34, 0.35)
+
+    -- ── Create New Profile Section ────────────────────────────────────────
+    local createHeader = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    createHeader:SetPoint("TOPLEFT", divider1, "BOTTOMLEFT", 4, -14)
+    createHeader:SetText(L["SETTINGS_PROFILE_CREATE_HEADER"] or "Create New Profile")
+    createHeader:SetTextColor(1, 0.82, 0, 1)
+
+    local newProfileInput = CreateFrame("EditBox", nil, scrollChild, "InputBoxTemplate")
+    newProfileInput:SetSize(160, 24)
+    newProfileInput:SetPoint("TOPLEFT", createHeader, "BOTTOMLEFT", 6, -10)
+    newProfileInput:SetAutoFocus(false)
+    newProfileInput:SetMaxLetters(30)
+    newProfileInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+
     local activeProfileName = OxedHub:GetActiveProfileName()
     local selectedCreateClassToken = OxedHub:GetProfileClassToken(activeProfileName) or false
+
+    local createClassDropdown = CreateFrame("DropdownButton", "OxedHubCreateClassDropdown", scrollChild, "WowStyle1DropdownTemplate")
+    createClassDropdown:SetPoint("LEFT", newProfileInput, "RIGHT", 8, 0)
+    createClassDropdown:SetSize(140, 24)
+    SetupClassDropdown(
+        createClassDropdown,
+        function()
+            return selectedCreateClassToken
+        end,
+        function(token)
+            selectedCreateClassToken = token
+            local activeName = OxedHub:GetActiveProfileName()
+            if activeName then
+                OxedHub:SetProfileClassToken(activeName, token)
+                UI.RefreshProfileDropdown()
+                if UI.RefreshProfileDetails then UI:RefreshProfileDetails() end
+            end
+        end
+    )
+
+    local createBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    ApplyRedButtonStyle(createBtn)
+    createBtn:SetSize(110, 24)
+    createBtn:SetPoint("LEFT", createClassDropdown, "RIGHT", 8, 0)
+    createBtn:SetText(L["SETTINGS_BTN_CREATE"] or "Create Profile")
+    createBtn:SetNormalFontObject("GameFontNormalSmall")
+
+    local infoBtn = CreateFrame("Button", nil, scrollChild)
+    infoBtn:SetSize(18, 18)
+    infoBtn:SetPoint("LEFT", createBtn, "RIGHT", 6, 0)
+    local infoTex = infoBtn:CreateTexture(nil, "ARTWORK")
+    infoTex:SetAllPoints(infoBtn)
+    infoTex:SetTexture("Interface\\Common\\Help-i")
+    infoBtn.texture = infoTex
+    infoBtn:SetHighlightTexture("Interface\\Common\\Help-i")
+    local highlight = infoBtn:GetHighlightTexture()
+    highlight:SetBlendMode("ADD")
+    highlight:SetAlpha(0.3)
+    infoBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L["SETTINGS_PROFILES_INFO_TITLE"], 1, 0.82, 0)
+        GameTooltip:AddLine(L["SETTINGS_PROFILES_INFO_DESC"], 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    infoBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    createBtn:SetScript("OnClick", function()
+        local name = newProfileInput:GetText():match("^%s*(.-)%s*$")
+        if name == "" then return end
+        local ok, reason = OxedHub:CreateProfile(name, selectedCreateClassToken)
+        if ok then
+            print("|cff00ff00Oxed Hub:|r Profile |cffffff00" .. name .. "|r created.")
+            newProfileInput:SetText("")
+            newProfileInput:ClearFocus()
+            UI.RefreshProfileDropdown()
+            if UI.RefreshProfileDetails then UI:RefreshProfileDetails() end
+        elseif reason == "max_profiles" then
+            print("|cffff0000Oxed Hub:|r Maximum of |cffffff00" .. OxedHub:GetMaxProfileCount() .. "|r profiles reached.")
+        else
+            print("|cffff0000Oxed Hub:|r Profile name already exists or is invalid.")
+        end
+    end)
+    newProfileInput:SetScript("OnEnterPressed", function(self)
+        createBtn:Click()
+    end)
+
+    -- Divider 2
+    local divider2 = scrollChild:CreateTexture(nil, "BORDER")
+    divider2:SetPoint("TOPLEFT", newProfileInput, "BOTTOMLEFT", -6, -16)
+    divider2:SetSize(480, 1)
+    divider2:SetColorTexture(0.58, 0.48, 0.34, 0.35)
+
+    -- ── Manage Active Profile Section ─────────────────────────────────────
+    local manageHeader = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    manageHeader:SetPoint("TOPLEFT", divider2, "BOTTOMLEFT", 4, -14)
+    manageHeader:SetText(L["SETTINGS_PROFILE_ACTIONS_HEADER"] or "Manage Active Profile")
+    manageHeader:SetTextColor(1, 0.82, 0, 1)
+
+    local copyBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    ApplyRedButtonStyle(copyBtn)
+    copyBtn:SetSize(110, 24)
+    copyBtn:SetPoint("TOPLEFT", manageHeader, "BOTTOMLEFT", 6, -10)
+    copyBtn:SetText(L["SETTINGS_BTN_COPY"] or "Duplicate")
+    copyBtn:SetNormalFontObject("GameFontNormalSmall")
+    copyBtn:SetScript("OnClick", function()
+        local src = OxedHub:GetActiveProfileName()
+        local dest = newProfileInput:GetText():match("^%s*(.-)%s*$")
+        if dest == "" then
+            dest = src .. " (Copy)"
+        end
+        local ok, reason = OxedHub:CopyProfile(src, dest, selectedCreateClassToken)
+        if ok then
+            print("|cff00ff00Oxed Hub:|r Copied |cffffff00" .. src .. "|r to |cffffff00" .. dest .. "|r.")
+            newProfileInput:SetText("")
+            newProfileInput:ClearFocus()
+            UI.RefreshProfileDropdown()
+            if UI.RefreshProfileDetails then UI:RefreshProfileDetails() end
+        elseif reason == "max_profiles" then
+            print("|cffff0000Oxed Hub:|r Maximum of |cffffff00" .. OxedHub:GetMaxProfileCount() .. "|r profiles reached.")
+        else
+            print("|cffff0000Oxed Hub:|r Could not copy. Name already exists or is invalid.")
+        end
+    end)
+
+    local renameBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    ApplyRedButtonStyle(renameBtn)
+    renameBtn:SetSize(100, 24)
+    renameBtn:SetPoint("LEFT", copyBtn, "RIGHT", 10, 0)
+    renameBtn:SetText(L["SETTINGS_BTN_RENAME"] or "Rename")
+    renameBtn:SetNormalFontObject("GameFontNormalSmall")
+    renameBtn:SetScript("OnClick", function()
+        local newName = newProfileInput:GetText():match("^%s*(.-)%s*$")
+        if newName == "" then
+            print("|cffff0000Oxed Hub:|r Type a new name in the text field first, then click Rename.")
+            return
+        end
+        local oldName = OxedHub:GetActiveProfileName()
+        if OxedHub:RenameProfile(oldName, newName) then
+            print("|cff00ff00Oxed Hub:|r Renamed |cffffff00" .. oldName .. "|r to |cffffff00" .. newName .. "|r.")
+            newProfileInput:SetText("")
+            newProfileInput:ClearFocus()
+            UI.RefreshProfileDropdown()
+            if UI.RefreshProfileDetails then UI:RefreshProfileDetails() end
+        else
+            print("|cffff0000Oxed Hub:|r Could not rename. Name already exists or is invalid.")
+        end
+    end)
+
+    local deleteBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    ApplyRedButtonStyle(deleteBtn)
+    deleteBtn:SetSize(100, 24)
+    deleteBtn:SetPoint("LEFT", renameBtn, "RIGHT", 10, 0)
+    deleteBtn:SetText(L["SETTINGS_BTN_DELETE"] or "Delete")
+    deleteBtn:SetNormalFontObject("GameFontNormalSmall")
+    deleteBtn:SetScript("OnClick", function()
+        local activeName = OxedHub:GetActiveProfileName()
+        local profiles = OxedHub:GetProfileList()
+        if #profiles <= 1 then
+            print("|cffff0000Oxed Hub:|r Can't delete the only profile.")
+            return
+        end
+        StaticPopupDialogs["OXEDHUB_DELETE_PROFILE"] = {
+            text = "Delete profile |cffffff00" .. activeName .. "|r?\nThis cannot be undone.",
+            button1 = "Delete",
+            button2 = "Cancel",
+            OnAccept = function()
+                for _, name in ipairs(profiles) do
+                    if name ~= activeName then
+                        OxedHub:SwitchProfile(name)
+                        C_Timer.After(0.05, function()
+                            OxedHub:DeleteProfile(activeName)
+                            UI.RefreshProfileDropdown()
+                            if UI.RefreshProfileDetails then UI:RefreshProfileDetails() end
+                        end)
+                        return
+                    end
+                end
+            end,
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+        }
+        StaticPopup_Show("OXEDHUB_DELETE_PROFILE")
+    end)
 
     local function RefreshProfileDropdown()
         local activeName = OxedHub:GetActiveProfileName()
         profileDropdown:OverrideText(OxedHub:GetProfileColoredName(activeName))
+        
+        -- Update hero card header
+        heroTitle:SetText(OxedHub:GetProfileColoredName(activeName))
+        local classToken = OxedHub:GetProfileClassToken(activeName)
+        local className = classToken and (OxedHub:GetClassDisplayName(classToken) or classToken) or "Any Class"
+        heroSubtitle:SetText("|cff00ff00• " .. (L["SETTINGS_PROFILE_STATUS_ACTIVE"] or "Active") .. "|r  |  |cffffd100Class:|r " .. className)
+
+        -- Update class crest on hero card
+        if classToken and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classToken:upper()] then
+            heroClassIcon:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
+            local coords = CLASS_ICON_TCOORDS[classToken:upper()]
+            heroClassIcon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+        else
+            heroClassIcon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+            heroClassIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        end
+        
+        local classColors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
+        local clsColor = classToken and classColors and classColors[classToken]
+        if clsColor then
+            heroIconFrame:SetBackdropBorderColor(clsColor.r, clsColor.g, clsColor.b, 0.9)
+        else
+            heroIconFrame:SetBackdropBorderColor(0.95, 0.74, 0.22, 0.85)
+        end
         
         -- Update color swatch button color
         local metadata = OxedHub:GetProfileMetadata(activeName)
         if metadata and metadata.customColor then
             profileColorTex:SetColorTexture(metadata.customColor.r, metadata.customColor.g, metadata.customColor.b, 1)
         else
-            local classToken = OxedHub:GetProfileClassToken(activeName)
             local classColors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
             local color = classToken and classColors and classColors[classToken]
             if color then
@@ -3103,245 +3867,166 @@ function UI:CreateSettingsTab()
                     function() return name == OxedHub:GetActiveProfileName() end,
                     function()
                         OxedHub:SwitchProfile(name)
-                        -- Update the details/credits panel next to the dropdown.
+                        UI.RefreshProfileDropdown()
                         if UI.RefreshProfileDetails then UI:RefreshProfileDetails() end
                     end,
                     name
                 )
             end
         end)
-
     end
     UI.RefreshProfileDropdown = RefreshProfileDropdown
     RefreshProfileDropdown()
-
-    -- New profile row
-    local newProfileInput = CreateFrame("EditBox", nil, scrollChild, "InputBoxTemplate")
-    newProfileInput:SetSize(170, 26)
-    newProfileInput:SetPoint("TOP", activeLabel, "BOTTOM", 0, -20)
-    newProfileInput:SetPoint("LEFT", profileLabel, "LEFT", 6, 0)
-    newProfileInput:SetAutoFocus(false)
-    newProfileInput:SetMaxLetters(30)
-    newProfileInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-
-    local createClassDropdown = CreateFrame("DropdownButton", "OxedHubCreateClassDropdown", scrollChild, "WowStyle1DropdownTemplate")
-    createClassDropdown:SetPoint("LEFT", newProfileInput, "RIGHT", 10, 0)
-    createClassDropdown:SetSize(150, 26)
-    SetupClassDropdown(
-        createClassDropdown,
-        function()
-            return selectedCreateClassToken
-        end,
-        function(token)
-            selectedCreateClassToken = token
-            -- Auto-save class to the active profile
-            local activeName = OxedHub:GetActiveProfileName()
-            if activeName then
-                OxedHub:SetProfileClassToken(activeName, token)
-                RefreshProfileDropdown()
-            end
-        end
-    )
-
-    local createBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
-    ApplyRedButtonStyle(createBtn)
-    createBtn:SetSize(90, 26)
-    createBtn:SetPoint("LEFT", createClassDropdown, "RIGHT", 10, 0)
-    createBtn:SetText(L["SETTINGS_BTN_CREATE"])
-    createBtn:SetNormalFontObject("GameFontNormalSmall")
-
-    -- Add info tooltip button next to Create button
-    local infoBtn = CreateFrame("Button", nil, scrollChild)
-    infoBtn:SetSize(20, 20)
-    infoBtn:SetPoint("LEFT", createBtn, "RIGHT", 8, 0)
-    
-    local infoTex = infoBtn:CreateTexture(nil, "ARTWORK")
-    infoTex:SetAllPoints(infoBtn)
-    infoTex:SetTexture("Interface\\Common\\Help-i")
-    infoBtn.texture = infoTex
-    
-    infoBtn:SetHighlightTexture("Interface\\Common\\Help-i")
-    local highlight = infoBtn:GetHighlightTexture()
-    highlight:SetBlendMode("ADD")
-    highlight:SetAlpha(0.3)
-    
-    infoBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(L["SETTINGS_PROFILES_INFO_TITLE"], 1, 0.82, 0)
-        GameTooltip:AddLine(L["SETTINGS_PROFILES_INFO_DESC"], 1, 1, 1, true)
-        GameTooltip:Show()
-    end)
-    infoBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    createBtn:SetScript("OnClick", function()
-        local name = newProfileInput:GetText():match("^%s*(.-)%s*$")
-        if name == "" then return end
-        local ok, reason = OxedHub:CreateProfile(name, selectedCreateClassToken)
-        if ok then
-            print("|cff00ff00Oxed Hub:|r Profile |cffffff00" .. name .. "|r created.")
-            newProfileInput:SetText("")
-            newProfileInput:ClearFocus()
-            RefreshProfileDropdown()
-        elseif reason == "max_profiles" then
-            print("|cffff0000Oxed Hub:|r Maximum of |cffffff00" .. OxedHub:GetMaxProfileCount() .. "|r profiles reached.")
-        else
-            print("|cffff0000Oxed Hub:|r Profile name already exists or is invalid.")
-        end
-    end)
-    newProfileInput:SetScript("OnEnterPressed", function(self)
-        createBtn:Click()
-    end)
-
-    -- Copy / Rename / Delete row
-    local copyBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
-    ApplyRedButtonStyle(copyBtn)
-    copyBtn:SetSize(90, 26)
-    copyBtn:SetPoint("TOP", newProfileInput, "BOTTOM", 0, -16)
-    copyBtn:SetPoint("LEFT", profileLabel, "LEFT", 6, 0)
-    copyBtn:SetText(L["SETTINGS_BTN_COPY"])
-    copyBtn:SetNormalFontObject("GameFontNormalSmall")
-    copyBtn:SetScript("OnClick", function()
-        local src = OxedHub:GetActiveProfileName()
-        local dest = newProfileInput:GetText():match("^%s*(.-)%s*$")
-        if dest == "" then
-            print("|cffff0000Oxed Hub:|r Type a name in the text field first, then click Copy.")
-            return
-        end
-        local ok, reason = OxedHub:CopyProfile(src, dest, selectedCreateClassToken)
-        if ok then
-            print("|cff00ff00Oxed Hub:|r Copied |cffffff00" .. src .. "|r to |cffffff00" .. dest .. "|r.")
-            newProfileInput:SetText("")
-            newProfileInput:ClearFocus()
-            RefreshProfileDropdown()
-        elseif reason == "max_profiles" then
-            print("|cffff0000Oxed Hub:|r Maximum of |cffffff00" .. OxedHub:GetMaxProfileCount() .. "|r profiles reached.")
-        else
-            print("|cffff0000Oxed Hub:|r Could not copy. Name already exists or is invalid.")
-        end
-    end)
-
-    local renameBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
-    ApplyRedButtonStyle(renameBtn)
-    renameBtn:SetSize(90, 26)
-    renameBtn:SetPoint("LEFT", copyBtn, "RIGHT", 10, 0)
-    renameBtn:SetText(L["SETTINGS_BTN_RENAME"])
-    renameBtn:SetNormalFontObject("GameFontNormalSmall")
-    renameBtn:SetScript("OnClick", function()
-        local newName = newProfileInput:GetText():match("^%s*(.-)%s*$")
-        if newName == "" then
-            print("|cffff0000Oxed Hub:|r Type a new name in the text field first, then click Rename.")
-            return
-        end
-        local oldName = OxedHub:GetActiveProfileName()
-        if OxedHub:RenameProfile(oldName, newName) then
-            print("|cff00ff00Oxed Hub:|r Renamed |cffffff00" .. oldName .. "|r to |cffffff00" .. newName .. "|r.")
-            newProfileInput:SetText("")
-            newProfileInput:ClearFocus()
-            RefreshProfileDropdown()
-        else
-            print("|cffff0000Oxed Hub:|r Could not rename. Name already exists or is invalid.")
-        end
-    end)
-
-    local deleteBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
-    ApplyRedButtonStyle(deleteBtn)
-    deleteBtn:SetSize(90, 26)
-    deleteBtn:SetPoint("LEFT", renameBtn, "RIGHT", 10, 0)
-    deleteBtn:SetText(L["SETTINGS_BTN_DELETE"])
-    deleteBtn:SetNormalFontObject("GameFontNormalSmall")
-    deleteBtn:SetScript("OnClick", function()
-        local activeName = OxedHub:GetActiveProfileName()
-        local profiles = OxedHub:GetProfileList()
-        if #profiles <= 1 then
-            print("|cffff0000Oxed Hub:|r Can't delete the only profile.")
-            return
-        end
-        StaticPopupDialogs["OXEDHUB_DELETE_PROFILE"] = {
-            text = "Delete profile |cffffff00" .. activeName .. "|r?\nThis cannot be undone.",
-            button1 = "Delete",
-            button2 = "Cancel",
-            OnAccept = function()
-                -- Switch to another profile first
-                for _, name in ipairs(profiles) do
-                    if name ~= activeName then
-                        OxedHub:SwitchProfile(name)
-                        C_Timer.After(0.05, function()
-                            OxedHub:DeleteProfile(activeName)
-                        end)
-                        return
-                    end
-                end
-            end,
-            timeout = 0,
-            whileDead = true,
-            hideOnEscape = true,
-        }
-        StaticPopup_Show("OXEDHUB_DELETE_PROFILE")
-    end)
 
     -- Second boundary: everything from here on is the Export/Import sub-page.
     local profileManageSet = SnapshotWidgets(scrollChild)
 
     -- ── Export / Import section ───────────────────────────────────────────
-    -- Anchored to the top of the scroll child: it heads its own sub-page.
     local exportSection = CreateSettingsSectionHeader(scrollChild, scrollChild, "TOPLEFT", 15, -8, L["SETTINGS_SECTION_EXPORT"])
 
-    local exportImportLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    exportImportLabel:SetPoint("TOPLEFT", exportSection, "BOTTOMLEFT", 18, -10)
-    exportImportLabel:SetText(L["SETTINGS_EXPORT_LABEL"])
-    exportImportLabel:SetTextColor(1, 0.82, 0, 1)
+    -- Left Card: Export Hub
+    local exportCard = CreateFrame("Frame", nil, scrollChild, "BackdropTemplate")
+    exportCard:SetSize(470, 420)
+    exportCard:SetPoint("TOPLEFT", exportSection, "BOTTOMLEFT", 10, -12)
+    exportCard:SetBackdrop({
+        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 14,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    exportCard:SetBackdropColor(0.06, 0.06, 0.08, 0.90)
+    exportCard:SetBackdropBorderColor(0.95, 0.74, 0.22, 0.75)
 
-    local exportBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    local expAccent = exportCard:CreateTexture(nil, "OVERLAY")
+    expAccent:SetPoint("TOPLEFT", 4, -4)
+    expAccent:SetPoint("BOTTOMLEFT", 4, 4)
+    expAccent:SetWidth(4)
+    expAccent:SetColorTexture(1, 0.82, 0, 0.9)
+
+    local expTitle = exportCard:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
+    expTitle:SetPoint("TOPLEFT", exportCard, "TOPLEFT", 18, -14)
+    expTitle:SetText(L["SETTINGS_EXPORT_CARD_TITLE"] or "Export Configuration")
+
+    local expDesc = exportCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    expDesc:SetPoint("TOPLEFT", expTitle, "BOTTOMLEFT", 0, -4)
+    expDesc:SetPoint("RIGHT", exportCard, "RIGHT", -16, 0)
+    expDesc:SetJustifyH("LEFT")
+    expDesc:SetText(L["SETTINGS_EXPORT_CARD_DESC"] or "Generate a shareable text string to export profiles, triggers, rings, or action hubs.")
+
+    local expDivider1 = exportCard:CreateTexture(nil, "BORDER")
+    expDivider1:SetPoint("TOPLEFT", expDesc, "BOTTOMLEFT", -2, -10)
+    expDivider1:SetPoint("RIGHT", exportCard, "RIGHT", -16, 0)
+    expDivider1:SetHeight(1)
+    expDivider1:SetColorTexture(0.58, 0.48, 0.34, 0.35)
+
+    -- Export Buttons
+    local exportBtn = CreateFrame("Button", nil, exportCard, "UIPanelButtonTemplate")
     ApplyRedButtonStyle(exportBtn)
-    exportBtn:SetPoint("TOPLEFT", exportImportLabel, "BOTTOMLEFT", 0, -10)
-    exportBtn:SetSize(110, 26)
-    exportBtn:SetText(L["SETTINGS_BTN_EXPORT_ACTIVE"])
+    exportBtn:SetPoint("TOPLEFT", expDivider1, "BOTTOMLEFT", 0, -12)
+    exportBtn:SetSize(210, 26)
+    exportBtn:SetText(L["SETTINGS_EXPORT_ACTIVE_BTN"] or "Export Active Profile")
+    exportBtn:SetNormalFontObject("GameFontNormalSmall")
     exportBtn:SetScript("OnClick", function()
         UI:ShowExportFrame()
     end)
+    exportBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Export Active Profile", 1, 0.82, 0)
+        GameTooltip:AddLine("Generate a compressed export string for your active profile and all its components.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    exportBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    local scopedExportBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    local scopedExportBtn = CreateFrame("Button", nil, exportCard, "UIPanelButtonTemplate")
     ApplyRedButtonStyle(scopedExportBtn)
     scopedExportBtn:SetPoint("LEFT", exportBtn, "RIGHT", 10, 0)
-    scopedExportBtn:SetSize(130, 26)
-    scopedExportBtn:SetText("Detailed Export")
+    scopedExportBtn:SetSize(210, 26)
+    scopedExportBtn:SetText(L["SETTINGS_EXPORT_DETAILED_BTN"] or "Detailed / Custom Export")
+    scopedExportBtn:SetNormalFontObject("GameFontNormalSmall")
     scopedExportBtn:SetScript("OnClick", function()
         UI:ShowScopedExportFrame()
     end)
-
-    local importBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
-    ApplyRedButtonStyle(importBtn)
-    importBtn:SetPoint("LEFT", scopedExportBtn, "RIGHT", 10, 0)
-    importBtn:SetSize(100, 26)
-    importBtn:SetText(L["SETTINGS_BTN_IMPORT"])
-    importBtn:SetScript("OnClick", function()
-        UI:ShowImportFrame()
+    scopedExportBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Detailed / Custom Export", 1, 0.82, 0)
+        GameTooltip:AddLine("Choose specific content to export: individual triggers, ActionHubs, OxedRing, or toy mixes.", 1, 1, 1, true)
+        GameTooltip:Show()
     end)
-    
-    local importStatus = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    importStatus:SetPoint("TOPLEFT", exportBtn, "BOTTOMLEFT", 0, -15)
-    importStatus:SetWidth(400)
-    importStatus:SetJustifyH("LEFT")
-    importStatus:SetJustifyV("TOP")
-    importStatus:SetText("")
-    UI.importStatus = importStatus
+    scopedExportBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- Author name and realm are captured automatically on every export, so the
-    -- only thing worth asking for here is an optional note. Matches the
-    -- "Note (optional)" field in the Detailed Export dialog.
-    local exportNoteLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    exportNoteLabel:SetPoint("TOPLEFT", importStatus, "BOTTOMLEFT", 0, -40)
-    exportNoteLabel:SetText(L["SETTINGS_EXPORT_NOTE"] or "Note (optional):")
+    -- Share the active profile as a clickable chat link.  The data is not put
+    -- in the chat message; the link only carries a share ID, and the payload
+    -- transfers over the addon channel when someone clicks it.
+    local shareLinkBtn = CreateFrame("Button", nil, exportCard, "UIPanelButtonTemplate")
+    ApplyRedButtonStyle(shareLinkBtn)
+    shareLinkBtn:SetPoint("TOPLEFT", exportBtn, "BOTTOMLEFT", 0, -10)
+    shareLinkBtn:SetSize(430, 26)
+    shareLinkBtn:SetText(L["SETTINGS_SHARE_LINK_BTN"] or "Share to Chat (Link)")
+    shareLinkBtn:SetNormalFontObject("GameFontNormalSmall")
+    shareLinkBtn:SetScript("OnClick", function()
+        local Share = OxedHub.Share
+        if not Share then
+            print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+            return
+        end
+        local profileName = OxedHub:GetActiveProfileName() or "Profile"
+        Share:ShowChannelPicker("profile", nil, profileName)
+    end)
+    shareLinkBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L["SETTINGS_SHARE_LINK_BTN"] or "Share to Chat (Link)")
+        GameTooltip:AddLine("Puts a clickable link in your chat box for the active profile.", 1, 1, 1, true)
+        GameTooltip:AddLine("Pick a channel and send it. Anyone with Oxed Hub can click to import.", 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    shareLinkBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    -- The transfer is peer-to-peer over the addon channel, so it only runs
+    -- while both players are logged in.  Say so plainly next to the button.
+    local shareNote = exportCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    shareNote:SetPoint("TOPLEFT", shareLinkBtn, "BOTTOMLEFT", 2, -8)
+    shareNote:SetWidth(430)
+    shareNote:SetJustifyH("LEFT")
+    shareNote:SetSpacing(2)
+    shareNote:SetText(L["SETTINGS_SHARE_LINK_NOTE"]
+        or "|cffffd100Both players must stay logged in until the transfer finishes.|r\n"
+        .. "|cff888888A large profile can take around 30 seconds to send.|r")
+
+    local expDivider2 = exportCard:CreateTexture(nil, "BORDER")
+    expDivider2:SetPoint("TOPLEFT", shareNote, "BOTTOMLEFT", -2, -14)
+    expDivider2:SetPoint("RIGHT", exportCard, "RIGHT", -16, 0)
+    expDivider2:SetHeight(1)
+    expDivider2:SetColorTexture(0.58, 0.48, 0.34, 0.35)
+
+    -- Author Nickname
+    local exportNicknameLabel = exportCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    exportNicknameLabel:SetPoint("TOPLEFT", expDivider2, "BOTTOMLEFT", 0, -12)
+    exportNicknameLabel:SetText(L["SETTINGS_EXPORT_NICKNAME"] or "Author Nickname (optional):")
+    exportNicknameLabel:SetTextColor(1, 0.82, 0, 1)
+
+    local exportNicknameBox = CreateFrame("EditBox", nil, exportCard, "InputBoxTemplate")
+    exportNicknameBox:SetPoint("TOPLEFT", exportNicknameLabel, "BOTTOMLEFT", 6, -6)
+    exportNicknameBox:SetSize(320, 22)
+    exportNicknameBox:SetAutoFocus(false)
+    exportNicknameBox:SetMaxLetters(50)
+    exportNicknameBox:SetText(UI:GetExportNickname() or "")
+    exportNicknameBox:SetScript("OnEnterPressed", function(self)
+        UI:SetExportNickname(self:GetText())
+        self:ClearFocus()
+    end)
+    exportNicknameBox:SetScript("OnEditFocusLost", function(self)
+        UI:SetExportNickname(self:GetText())
+    end)
+
+    -- Export Note
+    local exportNoteLabel = exportCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    exportNoteLabel:SetPoint("TOPLEFT", exportNicknameBox, "BOTTOMLEFT", -6, -14)
+    exportNoteLabel:SetText(L["SETTINGS_EXPORT_NOTE"] or "Export Note (optional):")
     exportNoteLabel:SetTextColor(1, 0.82, 0, 1)
 
-    local exportNoteDesc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    exportNoteDesc:SetPoint("TOPLEFT", exportNoteLabel, "BOTTOMLEFT", 0, -4)
-    exportNoteDesc:SetText(L["SETTINGS_EXPORT_NOTE_DESC"]
-        or "*A short message shown to anyone importing what you export.")
-
-    local exportNoteBox = CreateFrame("EditBox", nil, scrollChild, "InputBoxTemplate")
-    exportNoteBox:SetPoint("TOPLEFT", exportNoteDesc, "BOTTOMLEFT", 6, -8)
-    exportNoteBox:SetSize(380, 22)
+    local exportNoteBox = CreateFrame("EditBox", nil, exportCard, "InputBoxTemplate")
+    exportNoteBox:SetPoint("TOPLEFT", exportNoteLabel, "BOTTOMLEFT", 6, -6)
+    exportNoteBox:SetSize(420, 22)
     exportNoteBox:SetAutoFocus(false)
     exportNoteBox:SetMaxLetters(120)
     exportNoteBox:SetText(UI:GetExportNote() or "")
@@ -3353,62 +4038,174 @@ function UI:CreateSettingsTab()
         UI:SetExportNote(self:GetText())
     end)
 
+    local expInfoText = exportCard:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    expInfoText:SetPoint("TOPLEFT", exportNoteBox, "BOTTOMLEFT", -6, -16)
+    expInfoText:SetPoint("RIGHT", exportCard, "RIGHT", -16, 0)
+    expInfoText:SetJustifyH("LEFT")
+    expInfoText:SetSpacing(3)
+    expInfoText:SetText("|cff888888• Exports are compressed base64 strings safe for sharing.\n• Large configurations are automatically split into manageable parts.\n• Author metadata and notes are bundled with the export.|r")
+
+    -- Right Card: Import Hub
+    local importCard = CreateFrame("Frame", nil, scrollChild, "BackdropTemplate")
+    importCard:SetSize(470, 420)
+    importCard:SetPoint("TOPLEFT", exportCard, "TOPRIGHT", 15, 0)
+    importCard:SetBackdrop({
+        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 14,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    importCard:SetBackdropColor(0.06, 0.06, 0.08, 0.90)
+    importCard:SetBackdropBorderColor(0.95, 0.74, 0.22, 0.75)
+
+    local impAccent = importCard:CreateTexture(nil, "OVERLAY")
+    impAccent:SetPoint("TOPLEFT", 4, -4)
+    impAccent:SetPoint("BOTTOMLEFT", 4, 4)
+    impAccent:SetWidth(4)
+    impAccent:SetColorTexture(1, 0.82, 0, 0.9)
+
+    local impTitle = importCard:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
+    impTitle:SetPoint("TOPLEFT", importCard, "TOPLEFT", 18, -14)
+    impTitle:SetText(L["SETTINGS_IMPORT_CARD_TITLE"] or "Import Configuration")
+
+    local impDesc = importCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    impDesc:SetPoint("TOPLEFT", impTitle, "BOTTOMLEFT", 0, -4)
+    impDesc:SetPoint("RIGHT", importCard, "RIGHT", -16, 0)
+    impDesc:SetJustifyH("LEFT")
+    impDesc:SetText(L["SETTINGS_IMPORT_CARD_DESC"] or "Import a full profile, trigger collection, or action hub from a string.")
+
+    local impDivider1 = importCard:CreateTexture(nil, "BORDER")
+    impDivider1:SetPoint("TOPLEFT", impDesc, "BOTTOMLEFT", -2, -10)
+    impDivider1:SetPoint("RIGHT", importCard, "RIGHT", -16, 0)
+    impDivider1:SetHeight(1)
+    impDivider1:SetColorTexture(0.58, 0.48, 0.34, 0.35)
+
+    local importBtn = CreateFrame("Button", nil, importCard, "UIPanelButtonTemplate")
+    ApplyRedButtonStyle(importBtn)
+    importBtn:SetPoint("TOPLEFT", impDivider1, "BOTTOMLEFT", 0, -12)
+    importBtn:SetSize(220, 26)
+    importBtn:SetText(L["SETTINGS_IMPORT_OPEN_BTN"] or "Open Import Dialog")
+    importBtn:SetNormalFontObject("GameFontNormalSmall")
+    importBtn:SetScript("OnClick", function()
+        UI:ShowImportFrame()
+    end)
+    importBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Open Import Dialog", 1, 0.82, 0)
+        GameTooltip:AddLine("Paste any export string to preview and import triggers, profiles, or hubs.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    importBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    local impDivider2 = importCard:CreateTexture(nil, "BORDER")
+    impDivider2:SetPoint("TOPLEFT", importBtn, "BOTTOMLEFT", 0, -14)
+    impDivider2:SetPoint("RIGHT", importCard, "RIGHT", -16, 0)
+    impDivider2:SetHeight(1)
+    impDivider2:SetColorTexture(0.58, 0.48, 0.34, 0.35)
+
+    local impFeaturesHeader = importCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    impFeaturesHeader:SetPoint("TOPLEFT", impDivider2, "BOTTOMLEFT", 0, -12)
+    impFeaturesHeader:SetText("Smart Import Features:")
+    impFeaturesHeader:SetTextColor(1, 0.82, 0, 1)
+
+    local impFeaturesList = importCard:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    impFeaturesList:SetPoint("TOPLEFT", impFeaturesHeader, "BOTTOMLEFT", 0, -8)
+    impFeaturesList:SetPoint("RIGHT", importCard, "RIGHT", -16, 0)
+    impFeaturesList:SetJustifyH("LEFT")
+    impFeaturesList:SetSpacing(6)
+    impFeaturesList:SetText(table.concat({
+        "• |cffffd100Auto-Scope Detection:|r Automatically detects full profiles, triggers, rings, or action hubs.",
+        "• |cffffd100Safe Confirmation:|r Previews authors, notes, and full content tables before applying.",
+        "• |cffffd100Non-Destructive:|r Partial imports merge safely into your active profile without data loss.",
+        "• |cffffd100Multi-Part Paste:|r Paste chunked multi-part strings in any order without confusion.",
+    }, "\n"))
+
+    local importStatus = importCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    importStatus:SetPoint("BOTTOMLEFT", importCard, "BOTTOMLEFT", 18, 14)
+    importStatus:SetPoint("RIGHT", importCard, "RIGHT", -16, 0)
+    importStatus:SetJustifyH("LEFT")
+    importStatus:SetText("")
+    UI.importStatus = importStatus
+
     -- ── Live info panel (Details + Credits) ───────────────────────────────
-    -- Sits to the right of the profile controls on the Manage page and updates
-    -- as soon as the active profile changes, so switching profiles shows what
-    -- each one contains without leaving the page.
     local infoPanel = CreateFrame("Frame", nil, scrollChild, "BackdropTemplate")
-    -- Clear of the profile controls on the left (they run to roughly x=465).
-    infoPanel:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 520, -46)
+    infoPanel:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 520, -32)
     infoPanel:SetPoint("RIGHT", scrollChild, "RIGHT", -20, 0)
-    infoPanel:SetHeight(400)
+    infoPanel:SetHeight(420)
     infoPanel:SetBackdrop({
         bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
-        edgeFile = "Interface\\ChatFrame\\ChatFrameBackground",
-        tile = false, edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 },
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 14,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
     })
-    infoPanel:SetBackdropColor(0, 0, 0, 0.35)
-    infoPanel:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.5)
+    infoPanel:SetBackdropColor(0.05, 0.05, 0.07, 0.88)
+    infoPanel:SetBackdropBorderColor(0.58, 0.48, 0.34, 0.6)
     infoPanel:Hide()
 
-    local detailsName = infoPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    detailsName:SetPoint("TOPLEFT", infoPanel, "TOPLEFT", 14, -12)
+    local panelClassIcon = infoPanel:CreateTexture(nil, "ARTWORK")
+    panelClassIcon:SetSize(32, 32)
+    panelClassIcon:SetPoint("TOPLEFT", infoPanel, "TOPLEFT", 14, -14)
+    panelClassIcon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+    panelClassIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+    local detailsName = infoPanel:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
+    detailsName:SetPoint("TOPLEFT", panelClassIcon, "TOPRIGHT", 10, 0)
+    detailsName:SetPoint("RIGHT", infoPanel, "RIGHT", -14, 0)
+    detailsName:SetJustifyH("LEFT")
 
     local detailsMeta = infoPanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    detailsMeta:SetPoint("TOPLEFT", detailsName, "BOTTOMLEFT", 0, -4)
+    detailsMeta:SetPoint("TOPLEFT", detailsName, "BOTTOMLEFT", 0, -3)
+
+    local panelDivider1 = infoPanel:CreateTexture(nil, "BORDER")
+    panelDivider1:SetPoint("TOPLEFT", panelClassIcon, "BOTTOMLEFT", 0, -10)
+    panelDivider1:SetPoint("RIGHT", infoPanel, "RIGHT", -14, 0)
+    panelDivider1:SetHeight(1)
+    panelDivider1:SetColorTexture(0.58, 0.48, 0.34, 0.3)
 
     local detailsHeader = infoPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    detailsHeader:SetPoint("TOPLEFT", detailsMeta, "BOTTOMLEFT", 0, -12)
+    detailsHeader:SetPoint("TOPLEFT", panelDivider1, "BOTTOMLEFT", 0, -8)
     detailsHeader:SetText(L["SETTINGS_SECTION_DETAILS"] or "Profile Details")
     detailsHeader:SetTextColor(1, 0.82, 0, 1)
 
-    -- Details and Credits stack vertically so each gets the panel's full width
-    -- instead of fighting over two cramped columns.
-    local detailsBody = infoPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    detailsBody:SetPoint("TOPLEFT", detailsHeader, "BOTTOMLEFT", 0, -8)
-    detailsBody:SetPoint("RIGHT", infoPanel, "RIGHT", -14, 0)
-    detailsBody:SetJustifyH("LEFT")
-    detailsBody:SetJustifyV("TOP")
-    detailsBody:SetSpacing(3)
+    local detailsCol1 = infoPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    detailsCol1:SetPoint("TOPLEFT", detailsHeader, "BOTTOMLEFT", 0, -6)
+    detailsCol1:SetWidth(190)
+    detailsCol1:SetJustifyH("LEFT")
+    detailsCol1:SetJustifyV("TOP")
+    detailsCol1:SetSpacing(4)
+
+    local detailsCol2 = infoPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    detailsCol2:SetPoint("LEFT", detailsCol1, "RIGHT", 14, 0)
+    detailsCol2:SetPoint("TOP", detailsCol1, "TOP", 0, 0)
+    detailsCol2:SetWidth(190)
+    detailsCol2:SetJustifyH("LEFT")
+    detailsCol2:SetJustifyV("TOP")
+    detailsCol2:SetSpacing(4)
+
+    local panelDivider2 = infoPanel:CreateTexture(nil, "BORDER")
+    panelDivider2:SetPoint("TOPLEFT", detailsCol1, "BOTTOMLEFT", 0, -12)
+    panelDivider2:SetPoint("RIGHT", infoPanel, "RIGHT", -14, 0)
+    panelDivider2:SetHeight(1)
+    panelDivider2:SetColorTexture(0.58, 0.48, 0.34, 0.3)
 
     local creditsHeader = infoPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    creditsHeader:SetPoint("TOPLEFT", detailsBody, "BOTTOMLEFT", 0, -16)
+    creditsHeader:SetPoint("TOPLEFT", panelDivider2, "BOTTOMLEFT", 0, -8)
     creditsHeader:SetText(L["SETTINGS_SECTION_CREDITS"] or "Credits")
     creditsHeader:SetTextColor(1, 0.82, 0, 1)
 
     local creditsBody = infoPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    creditsBody:SetPoint("TOPLEFT", creditsHeader, "BOTTOMLEFT", 0, -8)
+    creditsBody:SetPoint("TOPLEFT", creditsHeader, "BOTTOMLEFT", 0, -6)
     creditsBody:SetPoint("RIGHT", infoPanel, "RIGHT", -14, 0)
     creditsBody:SetJustifyH("LEFT")
     creditsBody:SetJustifyV("TOP")
-    creditsBody:SetSpacing(4)
+    creditsBody:SetSpacing(3)
 
     local clearCreditsBtn = CreateFrame("Button", nil, infoPanel, "UIPanelButtonTemplate")
     ApplyRedButtonStyle(clearCreditsBtn)
-    clearCreditsBtn:SetSize(130, 24)
-    clearCreditsBtn:SetPoint("BOTTOMLEFT", infoPanel, "BOTTOMLEFT", 14, 12)
+    clearCreditsBtn:SetSize(120, 22)
+    clearCreditsBtn:SetPoint("BOTTOMLEFT", infoPanel, "BOTTOMLEFT", 14, 10)
     clearCreditsBtn:SetText(L["SETTINGS_BTN_CLEAR_CREDITS"] or "Clear Credits")
+    clearCreditsBtn:SetNormalFontObject("GameFontNormalSmall")
     clearCreditsBtn:SetScript("OnClick", function()
         StaticPopupDialogs["OXEDHUB_CLEAR_CREDITS"] = {
             text = "Clear the import history for the active profile?\nThis only removes the credits list, not the imported content.",
@@ -3427,46 +4224,58 @@ function UI:CreateSettingsTab()
         StaticPopup_Show("OXEDHUB_CLEAR_CREDITS")
     end)
 
-    -- Fill both panels from the active profile.
     function UI:RefreshProfileDetails()
         local name = OxedHubDB and OxedHubDB.activeProfile
         local db = name and OxedHubDB.profiles and OxedHubDB.profiles[name]
         if not db then
             detailsName:SetText("|cffff5555No active profile|r")
             detailsMeta:SetText("")
-            detailsBody:SetText("")
+            detailsCol1:SetText("")
+            detailsCol2:SetText("")
             creditsBody:SetText("")
             return
         end
 
         detailsName:SetText(OxedHub:GetProfileColoredName(name))
 
+        local classToken = OxedHub:GetProfileClassToken(name)
+        if classToken and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classToken:upper()] then
+            panelClassIcon:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
+            local coords = CLASS_ICON_TCOORDS[classToken:upper()]
+            panelClassIcon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+        else
+            panelClassIcon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+            panelClassIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        end
+
         local meta = OxedHub:GetProfileMetadata(name) or {}
         local metaBits = {}
-        local classToken = OxedHub:GetProfileClassToken(name)
         if classToken then
             table.insert(metaBits, "Class: " .. (OxedHub:GetClassDisplayName(classToken) or classToken))
         end
-        if meta.addonVersion then table.insert(metaBits, "Made with v" .. meta.addonVersion) end
+        if meta.addonVersion then table.insert(metaBits, "v" .. meta.addonVersion) end
         if db.lastImport and db.lastImport.date then
-            table.insert(metaBits, "Last import: " .. date("%Y-%m-%d", db.lastImport.date))
+            table.insert(metaBits, "Imported: " .. date("%Y-%m-%d", db.lastImport.date))
         end
         detailsMeta:SetText(table.concat(metaBits, "  |  "))
 
         local s = UI:GetProfileStats(db)
         local function Row(label, value, extra)
-            return string.format("|cffffd100%s:|r  %s%s", label, tostring(value), extra or "")
+            return string.format("|cffffd100• %s:|r %s%s", label, tostring(value), extra or "")
         end
-        detailsBody:SetText(table.concat({
-            Row("Triggers", s.triggers, s.triggers > 0
-                and string.format(" |cff888888(%d on)|r", s.triggersEnabled) or ""),
-            Row("Ring nodes", s.ringNodes),
+
+        detailsCol1:SetText(table.concat({
+            Row("Triggers", s.triggers, s.triggers > 0 and string.format(" |cff888888(%d on)|r", s.triggersEnabled) or ""),
             Row("Action Hubs", s.hubs),
-            Row("Toy mixes", s.toyMixes),
-            Row("Toy tabs", s.toyCategories),
-            Row("Custom sounds", s.customSounds),
+            Row("Ring Nodes", s.ringNodes),
+            Row("Toy Mixes", s.toyMixes),
+        }, "\n"))
+
+        detailsCol2:SetText(table.concat({
+            Row("Custom Sounds", s.customSounds),
             Row("Animations", s.animations),
-            Row("Chat templates", s.chatTemplates),
+            Row("Chat Templates", s.chatTemplates),
+            Row("Toy Tabs", s.toyCategories),
         }, "\n"))
 
         local credits = UI:GetProfileCredits(db)
@@ -3557,7 +4366,7 @@ function UI:CreateSettingsTab()
         end
 
         -- Size the scroll area to whichever page is showing.
-        local height = 920
+        local height = 1060
         if onProfiles then
             height = (sub == "share") and 560 or 620
         end
@@ -3942,7 +4751,7 @@ function UI:ShowToysSubTab(subTabName)
     
     tab.currentSubTab = subTabName
 
-    for _, name in ipairs({"Mixer", "Library", "QuickMixes"}) do
+    for _, name in ipairs({"Mixer", "Library", "ToyBoxes"}) do
         local panel = tab.subPanels and tab.subPanels[name]
         if panel then
             panel:Hide()
@@ -3969,7 +4778,7 @@ function UI:ShowToysSubTab(subTabName)
         searchBox.customSearchHandler = nil
         searchBox:SetText("")
         searchBox:ClearFocus()
-        if subTabName == "Mixer" then
+        if subTabName == "Mixer" or subTabName == "ToyBoxes" then
             searchBox:GetParent():Show()
         else
             searchBox:GetParent():Hide()
@@ -3984,9 +4793,9 @@ function UI:ShowToysSubTab(subTabName)
         if OxedHub.Toys and OxedHub.Toys.ShowLibraryTab then
             OxedHub.Toys:ShowLibraryTab(panel)
         end
-    elseif subTabName == "QuickMixes" then
-        if OxedHub.Toys and OxedHub.Toys.ShowQuickMixesTab then
-            OxedHub.Toys:ShowQuickMixesTab(panel)
+    elseif subTabName == "ToyBoxes" then
+        if OxedHub.Toys and OxedHub.Toys.ShowToyBoxesTab then
+            OxedHub.Toys:ShowToyBoxesTab(panel)
         end
     end
 end
@@ -4299,6 +5108,13 @@ local EXPORT_COMPRESSED_PREFIX = "OHUBX1:"
 -- is exported generically, so new features (OxedRing nodes, reactions, keybinds,
 -- etc.) are included automatically instead of being silently dropped by a
 -- hand-maintained allow-list that drifts out of date.
+-- Profile keys that make up the OxedRing configuration.
+local OXEDRING_KEYS = {
+    "oxedRingNodes", "oxedRingBackupNodes", "oxedRingRadius", "oxedRingAutoRadius", "oxedRingStyle",
+    "oxedRingBinding", "oxedRingShowNodeTitles", "oxedRingNodeTitleSize",
+    "oxedRingGlobalNodeSize", "oxedRingVisibleTabs",
+}
+
 local EXPORT_SKIP_KEYS = {
     toyCollectionCache = true, -- character-specific toy-box scan cache; regenerated locally
     testRing = true,           -- legacy pre-migration remnant
@@ -4325,6 +5141,29 @@ local function BuildProfileExportPayload(profileName, db)
             payload[key] = value
         end
     end
+
+    -- A shared (non-unique) ring is stored in globalSettings, not on the
+    -- profile, so copying profile keys alone exports a profile with no ring at
+    -- all.  Pull the ring the player is actually using -- but only for the
+    -- active profile, since that is the only one GetRingDB can speak for.
+    local isActive = OxedHubDB and profileName == OxedHubDB.activeProfile
+    if isActive and not (payload.oxedRingNodes and next(payload.oxedRingNodes)) then
+        local ringDB = OxedHub.GetRingDB and OxedHub.GetRingDB()
+        if type(ringDB) == "table" then
+            for _, k in ipairs(OXEDRING_KEYS) do
+                -- The profile usually holds an EMPTY table here rather than nil,
+                -- so a plain nil-check would never overwrite it.  Treat empty
+                -- tables as absent too.
+                local existing = payload[k]
+                local isEmpty = existing == nil
+                    or (type(existing) == "table" and next(existing) == nil)
+                if isEmpty and ringDB[k] ~= nil then
+                    payload[k] = ringDB[k]
+                end
+            end
+        end
+    end
+
     return payload
 end
 
@@ -4383,13 +5222,6 @@ end
 -- specific slices (triggers, OxedRing, toy mixes, hubs) and carry author info
 -- for attribution. v1/v2 profile strings still import via UI:ApplyImport below.
 -- ═══════════════════════════════════════════════════════════════════════════
-
--- Profile keys that make up the OxedRing configuration.
-local OXEDRING_KEYS = {
-    "oxedRingNodes", "oxedRingBackupNodes", "oxedRingRadius", "oxedRingStyle",
-    "oxedRingBinding", "oxedRingShowNodeTitles", "oxedRingNodeTitleSize",
-    "oxedRingGlobalNodeSize", "oxedRingVisibleTabs",
-}
 
 -- Snapshot of who/where produced an export, embedded in every v3 envelope.
 -- Optional display name attached to exports, so shared content can be credited
@@ -4541,14 +5373,14 @@ end
 -- All scopes the export dropdown offers. `needs` names the extra target the UI
 -- must collect (a profile / a trigger set / a hub); nil = no target needed.
 UI.EXPORT_SCOPES = {
-    { key = "profile_current", scope = "profile", label = "Current Profile", needs = nil },
-    { key = "profile_specific", scope = "profiles", label = "Specific Profile", needs = "profile" },
-    { key = "triggers_all", scope = "triggers", label = "All Triggers", needs = nil },
-    { key = "triggers_selected", scope = "triggers", label = "Selected Triggers", needs = "triggers" },
-    { key = "oxedring", scope = "oxedring", label = "OxedRing", needs = nil },
-    { key = "toymixes", scope = "toymixes", label = "Toy Mixer", needs = nil },
-    { key = "hubs_all", scope = "hubs", label = "All Hubs", needs = nil },
-    { key = "hub_specific", scope = "hubs", label = "Specific Hub", needs = "hub" },
+    { key = "profile_current", scope = "profile", label = "Current Profile", desc = "Exports your active profile with all triggers, action hubs, rings, and toy mixes.", needs = nil },
+    { key = "profile_specific", scope = "profiles", label = "Specific Profile", desc = "Choose any saved profile from your library to export.", needs = "profile" },
+    { key = "triggers_all", scope = "triggers", label = "All Triggers", desc = "Exports all triggers belonging to the active profile.", needs = nil },
+    { key = "triggers_selected", scope = "triggers", label = "Selected Triggers", desc = "Pick individual triggers from your active profile with checkboxes.", needs = "triggers" },
+    { key = "oxedring", scope = "oxedring", label = "OxedRing", desc = "Exports OxedRing radial menu assignments and node configurations.", needs = nil },
+    { key = "toymixes", scope = "toymixes", label = "Toy Mixer", desc = "Exports toy macro mixes and animation assignments.", needs = nil },
+    { key = "hubs_all", scope = "hubs", label = "All Hubs", desc = "Exports all Action Hub quadrants and configured widgets.", needs = nil },
+    { key = "hub_specific", scope = "hubs", label = "Specific Hub", desc = "Exports a single Action Hub widget by number.", needs = "hub" },
 }
 
 -- Human-readable summary of what an envelope contains (for the import preview).
@@ -4567,14 +5399,21 @@ function UI:DescribeEnvelope(env)
         for _ in pairs(p.triggers or {}) do n = n + 1 end
         return string.format("%d trigger(s)", n)
     elseif scope == "oxedring" then
-        local n = #(p.oxedRingNodes or {})
+        -- Count with pairs rather than '#': the node table is not guaranteed to
+        -- be a gapless array, and '#' silently reports 0 on a hashed table.
+        local n = 0
+        for _ in pairs(p.oxedRingNodes or {}) do n = n + 1 end
         return string.format("OxedRing config (%d nodes)", n)
     elseif scope == "toymixes" then
         local n = 0
         for _ in pairs(p.toyMixes or {}) do n = n + 1 end
         return string.format("%d toy mix(es)", n)
     elseif scope == "hubs" then
-        return string.format("%d ActionHub(s)", #(p.hubs or {}))
+        local hubs = p.hubs or {}
+        if #hubs == 1 and type(hubs[1]) == "table" then
+            return "ActionHub: |cff88ff88" .. tostring(hubs[1].name or "Hub") .. "|r"
+        end
+        return string.format("%d ActionHub(s)", #hubs)
     end
     return "Unknown scope"
 end
@@ -4682,6 +5521,419 @@ end
 
 -- Structured breakdown of an import, used by the confirmation dialog's table.
 -- Returns: headerText, rows { {label, value} }, authorLines, isPartial, scopeText
+-- Resolve a stored action value into something a human can read.  Imported
+-- data may reference sounds/animations that only exist in the sender's profile,
+-- so fall back to the raw id rather than showing nothing.
+function UI:DescribeActionValue(kind, value, payload)
+    if value == nil or value == "" or value == "None" then return nil end
+
+    if kind == "sound" then
+        -- Custom sounds bundled with the import take priority, then our own.
+        local bundled = payload and payload.customSounds and payload.customSounds[value]
+        if bundled and bundled.name then return bundled.name end
+        local mine = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.customSounds
+            and OxedHub.db.profile.customSounds[value]
+        if mine and mine.name then return mine.name end
+    end
+
+    return tostring(value)
+end
+
+-- Resolve a toy id into an inline-icon label, an ownership note, and the id so
+-- the row can show the real game tooltip on hover.
+function UI:DescribeToySlot(itemID)
+    itemID = tonumber(itemID)
+    if not itemID then return nil end
+
+    local toyName, toyIcon
+    if C_ToyBox and C_ToyBox.GetToyInfo then
+        local ok, _, name, icon = pcall(C_ToyBox.GetToyInfo, itemID)
+        if ok then toyName, toyIcon = name, icon end
+    end
+
+    -- Toy data is not always cached; fall back to item info, then to the id.
+    if not toyName and C_Item and C_Item.GetItemInfo then
+        local ok, name, _, _, _, _, _, _, _, icon = pcall(C_Item.GetItemInfo, itemID)
+        if ok then toyName = toyName or name; toyIcon = toyIcon or icon end
+    end
+
+    -- Still nothing means the client has not cached this item yet.  Ask for it
+    -- and flag the dialog to redraw once, so names fill in instead of showing
+    -- raw ids forever.
+    if not toyName then
+        UI._importPendingItemLoad = true
+        if C_Item and C_Item.RequestLoadItemDataByID then
+            pcall(C_Item.RequestLoadItemDataByID, itemID)
+        end
+    end
+
+    local label = "   "
+    if toyIcon then label = label .. "|T" .. toyIcon .. ":16:16:0:0:64:64:5:59:5:59|t " end
+    label = label .. (toyName or ("Toy #" .. itemID))
+
+    local owned
+    if PlayerHasToy then
+        local ok, has = pcall(PlayerHasToy, itemID)
+        if ok then owned = has end
+    end
+
+    local note
+    if owned == true then
+        note = "|cff88ff88you have it|r"
+    elseif owned == false then
+        note = "|cffff6666not collected|r"
+    else
+        note = "|cff888888unknown|r"
+    end
+
+    return label, note, itemID
+end
+
+-- One readable line for an ActionHub / ring slot: icon, name, and a note.
+-- Returns label, note, tooltipItemID (nil when there is nothing to hover).
+function UI:DescribeHubSlot(slot)
+    if type(slot) ~= "table" or not slot.type then return nil end
+
+    local kind = slot.type
+    local id = tonumber(slot.id)
+
+    -- Toys get the full treatment: real name plus whether the viewer owns it.
+    if kind == "toy" and id then
+        return self:DescribeToySlot(id)
+    end
+
+    local name, icon = slot.label, slot.icon
+    local note = kind
+
+    if kind == "spell" and id then
+        local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(id)
+        if info then
+            name = info.name or name
+            icon = icon or info.iconID
+        end
+    elseif kind == "item" and id then
+        if not name and C_Item and C_Item.GetItemInfo then
+            local ok, itemName, _, _, _, _, _, _, _, itemIcon = pcall(C_Item.GetItemInfo, id)
+            if ok then
+                name = name or itemName
+                icon = icon or itemIcon
+            end
+            if not name then
+                UI._importPendingItemLoad = true
+                if C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
+            end
+        end
+    elseif kind == "macro" then
+        -- The macro body travels inside the slot, so it works on any account.
+        note = slot.body and "macro |cff88ff88(included)|r" or "macro |cffff6666(empty)|r"
+    end
+
+    local label = "   "
+    if icon then label = label .. "|T" .. tostring(icon) .. ":16:16:0:0:64:64:5:59:5:59|t " end
+    label = label .. tostring(name or (kind .. " #" .. tostring(slot.id or "?")))
+
+    -- Only items and spells have a tooltip we can show by id.
+    local tooltipID = (kind == "item") and id or nil
+    return label, note, tooltipID
+end
+
+-- One readable line for a single OxedRing node.
+-- Ring nodes reference other things by id: a toy mix by name, a trigger by id.
+-- Resolve those against the incoming payload so the preview shows real names.
+function UI:DescribeRingNode(node, payload)
+    if type(node) ~= "table" or not node.type then return nil end
+
+    local kind = node.type
+    local name, icon, note = node.label, node.icon, kind
+
+    if kind == "toy" then
+        if node.assignmentMode == "direct" then
+            return self:DescribeToySlot(node.id)
+        end
+        -- Otherwise the node points at a toy mix by name.
+        name = name or tostring(node.id)
+        local bundled = payload and payload.toyMixes and payload.toyMixes[node.id]
+        note = bundled and "toy mix |cff88ff88(included)|r" or "toy mix |cffff8800(not included)|r"
+
+    elseif kind == "trigger" then
+        local trig = payload and payload.triggers and payload.triggers[node.id]
+        name = (trig and trig.name) or name or tostring(node.id)
+        note = trig and "trigger |cff88ff88(included)|r" or "trigger |cffff8800(not included)|r"
+
+    elseif kind == "marker" or kind == "targetmarker" then
+        local markerID = tonumber(node.id)
+        if markerID and markerID > 0 then
+            icon = icon or ("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. markerID)
+            name = name or ("Marker " .. markerID)
+        else
+            name = name or "Clear marker"
+        end
+
+    elseif kind == "emote" then
+        name = name or tostring(node.id)
+    end
+
+    local label = "   "
+    if icon then label = label .. "|T" .. tostring(icon) .. ":16:16:0:0:64:64:5:59:5:59|t " end
+    label = label .. tostring(name or kind)
+    return label, note, nil
+end
+
+-- Detail rows for a ring payload, shared by the ring-only import preview and
+-- the OxedRing section of a whole-profile import.
+function UI:GetRingDetailRows(p)
+    local out = {}
+    local nodes = {}
+    for _, node in pairs(p.oxedRingNodes or {}) do
+        if type(node) == "table" then table.insert(nodes, node) end
+    end
+
+    local filled, byType = 0, {}
+    for _, node in ipairs(nodes) do
+        if node.type then
+            filled = filled + 1
+            byType[node.type] = (byType[node.type] or 0) + 1
+        end
+    end
+
+    table.insert(out, { "   Slices", #nodes })
+    table.insert(out, { "   Assigned", string.format("%d |cff888888of %d|r", filled, #nodes) })
+    for kind, count in pairs(byType) do
+        table.insert(out, { "      |cff888888" .. kind .. "|r", count })
+    end
+
+    for _, node in ipairs(nodes) do
+        local nLabel, nNote, nID = self:DescribeRingNode(node, p)
+        if nLabel then
+            table.insert(out, { "   " .. nLabel, nNote, nID })
+        end
+    end
+
+    table.insert(out, { "   Radius", p.oxedRingRadius or "default" })
+    table.insert(out, { "   Keybind", p.oxedRingBinding or "none" })
+    if p.oxedRingStyle then
+        table.insert(out, { "   Style", tostring(p.oxedRingStyle) })
+    end
+
+    return out, #nodes
+end
+
+-- Detail rows for one ActionHub, shared by the hub-only import preview and the
+-- Action Hubs section of a whole-profile import.
+function UI:GetHubDetailRows(hub, index)
+    local out = {}
+
+    local function CollectSide(source)
+        local list = {}
+        for _, s in pairs(source or {}) do
+            if type(s) == "table" and s.type then table.insert(list, s) end
+        end
+        return list
+    end
+
+    local mainSlots = CollectSide(hub.slots)
+    local dualSlots = CollectSide(hub.secondarySlots)
+
+    local summary = #mainSlots .. " main"
+    if hub.dualSideEnabled or #dualSlots > 0 then
+        summary = summary .. ", " .. #dualSlots .. " dual"
+    end
+    table.insert(out, { "   |cffffd100" .. tostring(hub.name or ("Hub " .. tostring(index))) .. "|r", summary })
+
+    local function AddSide(title, list)
+        if #list == 0 then return end
+        table.insert(out, { "    |cffaaaaaa" .. title .. "|r", "" })
+        for _, slot in ipairs(list) do
+            local sLabel, sNote, sID = self:DescribeHubSlot(slot)
+            if sLabel then
+                table.insert(out, { "   " .. sLabel, sNote, sID })
+            end
+        end
+    end
+
+    AddSide("Main side", mainSlots)
+    AddSide("Dual side", dualSlots)
+
+    if hub.style then
+        table.insert(out, { "    |cff888888Style|r", tostring(hub.style) })
+    end
+
+    return out
+end
+
+-- Compact one-line summary of a trigger's actions, for the whole-profile view
+-- where a full breakdown per trigger would run to hundreds of rows.
+function UI:CompactActionSummary(actions)
+    if type(actions) ~= "table" then return nil end
+    local bits = {}
+    if actions.sound or actions.successSound or actions.failSound then table.insert(bits, "sound") end
+    if actions.animation or actions.successAnimation or actions.failAnimation
+        or actions.cooldownAnimation then table.insert(bits, "animation") end
+    if actions.emote then table.insert(bits, "emote") end
+    if actions.chatMessage then table.insert(bits, "chat") end
+    if actions.toy then table.insert(bits, "toy") end
+    if #bits == 0 then return nil end
+    return table.concat(bits, ", ")
+end
+
+-- Whole profiles can hold hundreds of items, so each listed section is capped
+-- and the remainder is summarised on one line.
+local PROFILE_SECTION_LIMIT = 25
+
+-- Append "Header (n)" plus up to PROFILE_SECTION_LIMIT entries built by makeRow.
+-- The header is tagged as a collapsible section and every entry is tagged as
+-- belonging to it, so the dialog can fold sections away.
+function UI:AppendProfileSection(rows, title, items, makeRow)
+    local count = #items
+    if count == 0 then return end
+
+    table.insert(rows, { " ", "" })
+
+    local header = { title .. " (" .. count .. ")", "" }
+    header.sectionHeader = title
+    table.insert(rows, header)
+
+    for i = 1, math.min(count, PROFILE_SECTION_LIMIT) do
+        for _, row in ipairs(makeRow(items[i]) or {}) do
+            row.section = title
+            table.insert(rows, row)
+        end
+    end
+
+    if count > PROFILE_SECTION_LIMIT then
+        local more = { "   |cff888888... and " .. (count - PROFILE_SECTION_LIMIT) .. " more|r", "" }
+        more.section = title
+        table.insert(rows, more)
+    end
+end
+
+-- The detailed breakdown shown under the stat table for a full profile import.
+function UI:AppendProfileDetails(rows, p)
+    if type(p) ~= "table" then return end
+
+    -- Triggers: name, event, and a compact list of what each one does.
+    local triggers = {}
+    for id, trig in pairs(p.triggers or {}) do
+        if type(trig) == "table" then
+            table.insert(triggers, { id = id, trig = trig })
+        end
+    end
+    table.sort(triggers, function(a, b)
+        return tostring(a.trig.name or a.id) < tostring(b.trig.name or b.id)
+    end)
+
+    self:AppendProfileSection(rows, "Triggers", triggers, function(entry)
+        local trig = entry.trig
+        local out = { { "   " .. tostring(trig.name or entry.id),
+            (trig.event or "?") .. (trig.enabled == false and " |cff888888(off)|r" or "") } }
+        local summary = self:CompactActionSummary(trig.actions)
+        if summary then
+            table.insert(out, { "      |cff888888" .. summary .. "|r", "" })
+        end
+        return out
+    end)
+
+    -- Toy mixes: name and how many toys each pulls in.
+    local mixes = {}
+    for name, mix in pairs(p.toyMixes or {}) do
+        table.insert(mixes, { name = name, mix = mix })
+    end
+    table.sort(mixes, function(a, b) return tostring(a.name) < tostring(b.name) end)
+
+    self:AppendProfileSection(rows, "Toy mixes", mixes, function(entry)
+        local toyIDs = {}
+        for _, s in ipairs(type(entry.mix) == "table" and entry.mix.slots or {}) do
+            if type(s) == "table" and s.type == "toy" and s.id then
+                table.insert(toyIDs, s.id)
+            end
+        end
+
+        local out = { { "   " .. tostring(entry.name),
+            #toyIDs .. " toy" .. (#toyIDs == 1 and "" or "s") } }
+
+        -- Name the toys here too, so a profile import shows the same detail as
+        -- sharing a single mix does.
+        for _, toyID in ipairs(toyIDs) do
+            local tLabel, tNote, tID = self:DescribeToySlot(toyID)
+            if tLabel then
+                table.insert(out, { "   " .. tLabel, tNote, tID })
+            end
+        end
+        return out
+    end)
+
+    -- Action hubs: both sides, same counting the scoped view uses.
+    local hubs = {}
+    for _, hub in ipairs((p.actionHub and p.actionHub.hubs) or {}) do
+        if type(hub) == "table" then table.insert(hubs, hub) end
+    end
+
+    -- Same detail the hub-only share shows.
+    self:AppendProfileSection(rows, "Action Hubs", hubs, function(hub)
+        return self:GetHubDetailRows(hub)
+    end)
+
+    -- Ring: only worth a section when it actually has slices.
+    local ringRows, ringTotal = self:GetRingDetailRows(p)
+    if ringTotal > 0 then
+        table.insert(rows, { " ", "" })
+
+        local header = { "OxedRing (" .. ringTotal .. ")", "" }
+        header.sectionHeader = "OxedRing"
+        table.insert(rows, header)
+
+        -- Same detail the ring-only share shows.
+        for _, row in ipairs(ringRows) do
+            row.section = "OxedRing"
+            table.insert(rows, row)
+        end
+    end
+end
+
+-- Every action slot a trigger can carry, in the order we want to show them.
+local IMPORT_ACTION_FIELDS = {
+    { key = "sound",             kind = "sound", label = "Sound" },
+    { key = "successSound",      kind = "sound", label = "Sound (success)" },
+    { key = "failSound",         kind = "sound", label = "Sound (fail)" },
+    { key = "animation",         kind = "anim",  label = "Animation" },
+    { key = "successAnimation",  kind = "anim",  label = "Animation (success)" },
+    { key = "failAnimation",     kind = "anim",  label = "Animation (fail)" },
+    { key = "cooldownAnimation", kind = "anim",  label = "Animation (cooldown)" },
+    { key = "emote",             kind = "emote", label = "Emote" },
+    { key = "chatMessage",       kind = "chat",  label = "Chat message" },
+    { key = "toy",               kind = "toy",   label = "Toy" },
+}
+
+-- Detail lines for one trigger: what it will actually do once imported.
+function UI:GetTriggerActionRows(trig, payload)
+    local out = {}
+    local actions = trig and trig.actions or {}
+
+    for _, field in ipairs(IMPORT_ACTION_FIELDS) do
+        local shown = self:DescribeActionValue(field.kind, actions[field.key], payload)
+        if shown then
+            table.insert(out, { "   |cff888888" .. field.label .. ":|r", shown })
+        end
+    end
+
+    -- Call out the actions that act on the player's behalf, since an imported
+    -- trigger can talk in chat or write macros without being asked twice.
+    local warnings = {}
+    if actions.chatMessage then table.insert(warnings, "sends chat") end
+    if actions.emote then table.insert(warnings, "emotes") end
+    if actions.toy then table.insert(warnings, "uses toy") end
+    if #warnings > 0 then
+        table.insert(out, { "   |cffff8800! Will act for you|r",
+            "|cffff8800" .. table.concat(warnings, ", ") .. "|r" })
+    end
+
+    if #out == 0 then
+        table.insert(out, { "   |cff888888No actions|r", "" })
+    end
+
+    return out
+end
+
 function UI:GetImportDetails(data)
     local rows, authorLines = {}, {}
     local header, scopeText = "Unknown data", nil
@@ -4689,7 +5941,7 @@ function UI:GetImportDetails(data)
 
     local function StatRows(payloadDB)
         local s = self:GetProfileStats(payloadDB)
-        return {
+        local out = {
             { "Triggers", s.triggers > 0
                 and string.format("%d |cff888888(%d enabled)|r", s.triggers, s.triggersEnabled)
                 or "0" },
@@ -4701,6 +5953,29 @@ function UI:GetImportDetails(data)
             { "Animations", s.animations },
             { "Chat templates", s.chatTemplates },
         }
+
+        -- Count the triggers that will act on the player's behalf.  A profile
+        -- can hold dozens of triggers, so summarise instead of listing them.
+        local chats, emotes, toys = 0, 0, 0
+        for _, trig in pairs(payloadDB and payloadDB.triggers or {}) do
+            local a = type(trig) == "table" and trig.actions or nil
+            if type(a) == "table" then
+                if a.chatMessage then chats = chats + 1 end
+                if a.emote then emotes = emotes + 1 end
+                if a.toy then toys = toys + 1 end
+            end
+        end
+
+        if chats > 0 or emotes > 0 or toys > 0 then
+            local bits = {}
+            if chats > 0 then table.insert(bits, chats .. " send chat") end
+            if emotes > 0 then table.insert(bits, emotes .. " emote") end
+            if toys > 0 then table.insert(bits, toys .. " use toys") end
+            table.insert(out, { "|cffff8800! Acts for you|r",
+                "|cffff8800" .. table.concat(bits, ", ") .. "|r" })
+        end
+
+        return out
     end
 
     if type(data) ~= "table" then
@@ -4714,6 +5989,7 @@ function UI:GetImportDetails(data)
         if scope == "profile" then
             header = "Profile: |cff88ff88" .. tostring(p.profileName or "?") .. "|r"
             rows = StatRows(p)
+            self:AppendProfileDetails(rows, p)
         elseif scope == "profiles" then
             local count = 0
             for name, pdb in pairs(p.profiles or {}) do
@@ -4729,28 +6005,65 @@ function UI:GetImportDetails(data)
             scopeText = scope
             if scope == "triggers" then
                 for id, trig in pairs(p.triggers or {}) do
-                    table.insert(rows, { trig.name or id,
+                    table.insert(rows, { "|cffffd100" .. tostring(trig.name or id) .. "|r",
                         (trig.event or "?") .. (trig.enabled == false and " |cff888888(off)|r" or "") })
+                    -- Show what the trigger actually does, not just its name.
+                    for _, detail in ipairs(self:GetTriggerActionRows(trig, p)) do
+                        table.insert(rows, detail)
+                    end
                 end
             elseif scope == "toymixes" then
-                for name in pairs(p.toyMixes or {}) do
-                    table.insert(rows, { name, "toy mix" })
+                for name, mix in pairs(p.toyMixes or {}) do
+                    local toySlots = {}
+                    for _, s in ipairs(type(mix) == "table" and mix.slots or {}) do
+                        if type(s) == "table" and s.type == "toy" and s.id then
+                            table.insert(toySlots, s.id)
+                        end
+                    end
+                    local slots = #toySlots
+                    table.insert(rows, { "|cffffd100" .. tostring(name) .. "|r",
+                        slots .. " toy" .. (slots == 1 and "" or "s") })
+
+                    -- List the actual toys with icon, name and whether the
+                    -- viewer owns them; the id drives a real game tooltip.
+                    for _, toyID in ipairs(toySlots) do
+                        local tLabel, tNote, tID = self:DescribeToySlot(toyID)
+                        if tLabel then
+                            table.insert(rows, { tLabel, tNote, tID })
+                        end
+                    end
+
+                    -- Same action breakdown the trigger rows get, so the
+                    -- recipient sees what the mix will actually do.
+                    local acts = type(mix) == "table" and mix.actions or nil
+                    if type(acts) == "table" then
+                        for _, field in ipairs({
+                            { key = "sound",     kind = "sound", label = "Sound" },
+                            { key = "animation", kind = "anim",  label = "Animation" },
+                            { key = "emote",     kind = "emote", label = "Emote" },
+                            { key = "chat",      kind = "chat",  label = "Chat" },
+                        }) do
+                            local shown = self:DescribeActionValue(field.kind, acts[field.key], p)
+                            if shown then
+                                table.insert(rows, { "   |cff888888" .. field.label .. ":|r", shown })
+                            end
+                        end
+                        if acts.chat or acts.emote then
+                            local bits = {}
+                            if acts.chat then table.insert(bits, "sends chat") end
+                            if acts.emote then table.insert(bits, "emotes") end
+                            table.insert(rows, { "   |cffff8800! Will act for you|r",
+                                "|cffff8800" .. table.concat(bits, ", ") .. "|r" })
+                        end
+                    end
                 end
             elseif scope == "oxedring" then
-                local filled = 0
-                for _, node in pairs(p.oxedRingNodes or {}) do
-                    if type(node) == "table" and node.type then filled = filled + 1 end
-                end
-                table.insert(rows, { "Ring nodes", filled })
-                table.insert(rows, { "Radius", p.oxedRingRadius or "default" })
-                table.insert(rows, { "Keybind", p.oxedRingBinding or "none" })
+                rows = self:GetRingDetailRows(p)
             elseif scope == "hubs" then
                 for i, hub in ipairs(p.hubs or {}) do
-                    local slots = 0
-                    for _, s in pairs(hub.slots or {}) do
-                        if type(s) == "table" and s.type then slots = slots + 1 end
+                    for _, row in ipairs(self:GetHubDetailRows(hub, i)) do
+                        table.insert(rows, row)
                     end
-                    table.insert(rows, { hub.name or ("Hub " .. i), slots .. " slots" })
                 end
             end
         end
@@ -4785,6 +6098,7 @@ function UI:GetImportDetails(data)
         else
             header = "Profile: |cff88ff88" .. tostring(data.profileName or "?") .. "|r"
             rows = StatRows(data)
+            self:AppendProfileDetails(rows, data)
         end
 
         -- v1/v2 exports carry the author on _author rather than in an envelope.
@@ -4813,6 +6127,94 @@ function UI:GetImportDetails(data)
 end
 
 -- Roomy confirmation dialog: shows the contents as a scrollable table, who sent
+-- Render f.allRows into the pooled row frames, honouring collapsed sections.
+-- Split out from ShowImportConfirm so folding a section only re-lays-out rows
+-- instead of rebuilding the whole dialog (which would reset scroll position).
+function UI:LayoutImportRows(f)
+    UI.importCollapsed = UI.importCollapsed or {}
+    local rows = f.allRows or {}
+
+    for _, row in ipairs(f.rowPool) do row:Hide() end
+
+    local y, shown = 0, 0
+    for _, entry in ipairs(rows) do
+        -- Skip members of a folded section; headers always stay visible.
+        local hidden = entry.section and UI.importCollapsed[entry.section]
+        if not hidden then
+            shown = shown + 1
+            local row = f.rowPool[shown]
+            if not row then
+                row = CreateFrame("Frame", nil, f.tableChild)
+                row:SetHeight(20)
+                row.bg = row:CreateTexture(nil, "BACKGROUND")
+                row.bg:SetAllPoints()
+                row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                row.label:SetPoint("LEFT", row, "LEFT", 6, 0)
+                row.label:SetJustifyH("LEFT")
+                row.label:SetWidth(280)
+                row.value = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                row.value:SetPoint("LEFT", row, "LEFT", 292, 0)
+                row.value:SetJustifyH("LEFT")
+                row.value:SetWidth(190)
+
+                row.highlight = row:CreateTexture(nil, "HIGHLIGHT")
+                row.highlight:SetAllPoints()
+                row.highlight:SetColorTexture(1, 0.82, 0, 0.10)
+                row.highlight:Hide()
+
+                row:SetScript("OnEnter", function(self)
+                    if self.sectionKey then self.highlight:Show() end
+                    if not self.tooltipItemID then return end
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    local ok = false
+                    if GameTooltip.SetToyByItemID then
+                        ok = pcall(GameTooltip.SetToyByItemID, GameTooltip, self.tooltipItemID)
+                    end
+                    if not ok then
+                        pcall(GameTooltip.SetItemByID, GameTooltip, self.tooltipItemID)
+                    end
+                    GameTooltip:Show()
+                end)
+                row:SetScript("OnLeave", function(self)
+                    self.highlight:Hide()
+                    GameTooltip:Hide()
+                end)
+                row:SetScript("OnMouseDown", function(self)
+                    if not self.sectionKey then return end
+                    UI.importCollapsed[self.sectionKey] = not UI.importCollapsed[self.sectionKey]
+                    UI:LayoutImportRows(f)
+                end)
+
+                f.rowPool[shown] = row
+            end
+
+            row:SetParent(f.tableChild)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", f.tableChild, "TOPLEFT", 0, -y)
+            row:SetPoint("RIGHT", f.tableChild, "RIGHT", 0, 0)
+            row.bg:SetColorTexture(1, 1, 1, (shown % 2 == 0) and 0.03 or 0)
+
+            row.sectionKey = entry.sectionHeader
+            if row.sectionKey then
+                -- Headers get an arrow and act as the fold control.
+                local arrow = UI.importCollapsed[row.sectionKey] and "|cff888888[+]|r" or "|cff888888[-]|r"
+                row.label:SetText(arrow .. " |cffffd100" .. tostring(entry[1]) .. "|r")
+            else
+                row.label:SetText(tostring(entry[1]))
+            end
+
+            row.value:SetText(tostring(entry[2] or ""))
+            row.tooltipItemID = entry[3]
+            row.highlight:Hide()
+            row:EnableMouse(entry[3] ~= nil or row.sectionKey ~= nil)
+            row:Show()
+            y = y + 20
+        end
+    end
+
+    f.tableChild:SetHeight(math.max(y, 1))
+end
+
 -- it, and where it lands, with Import / New Profile / Cancel.
 function UI:ShowImportConfirm(data, onImported)
     local f = UI.importConfirmFrame
@@ -4881,42 +6283,34 @@ function UI:ShowImportConfirm(data, onImported)
         UI.importConfirmFrame = f
     end
 
+    UI._importPendingItemLoad = false
     local header, rows, authorLines, isPartial = self:GetImportDetails(data)
     f.header:SetText(header)
+
+    -- Some toy/item names were not cached yet. Redraw shortly after the client
+    -- has had a chance to load them.  Capped, because an id the client can
+    -- never resolve would otherwise redraw forever.
+    if data ~= UI._importRedrawData then
+        UI._importRedrawData = data
+        UI._importRedrawTries = 0
+    end
+    if UI._importPendingItemLoad
+        and not UI._importRedrawQueued
+        and (UI._importRedrawTries or 0) < 3
+    then
+        UI._importRedrawQueued = true
+        UI._importRedrawTries = (UI._importRedrawTries or 0) + 1
+        C_Timer.After(0.7, function()
+            UI._importRedrawQueued = nil
+            if f:IsShown() then
+                UI:ShowImportConfirm(data, onImported)
+            end
+        end)
+    end
     f.author:SetText(table.concat(authorLines, "\n"))
 
-    -- Rebuild the table rows (pooled so repeated opens don't leak frames).
-    for _, row in ipairs(f.rowPool) do row:Hide() end
-    local y = 0
-    for i, entry in ipairs(rows) do
-        local row = f.rowPool[i]
-        if not row then
-            row = CreateFrame("Frame", nil, f.tableChild)
-            row:SetHeight(20)
-            row.bg = row:CreateTexture(nil, "BACKGROUND")
-            row.bg:SetAllPoints()
-            row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            row.label:SetPoint("LEFT", row, "LEFT", 6, 0)
-            row.label:SetJustifyH("LEFT")
-            row.label:SetWidth(280)
-            row.value = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            row.value:SetPoint("LEFT", row, "LEFT", 292, 0)
-            row.value:SetJustifyH("LEFT")
-            row.value:SetWidth(190)
-            f.rowPool[i] = row
-        end
-        row:SetParent(f.tableChild)
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", f.tableChild, "TOPLEFT", 0, -y)
-        row:SetPoint("RIGHT", f.tableChild, "RIGHT", 0, 0)
-        -- Zebra striping so long lists stay readable.
-        row.bg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.03 or 0)
-        row.label:SetText(tostring(entry[1]))
-        row.value:SetText(tostring(entry[2]))
-        row:Show()
-        y = y + 20
-    end
-    f.tableChild:SetHeight(math.max(y, 1))
+    f.allRows = rows
+    UI:LayoutImportRows(f)
     f.scroll:SetVerticalScroll(0)
 
     local target = UI.importTargetProfile or (OxedHubDB and OxedHubDB.activeProfile) or "?"
@@ -4963,6 +6357,7 @@ function UI:ShowImportConfirm(data, onImported)
         f:Hide()
         UI:ApplyImport(data)
         if onImported then onImported() end
+        UI:ReportMissingSoundsAfterImport(data)
     end)
 
     -- Partial data into a fresh empty profile, leaving existing ones untouched.
@@ -4986,6 +6381,7 @@ function UI:ShowImportConfirm(data, onImported)
         UI:ApplyImport(data)
         if onImported then onImported() end
         print("|cff00ff00Oxed Hub:|r Imported into new profile |cffffff00" .. name .. "|r.")
+        UI:ReportMissingSoundsAfterImport(data)
     end)
 
     f:Show()
@@ -5031,13 +6427,54 @@ function UI:SerializeScoped(scope, opts)
         end
         if not next(out) then return nil, "No triggers to export." end
         envelope.payload = { triggers = out }
+
+        -- Bundle the custom sound definitions these triggers reference, so the
+        -- recipient sees real names instead of raw ids (and can play them if
+        -- they have the matching media addon).
+        local srcSounds = (OxedHub.GetSharedCustomSounds and OxedHub:GetSharedCustomSounds())
+            or profile.customSounds or {}
+        local usedSounds = nil
+        for _, trig in pairs(out) do
+            local a = type(trig) == "table" and trig.actions or nil
+            if type(a) == "table" then
+                for _, key in ipairs({ "sound", "successSound", "failSound" }) do
+                    local id = a[key]
+                    if id and srcSounds[id] then
+                        usedSounds = usedSounds or {}
+                        usedSounds[id] = srcSounds[id]
+                    end
+                end
+            end
+        end
+        if usedSounds then envelope.payload.customSounds = usedSounds end
     elseif scope == "oxedring" then
+        -- The ring lives in the profile only when it is set to "unique";
+        -- a shared ring is stored in globalSettings.  Read whichever the user
+        -- is actually on, otherwise a shared ring exports as empty.
+        local ringDB = (OxedHub.GetRingDB and OxedHub.GetRingDB()) or profile
         local out = {}
-        for _, k in ipairs(OXEDRING_KEYS) do out[k] = profile[k] end
+        for _, k in ipairs(OXEDRING_KEYS) do
+            out[k] = ringDB[k]
+            if out[k] == nil then out[k] = profile[k] end
+        end
+        if not (out.oxedRingNodes and next(out.oxedRingNodes)) then
+            return nil, "No ring nodes to export."
+        end
         envelope.payload = out
     elseif scope == "toymixes" then
         if not (profile.toyMixes and next(profile.toyMixes)) then return nil, "No toy mixes to export." end
-        envelope.payload = { toyMixes = profile.toyMixes }
+        -- opts.mixNames narrows the export to specific mixes; without it the
+        -- whole collection goes, which is what the bulk export button wants.
+        if opts.mixNames and #opts.mixNames > 0 then
+            local picked = {}
+            for _, mixName in ipairs(opts.mixNames) do
+                if profile.toyMixes[mixName] then picked[mixName] = profile.toyMixes[mixName] end
+            end
+            if not next(picked) then return nil, "Toy mix not found." end
+            envelope.payload = { toyMixes = picked }
+        else
+            envelope.payload = { toyMixes = profile.toyMixes }
+        end
     elseif scope == "hubs" then
         local ah = profile.actionHub or {}
         local hubs = ah.hubs or {}
@@ -5141,6 +6578,32 @@ local function DecompressExportString(encodedText)
     end
 
     return serialized
+end
+
+-- Decode a full export string (compressed or raw) into an import envelope.
+-- Shared by the paste-in-a-box import flow and by chat link sharing.
+-- Returns data, or nil plus an error message.
+function UI:DecodeExportString(text)
+    if type(text) ~= "string" or text == "" then
+        return nil, "Empty import string."
+    end
+
+    local decompressed, err = DecompressExportString(text)
+    if decompressed == false then
+        return nil, err or "Compressed import failed."
+    elseif decompressed then
+        text = decompressed
+    end
+
+    local ok, deserialized = AceSerializer:Deserialize(text)
+    local looksValid = ok and type(deserialized) == "table"
+        and (deserialized.version or deserialized.formatVersion == 3
+            or deserialized.profiles or deserialized.profileName)
+    if not looksValid then
+        return nil, "Invalid import string."
+    end
+
+    return deserialized
 end
 
 local function SplitExportString(str)
@@ -5304,6 +6767,409 @@ function UI:HandleChunkedImport(frame, chunkInfo)
     return table.concat(combined)
 end
 
+-- ─────────────────────────────────────────────────────────────────────────
+-- Missing-sound handling for imports.
+--
+-- Addons can't download files, so a sound whose audio file the importer doesn't
+-- have can never be "fetched". What we can do is detect it properly, say what
+-- uses it, and offer the closest sound the player does have.
+-- ─────────────────────────────────────────────────────────────────────────
+
+-- Every sound id referenced by a payload, mapped to a readable list of the
+-- things using it. Covers far more than the old triggers+emotes check.
+function UI:CollectSoundReferences(data)
+    local refs = {}
+
+    local function Note(id, usedBy)
+        if not id or id == "" or id == "None" then return end
+        refs[id] = refs[id] or {}
+        if usedBy and #refs[id] < 6 then
+            table.insert(refs[id], usedBy)
+        end
+    end
+
+    for id, trigger in pairs(data.triggers or {}) do
+        local label = (trigger.name and trigger.name ~= "" and trigger.name) or tostring(id)
+        local a = trigger.actions or {}
+        -- Every sound key a trigger can carry, including the per-state ones.
+        for _, key in ipairs({ "sound", "successSound", "failSound",
+            "groundSound", "flyingSound", "aquaticSound",
+            "enterSound", "exitSound" }) do
+            Note(a[key], "Trigger: " .. label)
+        end
+    end
+
+    for id, mapping in pairs(data.emotionMappings or {}) do
+        Note(mapping.sound, "Reaction: " .. tostring(id))
+    end
+
+    for name, mix in pairs(data.toyMixes or {}) do
+        if type(mix) == "table" then
+            for _, act in ipairs(mix.actions or {}) do
+                if type(act) == "table" then
+                    Note(act.sound or (act.type == "sound" and act.id), "Toy mix: " .. tostring(name))
+                end
+            end
+            Note(mix.sound, "Toy mix: " .. tostring(name))
+        end
+    end
+
+    local hubs = (data.actionHub and data.actionHub.hubs) or data.hubs or {}
+    for hubIndex, hub in ipairs(hubs) do
+        for _, slot in pairs(hub.slots or {}) do
+            if type(slot) == "table" and slot.type == "sound" then
+                Note(slot.id, "Action Hub " .. hubIndex)
+            end
+        end
+    end
+
+    for _, node in pairs(data.oxedRingNodes or {}) do
+        if type(node) == "table" then
+            Note(node.sound, "OxedRing node")
+        end
+    end
+
+    return refs
+end
+
+-- Is the audio file actually on disk? PlaySoundFile returns willPlay=false for a
+-- missing file without producing sound; when it does play we stop the handle
+-- immediately, which is why this is only used on sounds worth checking.
+function UI:SoundFileExists(soundId, payload)
+    local path
+    if OxedHub.Sounds and OxedHub.Sounds.GetFilePath then
+        path = OxedHub.Sounds:GetFilePath(soundId)
+    end
+    -- Fall back to the definition travelling inside the import itself.
+    if not path and payload and payload.customSounds and payload.customSounds[soundId] then
+        path = payload.customSounds[soundId].filePath
+    end
+    if not path or path == "" then return false, nil end
+
+    -- Sounds that ship with the addon are always present, so don't probe them —
+    -- probing plays the file for an instant, and there's no reason to risk that
+    -- blip on files we know exist.
+    if OxedHub.GENERATED_SOUND_CATALOG and OxedHub.GENERATED_SOUND_CATALOG[soundId] then
+        return true, path
+    end
+    if path:find("OxedHub\\Media\\Sound", 1, true) then
+        return true, path
+    end
+
+    local ok, willPlay, handle = pcall(PlaySoundFile, path, "Master")
+    if not ok then return true, path end   -- can't tell; assume present
+    if willPlay and handle then
+        pcall(StopSound, handle)
+    end
+    return willPlay and true or false, path
+end
+
+-- Closest available sound for a missing one: prefer the same category, then
+-- score on shared words in the name.
+function UI:FindReplacementSound(soundId, definition)
+    local wanted = (definition and definition.name) or tostring(soundId)
+    local wantedCat = definition and definition.category
+    local wantedLower = wanted:lower()
+
+    local function Score(name, category)
+        local score = 0
+        if category and wantedCat and category == wantedCat then score = score + 5 end
+        local lower = (name or ""):lower()
+        if lower == wantedLower then return score + 100 end
+        -- Shared words, ignoring very short ones.
+        for word in wantedLower:gmatch("[%w]+") do
+            if #word > 2 and lower:find(word, 1, true) then
+                score = score + 3
+            end
+        end
+        return score
+    end
+
+    local bestId, bestScore
+    local function Consider(id, def)
+        if id == soundId or type(def) ~= "table" then return end
+        local s = Score(def.name, def.category)
+        if s > 0 and (not bestScore or s > bestScore) then
+            bestId, bestScore = id, s
+        end
+    end
+
+    for id, def in pairs(OxedHub.GENERATED_SOUND_CATALOG or {}) do Consider(id, def) end
+    local shared = OxedHub.GetSharedCustomSounds and OxedHub:GetSharedCustomSounds()
+        or (OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.customSounds) or {}
+    for id, def in pairs(shared) do Consider(id, def) end
+
+    return bestId
+end
+
+-- After an import: which referenced sounds can't actually be played here.
+-- Returns { {id, name, path, usedBy, suggestion}, ... }
+function UI:FindUnplayableSounds(payload)
+    if type(payload) ~= "table" then return {} end
+    if payload.formatVersion == 3 and payload.payload then payload = payload.payload end
+
+    local refs = self:CollectSoundReferences(payload)
+    local shared = OxedHub.GetSharedCustomSounds and OxedHub:GetSharedCustomSounds()
+        or (OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.customSounds) or {}
+
+    local problems = {}
+    for id, usedBy in pairs(refs) do
+        local definition = shared[id]
+            or (payload.customSounds and payload.customSounds[id])
+            or (OxedHub.GENERATED_SOUND_CATALOG and OxedHub.GENERATED_SOUND_CATALOG[id])
+
+        local playable, path = self:SoundFileExists(id, payload)
+        if not playable then
+            table.insert(problems, {
+                id = id,
+                name = (definition and definition.name) or id,
+                path = path,
+                usedBy = usedBy,
+                suggestion = self:FindReplacementSound(id, definition),
+            })
+        end
+    end
+
+    table.sort(problems, function(a, b) return tostring(a.name) < tostring(b.name) end)
+    return problems
+end
+
+-- Swap every reference to oldId for newId across the active profile.
+function UI:ReplaceSoundEverywhere(oldId, newId)
+    local p = OxedHub.db and OxedHub.db.profile
+    if not p then return 0 end
+    local changed = 0
+
+    local SOUND_KEYS = { "sound", "successSound", "failSound",
+        "groundSound", "flyingSound", "aquaticSound", "enterSound", "exitSound" }
+
+    for _, trigger in pairs(p.triggers or {}) do
+        local a = trigger.actions
+        if a then
+            for _, key in ipairs(SOUND_KEYS) do
+                if a[key] == oldId then a[key] = newId; changed = changed + 1 end
+            end
+        end
+    end
+    for _, mapping in pairs(p.emotionMappings or {}) do
+        if mapping.sound == oldId then mapping.sound = newId; changed = changed + 1 end
+    end
+    for _, mix in pairs(p.toyMixes or {}) do
+        if type(mix) == "table" then
+            if mix.sound == oldId then mix.sound = newId; changed = changed + 1 end
+            for _, act in ipairs(mix.actions or {}) do
+                if type(act) == "table" then
+                    if act.sound == oldId then act.sound = newId; changed = changed + 1 end
+                    if act.type == "sound" and act.id == oldId then act.id = newId; changed = changed + 1 end
+                end
+            end
+        end
+    end
+    for _, hub in ipairs((p.actionHub and p.actionHub.hubs) or {}) do
+        for _, slot in pairs(hub.slots or {}) do
+            if type(slot) == "table" and slot.type == "sound" and slot.id == oldId then
+                slot.id = newId
+                changed = changed + 1
+            end
+        end
+    end
+    for _, node in pairs(p.oxedRingNodes or {}) do
+        if type(node) == "table" and node.sound == oldId then
+            node.sound = newId
+            changed = changed + 1
+        end
+    end
+
+    return changed
+end
+
+-- Runs after an import lands. Deferred a moment so the profile switch and
+-- sound-cache sync have finished before anything is probed.
+function UI:ReportMissingSoundsAfterImport(data)
+    C_Timer.After(0.5, function()
+        local problems = UI:FindUnplayableSounds(data)
+        if #problems == 0 then return end
+
+        print(("|cffffcc00Oxed Hub:|r %d imported sound(s) are missing on your PC.")
+            :format(#problems))
+        UI:ShowMissingSoundsDialog(problems)
+    end)
+end
+
+-- Report missing sounds and offer to swap each for one the player has.
+function UI:ShowMissingSoundsDialog(problems)
+    if not problems or #problems == 0 then return end
+
+    local f = UI.missingSoundsFrame
+    if not f then
+        f = CreateFrame("Frame", "OxedHubMissingSoundsFrame", UIParent, "BasicFrameTemplateWithInset")
+        f:SetSize(600, 460)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:SetToplevel(true)
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        tinsert(UISpecialFrames, "OxedHubMissingSoundsFrame")
+        if f.TitleText then f.TitleText:SetText("Missing Sounds") end
+        if f.CloseButton then f.CloseButton:SetScript("OnClick", function() f:Hide() end) end
+
+        f.intro = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        f.intro:SetPoint("TOPLEFT", 16, -32)
+        f.intro:SetPoint("RIGHT", f, "RIGHT", -16, 0)
+        f.intro:SetJustifyH("LEFT")
+        f.intro:SetSpacing(2)
+
+        local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", f.intro, "BOTTOMLEFT", 0, -10)
+        scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -34, 52)
+        StyleScrollFrame(scroll)
+        local child = CreateFrame("Frame", nil, scroll)
+        child:SetSize(520, 1)
+        scroll:SetScrollChild(child)
+        f.scroll, f.listChild, f.rows = scroll, child, {}
+
+        f.replaceAllBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        ApplyRedButtonStyle(f.replaceAllBtn)
+        f.replaceAllBtn:SetSize(190, 26)
+        f.replaceAllBtn:SetPoint("BOTTOMLEFT", 16, 16)
+        f.replaceAllBtn:SetText("Replace All With Suggested")
+
+        f.closeBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        ApplyRedButtonStyle(f.closeBtn)
+        f.closeBtn:SetSize(110, 26)
+        f.closeBtn:SetPoint("BOTTOMRIGHT", -16, 16)
+        f.closeBtn:SetText(CLOSE or "Close")
+        f.closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+        UI.missingSoundsFrame = f
+    end
+
+    local function FullSoundName(id)
+        local shared = OxedHub.GetSharedCustomSounds and OxedHub:GetSharedCustomSounds()
+            or (OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.customSounds) or {}
+        local def = shared[id] or (OxedHub.GENERATED_SOUND_CATALOG or {})[id]
+        return (def and def.name) or tostring(id)
+    end
+
+    local Render
+    Render = function()
+        f.intro:SetText(("|cffff8800%d sound(s) used by this profile can't be played on your PC.|r\n"
+            .. "The audio files live on the sender's computer and can't be transferred. "
+            .. "Pick a replacement you already have, or leave them silent until you add the files.")
+            :format(#problems))
+
+        for _, row in ipairs(f.rows) do row:Hide() end
+
+        local y = 0
+        for i, problem in ipairs(problems) do
+            local row = f.rows[i]
+            if not row then
+                row = CreateFrame("Frame", nil, f.listChild)
+                row:SetHeight(64)
+                row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                row.name:SetPoint("TOPLEFT", row, "TOPLEFT", 4, -2)
+                row.name:SetJustifyH("LEFT")
+                row.name:SetWidth(300)
+                row.used = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+                row.used:SetPoint("TOPLEFT", row.name, "BOTTOMLEFT", 0, -2)
+                row.used:SetJustifyH("LEFT")
+                row.used:SetWidth(300)
+                -- What the Replace button will actually swap in.
+                row.suggested = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                row.suggested:SetPoint("TOPLEFT", row.used, "BOTTOMLEFT", 0, -2)
+                row.suggested:SetJustifyH("LEFT")
+                row.suggested:SetWidth(460)
+                row.replaceBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+                ApplyRedButtonStyle(row.replaceBtn)
+                row.replaceBtn:SetSize(100, 22)
+                row.replaceBtn:SetPoint("TOPRIGHT", row, "TOPRIGHT", -110, -6)
+                row.clearBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+                ApplyRedButtonStyle(row.clearBtn)
+                row.clearBtn:SetSize(100, 22)
+                row.clearBtn:SetPoint("LEFT", row.replaceBtn, "RIGHT", 6, 0)
+                row.clearBtn:SetText("Remove")
+                f.rows[i] = row
+            end
+
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", f.listChild, "TOPLEFT", 0, -y)
+            row:SetPoint("RIGHT", f.listChild, "RIGHT", 0, 0)
+            row:Show()
+
+            -- When the export carried no definition all we have is the id, so
+            -- say so rather than showing a meaningless string as a "name".
+            local label = tostring(problem.name)
+            if label == tostring(problem.id) then
+                label = "|cffff5555Unknown sound|r |cff888888(" .. tostring(problem.id) .. ")|r"
+            else
+                label = "|cffffd100" .. label .. "|r |cff888888(" .. tostring(problem.id) .. ")|r"
+            end
+            row.name:SetText(label)
+
+            local used = table.concat(problem.usedBy or {}, ", ")
+            if used == "" then used = "not referenced" end
+            row.used:SetText("Used by: " .. used)
+
+            if problem.suggestion then
+                row.suggested:SetText("|cff888888Will use:|r |cff00ff00"
+                    .. FullSoundName(problem.suggestion) .. "|r")
+                row.replaceBtn:SetText("Replace")
+                row.replaceBtn:Enable()
+                row.replaceBtn:SetScript("OnClick", function()
+                    UI:ReplaceSoundEverywhere(problem.id, problem.suggestion)
+                    table.remove(problems, i)
+                    if #problems == 0 then f:Hide() else Render() end
+                end)
+            else
+                row.suggested:SetText("|cff888888No similar sound found — use Remove.|r")
+                row.replaceBtn:SetText("No match")
+                row.replaceBtn:Disable()
+            end
+
+            -- Clears the dead reference so nothing keeps pointing at a file that
+            -- isn't there; the trigger simply plays no sound.
+            row.clearBtn:SetScript("OnClick", function()
+                UI:ReplaceSoundEverywhere(problem.id, nil)
+                table.remove(problems, i)
+                if #problems == 0 then f:Hide() else Render() end
+            end)
+
+            y = y + 68
+        end
+        f.listChild:SetHeight(math.max(y, 1))
+        f.scroll:SetVerticalScroll(0)
+    end
+
+    f.replaceAllBtn:SetScript("OnClick", function()
+        -- Report every swap: the dialog closes on success, so without this the
+        -- player never finds out which sounds were substituted.
+        local swaps = {}
+        for i = #problems, 1, -1 do
+            local problem = problems[i]
+            if problem.suggestion then
+                UI:ReplaceSoundEverywhere(problem.id, problem.suggestion)
+                table.insert(swaps, 1, string.format("|cffff8800%s|r -> |cff00ff00%s|r",
+                    tostring(problem.name), FullSoundName(problem.suggestion)))
+                table.remove(problems, i)
+            end
+        end
+
+        if #swaps > 0 then
+            print(("|cff00ff00Oxed Hub:|r Replaced %d missing sound(s):"):format(#swaps))
+            for _, line in ipairs(swaps) do print("   " .. line) end
+        end
+
+        if #problems == 0 then f:Hide() else Render() end
+    end)
+
+    Render()
+    f:Show()
+    f:Raise()
+end
+
 function UI:ValidateImport(data)
     -- Unwrap v3 envelopes so sound/animation checks see the actual payload.
     if type(data) == "table" and data.formatVersion == 3 and data.payload then
@@ -5365,6 +7231,14 @@ local IMPORT_HANDLED_KEYS = {
 }
 
 function UI:_ApplySingleProfileData(db, data)
+    -- The exporter may have had a shared ring, in which case their profile
+    -- carries oxedRingUnique = false.  Copying that flag verbatim would make
+    -- the importer read its OWN globalSettings ring and quietly ignore the ring
+    -- that just arrived, so pin an incoming ring to this profile instead.
+    if data.oxedRingNodes and next(data.oxedRingNodes) then
+        data.oxedRingUnique = true
+    end
+
     if data.metadata then
         db.metadata = db.metadata or {}
         for key, value in pairs(data.metadata) do
@@ -5503,6 +7377,11 @@ function UI:ApplyScopedImport(env)
                 db[k] = v
             end
         end
+        -- The ring is only read from the profile when it is marked unique; on a
+        -- shared ring the reader looks at globalSettings and the import would be
+        -- invisible.  Pin the imported ring to this profile rather than
+        -- overwriting the ring every other profile shares.
+        db.oxedRingUnique = true
         summary = "OxedRing config"
         if OxedHub.OxedRing and OxedHub.OxedRing.UpdateSecureAttributes then
             OxedHub.OxedRing:UpdateSecureAttributes()
@@ -5575,6 +7454,21 @@ function UI:ApplyImport(data)
     local maxProfiles = OxedHub:GetMaxProfileCount()
     local _author = data._author
 
+    -- Character names are only unique per realm, so two people called "Paladin"
+    -- on different servers would both import as "Paladin (Imported)".  Tag the
+    -- copy with who it came from instead.
+    local function ImportSuffix()
+        local a = _author
+        if type(a) == "table" and a.character and a.character ~= "" then
+            local realm = a.realm and tostring(a.realm):gsub("%s+", "") or ""
+            if realm ~= "" then
+                return " (" .. a.character .. "-" .. realm .. ")"
+            end
+            return " (" .. a.character .. ")"
+        end
+        return " (Imported)"
+    end
+
     -- Version 2+ supports multiple profiles
     if data.profiles then
         for name, profileData in pairs(data.profiles) do
@@ -5584,10 +7478,11 @@ function UI:ApplyImport(data)
             local finalName = name
             -- Handle existing profile names
             if OxedHubDB.profiles[finalName] then
-                finalName = name .. " (Imported)"
+                local suffix = ImportSuffix()
+                finalName = name .. suffix
                 local counter = 1
                 while OxedHubDB.profiles[finalName] do
-                    finalName = name .. " (Imported " .. counter .. ")"
+                    finalName = name .. suffix .. " " .. counter
                     counter = counter + 1
                 end
             end
@@ -5611,10 +7506,11 @@ function UI:ApplyImport(data)
         -- Never overwrite an existing profile: keep suffixing until the name is
         -- free (the multi-profile path above does the same).
         if OxedHubDB.profiles[finalName] then
-            finalName = profileName .. " (Imported)"
+            local suffix = ImportSuffix()
+            finalName = profileName .. suffix
             local counter = 1
             while OxedHubDB.profiles[finalName] do
-                finalName = profileName .. " (Imported " .. counter .. ")"
+                finalName = profileName .. suffix .. " " .. counter
                 counter = counter + 1
             end
         end
@@ -6110,9 +8006,8 @@ end
 function UI:ShowScopedExportFrame()
     local f = UI.scopedExportFrame
     if not f then
-        -- Clean themed dialog (same frame style as the Pick Sound picker).
-        f = CreateFrame("Frame", "OxedHubScopedExportFrame", UIParent, "BasicFrameTemplateWithInset")
-        f:SetSize(380, 470)
+        f = CreateFrame("Frame", "OxedHubScopedExportFrame", UIParent, "BackdropTemplate")
+        f:SetSize(460, 540)
         f:SetPoint("CENTER")
         f:SetFrameStrata("DIALOG")
         f:SetFrameLevel(220)
@@ -6123,22 +8018,43 @@ function UI:ShowScopedExportFrame()
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
         tinsert(UISpecialFrames, "OxedHubScopedExportFrame")
-        if f.TitleText then f.TitleText:SetText("Export") end
-        if f.CloseButton then f.CloseButton:SetScript("OnClick", function() f:Hide() end) end
+        f:SetBackdrop({
+            bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = false, edgeSize = 14,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        f:SetBackdropColor(0.06, 0.06, 0.08, 0.96)
+        f:SetBackdropBorderColor(0.95, 0.74, 0.22, 0.85)
+
+        local title = f:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
+        title:SetPoint("TOPLEFT", 18, -14)
+        title:SetText("Detailed Export")
+        title:SetTextColor(1, 0.82, 0, 1)
+
+        local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+        closeBtn:SetPoint("TOPRIGHT", -4, -4)
+        closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+        local divider1 = f:CreateTexture(nil, "BORDER")
+        divider1:SetPoint("TOPLEFT", 14, -38)
+        divider1:SetPoint("RIGHT", -14, 0)
+        divider1:SetHeight(1)
+        divider1:SetColorTexture(0.58, 0.48, 0.34, 0.4)
 
         local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        subtitle:SetPoint("TOPLEFT", 14, -32)
-        subtitle:SetText("Choose what to export:")
-        subtitle:SetTextColor(1, 0.82, 0)
+        subtitle:SetPoint("TOPLEFT", 18, -46)
+        subtitle:SetText("Choose What to Export:")
+        subtitle:SetTextColor(1, 0.82, 0, 1)
 
-        -- Scrollable list of export scopes (row style like the sound picker).
+        -- Scrollable list of export scopes
         local scopeScroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
         scopeScroll:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -6)
-        scopeScroll:SetPoint("TOPRIGHT", f, "TOPRIGHT", -34, -56)
-        scopeScroll:SetHeight(232)
+        scopeScroll:SetPoint("TOPRIGHT", f, "TOPRIGHT", -36, -64)
+        scopeScroll:SetHeight(180)
         if UI.StyleScrollFrame then UI:StyleScrollFrame(scopeScroll) end
         local scopeChild = CreateFrame("Frame", nil, scopeScroll)
-        scopeChild:SetSize(320, 1)
+        scopeChild:SetSize(400, 1)
         scopeScroll:SetScrollChild(scopeChild)
 
         f.selectedScope = f.selectedScope or UI.EXPORT_SCOPES[1]
@@ -6153,13 +8069,13 @@ function UI:ShowScopedExportFrame()
 
             local sel = row:CreateTexture(nil, "BACKGROUND")
             sel:SetAllPoints()
-            sel:SetColorTexture(1, 0.82, 0, 0.18)
+            sel:SetColorTexture(1, 0.82, 0, 0.20)
             sel:Hide()
             row.sel = sel
 
             local txt = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            txt:SetPoint("LEFT", 8, 0)
-            txt:SetText(sc.label)
+            txt:SetPoint("LEFT", 10, 0)
+            txt:SetText("|cffffd100•|r " .. sc.label)
             row.txt = txt
 
             row:SetScript("OnClick", function()
@@ -6171,35 +8087,56 @@ function UI:ShowScopedExportFrame()
         end
         scopeChild:SetHeight(#UI.EXPORT_SCOPES * rowH + 2)
 
+        -- Scope Description Box
+        local descBox = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        descBox:SetPoint("TOPLEFT", scopeScroll, "BOTTOMLEFT", 0, -8)
+        descBox:SetPoint("RIGHT", f, "RIGHT", -16, 0)
+        descBox:SetHeight(38)
+        descBox:SetBackdrop({
+            bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = false, edgeSize = 10,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 },
+        })
+        descBox:SetBackdropColor(0, 0, 0, 0.45)
+        descBox:SetBackdropBorderColor(0.58, 0.48, 0.34, 0.4)
+
+        local scopeDescText = descBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        scopeDescText:SetPoint("TOPLEFT", 8, -6)
+        scopeDescText:SetPoint("BOTTOMRIGHT", -8, 6)
+        scopeDescText:SetJustifyH("LEFT")
+        scopeDescText:SetJustifyV("TOP")
+        scopeDescText:SetText("")
+        f.scopeDescText = scopeDescText
+
         -- Contextual target area (profile/hub dropdown or trigger checklist)
         local targetArea = CreateFrame("Frame", nil, f)
-        targetArea:SetPoint("TOPLEFT", scopeScroll, "BOTTOMLEFT", 0, -6)
+        targetArea:SetPoint("TOPLEFT", descBox, "BOTTOMLEFT", 0, -8)
         targetArea:SetPoint("RIGHT", f, "RIGHT", -16, 0)
-        targetArea:SetHeight(96)
+        targetArea:SetHeight(85)
         f.targetArea = targetArea
 
         -- Note field
         local noteLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         noteLabel:SetPoint("TOPLEFT", targetArea, "BOTTOMLEFT", 0, -4)
-        noteLabel:SetText("Note (optional):")
-        noteLabel:SetTextColor(0.9, 0.9, 0.9)
+        noteLabel:SetText("Export Note (optional):")
+        noteLabel:SetTextColor(1, 0.82, 0, 1)
 
         local noteBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
         noteBox:SetPoint("TOPLEFT", noteLabel, "BOTTOMLEFT", 6, -6)
-        noteBox:SetSize(300, 22)
+        noteBox:SetSize(380, 22)
         noteBox:SetAutoFocus(false)
         noteBox:SetMaxLetters(120)
-        -- Pre-fill from the note saved on the Export/Import page so both export
-        -- paths default to the same message.
         noteBox:SetText(UI:GetExportNote() or "")
         f.noteBox = noteBox
 
-        -- Generate button → opens the standard export-string window (copy/chunks).
+        -- Generate button
         local genBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
         if ApplyRedButtonStyle then ApplyRedButtonStyle(genBtn) end
-        genBtn:SetSize(180, 26)
+        genBtn:SetSize(200, 26)
         genBtn:SetPoint("BOTTOM", 0, 14)
         genBtn:SetText("Generate Export String")
+        genBtn:SetNormalFontObject("GameFontNormalSmall")
         genBtn:SetScript("OnClick", function() UI:GenerateScopedExport(f) end)
 
         UI.scopedExportFrame = f
@@ -6211,13 +8148,20 @@ function UI:ShowScopedExportFrame()
     UI:RefreshScopedExportTarget(f)
 end
 
--- Highlight the selected scope row.
+-- Highlight the selected scope row and update description.
 function UI:RefreshScopedExportRows(f)
     for i, row in ipairs(f.scopeRows or {}) do
         local sc = UI.EXPORT_SCOPES[i]
         local isSel = (sc == f.selectedScope)
         row.sel:SetShown(isSel)
-        row.txt:SetTextColor(isSel and 1 or 0.9, isSel and 0.82 or 0.9, isSel and 0 or 0.9)
+        if isSel then
+            row.txt:SetText("|cff00ff00►|r |cffffffff" .. sc.label .. "|r")
+            if f.scopeDescText then
+                f.scopeDescText:SetText("|cffffd100" .. (sc.desc or "") .. "|r")
+            end
+        else
+            row.txt:SetText("|cffffd100•|r |cffcccccc" .. sc.label .. "|r")
+        end
     end
 end
 
@@ -6234,28 +8178,30 @@ function UI:RefreshScopedExportTarget(f)
     local needs = f.selectedScope and f.selectedScope.needs
     if needs == "profile" then
         local lbl = track(area:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"))
-        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText("Profile:")
+        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText("Select Profile:")
+        lbl:SetTextColor(1, 0.82, 0, 1)
         local names = {}
         for n in pairs(OxedHubDB.profiles or {}) do table.insert(names, n) end
         table.sort(names)
         f.targetValue = f.targetValue or names[1]
         local pdd = track(CreateFrame("DropdownButton", nil, area, "WowStyle1DropdownTemplate"))
-        pdd:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -4); pdd:SetWidth(260)
-        local function upd() pdd:OverrideText(f.targetValue or "—") end
+        pdd:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -4); pdd:SetWidth(280)
+        local function upd() pdd:OverrideText(OxedHub:GetProfileColoredName(f.targetValue or "—")) end
         pdd:SetupMenu(function(_, root)
             for _, n in ipairs(names) do
-                root:CreateRadio(n, function() return f.targetValue == n end, function() f.targetValue = n; upd() end)
+                root:CreateRadio(OxedHub:GetProfileColoredName(n), function() return f.targetValue == n end, function() f.targetValue = n; upd() end)
             end
         end)
         upd()
     elseif needs == "hub" then
         local lbl = track(area:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"))
-        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText("Hub:")
+        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText("Select Action Hub:")
+        lbl:SetTextColor(1, 0.82, 0, 1)
         local profile = OxedHubDB.profiles[OxedHubDB.activeProfile]
         local hubs = (profile.actionHub and profile.actionHub.hubs) or {}
         f.targetValue = f.targetValue or (#hubs > 0 and 1 or nil)
         local hdd = track(CreateFrame("DropdownButton", nil, area, "WowStyle1DropdownTemplate"))
-        hdd:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -4); hdd:SetWidth(260)
+        hdd:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -4); hdd:SetWidth(280)
         local function hubName(i) local h = hubs[i]; return (h and h.name) or ("Hub " .. i) end
         local function upd() hdd:OverrideText(f.targetValue and hubName(f.targetValue) or "—") end
         hdd:SetupMenu(function(_, root)
@@ -6266,13 +8212,14 @@ function UI:RefreshScopedExportTarget(f)
         upd()
     elseif needs == "triggers" then
         local lbl = track(area:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"))
-        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText("Tick triggers to export:")
+        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText("Tick triggers to include in export:")
+        lbl:SetTextColor(1, 0.82, 0, 1)
         local scroll = track(CreateFrame("ScrollFrame", nil, area, "UIPanelScrollFrameTemplate"))
         scroll:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -4)
         scroll:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -26, 0)
         if UI.StyleScrollFrame then UI:StyleScrollFrame(scroll) end
         local child = CreateFrame("Frame", nil, scroll)
-        child:SetSize(240, 1)
+        child:SetSize(320, 1)
         scroll:SetScrollChild(child)
         f.triggerChecks = {}
         local profile = OxedHubDB.profiles[OxedHubDB.activeProfile]
@@ -6288,7 +8235,7 @@ function UI:RefreshScopedExportTarget(f)
             cb:SetSize(20, 20)
             cb:SetChecked(true)
             local t = child:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            t:SetPoint("LEFT", cb, "RIGHT", 2, 0)
+            t:SetPoint("LEFT", cb, "RIGHT", 4, 0)
             t:SetText(profile.triggers[id].name or id)
             f.triggerChecks[id] = cb
             y = y + 22
@@ -6346,10 +8293,44 @@ function UI:ShowExportFrame()
         local exportString, err = UI:BuildExportString(nil, false)
         if exportString then
             UI:PopulateExportFrame(exportString, "Export Active Profile")
+            UI:WarnAboutUntransferableSounds()
         else
             UI.exportFrame.editBox:SetText(err or "Error generating export string. Data may be too large or corrupted.")
         end
     end)
+end
+
+-- Sounds whose audio lives in the player's own OxedHub_CustomMedia folder can't
+-- travel inside an export string — only the definition does. Tell the exporter
+-- so they can swap to bundled sounds or send the files alongside.
+function UI:WarnAboutUntransferableSounds()
+    local p = OxedHub.db and OxedHub.db.profile
+    if not p then return end
+
+    local refs = self:CollectSoundReferences(p)
+    local shared = OxedHub.GetSharedCustomSounds and OxedHub:GetSharedCustomSounds()
+        or p.customSounds or {}
+
+    local names = {}
+    for id in pairs(refs) do
+        local def = shared[id]
+        local path = def and def.filePath
+        -- Anything outside the addon's own Media folder won't exist for others.
+        if type(path) == "string" and path:find("OxedHub_CustomMedia", 1, true) then
+            table.insert(names, def.name or id)
+        end
+    end
+
+    if #names == 0 then return end
+    table.sort(names)
+
+    local shown = {}
+    for i = 1, math.min(#names, 5) do table.insert(shown, names[i]) end
+    local extra = (#names > 5) and (" and " .. (#names - 5) .. " more") or ""
+
+    print(("|cffffcc00Oxed Hub:|r %d sound(s) in this export use your own files "
+        .. "(%s%s). Whoever imports it won't have those audio files — send them the "
+        .. "files too, or swap to built-in sounds."):format(#names, table.concat(shown, ", "), extra))
 end
 
 function UI:CreateExportSelectionFrame()

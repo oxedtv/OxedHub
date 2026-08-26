@@ -1,0 +1,1 @@
+-- Deprecated: Shattersight has been moved to Modules/Shattersight/

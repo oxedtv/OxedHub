@@ -14,7 +14,7 @@ local function GetTriggerEffectsDelay()
     return math.max(1, math.min(20, delay))
 end
 
-local function HasTriggerEffect(actions, soundKey, animKey, trigger, chatMsgKey, skipChat)
+local function HasTriggerEffect(actions, soundKey, animKey, iconKey, trigger, chatMsgKey, skipChat)
     if not actions then
         return false
     end
@@ -22,6 +22,9 @@ local function HasTriggerEffect(actions, soundKey, animKey, trigger, chatMsgKey,
         return true
     end
     if actions[animKey] and actions[animKey] ~= "" and actions[animKey] ~= "None" then
+        return true
+    end
+    if actions[iconKey] and actions[iconKey] ~= "" and actions[iconKey] ~= "None" then
         return true
     end
     if not skipChat and trigger and trigger.event ~= "EAT_BUFF" then
@@ -51,12 +54,12 @@ function Triggers:CanRunEffectsKeyed(key)
     return true
 end
 
-function Triggers:CanRunTriggerEffects(trigger, actions, soundKey, animKey, chatMsgKey, skipChat)
+function Triggers:CanRunTriggerEffects(trigger, actions, soundKey, animKey, iconKey, chatMsgKey, skipChat)
     if not trigger or not trigger.id then
         return true
     end
 
-    if not HasTriggerEffect(actions, soundKey, animKey, trigger, chatMsgKey, skipChat) then
+    if not HasTriggerEffect(actions, soundKey, animKey, iconKey, trigger, chatMsgKey, skipChat) then
         return true
     end
 
@@ -99,20 +102,24 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
 
     local soundKey = "sound"
     local animKey = "animation"
+    local iconKey = "icon"
 
     if isInterrupt and result then
         if result == "success" then
             soundKey = actions.successSound and actions.successSound ~= "" and "successSound" or "sound"
             animKey = actions.successAnimation and actions.successAnimation ~= "" and "successAnimation" or "animation"
+            iconKey = actions.successIcon and actions.successIcon ~= "" and "successIcon" or "icon"
         elseif result == "failed" then
             soundKey = actions.failSound and actions.failSound ~= "" and "failSound" or "sound"
             animKey = actions.failAnimation and actions.failAnimation ~= "" and "failAnimation" or "animation"
+            iconKey = actions.failIcon and actions.failIcon ~= "" and "failIcon" or "icon"
         end
     elseif trigger.event == "MOUNT" and eventData and eventData.mountType then
         local t = eventData.mountType
         if t == "ground" or t == "flying" or t == "aquatic" then
             soundKey = t .. "Sound"
             animKey = t .. "Anim"
+            iconKey = t .. "Icon"
         end
     elseif trigger.event == "COMBAT_STATE" and eventData and eventData.combatState then
         -- Only split the effects when the user ticked "different sound &
@@ -124,6 +131,9 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
             end
             if actions[prefix .. "Anim"] and actions[prefix .. "Anim"] ~= "" then
                 animKey = prefix .. "Anim"
+            end
+            if actions[prefix .. "Icon"] and actions[prefix .. "Icon"] ~= "" then
+                iconKey = prefix .. "Icon"
             end
         end
     end
@@ -146,7 +156,7 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
         end
     end
 
-    local canRunEffects = self:CanRunTriggerEffects(trigger, actions, soundKey, animKey, chatMsgKey, skipChat)
+    local canRunEffects = self:CanRunTriggerEffects(trigger, actions, soundKey, animKey, iconKey, chatMsgKey, skipChat)
     if OxedHub.debug then print("[OxedHub-Debug] canRunEffects:", canRunEffects, "sound:", actions[soundKey]) end
     
     -- Play sound
@@ -175,11 +185,59 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
         end
     end
     
-    -- Play animation
+    -- Play animation, honouring a per-trigger position when one was set with
+    -- Move / Scale in the trigger's Actions section.
     local animVal = actions[animKey]
     if canRunEffects and animVal and animVal ~= "" then
         if OxedHub.Animations then
-            OxedHub.Animations:Play(animVal)
+            local posData
+            if actions[animKey .. "UseCustomPosition"] then
+                posData = {
+                    useCustomPosition = true,
+                    x = actions[animKey .. "PositionX"] or 0,
+                    y = actions[animKey .. "PositionY"] or 200,
+                    displayWidth = actions[animKey .. "DisplayWidth"],
+                    displayHeight = actions[animKey .. "DisplayHeight"],
+                }
+            end
+            OxedHub.Animations:Play(animVal, posData)
+        end
+    end
+    
+    -- Play Icon
+    if canRunEffects and actions.showIcon then
+        if OxedHub.Icons then
+            local posData = {}
+            if actions.iconUseCustomPosition then
+                posData.useCustomPosition = true
+                posData.x = actions.iconPositionX or 0
+                posData.y = actions.iconPositionY or 200
+                posData.size = actions.iconSize or 64
+            end
+            posData.style = actions.iconStyle or "SQUARE"
+            posData.showCooldown = actions.iconShowCooldown
+            posData.showDuration = actions.iconShowDuration
+            local isLustTrigger = OxedHub.IsLustTrigger and OxedHub.IsLustTrigger(trigger)
+            posData.iconTextureType = actions.iconTextureType or (isLustTrigger and "FACTION" or "SPELL")
+            if isLustTrigger and posData.iconTextureType == "SPELL" then
+                posData.iconTextureType = "FACTION"
+            end
+            
+            -- Derive icon texture and CD from eventData if available
+            local spellID = eventData and (eventData.spellID or eventData.spellName)
+            if not spellID and trigger.conditions then spellID = trigger.conditions.spellID end
+            
+            local duration = eventData and eventData.duration
+            local expirationTime = eventData and eventData.expirationTime
+            
+            if eventData and eventData.isLost then
+                if OxedHub.Icons.StopScreenIcon then
+                    OxedHub.Icons:StopScreenIcon(spellID)
+                end
+            else
+                local isAura = (trigger.event == "SELF_AURA" or trigger.event == "UNIT_AURA")
+                OxedHub.Icons:PlayScreenIcon(spellID, posData, duration, expirationTime, isAura)
+            end
         end
     end
     
@@ -218,6 +276,9 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
         end
         if animVal and animVal ~= "" and animVal ~= "None" then
             print(string.format("  - Animation: %s (Key: %s)", tostring(animVal), animKey))
+        end
+        if iconVal and iconVal ~= "" and iconVal ~= "None" then
+            print(string.format("  - Icon: %s (Key: %s)", tostring(iconVal), iconKey))
         end
         if actions[emoteKey] and actions[emoteKey] ~= "" and actions[emoteKey] ~= "None" then
             print(string.format("  - Emote: %s", tostring(actions[emoteKey])))

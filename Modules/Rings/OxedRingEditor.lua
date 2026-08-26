@@ -96,12 +96,12 @@ local function ApplyAssignmentBackdrop(frame)
 end
 
 local function GetNodes()
-    OxedHub.db.profile.oxedRingNodes = OxedHub.db.profile.oxedRingNodes or {}
-    return OxedHub.db.profile.oxedRingNodes
+    OxedHub.GetRingDB().oxedRingNodes = OxedHub.GetRingDB().oxedRingNodes or {}
+    return OxedHub.GetRingDB().oxedRingNodes
 end
 
 local function GetRingStyle()
-    return OxedHub.db.profile.oxedRingStyle or "ring"
+    return OxedHub.GetRingDB().oxedRingStyle or "ring"
 end
 
 local function ShouldSkipDeleteConfirmation()
@@ -316,7 +316,7 @@ local function RefreshPreview()
     local nodes = GetNodes()
     local numNodes = #nodes
     local cx, cy = 0, 0
-    local radius = (OxedHub.db.profile.oxedRingRadius or 100)
+    local radius = OxedHub.GetEffectiveRingRadius and OxedHub.GetEffectiveRingRadius(numNodes) or (OxedHub.GetRingDB().oxedRingRadius or 100)
     local style = GetRingStyle()
 
     -- Dynamically resize preview container for large rings
@@ -360,8 +360,8 @@ local function RefreshPreview()
                     if idx and nodes[idx] then
                         local removed = table.remove(nodes, idx)
                         if removed then
-                            OxedHub.db.profile.oxedRingBackupNodes = OxedHub.db.profile.oxedRingBackupNodes or {}
-                            table.insert(OxedHub.db.profile.oxedRingBackupNodes, removed)
+                            OxedHub.GetRingDB().oxedRingBackupNodes = OxedHub.GetRingDB().oxedRingBackupNodes or {}
+                            table.insert(OxedHub.GetRingDB().oxedRingBackupNodes, removed)
                         end
                         
                         if selectedNodeIndex == idx then
@@ -504,16 +504,16 @@ local function RefreshPreview()
         end
         
         local fontPath, _, fontFlags = btn.label:GetFont()
-        local fontSize = OxedHub.db.profile.oxedRingNodeTitleSize or 11
+        local fontSize = OxedHub.GetRingDB().oxedRingNodeTitleSize or 11
         btn.label:SetFont(OxedHub:GetFont(fontPath), fontSize, fontFlags or "OUTLINE")
         btn.label:SetText(data.label or "Node " .. i)
-        if OxedHub.db.profile.oxedRingShowNodeTitles then
+        if OxedHub.GetRingDB().oxedRingShowNodeTitles then
             btn.label:Show()
         else
             btn.label:Hide()
         end
         
-        local nodeSize = data.nodeSize or OxedHub.db.profile.oxedRingGlobalNodeSize or 40
+        local nodeSize = data.nodeSize or OxedHub.GetRingDB().oxedRingGlobalNodeSize or 40
         btn:SetSize(nodeSize, nodeSize)
         StyleButton(btn, style, nodeSize, true)
         
@@ -564,7 +564,7 @@ function OxedRingEditor:ClearAllRingNodes()
         slot.requiresParty = nil
         slot.requiresTarget = nil
     end
-    OxedHub.db.profile.oxedRingBackupNodes = nil
+    OxedHub.GetRingDB().oxedRingBackupNodes = nil
     selectedNodeIndex = nil
     RefreshPreview()
     self:RefreshAssignmentPanel()
@@ -729,7 +729,7 @@ function OxedRingEditor:UpdateSidebarVisibility()
     local dialog = rightPanel
     if not dialog or not dialog.sidebarButtons then return end
 
-    OxedHub.db.profile.oxedRingVisibleTabs = OxedHub.db.profile.oxedRingVisibleTabs or {
+    OxedHub.GetRingDB().oxedRingVisibleTabs = OxedHub.GetRingDB().oxedRingVisibleTabs or {
         toy = true,
         emote = true,
         marker = true,
@@ -738,7 +738,7 @@ function OxedRingEditor:UpdateSidebarVisibility()
         spell = false,
         settings = true,
     }
-    local visibleTabs = OxedHub.db.profile.oxedRingVisibleTabs
+    local visibleTabs = OxedHub.GetRingDB().oxedRingVisibleTabs
     visibleTabs.settings = true
     -- Spellbook tab is opt-in: default it OFF for existing profiles too (a missing
     -- key would otherwise read as "shown"). Only nil is migrated, so once the
@@ -923,6 +923,7 @@ function OxedRingEditor:RefreshPickerList()
                 iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             end
 
+            btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             btn:SetScript("OnEnter", function(self)
                 self:SetBackdropBorderColor(1, 0.82, 0, 0.8)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -931,6 +932,7 @@ function OxedRingEditor:RefreshPickerList()
                 else
                     GameTooltip:SetItemByID(item.id)
                 end
+                GameTooltip:AddLine("|cff00ccffRight-Click: Copy Wowhead URL|r")
                 GameTooltip:Show()
             end)
             btn:SetScript("OnLeave", function(self)
@@ -938,7 +940,11 @@ function OxedRingEditor:RefreshPickerList()
                 GameTooltip:Hide()
             end)
 
-            btn:SetScript("OnClick", function()
+            btn:SetScript("OnClick", function(_, button)
+                if button == "RightButton" then
+                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", item.id), item.name or ("Toy #" .. item.id))
+                    return
+                end
                 if currentSlot then
                     currentSlot.type = "toy"
                     currentSlot.id = item.id
@@ -1737,33 +1743,43 @@ function OxedRingEditor:RefreshPickerList()
         dialog.ringBindBtn:Enable()
         if dialog.ringBindResetBtn then dialog.ringBindResetBtn:Enable() end
 
-        local gSize = OxedHub.db.profile.oxedRingGlobalNodeSize or 40
+        if dialog.uniqueCheck then
+            dialog.uniqueCheck:SetChecked(OxedHub.db.profile and OxedHub.db.profile.oxedRingUnique ~= false)
+        end
+
+        local gSize = OxedHub.GetRingDB().oxedRingGlobalNodeSize or 40
         dialog.globalSizeSlider.isResetting = true
         dialog.globalSizeSlider:SetValue(gSize)
         dialog.globalSizeSlider.isResetting = false
         dialog.globalSizeVal:SetText(tostring(gSize))
         dialog.globalSizeInput:SetText(tostring(gSize))
 
-        local rRadius = OxedHub.db.profile.oxedRingRadius or 100
+        local rRadius = OxedHub.GetRingDB().oxedRingRadius or 100
         dialog.ringRadiusSlider.isResetting = true
         dialog.ringRadiusSlider:SetValue(rRadius)
         dialog.ringRadiusSlider.isResetting = false
         dialog.ringRadiusVal:SetText(tostring(rRadius))
         dialog.ringRadiusInput:SetText(tostring(rRadius))
 
+        if dialog.autoRadiusCheck then
+            local autoVal = OxedHub.GetRingDB().oxedRingAutoRadius
+            if autoVal == nil then autoVal = true end
+            dialog.autoRadiusCheck:SetChecked(autoVal)
+        end
 
 
-        local ringBindingText = OxedHub.db.profile.oxedRingBinding or L["KEYBIND_NOT_BOUND"] or "Not Bound"
+
+        local ringBindingText = OxedHub.GetRingDB().oxedRingBinding or L["KEYBIND_NOT_BOUND"] or "Not Bound"
         dialog.ringBindBtn:SetText(ringBindingText)
         if dialog.moveNodeBtn then
             dialog.moveNodeBtn:SetText(dialog.moveNodeMode and "Moving" or "Move")
         end
         
         if dialog.showTitlesCheck then
-            dialog.showTitlesCheck:SetChecked(OxedHub.db.profile.oxedRingShowNodeTitles == true)
+            dialog.showTitlesCheck:SetChecked(OxedHub.GetRingDB().oxedRingShowNodeTitles == true)
         end
 
-        local tSize = OxedHub.db.profile.oxedRingNodeTitleSize or 11
+        local tSize = OxedHub.GetRingDB().oxedRingNodeTitleSize or 11
         if dialog.fontSizeSlider then
             dialog.fontSizeSlider.isResetting = true
             dialog.fontSizeSlider:SetValue(tSize)
@@ -1779,7 +1795,7 @@ function OxedRingEditor:RefreshPickerList()
             end
         end
 
-        local vTabs = OxedHub.db.profile.oxedRingVisibleTabs or {
+        local vTabs = OxedHub.GetRingDB().oxedRingVisibleTabs or {
             toy = true, emote = true, marker = true, item = true, mount = true, spell = false, settings = true
         }
         if dialog.sidebarCheckboxes then
@@ -1880,7 +1896,8 @@ function OxedRingEditor:CreateTab(contentArea)
     
     -- Center Preview Area (size adapts to ring radius)
     self.previewContainer = CreateFrame("Frame", nil, leftPanel)
-    local previewRadius = OxedHub.db.profile.oxedRingRadius or 100
+    local nodes = GetNodes()
+    local previewRadius = OxedHub.GetEffectiveRingRadius and OxedHub.GetEffectiveRingRadius(#nodes) or (OxedHub.GetRingDB().oxedRingRadius or 100)
     local previewSize = math.max(320, (previewRadius + 60) * 2)
     self.previewContainer:SetSize(previewSize, previewSize)
     self.previewContainer:SetPoint("CENTER", leftPanel, "CENTER", 0, 20)
@@ -1902,8 +1919,8 @@ function OxedRingEditor:CreateTab(contentArea)
         if #nodes <= 0 then return end
         local removed = table.remove(nodes)
         if removed then
-            OxedHub.db.profile.oxedRingBackupNodes = OxedHub.db.profile.oxedRingBackupNodes or {}
-            table.insert(OxedHub.db.profile.oxedRingBackupNodes, removed)
+            OxedHub.GetRingDB().oxedRingBackupNodes = OxedHub.GetRingDB().oxedRingBackupNodes or {}
+            table.insert(OxedHub.GetRingDB().oxedRingBackupNodes, removed)
         end
         if selectedNodeIndex and selectedNodeIndex > #nodes then
             selectedNodeIndex = nil
@@ -1921,8 +1938,8 @@ function OxedRingEditor:CreateTab(contentArea)
         if #nodes >= 16 then return end
         
         local restored = nil
-        if OxedHub.db.profile.oxedRingBackupNodes and #OxedHub.db.profile.oxedRingBackupNodes > 0 then
-            restored = table.remove(OxedHub.db.profile.oxedRingBackupNodes)
+        if OxedHub.GetRingDB().oxedRingBackupNodes and #OxedHub.GetRingDB().oxedRingBackupNodes > 0 then
+            restored = table.remove(OxedHub.GetRingDB().oxedRingBackupNodes)
         end
         
         if restored then
@@ -2518,7 +2535,7 @@ function OxedRingEditor:CreateTab(contentArea)
     -- Settings scroll child â€” reuses the shared assignmentScroll (swapped in on tab switch)
     local settingsScrollChild = CreateFrame("Frame")
     settingsScrollChild:SetWidth(250)
-    settingsScrollChild:SetHeight(850)
+    settingsScrollChild:SetHeight(940)
     rightPanel.settingsScrollChild = settingsScrollChild
 
     -- Settings panel inputs & controls
@@ -2578,9 +2595,44 @@ function OxedRingEditor:CreateTab(contentArea)
         end)
     end
 
+    -- Unique Ring Toggle
+    local uniqueCheck = CreateFrame("CheckButton", nil, settingsScrollChild, "UICheckButtonTemplate")
+    uniqueCheck:SetSize(24, 24)
+    uniqueCheck:SetPoint("TOPLEFT", settingsScrollChild, "TOPLEFT", 10, -10)
+    uniqueCheck.text = uniqueCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    uniqueCheck.text:SetPoint("LEFT", uniqueCheck, "RIGHT", 4, 0)
+    uniqueCheck.text:SetText(L["SETTINGS_UNIQUE_RING"] or "Use Unique Ring for this Profile")
+    rightPanel.uniqueCheck = uniqueCheck
+
+    uniqueCheck:SetScript("OnClick", function(self)
+        local isUnique = self:GetChecked()
+        if not OxedHub.db.profile then return end
+        OxedHub.db.profile.oxedRingUnique = isUnique
+        if isUnique and not OxedHub.db.profile.oxedRingNodes then
+            if OxedHub.db.globalSettings and OxedHub.db.globalSettings.oxedRingNodes then
+                OxedHub.db.profile.oxedRingNodes = CopyTable(OxedHub.db.globalSettings.oxedRingNodes)
+                OxedHub.db.profile.oxedRingStyle = OxedHub.db.globalSettings.oxedRingStyle
+                OxedHub.db.profile.oxedRingBinding = OxedHub.db.globalSettings.oxedRingBinding
+                OxedHub.db.profile.oxedRingRadius = OxedHub.db.globalSettings.oxedRingRadius
+                OxedHub.db.profile.oxedRingAutoRadius = OxedHub.db.globalSettings.oxedRingAutoRadius
+                OxedHub.db.profile.oxedRingShowNodeTitles = OxedHub.db.globalSettings.oxedRingShowNodeTitles
+                OxedHub.db.profile.oxedRingNodeTitleSize = OxedHub.db.globalSettings.oxedRingNodeTitleSize
+                OxedHub.db.profile.oxedRingGlobalNodeSize = OxedHub.db.globalSettings.oxedRingGlobalNodeSize
+                if OxedHub.db.globalSettings.oxedRingVisibleTabs then
+                    OxedHub.db.profile.oxedRingVisibleTabs = CopyTable(OxedHub.db.globalSettings.oxedRingVisibleTabs)
+                end
+            end
+        end
+        RefreshPreview()
+        OxedRingEditor:RefreshAssignmentPanel()
+        if OxedHub.OxedRing and OxedHub.OxedRing.UpdateSecureAttributes then
+            OxedHub.OxedRing:UpdateSecureAttributes()
+        end
+    end)
+
     -- Global Node Size
     local globalSizeLabel = settingsScrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    globalSizeLabel:SetPoint("TOPLEFT", settingsScrollChild, "TOPLEFT", 12, -10)
+    globalSizeLabel:SetPoint("TOPLEFT", uniqueCheck, "BOTTOMLEFT", 2, -14)
     globalSizeLabel:SetText(L["SETTINGS_GLOBAL_NODE_SIZE"] or "Global Node Size")
     globalSizeLabel:SetTextColor(1, 0.82, 0)
 
@@ -2609,7 +2661,7 @@ function OxedRingEditor:CreateTab(contentArea)
         end)
         globalSizeResetBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     globalSizeResetBtn:SetScript("OnClick", function()
-        OxedHub.db.profile.oxedRingGlobalNodeSize = nil
+        OxedHub.GetRingDB().oxedRingGlobalNodeSize = nil
         rightPanel.globalSizeSlider.isResetting = true
         rightPanel.globalSizeSlider:SetValue(40)
         rightPanel.globalSizeVal:SetText("40")
@@ -2624,13 +2676,13 @@ function OxedRingEditor:CreateTab(contentArea)
 
     globalSizeSlider:SetScript("OnValueChanged", function(self, value)
         if self.isResetting then return end
-        OxedHub.db.profile.oxedRingGlobalNodeSize = value
+        OxedHub.GetRingDB().oxedRingGlobalNodeSize = value
         rightPanel.globalSizeVal:SetText(tostring(value))
         rightPanel.globalSizeInput:SetText(tostring(value))
         RefreshPreview()
     end)
     BindSliderInput(globalSizeSlider, globalSizeInput, 20, 80, 2, function(value)
-        OxedHub.db.profile.oxedRingGlobalNodeSize = value
+        OxedHub.GetRingDB().oxedRingGlobalNodeSize = value
         rightPanel.globalSizeVal:SetText(tostring(value))
     end)
     rightPanel.globalSizeSlider = globalSizeSlider
@@ -2666,7 +2718,7 @@ function OxedRingEditor:CreateTab(contentArea)
         end)
         radiusResetBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     radiusResetBtn:SetScript("OnClick", function()
-        OxedHub.db.profile.oxedRingRadius = nil
+        OxedHub.GetRingDB().oxedRingRadius = nil
         rightPanel.ringRadiusSlider.isResetting = true
         rightPanel.ringRadiusSlider:SetValue(100)
         rightPanel.ringRadiusVal:SetText("100")
@@ -2681,20 +2733,36 @@ function OxedRingEditor:CreateTab(contentArea)
 
     radiusSlider:SetScript("OnValueChanged", function(self, value)
         if self.isResetting then return end
-        OxedHub.db.profile.oxedRingRadius = value
+        OxedHub.GetRingDB().oxedRingRadius = value
         rightPanel.ringRadiusVal:SetText(tostring(value))
         rightPanel.ringRadiusInput:SetText(tostring(value))
         RefreshPreview()
     end)
     BindSliderInput(radiusSlider, radiusInput, 40, 200, 5, function(value)
-        OxedHub.db.profile.oxedRingRadius = value
+        OxedHub.GetRingDB().oxedRingRadius = value
         rightPanel.ringRadiusVal:SetText(tostring(value))
     end)
     rightPanel.ringRadiusSlider = radiusSlider
 
+    -- Auto-Scale Ring Radius check button (scales down radius for fewer nodes)
+    local autoRadiusCheck = CreateFrame("CheckButton", nil, settingsScrollChild, "UICheckButtonTemplate")
+    autoRadiusCheck:SetPoint("TOPLEFT", radiusSlider, "BOTTOMLEFT", 0, -10)
+    autoRadiusCheck.text:SetText(L["SETTINGS_AUTO_RING_RADIUS"] or "Auto-Scale Radius")
+    autoRadiusCheck.text:SetFontObject("GameFontHighlightSmall")
+    rightPanel.autoRadiusCheck = autoRadiusCheck
+
+    local autoVal = OxedHub.GetRingDB().oxedRingAutoRadius
+    if autoVal == nil then autoVal = true end
+    autoRadiusCheck:SetChecked(autoVal)
+
+    autoRadiusCheck:SetScript("OnClick", function(self)
+        OxedHub.GetRingDB().oxedRingAutoRadius = self:GetChecked()
+        RefreshPreview()
+    end)
+
     -- Ring Style dropdown (Squares / Rings)
     local styleLabel = settingsScrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    styleLabel:SetPoint("TOPLEFT", radiusSlider, "BOTTOMLEFT", 0, -30)
+    styleLabel:SetPoint("TOPLEFT", autoRadiusCheck, "BOTTOMLEFT", 0, -18)
     styleLabel:SetText(L["SETTINGS_RING_STYLE"] or "Ring Style:")
     styleLabel:SetTextColor(1, 0.82, 0)
 
@@ -2719,7 +2787,7 @@ function OxedRingEditor:CreateTab(contentArea)
                 entry.name,
                 function() return IsStyleSelected(entry.key) end,
                 function()
-                    OxedHub.db.profile.oxedRingStyle = entry.key
+                    OxedHub.GetRingDB().oxedRingStyle = entry.key
                     styleBtn:OverrideText(entry.name)
                     RefreshPreview()
                     OxedRingEditor:RefreshPickerList()
@@ -2748,7 +2816,7 @@ function OxedRingEditor:CreateTab(contentArea)
     showTitlesLabel:SetTextColor(1, 0.82, 0)
 
     showTitlesCheck:SetScript("OnClick", function(self)
-        OxedHub.db.profile.oxedRingShowNodeTitles = self:GetChecked()
+        OxedHub.GetRingDB().oxedRingShowNodeTitles = self:GetChecked()
         RefreshPreview()
     end)
 
@@ -2783,7 +2851,7 @@ function OxedRingEditor:CreateTab(contentArea)
         end)
         fontSizeResetBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     fontSizeResetBtn:SetScript("OnClick", function()
-        OxedHub.db.profile.oxedRingNodeTitleSize = nil
+        OxedHub.GetRingDB().oxedRingNodeTitleSize = nil
         rightPanel.fontSizeSlider.isResetting = true
         rightPanel.fontSizeSlider:SetValue(11)
         rightPanel.fontSizeVal:SetText("11")
@@ -2798,13 +2866,13 @@ function OxedRingEditor:CreateTab(contentArea)
 
     fontSizeSlider:SetScript("OnValueChanged", function(self, value)
         if self.isResetting then return end
-        OxedHub.db.profile.oxedRingNodeTitleSize = value
+        OxedHub.GetRingDB().oxedRingNodeTitleSize = value
         rightPanel.fontSizeVal:SetText(tostring(value))
         rightPanel.fontSizeInput:SetText(tostring(value))
         RefreshPreview()
     end)
     BindSliderInput(fontSizeSlider, fontSizeInput, 6, 24, 1, function(value)
-        OxedHub.db.profile.oxedRingNodeTitleSize = value
+        OxedHub.GetRingDB().oxedRingNodeTitleSize = value
         rightPanel.fontSizeVal:SetText(tostring(value))
         RefreshPreview()
     end)
@@ -2905,10 +2973,10 @@ function OxedRingEditor:CreateTab(contentArea)
         lbl:SetTextColor(0.9, 0.9, 0.9)
 
         check:SetScript("OnClick", function(self)
-            OxedHub.db.profile.oxedRingVisibleTabs = OxedHub.db.profile.oxedRingVisibleTabs or {
+            OxedHub.GetRingDB().oxedRingVisibleTabs = OxedHub.GetRingDB().oxedRingVisibleTabs or {
                 toy = true, emote = true, marker = true, item = true, mount = true, spell = false, settings = true
             }
-            local vTabs = OxedHub.db.profile.oxedRingVisibleTabs
+            local vTabs = OxedHub.GetRingDB().oxedRingVisibleTabs
             vTabs[def.key] = self:GetChecked()
 
             -- Ensure at least one category tab remains shown
@@ -2956,6 +3024,10 @@ function OxedRingEditor:CreateTab(contentArea)
             OxedHub.Toys:CacheToyData(true)
         end
         OxedRingEditor:RefreshPickerList()
+        -- Keep the Toys tab and ActionHub picker in step as well.
+        if OxedHub.Toys and OxedHub.Toys.RefreshToyConsumers then
+            OxedHub.Toys:RefreshToyConsumers()
+        end
     end)
 
     local refreshMountsLabel = settingsScrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -2973,6 +3045,10 @@ function OxedRingEditor:CreateTab(contentArea)
     refreshMountsBtn:SetScript("OnClick", function()
         OxedRingEditor:GetCachedMounts(true)
         OxedRingEditor:RefreshPickerList()
+        -- Mount lists are shared, so refresh the ActionHub picker too.
+        if OxedHub.ActionHub and OxedHub.ActionHub.RefreshPickerList then
+            pcall(function() OxedHub.ActionHub:RefreshPickerList() end)
+        end
     end)
 
     local refreshNote = settingsScrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -2981,6 +3057,35 @@ function OxedRingEditor:CreateTab(contentArea)
     refreshNote:SetJustifyH("LEFT")
     refreshNote:SetText(L["SETTINGS_REFRESH_WARNING"] or "* If you have a lot of toys/mounts the screen can freeze for 1-2 sec.")
     refreshNote:SetTextColor(0.72, 0.72, 0.72)
+
+    -- Share just the ring (slices, radius, keybind) as a chat link.
+    local shareHeader = settingsScrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    shareHeader:SetPoint("TOPLEFT", refreshNote, "BOTTOMLEFT", 0, -18)
+    shareHeader:SetText(L["OXEDRING_SHARE_HEADER"] or "Share Ring")
+    shareHeader:SetTextColor(1, 0.82, 0, 1)
+
+    local shareRingBtn = CreateFrame("Button", nil, settingsScrollChild, "UIPanelButtonTemplate")
+    shareRingBtn:SetPoint("TOPLEFT", shareHeader, "BOTTOMLEFT", 0, -8)
+    shareRingBtn:SetSize(200, 24)
+    shareRingBtn:SetText(L["BTN_SHARE"] or "Share")
+    shareRingBtn:SetNormalFontObject("GameFontNormalSmall")
+    shareRingBtn:SetScript("OnClick", function()
+        local Share = OxedHub.Share
+        if not Share then
+            print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+            return
+        end
+        local label = (OxedHub.GetActiveProfileName and OxedHub:GetActiveProfileName()) or "Ring"
+        Share:ShowChannelPicker("oxedring", nil, label .. " Ring")
+    end)
+    shareRingBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L["BTN_SHARE"] or "Share", 1, 0.82, 0)
+        GameTooltip:AddLine("Share only this ring in chat - slices, radius and keybind.", 1, 1, 1, true)
+        GameTooltip:AddLine("Others with Oxed Hub can click to import it.", 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    shareRingBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     RefreshPreview()
     self:RefreshAssignmentPanel()

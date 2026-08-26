@@ -1,4 +1,4 @@
-﻿local addonName, OxedHub = ...
+local addonName, OxedHub = ...
 local L = OxedHub.L
 -- Sounds Module - Custom sound management and preview
 local Sounds = {}
@@ -111,6 +111,45 @@ end
 function Sounds:CancelPendingRefresh()
     self.refreshGeneration = (self.refreshGeneration or 0) + 1
     self.refreshTicker = nil
+end
+
+function Sounds:SyncMemePack()
+    local catalog = OxedHub.GENERATED_SOUND_CATALOG
+    if not catalog then return end
+
+    local manifest = _G["OxedHubMemePack"] or _G["OxedHubTikTokPack"]
+    if type(manifest) == "table" and type(manifest.Sounds) == "table" and #manifest.Sounds > 0 then
+        for _, soundData in ipairs(manifest.Sounds) do
+            if type(soundData) == "table" then
+                local id = soundData.id or (soundData.name and ("meme_" .. soundData.name:lower():gsub("[^a-z0-9_]", "_")))
+                if id then
+                    local filename = soundData.file or soundData.filePath or ""
+                    local filePath = soundData.filePath
+                    if not filePath or filePath == "" then
+                        if filename:find("\\") then
+                            filePath = filename
+                        else
+                            filePath = "Interface\\AddOns\\OxedHub_MemePack\\Sounds\\" .. filename
+                        end
+                    end
+
+                    catalog[id] = {
+                        name = soundData.name or id,
+                        filePath = filePath,
+                        category = soundData.category or "Meme",
+                        isMemePack = true,
+                    }
+                end
+            end
+        end
+    else
+        -- Clean up Meme catalog entries if pack is not installed
+        for id, sound in pairs(catalog) do
+            if type(sound) == "table" and (sound.isMemePack or sound.isTikTokPack) then
+                catalog[id] = nil
+            end
+        end
+    end
 end
 
 function Sounds:SyncGeneratedCatalog()
@@ -768,14 +807,41 @@ function Sounds:AddSound(name, filename)
 end
 
 -- Delete sound
-function Sounds:DeleteSound(id)
+function Sounds:_PerformDeleteSound(id)
     local sounds = OxedHub.GetSharedCustomSounds and OxedHub:GetSharedCustomSounds() or OxedHub.db.profile.customSounds
-    sounds[id] = nil
+    if sounds then
+        sounds[id] = nil
+    end
 
     -- Refresh UI if visible
     if OxedHub.UI and OxedHub.UI:GetCurrentTab() == "Reactions" then
         OxedHub.UI:ShowSubTab("Sounds")
     end
+end
+
+function Sounds:DeleteSound(id)
+    local sounds = OxedHub.GetSharedCustomSounds and OxedHub:GetSharedCustomSounds() or OxedHub.db.profile.customSounds
+    local sound = sounds and sounds[id]
+    if not sound then return end
+
+    if OxedHub.db.profile.settings and OxedHub.db.profile.settings.skipDeleteConfirmation then
+        self:_PerformDeleteSound(id)
+        return
+    end
+
+    local soundName = sound.name or tostring(id)
+    StaticPopupDialogs["OXEDHUB_CONFIRM_DELETE_SOUND"] = {
+        text = L["SOUND_CONFIRM_DELETE"],
+        button1 = L["SETTINGS_BTN_YES"] or "Yes",
+        button2 = L["SETTINGS_BTN_NO"] or "No",
+        OnAccept = function(dialogFrame, data)
+            Sounds:_PerformDeleteSound(data)
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+    }
+    StaticPopup_Show("OXEDHUB_CONFIRM_DELETE_SOUND", soundName, nil, id)
 end
 
 -- Resolve a sound id/path/name to an actual file path (without playing it).
@@ -799,6 +865,10 @@ end
 
 -- Play sound
 function Sounds:Play(soundIdOrPath, soundName)
+    if OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.soundsEnabled == false then
+        return
+    end
+
     local now = GetTime()
     if now - lastSoundTime < SOUND_COOLDOWN then
         return -- On cooldown

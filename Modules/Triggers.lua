@@ -13,6 +13,14 @@ function Triggers:GetEventTypeHandler(eventType)
     return self.registeredTypes[eventType]
 end
 
+function Triggers:RefreshAllNativeEffects()
+    for eventType, handler in pairs(self.registeredTypes) do
+        if handler.RefreshNativeEffects then
+            handler.RefreshNativeEffects()
+        end
+    end
+end
+
 -- Local references
 local C_Timer = C_Timer
 local IsInInstance = IsInInstance
@@ -92,7 +100,52 @@ function Triggers:SearchPlayerSpells(searchText, maxResults, allClasses)
     end
     
     searchText = searchText:lower()
-    
+
+    -- ── The player's own spellbook comes FIRST ───────────────────────────
+    -- Many abilities exist under several spell IDs (Avenging Wrath is 31884 on
+    -- the player but 231895 in the cross-class database). Results are deduped by
+    -- name, so whichever source runs first wins — and it has to be the ID this
+    -- character actually casts, or the trigger never matches what they press.
+    local function ScanSpellbook()
+        local numSkillLines = C_SpellBook.GetNumSpellBookSkillLines()
+        for skillLineIndex = 1, numSkillLines do
+            local skillLineInfo = C_SpellBook.GetSpellBookSkillLineInfo(skillLineIndex)
+            if skillLineInfo then
+                local numSpells = skillLineInfo.numSpellBookItems or 0
+                for spellIndex = skillLineInfo.itemIndexOffset, skillLineInfo.itemIndexOffset + numSpells - 1 do
+                    local spellInfo = C_SpellBook.GetSpellBookItemInfo(spellIndex, Enum.SpellBookSpellBank.Player)
+                    if spellInfo then
+                        if spellInfo.itemType == Enum.SpellBookItemType.Flyout and spellInfo.actionID then
+                            local flyoutID = spellInfo.actionID
+                            local _, _, numSlots, isKnown = GetFlyoutInfo(flyoutID)
+                            if isKnown and numSlots and numSlots > 0 then
+                                for i = 1, numSlots do
+                                    local flyoutSpellID, _, isKnownSlot = GetFlyoutSlotInfo(flyoutID, i)
+                                    if isKnownSlot and flyoutSpellID then
+                                        local flyoutSpellInfo = C_Spell.GetSpellInfo(flyoutSpellID)
+                                        if flyoutSpellInfo and flyoutSpellInfo.name and flyoutSpellInfo.name:lower():find(searchText, 1, true) then
+                                            addResult(flyoutSpellInfo.name, flyoutSpellID, flyoutSpellInfo.iconID)
+                                            if #results >= maxResults then return true end
+                                        end
+                                    end
+                                end
+                            end
+                        elseif spellInfo.spellID then
+                            local spellName = C_SpellBook.GetSpellBookItemName(spellIndex, Enum.SpellBookSpellBank.Player)
+                            if spellName and spellName:lower():find(searchText, 1, true) then
+                                addResult(spellName, spellInfo.spellID, C_SpellBook.GetSpellBookItemTexture(spellIndex, Enum.SpellBookSpellBank.Player))
+                                if #results >= maxResults then return true end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        return false
+    end
+
+    if ScanSpellbook() then return results end
+
     -- Expanded Global Database (cross-class buffs). On by default; only skipped
     -- when "All Classes" is explicitly unchecked (allClasses == false).
     if allClasses ~= false then
@@ -134,41 +187,6 @@ function Triggers:SearchPlayerSpells(searchText, maxResults, allClasses)
         end
     end
     
-    -- Local Spellbook Search
-    local numSkillLines = C_SpellBook.GetNumSpellBookSkillLines()
-    for skillLineIndex = 1, numSkillLines do
-        local skillLineInfo = C_SpellBook.GetSpellBookSkillLineInfo(skillLineIndex)
-        if skillLineInfo then
-            local numSpells = skillLineInfo.numSpellBookItems or 0
-            for spellIndex = skillLineInfo.itemIndexOffset, skillLineInfo.itemIndexOffset + numSpells - 1 do
-                local spellInfo = C_SpellBook.GetSpellBookItemInfo(spellIndex, Enum.SpellBookSpellBank.Player)
-                if spellInfo then
-                    if spellInfo.itemType == Enum.SpellBookItemType.Flyout and spellInfo.actionID then
-                        local flyoutID = spellInfo.actionID
-                        local _, _, numSlots, isKnown = GetFlyoutInfo(flyoutID)
-                        if isKnown and numSlots and numSlots > 0 then
-                            for i = 1, numSlots do
-                                local flyoutSpellID, _, isKnownSlot = GetFlyoutSlotInfo(flyoutID, i)
-                                if isKnownSlot and flyoutSpellID then
-                                    local flyoutSpellInfo = C_Spell.GetSpellInfo(flyoutSpellID)
-                                    if flyoutSpellInfo and flyoutSpellInfo.name and flyoutSpellInfo.name:lower():find(searchText, 1, true) then
-                                        addResult(flyoutSpellInfo.name, flyoutSpellID, flyoutSpellInfo.iconID)
-                                        if #results >= maxResults then return results end
-                                    end
-                                end
-                            end
-                        end
-                    elseif spellInfo.spellID then
-                        local spellName = C_SpellBook.GetSpellBookItemName(spellIndex, Enum.SpellBookSpellBank.Player)
-                        if spellName and spellName:lower():find(searchText, 1, true) then
-                            addResult(spellName, spellInfo.spellID, C_SpellBook.GetSpellBookItemTexture(spellIndex, Enum.SpellBookSpellBank.Player))
-                            if #results >= maxResults then return results end
-                        end
-                    end
-                end
-            end
-        end
-    end
     return results
 end
 
@@ -230,12 +248,12 @@ local function ShowAutoSaved(card)
 
     -- Any trigger edit may have changed a SELF_AURA spell/sound — re-sync the
     -- native aura-sound registrations (debounced; skipped in combat).
-    if Triggers.RefreshSelfAuraNativeSounds then
+    if Triggers.RefreshSelfAuraNativeEffects then
         Triggers._selfAuraRefreshPending = true
         C_Timer.After(0.4, function()
             if Triggers._selfAuraRefreshPending then
                 Triggers._selfAuraRefreshPending = nil
-                Triggers:RefreshSelfAuraNativeSounds()
+                Triggers:RefreshSelfAuraNativeEffects()
             end
         end)
     end
@@ -276,8 +294,8 @@ function Triggers:Init()
 
     self:SyncGeneratedTriggerMacros()
     self:InvalidateEnabledEventCache()
-    if self.RefreshSelfAuraNativeSounds then
-        self:RefreshSelfAuraNativeSounds()
+    if self.RefreshSelfAuraNativeEffects then
+        self:RefreshSelfAuraNativeEffects()
     end
 end
 
@@ -748,9 +766,67 @@ function Triggers:CreateSpellSearchUI(frame, trigger, yOffset, isAura)
         spellDisplay.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
     end
 
+    -- ── Extra spells ─────────────────────────────────────────────────────
+    -- A trigger can watch several spells (conditions.extraSpellIDs), but only
+    -- the primary one was ever displayed, so picking more suggestions looked
+    -- like nothing happened. List them all, each removable.
+    local extraRows = {}
+
+    local function RefreshExtraSpells()
+        for _, row in ipairs(extraRows) do row:Hide() end
+
+        local list = conditions.extraSpellIDs or {}
+        for i, sid in ipairs(list) do
+            local row = extraRows[i]
+            if not row then
+                row = CreateFrame("Frame", nil, frame)
+                row:SetSize(230, 20)
+
+                row.icon = row:CreateTexture(nil, "ARTWORK")
+                row.icon:SetSize(18, 18)
+                row.icon:SetPoint("LEFT", row, "LEFT", 2, 0)
+                row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+                row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                row.name:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
+                row.name:SetWidth(150)
+                row.name:SetJustifyH("LEFT")
+
+                row.removeBtn = CreateFrame("Button", nil, row, "UIPanelCloseButton")
+                row.removeBtn:SetSize(18, 18)
+                row.removeBtn:SetPoint("LEFT", row.name, "RIGHT", 2, 0)
+
+                extraRows[i] = row
+            end
+
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", spellDisplay, "BOTTOMLEFT", 0, -2 - (i - 1) * 20)
+
+            local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(tonumber(sid) or sid)
+            row.icon:SetTexture((info and info.iconID) or "Interface\\Icons\\INV_Misc_QuestionMark")
+            row.name:SetText((info and info.name) or ("ID: " .. tostring(sid)))
+
+            row.removeBtn:SetScript("OnClick", function()
+                table.remove(conditions.extraSpellIDs, i)
+                if OxedHub.Triggers.ShowAutoSaved then
+                    OxedHub.Triggers.ShowAutoSaved(frame:GetParent())
+                end
+                local card = OxedHub.Triggers.triggerCards[trigger.id]
+                if card then
+                    OxedHub.Triggers:RefreshTriggerCardConditions(card, trigger)
+                end
+            end)
+            row:Show()
+        end
+
+        return #list
+    end
+
+    local extraCount = RefreshExtraSpells()
+
     -- All Classes checkbox underneath the spell display (on by default)
     local allClassesCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-    allClassesCheck:SetPoint("TOPLEFT", spellDisplay, "BOTTOMLEFT", -2, -2)
+    allClassesCheck:SetPoint("TOPLEFT", spellDisplay, "BOTTOMLEFT", -2, -2 - extraCount * 20)
     allClassesCheck:SetSize(20, 20)
     allClassesCheck:SetChecked(conditions.allClasses ~= false)
     allClassesCheck.text:SetText("All Classes")
@@ -866,14 +942,24 @@ function Triggers:CreateSpellSearchUI(frame, trigger, yOffset, isAura)
     searchInput:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText("Type spell name to search your spellbook"); GameTooltip:Show() end)
     searchInput:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    yOffset = yOffset - 90
+    -- Room for however many extra spells are listed under the primary one.
+    yOffset = yOffset - 90 - (extraCount * 20)
     return yOffset
 end
 
 -- Multi-spell (OR) chip search UI — used ONLY by the Aura Gained/Lost event.
 function Triggers:CreateAuraSpellSearchUI(frame, trigger, yOffset)
     local conditions = trigger.conditions or {}
-    local isAura = true
+    local isAura = (trigger.event == "AURA" or trigger.event == "SELF_AURA")
+    local actionText = isAura and "is gained/lost" or "is cast"
+
+    local multiHint = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    multiHint:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
+    multiHint:SetWidth(400)
+    multiHint:SetJustifyH("LEFT")
+    multiHint:SetText("|cffffd100Tip:|r |cffb0b0b0you can add more than one spell — search and pick each. The trigger fires if ANY of them " .. actionText .. ".|r")
+
+    yOffset = yOffset - 30
 
     local spellLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     spellLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset - 4)
@@ -884,13 +970,6 @@ function Triggers:CreateAuraSpellSearchUI(frame, trigger, yOffset)
     searchInput:SetPoint("LEFT", spellLabel, "RIGHT", 5, 0)
     searchInput:SetAutoFocus(false)
     searchInput:SetText("")
-
-    -- Multi-spell hint (to the right of the search box)
-    local multiHint = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    multiHint:SetPoint("LEFT", searchInput, "RIGHT", 14, 0)
-    multiHint:SetWidth(300)
-    multiHint:SetJustifyH("LEFT")
-    multiHint:SetText("|cffffd100Tip:|r |cffb0b0b0you can add more than one spell — search and pick each. The trigger fires if ANY of them is gained/lost.|r")
 
     -- Compact icon chip for the primary spell (sits left of the extra chips / +)
     local spellDisplay = CreateFrame("Frame", nil, frame, "BackdropTemplate")

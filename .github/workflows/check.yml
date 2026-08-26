@@ -1,0 +1,73 @@
+name: Check
+
+# Runs on every push and pull request.  Catching a syntax error here is the
+# difference between a failed check and a release that bricks the addon for
+# everyone who auto-updates.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  lua-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install Lua
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+
+      - name: Compile every Lua file
+        run: |
+          # luac -p parses without running, which is exactly what is needed:
+          # the files reference WoW globals that do not exist here.
+          fail=0
+          while IFS= read -r file; do
+            if ! luac5.1 -p "$file" 2>err.txt; then
+              echo "::error file=$file::$(head -1 err.txt)"
+              fail=1
+            fi
+          done < <(find . -name "*.lua" -not -path "./.outsource/*" -not -path "./OxedHub/*")
+          exit $fail
+        shell: bash
+
+  toc-sanity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Every file listed in the TOC must exist
+        run: |
+          # A typo in the TOC means the file is silently never loaded, which is
+          # far harder to spot in game than a missing-file error here.
+          fail=0
+          while IFS= read -r line; do
+            case "$line" in
+              ""|\#*) continue ;;
+            esac
+            # sed, not tr: tr warns on every line about the trailing backslash
+            # and buries the real output in noise.
+            path=$(printf '%s' "$line" | sed 's/\r$//; s#\\#/#g')
+            if [ ! -f "$path" ]; then
+              echo "::error file=OxedHub.toc::listed file missing: $path"
+              fail=1
+            fi
+          done < OxedHub.toc
+          exit $fail
+        shell: bash
+
+      - name: Version must match in every file
+        run: |
+          toc=$(grep -m1 '^## Version:' OxedHub.toc | sed 's/.*: *//' | tr -d '\r')
+          echo "TOC version: $toc"
+          fail=0
+          for f in Core/Config.lua Locales/ENLocalization.lua UI/UI.lua; do
+            if ! grep -q "$toc" "$f"; then
+              echo "::error file=$f::does not carry version $toc -- run scripts/set-version.sh"
+              fail=1
+            fi
+          done
+          exit $fail
+        shell: bash

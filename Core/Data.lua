@@ -167,6 +167,8 @@ OxedHub.DEFAULTS = {
         allowChatOnSpellCast = false,
         filterByClass = false,
         hideMissingToys = false,
+        skipDeleteConfirmation = false,
+        testerMode = false,
         textSizeOffset = 0,
         language = "enUS",
     },

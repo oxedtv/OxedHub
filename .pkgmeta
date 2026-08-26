@@ -1,0 +1,20 @@
+package-as: OxedHub
+
+enable-nolib-creation: no
+
+ignore:
+  # Reference addons kept locally for comparison, never shipped.
+  - .outsource
+  # A stale nested copy of the addon (130 MB) that must not end up in the zip.
+  - OxedHub
+  # Build output from manual zipping.
+  - "*.zip"
+  # Repo housekeeping.
+  - .github
+  - .gitignore
+  - .pkgmeta
+  - README.md
+  - scripts
+
+# No manual-changelog on purpose: the packager builds release notes from the
+# commits since the previous tag, so nothing extra has to be maintained.

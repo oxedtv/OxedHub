@@ -91,7 +91,7 @@ function Toys:DebugSpell(slotIndex, spellId, spellInfo)
     local harmful = C_Spell.IsSpellHarmful and C_Spell.IsSpellHarmful(spellId)
     local helpful = C_Spell.IsSpellHelpful and C_Spell.IsSpellHelpful(spellId)
     local cd = C_Spell.GetSpellCooldown(spellId)
-    local onCd = cd and cd.duration and cd.duration > 1.5 and cd.startTime and cd.startTime > 0
+    local onCd = cd and cd.duration and type(cd.duration) == "number" and cd.duration > 1.5 and cd.startTime and type(cd.startTime) == "number" and cd.startTime > 0
     self:Debug(("  slot %d: spell id=%s name=%s"):format(slotIndex, tostring(spellId), tostring(spellInfo.name)))
     self:Debug(("    castTime=%dms usable=%s noMana=%s harmful=%s helpful=%s onCooldown=%s"):format(
         castTime, tostring(usable), tostring(noMana), tostring(harmful), tostring(helpful), tostring(onCd)))
@@ -599,6 +599,30 @@ end
 
 -- Cache toy names and info (All collected toys)
 -- @param silent boolean  If true, suppress chat prints (used by retry loops)
+-- Push a freshly built toy cache to every screen that lists toys. Refreshing
+-- from any one of them (Toys grid, OxedRing picker, ActionHub picker) now
+-- updates the others, so there's no need to hunt for a second Refresh button.
+function Toys:RefreshToyConsumers()
+    -- Toys tab grid
+    pcall(function()
+        if self.RefreshCurrentToyGrid then self:RefreshCurrentToyGrid() end
+    end)
+
+    -- ActionHub slot picker
+    pcall(function()
+        if OxedHub.ActionHub and OxedHub.ActionHub.RefreshPickerList then
+            OxedHub.ActionHub:RefreshPickerList()
+        end
+    end)
+
+    -- OxedRing slot picker
+    pcall(function()
+        if OxedHub.OxedRingEditor and OxedHub.OxedRingEditor.RefreshPickerList then
+            OxedHub.OxedRingEditor:RefreshPickerList()
+        end
+    end)
+end
+
 function Toys:CacheToyData(silent)
     self.toyCache = {}
     self.toyIDs = {}
@@ -712,6 +736,8 @@ function Toys:ShowMixerTab(parent)
         if parent.scrollChild then
             self:RefreshToyGrid(parent.scrollChild, OxedHub.globalSearchText or "")
         end
+        -- Also update the OxedRing and ActionHub toy pickers.
+        self:RefreshToyConsumers()
     end)
 
     if filterDropdown then
@@ -1452,7 +1478,15 @@ end
 -- membership and create new categories inline.
 function Toys:ShowToyCategoryMenu(anchorButton, itemID)
     if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+    local _, toyName = C_ToyBox and C_ToyBox.GetToyInfo and C_ToyBox.GetToyInfo(itemID)
+    toyName = toyName or ("Toy #" .. itemID)
+
     MenuUtil.CreateContextMenu(anchorButton, function(owner, root)
+        root:CreateTitle(toyName)
+        root:CreateButton("|cff00ccff" .. (L["TOYS_WOWHEAD_MENU_BTN"] or "Copy Wowhead URL") .. "|r", function()
+            OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", itemID), toyName)
+        end)
+        root:CreateDivider()
         root:CreateTitle(L["TOYS_CAT_MENU_TITLE"] or "Add to category")
         local cats = self:GetToyCategories()
         if #cats == 0 then
@@ -1476,6 +1510,26 @@ function Toys:ShowToyCategoryMenu(anchorButton, itemID)
                 self:RefreshCurrentToyGrid()
             end)
         end)
+        
+        -- ToyBoxes Grouping Integration
+        if self.GetToyBoxes then
+            root:CreateDivider()
+            root:CreateTitle("|cFFFFD900Add to ToyBox|r")
+            local boxes = self:GetToyBoxes()
+            for _, box in ipairs(boxes) do
+                root:CreateCheckbox(box.name or "Box",
+                    function() return self.IsToyInBox and self:IsToyInBox(box.id, itemID) end,
+                    function()
+                        if self.IsToyInBox and self:IsToyInBox(box.id, itemID) then
+                            self:RemoveToyFromBox(box.id, itemID)
+                        else
+                            self:AddToyToBox(box.id, itemID)
+                        end
+                        if self.RefreshToyBoxesUI then self:RefreshToyBoxesUI() end
+                        return MenuResponse.Refresh
+                    end)
+            end
+        end
     end)
 end
 
@@ -1599,7 +1653,8 @@ function Toys:RefreshToyGrid(parent, filter)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetToyByItemID(itemID)
                 GameTooltip:AddLine("\n|cff00ff00" .. (L["TOYS_CLICK_TO_SELECT_MIXER"] or "Click to select for Mixer") .. "|r")
-                GameTooltip:AddLine("|cffffd100" .. (L["TOYS_RIGHTCLICK_CATEGORY"] or "Right-click to add to a category") .. "|r")
+                GameTooltip:AddLine("|cffffd100" .. (L["TOYS_RIGHTCLICK_CATEGORY"] or "Right-click for Category / Wowhead Link") .. "|r")
+                GameTooltip:AddLine("|cff00ccff" .. (L["TOYS_SHIFT_RIGHTCLICK_WOWHEAD"] or "Shift + Right-Click: Copy Wowhead URL") .. "|r")
                 GameTooltip:Show()
             end)
             btn:SetScript("OnLeave", function(self)
@@ -1609,6 +1664,11 @@ function Toys:RefreshToyGrid(parent, filter)
 
             btn:SetScript("OnClick", function(_, button)
                 if button == "RightButton" then
+                    if IsShiftKeyDown() then
+                        local toyName = data and data.name or ("Toy #" .. itemID)
+                        OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", itemID), toyName)
+                        return
+                    end
                     self:ShowToyCategoryMenu(btn, itemID)
                     return
                 end
@@ -1726,6 +1786,7 @@ function Toys:CreateMixerUI(frame)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         if slot.type == "toy" then
             GameTooltip:SetToyByItemID(slot.id)
+            GameTooltip:AddLine("|cff00ccff" .. (L["TOYS_SHIFT_RIGHTCLICK_WOWHEAD"] or "Shift + Right-Click: Copy Wowhead URL") .. "|r")
         elseif slot.type == "spell" then
             local spellInfo = C_Spell.GetSpellInfo(slot.id)
             GameTooltip:SetSpellByID(slot.id)
@@ -1738,6 +1799,12 @@ function Toys:CreateMixerUI(frame)
     slot1:SetScript("OnLeave", function() GameTooltip:Hide() end)
     slot1:SetScript("OnClick", function(_, button)
         if button == "RightButton" then
+            local slot = selectedSlots[1]
+            if IsShiftKeyDown() and slot and slot.type == "toy" then
+                local _, toyName = C_ToyBox.GetToyInfo(slot.id)
+                OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", slot.id), toyName or ("Toy #" .. slot.id))
+                return
+            end
             selectedSlots[1] = nil
             self:UpdateMixerIcons()
             return
@@ -1817,6 +1884,7 @@ function Toys:CreateMixerUI(frame)
             GameTooltip:AddLine(L["MIXER_SLOT_HELP2"] or "You can mix a toy with a spell, or a toy with another toy.", 1, 0.82, 0)
         elseif slot.type == "toy" then
             GameTooltip:SetToyByItemID(slot.id)
+            GameTooltip:AddLine("|cff00ccff" .. (L["TOYS_SHIFT_RIGHTCLICK_WOWHEAD"] or "Shift + Right-Click: Copy Wowhead URL") .. "|r")
         elseif slot.type == "spell" then
             local spellInfo = C_Spell.GetSpellInfo(slot.id)
             GameTooltip:SetSpellByID(slot.id)
@@ -1833,6 +1901,12 @@ function Toys:CreateMixerUI(frame)
     slot2:SetScript("OnLeave", function() GameTooltip:Hide() end)
     local function HandleSpellSlotClick(_, button)
         if button == "RightButton" then
+            local slot = selectedSlots[2]
+            if IsShiftKeyDown() and slot and slot.type == "toy" then
+                local _, toyName = C_ToyBox.GetToyInfo(slot.id)
+                OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", slot.id), toyName or ("Toy #" .. slot.id))
+                return
+            end
             selectedSlots[2] = nil
             self:UpdateMixerIcons()
             return
@@ -1925,6 +1999,7 @@ function Toys:CreateMixerUI(frame)
             GameTooltip:AddLine(L["MIXER_EXTRA_RANDOM_HELP"] or "Enable 'Allow Random Toys' to pick one randomly per use.", 1, 0.82, 0)
         elseif slot.type == "toy" then
             GameTooltip:SetToyByItemID(slot.id)
+            GameTooltip:AddLine("|cff00ccff" .. (L["TOYS_SHIFT_RIGHTCLICK_WOWHEAD"] or "Shift + Right-Click: Copy Wowhead URL") .. "|r")
         elseif slot.type == "spell" then
             GameTooltip:SetSpellByID(slot.id)
         end
@@ -1933,6 +2008,12 @@ function Toys:CreateMixerUI(frame)
     slot3:SetScript("OnLeave", function() GameTooltip:Hide() end)
     slot3:SetScript("OnClick", function(_, button)
         if button == "RightButton" then
+            local slot = selectedSlots[3]
+            if IsShiftKeyDown() and slot and slot.type == "toy" then
+                local _, toyName = C_ToyBox.GetToyInfo(slot.id)
+                OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", slot.id), toyName or ("Toy #" .. slot.id))
+                return
+            end
             selectedSlots[3] = nil
             self:UpdateMixerIcons()
             return
@@ -2011,6 +2092,7 @@ function Toys:CreateMixerUI(frame)
             GameTooltip:AddLine(L["MIXER_EXTRA_RANDOM_HELP"] or "Enable 'Allow Random Toys' to pick one randomly per use.", 1, 0.82, 0)
         elseif slot.type == "toy" then
             GameTooltip:SetToyByItemID(slot.id)
+            GameTooltip:AddLine("|cff00ccff" .. (L["TOYS_SHIFT_RIGHTCLICK_WOWHEAD"] or "Shift + Right-Click: Copy Wowhead URL") .. "|r")
         elseif slot.type == "spell" then
             GameTooltip:SetSpellByID(slot.id)
         end
@@ -2019,6 +2101,12 @@ function Toys:CreateMixerUI(frame)
     slot4:SetScript("OnLeave", function() GameTooltip:Hide() end)
     slot4:SetScript("OnClick", function(_, button)
         if button == "RightButton" then
+            local slot = selectedSlots[4]
+            if IsShiftKeyDown() and slot and slot.type == "toy" then
+                local _, toyName = C_ToyBox.GetToyInfo(slot.id)
+                OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", slot.id), toyName or ("Toy #" .. slot.id))
+                return
+            end
             selectedSlots[4] = nil
             self:UpdateMixerIcons()
             return
@@ -3109,6 +3197,7 @@ function Toys:RefreshSavedMixesList()
             local slot1Btn = CreateFrame("Button", nil, row, "BackdropTemplate")
             slot1Btn:SetSize(slotIconSize, slotIconSize)
             slot1Btn:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 74, 20)
+            slot1Btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             slot1Btn:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 6,
                                    insets = { left = 1, right = 1, top = 1, bottom = 1 } })
             slot1Btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
@@ -3117,11 +3206,19 @@ function Toys:RefreshSavedMixesList()
             slot1Tex:SetPoint("BOTTOMRIGHT", slot1Btn, "BOTTOMRIGHT", -2, 2)
             slot1Tex:SetTexture(134400)
             slot1Btn.tex = slot1Tex
-            slot1Btn:SetScript("OnClick", function(self) Toys:EditMix(self.mixName) end)
+            slot1Btn:SetScript("OnClick", function(self, button)
+                if button == "RightButton" and IsShiftKeyDown() and self.itemID then
+                    local _, toyName = C_ToyBox.GetToyInfo(self.itemID)
+                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or ("Toy #" .. self.itemID))
+                    return
+                end
+                Toys:EditMix(self.mixName)
+            end)
             slot1Btn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 if self.itemID then
                     GameTooltip:SetToyByItemID(self.itemID)
+                    GameTooltip:AddLine("|cff00ccff" .. (L["TOYS_SHIFT_RIGHTCLICK_WOWHEAD"] or "Shift + Right-Click: Copy Wowhead URL") .. "|r")
                 elseif self.spellID then
                     GameTooltip:SetSpellByID(self.spellID)
                 else
@@ -3136,6 +3233,7 @@ function Toys:RefreshSavedMixesList()
             local slot2Btn = CreateFrame("Button", nil, row, "BackdropTemplate")
             slot2Btn:SetSize(slotIconSize, slotIconSize)
             slot2Btn:SetPoint("LEFT", slot1Btn, "RIGHT", 4, 0)
+            slot2Btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             slot2Btn:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 6,
                                    insets = { left = 1, right = 1, top = 1, bottom = 1 } })
             slot2Btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
@@ -3144,11 +3242,19 @@ function Toys:RefreshSavedMixesList()
             slot2Tex:SetPoint("BOTTOMRIGHT", slot2Btn, "BOTTOMRIGHT", -2, 2)
             slot2Tex:SetTexture(134400)
             slot2Btn.tex = slot2Tex
-            slot2Btn:SetScript("OnClick", function(self) Toys:EditMix(self.mixName) end)
+            slot2Btn:SetScript("OnClick", function(self, button)
+                if button == "RightButton" and IsShiftKeyDown() and self.itemID then
+                    local _, toyName = C_ToyBox.GetToyInfo(self.itemID)
+                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or ("Toy #" .. self.itemID))
+                    return
+                end
+                Toys:EditMix(self.mixName)
+            end)
             slot2Btn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 if self.itemID then
                     GameTooltip:SetToyByItemID(self.itemID)
+                    GameTooltip:AddLine("|cff00ccff" .. (L["TOYS_SHIFT_RIGHTCLICK_WOWHEAD"] or "Shift + Right-Click: Copy Wowhead URL") .. "|r")
                 elseif self.spellID then
                     GameTooltip:SetSpellByID(self.spellID)
                 else
@@ -3163,6 +3269,7 @@ function Toys:RefreshSavedMixesList()
             local slot3Btn = CreateFrame("Button", nil, row, "BackdropTemplate")
             slot3Btn:SetSize(slotIconSize, slotIconSize)
             slot3Btn:SetPoint("LEFT", slot2Btn, "RIGHT", 4, 0)
+            slot3Btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             slot3Btn:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 6,
                                    insets = { left = 1, right = 1, top = 1, bottom = 1 } })
             slot3Btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
@@ -3171,11 +3278,19 @@ function Toys:RefreshSavedMixesList()
             slot3Tex:SetPoint("BOTTOMRIGHT", slot3Btn, "BOTTOMRIGHT", -2, 2)
             slot3Tex:SetTexture(134400)
             slot3Btn.tex = slot3Tex
-            slot3Btn:SetScript("OnClick", function(self) Toys:EditMix(self.mixName) end)
+            slot3Btn:SetScript("OnClick", function(self, button)
+                if button == "RightButton" and IsShiftKeyDown() and self.itemID then
+                    local _, toyName = C_ToyBox.GetToyInfo(self.itemID)
+                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or ("Toy #" .. self.itemID))
+                    return
+                end
+                Toys:EditMix(self.mixName)
+            end)
             slot3Btn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 if self.itemID then
                     GameTooltip:SetToyByItemID(self.itemID)
+                    GameTooltip:AddLine("|cff00ccff" .. (L["TOYS_SHIFT_RIGHTCLICK_WOWHEAD"] or "Shift + Right-Click: Copy Wowhead URL") .. "|r")
                 elseif self.spellID then
                     GameTooltip:SetSpellByID(self.spellID)
                 else
@@ -3190,6 +3305,7 @@ function Toys:RefreshSavedMixesList()
             local slot4Btn = CreateFrame("Button", nil, row, "BackdropTemplate")
             slot4Btn:SetSize(slotIconSize, slotIconSize)
             slot4Btn:SetPoint("LEFT", slot3Btn, "RIGHT", 4, 0)
+            slot4Btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             slot4Btn:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 6,
                                    insets = { left = 1, right = 1, top = 1, bottom = 1 } })
             slot4Btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
@@ -3198,11 +3314,19 @@ function Toys:RefreshSavedMixesList()
             slot4Tex:SetPoint("BOTTOMRIGHT", slot4Btn, "BOTTOMRIGHT", -2, 2)
             slot4Tex:SetTexture(134400)
             slot4Btn.tex = slot4Tex
-            slot4Btn:SetScript("OnClick", function(self) Toys:EditMix(self.mixName) end)
+            slot4Btn:SetScript("OnClick", function(self, button)
+                if button == "RightButton" and IsShiftKeyDown() and self.itemID then
+                    local _, toyName = C_ToyBox.GetToyInfo(self.itemID)
+                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or ("Toy #" .. self.itemID))
+                    return
+                end
+                Toys:EditMix(self.mixName)
+            end)
             slot4Btn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 if self.itemID then
                     GameTooltip:SetToyByItemID(self.itemID)
+                    GameTooltip:AddLine("|cff00ccff" .. (L["TOYS_SHIFT_RIGHTCLICK_WOWHEAD"] or "Shift + Right-Click: Copy Wowhead URL") .. "|r")
                 elseif self.spellID then
                     GameTooltip:SetSpellByID(self.spellID)
                 else
@@ -3309,6 +3433,31 @@ function Toys:RefreshSavedMixesList()
                 row.actionBtns[ai] = btn
                 row.actionBtns[def.key] = btn
             end
+
+            -- Share this one mix as a chat link, sitting under the action icons.
+            local shareBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            shareBtn:SetSize(actionBtnSize * 4 + 12, 20)
+            shareBtn:SetPoint("TOPRIGHT", row.actionBtns[4], "BOTTOMRIGHT", 0, -4)
+            shareBtn:SetText(L["BTN_SHARE"] or "Share")
+            shareBtn:SetNormalFontObject("GameFontNormalSmall")
+            shareBtn:SetScript("OnClick", function(self)
+                local Share = OxedHub.Share
+                if not Share then
+                    print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+                    return
+                end
+                if not self.mixName then return end
+                Share:ShowChannelPicker("toymixes", { mixNames = { self.mixName } }, self.mixName)
+            end)
+            shareBtn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(L["BTN_SHARE"] or "Share", 1, 0.82, 0)
+                GameTooltip:AddLine("Share only this mix in chat.", 1, 1, 1, true)
+                GameTooltip:AddLine("Others with Oxed Hub can click to import it.", 0.8, 0.8, 0.8, true)
+                GameTooltip:Show()
+            end)
+            shareBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            row.shareBtn = shareBtn
 
             local delBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
             delBtn:SetSize(60, 22)
@@ -3538,6 +3687,7 @@ function Toys:RefreshSavedMixesList()
         row.macroBtn.mixName = name
         row.editBtn.mixName = name
         row.renameBtn.mixName = name
+        row.shareBtn.mixName = name
 
         yOffset = yOffset - (rowHeight + 2)
     end

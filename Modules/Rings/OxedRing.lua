@@ -72,7 +72,7 @@ local function IsSliceAvailable(index)
 end
 
 local function GetRingStyle()
-    return OxedHub.db.profile.oxedRingStyle or "ring"
+    return OxedHub.GetRingDB().oxedRingStyle or "ring"
 end
 
 local function StyleButton(btn, style, size, isPreview)
@@ -173,11 +173,24 @@ local function StyleButton(btn, style, size, isPreview)
 end
 
 function OxedRing:Init()
+    -- Migrate existing profile ring to global on first run
+    if OxedHub.db.profile and OxedHub.db.profile.oxedRingNodes and not OxedHub.GetRingDB().oxedRingNodes then
+        OxedHub.db.globalSettings.oxedRingNodes = OxedHub.db.profile.oxedRingNodes
+        OxedHub.db.globalSettings.oxedRingStyle = OxedHub.db.profile.oxedRingStyle
+        OxedHub.db.globalSettings.oxedRingBinding = OxedHub.db.profile.oxedRingBinding
+        OxedHub.db.globalSettings.oxedRingRadius = OxedHub.db.profile.oxedRingRadius
+        OxedHub.db.globalSettings.oxedRingAutoRadius = OxedHub.db.profile.oxedRingAutoRadius
+        OxedHub.db.globalSettings.oxedRingShowNodeTitles = OxedHub.db.profile.oxedRingShowNodeTitles
+        OxedHub.db.globalSettings.oxedRingNodeTitleSize = OxedHub.db.profile.oxedRingNodeTitleSize
+        OxedHub.db.globalSettings.oxedRingGlobalNodeSize = OxedHub.db.profile.oxedRingGlobalNodeSize
+        OxedHub.db.globalSettings.oxedRingVisibleTabs = OxedHub.db.profile.oxedRingVisibleTabs
+    end
+
     -- Initialize default array if empty
-    if not OxedHub.db.profile.oxedRingNodes then
-        OxedHub.db.profile.oxedRingNodes = {}
+    if not OxedHub.GetRingDB().oxedRingNodes then
+        OxedHub.GetRingDB().oxedRingNodes = {}
         for i, emotion in ipairs(OxedHub.CONFIG.EMOTIONS) do
-            table.insert(OxedHub.db.profile.oxedRingNodes, {
+            table.insert(OxedHub.GetRingDB().oxedRingNodes, {
                 label = emotion,
                 icon = "Interface\\Icons\\INV_Misc_QuestionMark",
                 id = emotion
@@ -188,7 +201,7 @@ function OxedRing:Init()
     self:CreateRingFrame()
 
     -- Apply saved keybind on startup (from our own DB, not WoW's binding system)
-    local savedBinding = OxedHub.db.profile.oxedRingBinding
+    local savedBinding = OxedHub.GetRingDB().oxedRingBinding
     if savedBinding and savedBinding ~= "" then
         self:ApplyRingBinding(savedBinding)
     end
@@ -197,7 +210,7 @@ function OxedRing:Init()
     local bindFrame = CreateFrame("Frame")
     bindFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     bindFrame:SetScript("OnEvent", function()
-        local key = OxedHub.db.profile.oxedRingBinding
+        local key = OxedHub.GetRingDB().oxedRingBinding
         if key and key ~= "" and OxedRing.hotkeyBtn then
             ClearOverrideBindings(OxedRing.hotkeyBtn)
             SetOverrideBindingClick(OxedRing.hotkeyBtn, true, key, "OxedRingHotkeyButton")
@@ -228,7 +241,7 @@ function OxedRing:UpdateSecureAttributes()
     
     -- Filter out empty nodes so the ring perfectly wraps around the active elements
     sliceData = {}
-    for _, data in ipairs(OxedHub.db.profile.oxedRingNodes or {}) do
+    for _, data in ipairs(OxedHub.GetRingDB().oxedRingNodes or {}) do
         if data.type then
             -- Auto-migrate: set condition flags on marker/targetmarker nodes
             -- that were created before the condition system existed
@@ -292,7 +305,7 @@ function OxedRing:CreateRingFrame()
                 f:UnregisterEvent("PLAYER_REGEN_ENABLED")
                 if not OxedRing.frame then
                     OxedRing:CreateRingFrame()
-                    local key = OxedHub.db.profile.oxedRingBinding
+                    local key = OxedHub.GetRingDB().oxedRingBinding
                     if key and key ~= "" and OxedRing.hotkeyBtn then
                         OxedRing:ApplyRingBinding(key)
                     end
@@ -699,10 +712,10 @@ function OxedRing:RebuildSlices()
         slice.sliceIndex = i
         slice.data = data
         local fontPath, _, fontFlags = slice.text:GetFont()
-        local fontSize = OxedHub.db.profile.oxedRingNodeTitleSize or 11
+        local fontSize = OxedHub.GetRingDB().oxedRingNodeTitleSize or 11
         slice.text:SetFont(OxedHub:GetFont(fontPath), fontSize, fontFlags or "OUTLINE")
         slice.text:SetText(data.label)
-        if OxedHub.db.profile.oxedRingShowNodeTitles then
+        if OxedHub.GetRingDB().oxedRingShowNodeTitles then
             slice.text:Show()
         else
             slice.text:Hide()
@@ -790,13 +803,13 @@ function OxedRing:RebuildSlices()
             end
         end
 
-        local size = data.nodeSize or OxedHub.db.profile.oxedRingGlobalNodeSize or 40
+        local size = data.nodeSize or OxedHub.GetRingDB().oxedRingGlobalNodeSize or 40
         slice:SetSize(size, size)
         StyleButton(slice, style, size, false)
         
         -- Position the slice
         local angle = startAngle - (i - 1) * angleStep
-        local radius = OxedHub.db.profile.oxedRingRadius or RING_RADIUS
+        local radius = OxedHub.GetEffectiveRingRadius and OxedHub.GetEffectiveRingRadius(#sliceData) or (OxedHub.GetRingDB().oxedRingRadius or RING_RADIUS)
         local x = math_cos(angle) * radius
         local y = math_sin(angle) * radius
         
@@ -1338,7 +1351,7 @@ function OxedRing:ApplyRingBinding(newKey)
     end
     
     -- Persist in our own SavedVariables (NOT WoW's binding system)
-    OxedHub.db.profile.oxedRingBinding = newKey
+    OxedHub.GetRingDB().oxedRingBinding = newKey
     
     -- Debug feedback so user knows it worked
     if newKey and newKey ~= "" then

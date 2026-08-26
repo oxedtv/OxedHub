@@ -21,3 +21,9 @@ OxedHub.Triggers:RegisterEventType("PARTY_MEMBER_DEATH", GeneralHandler)
 OxedHub.Triggers:RegisterEventType("PLAYER_LEVEL_UP", GeneralHandler)
 OxedHub.Triggers:RegisterEventType("NEW_MAIL", GeneralHandler)
 OxedHub.Triggers:RegisterEventType("REACH_FLY_DESTINATION", GeneralHandler)
+
+-- Group / party events (straight pass-throughs of the Blizzard events).
+OxedHub.Triggers:RegisterEventType("GROUP_JOINED", GeneralHandler)
+OxedHub.Triggers:RegisterEventType("GROUP_LEFT", GeneralHandler)
+OxedHub.Triggers:RegisterEventType("PARTY_INVITE_REQUEST", GeneralHandler)
+OxedHub.Triggers:RegisterEventType("PARTY_LEADER_CHANGED", GeneralHandler)

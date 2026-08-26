@@ -1,0 +1,33 @@
+name: Release
+
+# Publishing is driven by tags, so nothing ships until you deliberately tag a
+# version.  Pushing to main alone never uploads anything.
+on:
+  push:
+    tags:
+      - "v*"
+  # Lets you re-run a release by hand from the Actions tab if an upload fails.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          # The packager builds the changelog from history, so it needs all of it.
+          fetch-depth: 0
+
+      - name: Package and upload
+        uses: BigWigsMods/packager@master
+        env:
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+          # Add these two secrets later if you also publish there; the packager
+          # simply skips any service whose token is absent.
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}

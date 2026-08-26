@@ -3667,7 +3667,7 @@ OxedHub.BUILT_IN_PROFILES =
 ["activeTab"] = "setup",
 ["enabled"] = true,
 ["conditions"] = {
-["spellID"] = "109132",
+["spellID"] = "100",
 },
 ["actions"] = {
 ["sound"] = "oxedhub_lets_fight_ogg",

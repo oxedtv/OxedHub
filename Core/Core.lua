@@ -488,6 +488,8 @@ function Core:OnEvent(event, ...)
         return
     elseif event == "PLAYER_LOGIN" then
         self:OnPlayerLogin()
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        self:OnEnteringWorld()
     elseif event == "PLAYER_DEAD" then
         self:OnPlayerDead()
     elseif event == "UNIT_AURA" then
@@ -514,6 +516,9 @@ function Core:OnEvent(event, ...)
         self:OnChallengeModeCompleted()
     elseif event == "PARTY_KILL" then
         self:OnPartyKill(...)
+    elseif event == "GROUP_JOINED" or event == "GROUP_LEFT"
+        or event == "PARTY_INVITE_REQUEST" or event == "PARTY_LEADER_CHANGED" then
+        self:OnGroupEvent(event, ...)
     elseif event == "PLAYER_CONTROL_LOST" then
         self:OnPlayerControlLost()
     elseif event == "PLAYER_CONTROL_GAINED" then
@@ -556,8 +561,8 @@ function Core:BuildAuraSpellCache()
     
     local function cacheAuras(filter)
         if C_UnitAuras.GetUnitAuras then
-            local auraList = C_UnitAuras.GetUnitAuras("player", filter)
-            if auraList then
+            local success, auraList = pcall(C_UnitAuras.GetUnitAuras, "player", filter)
+            if success and auraList then
                 for _, aura in ipairs(auraList) do
                     local spellId = aura.spellId
                     local name = aura.name
@@ -822,6 +827,16 @@ function Core:Bootstrap()
     self:CleanupPlaceholderAnimations()
     self:FixBuiltInAnimationSizes()
     self:MigrateAnimationsToPNG()
+    if OxedHub.Animations and OxedHub.Animations.SyncMemePack then
+        OxedHub.Animations:SyncMemePack()
+    elseif OxedHub.Animations and OxedHub.Animations.SyncTikTokPack then
+        OxedHub.Animations:SyncTikTokPack()
+    end
+    if OxedHub.Sounds and OxedHub.Sounds.SyncMemePack then
+        OxedHub.Sounds:SyncMemePack()
+    elseif OxedHub.Sounds and OxedHub.Sounds.SyncTikTokPack then
+        OxedHub.Sounds:SyncTikTokPack()
+    end
     if OxedHub.Sounds and OxedHub.Sounds.SyncGeneratedCatalog then
         OxedHub.Sounds:SyncGeneratedCatalog()
     end
@@ -838,6 +853,11 @@ function Core:Bootstrap()
     print(string.format(loadMsg, OxedHub.CONFIG.VERSION))
     if seededProfiles > 0 then
         print("|cff00ff00Oxed Hub:|r Added |cffffff00" .. seededProfiles .. "|r bundled profiles.")
+    end
+
+    -- Call refresh on all registered modules
+    if OxedHub.Triggers and OxedHub.Triggers.RefreshAllNativeEffects then
+        OxedHub.Triggers:RefreshAllNativeEffects()
     end
 
     -- If PLAYER_LOGIN already fired, run login init now
@@ -1011,6 +1031,49 @@ function OxedHub:GetProfileColoredName(name)
     return colorCode .. displayName .. "|r"
 end
 
+function OxedHub:ShowCopyURLDialog(url, titleText)
+    if not url or url == "" then return end
+
+    if not StaticPopupDialogs["OXEDHUB_COPY_URL"] then
+        StaticPopupDialogs["OXEDHUB_COPY_URL"] = {
+            text = "%s\n\n|cffffd100Press Ctrl+C to copy URL:|r",
+            button1 = OKAY or "Done",
+            hasEditBox = true,
+            editBoxWidth = 340,
+            maxLetters = 256,
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+            OnShow = function(dialog, data)
+                local eb = dialog.editBox or (dialog.GetEditBox and dialog:GetEditBox())
+                if eb then
+                    eb:SetText(data and data.url or "")
+                    eb:HighlightText()
+                    eb:SetFocus()
+                end
+            end,
+            EditBoxOnEnterPressed = function(editBox)
+                editBox:GetParent():Hide()
+            end,
+            EditBoxOnEscapePressed = function(editBox)
+                editBox:GetParent():Hide()
+            end,
+        }
+    end
+
+    local title = titleText or "Wowhead Link"
+    local dialog = StaticPopup_Show("OXEDHUB_COPY_URL", "|cffffffff" .. title .. "|r")
+    if dialog then
+        dialog.data = { url = url }
+        local eb = dialog.editBox or (dialog.GetEditBox and dialog:GetEditBox())
+        if eb then
+            eb:SetText(url)
+            eb:HighlightText()
+            eb:SetFocus()
+        end
+    end
+end
+
 function OxedHub:GetClassProfileName()
     local classFile = GetPlayerClassToken()
     if not classFile then
@@ -1062,19 +1125,23 @@ function OxedHub:SwitchProfile(name, options)
 
     -- Live-refresh all modules so they pick up the new profile data
     if OxedHub.Triggers then
+        if OxedHub.Triggers.RefreshAllNativeEffects then OxedHub.Triggers:RefreshAllNativeEffects() end
         if OxedHub.Triggers.RefreshDashboard then OxedHub.Triggers:RefreshDashboard() end
         if OxedHub.Triggers.RefreshTriggersList then OxedHub.Triggers:RefreshTriggersList() end
     end
     if OxedHub.Toys and OxedHub.Toys.RefreshSavedMixesList then
         OxedHub.Toys:RefreshSavedMixesList()
     end
-    if OxedHub.EmotionRing then
-        if OxedHub.EmotionRing.RefreshAssignmentPanel then OxedHub.EmotionRing:RefreshAssignmentPanel() end
-        if OxedHub.EmotionRing.RefreshActionNodeAttributes then OxedHub.EmotionRing:RefreshActionNodeAttributes() end
+    if OxedHub.ActionHub then
+        if OxedHub.ActionHub.RefreshTab then pcall(function() OxedHub.ActionHub:RefreshTab() end) end
+        if OxedHub.ActionHub.RefreshAllWidgets then pcall(function() OxedHub.ActionHub:RefreshAllWidgets() end) end
     end
-    if OxedHub.ToyRing then
-        if OxedHub.ToyRing.RefreshAssignmentPanel then OxedHub.ToyRing:RefreshAssignmentPanel() end
-        if OxedHub.ToyRing.RefreshActionNodeAttributes then OxedHub.ToyRing:RefreshActionNodeAttributes() end
+    if OxedHub.OxedRingEditor and OxedHub.OxedRingEditor.RefreshFromProfile then
+        pcall(function() OxedHub.OxedRingEditor:RefreshFromProfile() end)
+    end
+    if OxedHub.OxedRing then
+        if OxedHub.OxedRing.RebuildSlices then pcall(function() OxedHub.OxedRing:RebuildSlices() end) end
+        if OxedHub.OxedRing.UpdateSecureAttributes then pcall(function() OxedHub.OxedRing:UpdateSecureAttributes() end) end
     end
     -- Re-show the current tab to force a full UI refresh
     if OxedHub.UI then
@@ -1409,6 +1476,7 @@ local WELL_FED_ICON = 134062
 -- Highly optimized secret value check (prevents per-aura table allocations)
 local secretTestTable = {}
 local function CheckSecretValue(val)
+    if issecretvalue then return issecretvalue(val) end
     if val == nil then return false end
     
     local ok = pcall(function() secretTestTable[val] = true end)
@@ -1448,13 +1516,17 @@ local function ScanUnitAuras(filter, buffer)
     -- Clear previous buffer contents
     for i=1, #buffer do buffer[i] = nil end
     
+    local outIdx = 1
     for i = 1, 40 do
-        local aura = C_UnitAuras.GetAuraDataByIndex("player", i, filter)
-        if not aura then 
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, filter)
+        if ok and not aura then 
             if OxedHub.debug then print("[OxedHub-Debug] ScanUnitAuras broke at index:", i, "for filter:", filter) end
             break 
         end
-        buffer[i] = aura
+        if ok and aura then
+            buffer[outIdx] = aura
+            outIdx = outIdx + 1
+        end
     end
     
     if OxedHub.debug then print("[OxedHub-Debug] ScanUnitAuras finished for filter:", filter, "found:", #buffer) end
@@ -1518,10 +1590,21 @@ local function IsFoodAuraBySpellId(spellId)
 end
 
 local function IsWellFedAuraBySpellId(spellId, icon)
-    local name = SafeMatchesAny(ResolveAuraNameForFoodCheck(spellId), WELL_FED_AURA_NAMES)
+    local resolvedName = ResolveAuraNameForFoodCheck(spellId)
+
+    local name = SafeMatchesAny(resolvedName, WELL_FED_AURA_NAMES)
     if name then
         return name
     end
+
+    -- Icon fallback ONLY when the name can't be read. Several buffs borrow the
+    -- Well Fed icon without being food at all (Suspicious Energy Drink, for
+    -- one), so matching on the icon while the name is perfectly readable and
+    -- clearly says otherwise produced false "you're eating" triggers.
+    if resolvedName ~= nil then
+        return nil
+    end
+
     if SafeEquals(icon, WELL_FED_ICON) then
         return WELL_FED_AURA_NAMES[1]
     end
@@ -1535,30 +1618,31 @@ function Core:ProcessFoodAuraOnly(now)
     local hasWellFedNow = false
 
     for i = 1, 40 do
-        local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
-        if not aura then
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
+        if ok and not aura then
             break
         end
+        if ok and aura then
+            local spellId = aura.spellId
+            local icon = aura.icon
 
-        local spellId = aura.spellId
-        local icon = aura.icon
+            -- These return a plain literal ("Drink", "Well Fed", ...) or nil, never
+            -- the aura's own possibly-secret name, so they're safe to key and display.
+            local foodName = IsFoodAuraBySpellId(spellId)
+            local wellFedName = not foodName and IsWellFedAuraBySpellId(spellId, icon) or nil
+            local matchedName = foodName or wellFedName
 
-        -- These return a plain literal ("Drink", "Well Fed", ...) or nil, never
-        -- the aura's own possibly-secret name, so they're safe to key and display.
-        local foodName = IsFoodAuraBySpellId(spellId)
-        local wellFedName = not foodName and IsWellFedAuraBySpellId(spellId, icon) or nil
-        local matchedName = foodName or wellFedName
-
-        if matchedName then
-            local key = (foodName and "f" or "w") .. matchedName
-            currentFoodAuras[key] = matchedName
-            if not foodAuraCache[key] then
-                newFoodNames[#newFoodNames + 1] = matchedName
-            end
-            if foodName then
-                isEatingNow = true
-            else
-                hasWellFedNow = true
+            if matchedName then
+                local key = (foodName and "f" or "w") .. matchedName
+                currentFoodAuras[key] = matchedName
+                if not foodAuraCache[key] then
+                    newFoodNames[#newFoodNames + 1] = matchedName
+                end
+                if foodName then
+                    isEatingNow = true
+                else
+                    hasWellFedNow = true
+                end
             end
         end
     end
@@ -1589,7 +1673,14 @@ local lastAuraUpdate = 0
 function Core:OnUnitAura(unit)
     if OxedHub.debug then print("[OxedHub-Debug] OnUnitAura called for unit:", unit) end
     if unit ~= "player" then return end
-    local wantsUnitAura = self:HasEnabledTrigger("UNIT_AURA") or self:HasEnabledTrigger("SELF_AURA")
+
+    -- Mount state is read from auras, so it has to be checked before the aura
+    -- trigger gates below: those return early, and a profile with only a MOUNT
+    -- trigger would never reach the check at the end of this function.
+    -- CheckMountState itself bails when no MOUNT trigger is enabled.
+    self:CheckMountState()
+
+    local wantsUnitAura = self:HasEnabledTrigger("UNIT_AURA") or self:HasEnabledTrigger("SELF_AURA") or self:HasEnabledTrigger("BLOODLUST")
     local wantsEatBuff = self:HasEnabledTrigger("EAT_BUFF")
     if not wantsUnitAura and not wantsEatBuff then
         return
@@ -1612,6 +1703,11 @@ function Core:OnUnitAura(unit)
     
     local auraCache = Core.auraCache
     local spellCache = Core.spellCache
+    
+    -- Taint-free spell ID presence set: {[spellID_number] = true}
+    -- SelfAura.lua queries this to detect buffs even when WoW secret-taints
+    -- all aura data in combat.
+    local activeSpellIDsBuild = {}
     
     -- Clear current state buffers
     for k in pairs(auraBuffer_Current) do auraBuffer_Current[k] = nil end
@@ -1695,6 +1791,18 @@ function Core:OnUnitAura(unit)
                         expirationTime = expirationTime,
                         instanceId = instanceId
                     }
+                    
+                    -- Build taint-free spell ID set: use the clean ID when
+                    -- available, otherwise extract from the secret value via
+                    -- tonumber(tostring()) inside pcall.
+                    if realSpellID then
+                        activeSpellIDsBuild[realSpellID] = true
+                    else
+                        pcall(function()
+                            local n = tonumber(tostring(spellId))
+                            if n then activeSpellIDsBuild[n] = true end
+                        end)
+                    end
 
                     -- Food/Well Fed detection (cached results)
                     local safeName = not CheckSecretValue(name) and name or ""
@@ -1703,7 +1811,7 @@ function Core:OnUnitAura(unit)
                         isEatingNow = true
                         if not auraCache[key] then table.insert(auraBuffer_FoodNew, name) end
                     end
-                    if lowerName:find("well fed") or lowerName:find("feast") or lowerName:find("sated") then
+                    if lowerName:find("well fed") or lowerName:find("feast") or lowerName:find("sated") or lowerName:find("bogling root") then
                         hasWellFedNow = true
                         if not auraCache[key] then table.insert(auraBuffer_FoodNew, name) end
                     end
@@ -1779,6 +1887,9 @@ function Core:OnUnitAura(unit)
     for key, data in pairs(auraBuffer_Current) do
         auraCache[key] = data
     end
+    
+    -- Publish taint-free spell ID presence set
+    Core.activeSpellIDs = activeSpellIDsBuild
 
     -- Fire Food Start/Stop/Buff events
     if isEatingNow and not Core.wasEating then
@@ -1798,12 +1909,32 @@ function Core:OnUnitAura(unit)
             })
         end
     end
-    
-    self:CheckMountState()
+end
+
+-- Any loading screen: logging in, taking a portal, zoning into or out of an
+-- instance, a hearth. During the transition the client briefly reports you as
+-- dismounted and then mounted again, which used to fire a phantom
+-- dismount + mount-up pair. Forget the remembered state and ignore changes for
+-- a moment so the real state is re-seeded silently instead.
+function Core:OnEnteringWorld()
+    self.wasMounted = nil
+    self.mountSettleUntil = GetTime() + 4
 end
 
 function Core:CheckMountState()
     if not self:HasEnabledTrigger("MOUNT") then return end
+
+    -- Still settling after a loading screen: keep the recorded state in step
+    -- with reality, but don't treat the change as a mount/dismount action.
+    if self.mountSettleUntil and GetTime() < self.mountSettleUntil then
+        local okSettle, mountedNow = pcall(IsMounted)
+        local okFormSettle, formNow = pcall(GetShapeshiftFormID)
+        if not okSettle then mountedNow = false end
+        if not okFormSettle then formNow = nil end
+        local travelNow = (formNow == 3) or (formNow == 4) or (formNow == 27)
+        self.wasMounted = mountedNow or travelNow
+        return
+    end
     
     local okMounted, isMounted = pcall(IsMounted)
     if not okMounted then isMounted = false end
@@ -1813,7 +1944,18 @@ function Core:CheckMountState()
     
     local isDruidTravel = (formID == 3) or (formID == 4) or (formID == 27)
     local currentState = isMounted or isDruidTravel
-    
+
+    -- First check of the session (login / reload / trigger just enabled): record
+    -- the current state without firing. Otherwise logging in while already
+    -- mounted would look like a fresh mount-up and play the sound.
+    if self.wasMounted == nil then
+        self.wasMounted = currentState
+        if currentState then
+            self.lastMountType = self.lastMountType or "any"
+        end
+        return
+    end
+
     if currentState ~= self.wasMounted then
         self.wasMounted = currentState
         
@@ -1833,13 +1975,15 @@ function Core:CheckMountState()
                 -- Find mount aura
                 local mountTypeID = nil
                 for i = 1, 40 do
-                    local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
-                    if not aura then break end
-                    local mountID = C_MountJournal.GetMountFromSpell(aura.spellId)
-                    if mountID then
-                        local _, _, _, _, mountType = C_MountJournal.GetMountInfoExtraByID(mountID)
-                        mountTypeID = mountType
-                        break
+                    local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
+                    if ok and not aura then break end
+                    if ok and aura then
+                        local mountID = C_MountJournal.GetMountFromSpell(aura.spellId)
+                        if mountID then
+                            local _, _, _, _, mountType = C_MountJournal.GetMountInfoExtraByID(mountID)
+                            mountTypeID = mountType
+                            break
+                        end
                     end
                 end
                 
@@ -1985,8 +2129,19 @@ function Core:OnSpellCastSucceeded(unit, castGUID, spellID)
     end
 
     if wantsSpellcast then
+        -- Pass the name too: spells often exist under several ids (Avenging
+        -- Wrath is 31884 on the player but 231895 in the spell database), so an
+        -- id-only comparison misses. Triggers:ShouldTrigger falls back to
+        -- matching on name when the ids differ.
+        local castName
+        if C_Spell and C_Spell.GetSpellName then
+            local okName, name = pcall(C_Spell.GetSpellName, spellID)
+            if okName then castName = name end
+        end
+
         OxedHub.Triggers:ProcessEvent("UNIT_SPELLCAST_SUCCEEDED", {
             spellID = spellID,
+            spellName = castName,
             unit = unit,
         })
     end
@@ -2178,6 +2333,25 @@ function Core:OnPlayerLevelUp(level)
 end
 
 function Core:OnNewMail()
+    -- UPDATE_PENDING_MAIL fires on login/reload with whatever mail is already
+    -- sitting in the mailbox, so firing on every event announced old mail every
+    -- time. Only fire on the transition from "no mail" to "mail waiting", and
+    -- treat the first check of a session as a baseline.
+    local okMail, hasMail = pcall(HasNewMail)
+    hasMail = okMail and hasMail and true or false
+
+    if self.hadPendingMail == nil then
+        self.hadPendingMail = hasMail
+        return
+    end
+
+    local isNewMail = hasMail and not self.hadPendingMail
+    self.hadPendingMail = hasMail
+
+    if not isNewMail then
+        return
+    end
+
     if not self:HasEnabledTrigger("NEW_MAIL") then
         return
     end
@@ -2301,6 +2475,7 @@ end
 function Core:RegisterSlashCommands()
     SLASH_OXEDHUB1 = "/oxedhub"
     SLASH_OXEDHUB2 = "/ohub"
+    SLASH_OXEDHUB3 = "/oxed"
     SlashCmdList["OXEDHUB"] = function(msg)
         Core:HandleSlashCommand(msg)
     end
@@ -2309,11 +2484,15 @@ end
 -- Handle slash commands
 function Core:HandleSlashCommand(msg)
     local command, rest = msg:match("^(%S*)%s*(.-)$")
-    command = command:lower()
+    command = (command or ""):lower()
     
     if command == "" or command == "open" or command == "toggle" then
         if OxedHub.UI then
             OxedHub.UI:ToggleMainWindow()
+        end
+    elseif command == "dock" or command == "toybox" or command == "toydock" then
+        if OxedHub.Toys and OxedHub.Toys.ToggleToyDock then
+            OxedHub.Toys:ToggleToyDock(rest ~= "" and rest or nil)
         end
     elseif command == "reload" or command == "rl" then
         ReloadUI()
@@ -2369,7 +2548,8 @@ function Core:HandleSlashCommand(msg)
                 end
             end
             -- 3) native registration API availability
-            print(("  API present: AddAuraAppliedSound=%s  AddPrivateAuraAppliedSound=%s"):format(
+            print(("  API present: AddAuraSound=%s AddAuraAppliedSound=%s  AddPrivateAuraAppliedSound=%s"):format(
+                tostring(C_UnitAuras and C_UnitAuras.AddAuraSound ~= nil),
                 tostring(C_UnitAuras and C_UnitAuras.AddAuraAppliedSound ~= nil),
                 tostring(C_UnitAuras and C_UnitAuras.AddPrivateAuraAppliedSound ~= nil)))
         end
@@ -2565,6 +2745,23 @@ function Core:OnPartyKill(attackerGUID, targetGUID)
             break
         end
     end
+end
+
+-- Group / party events. These map straight onto the Blizzard events; the only
+-- extra data worth passing along is who sent a party invite.
+function Core:OnGroupEvent(event, ...)
+    if not self:HasEnabledTrigger(event) then
+        return
+    end
+
+    local eventData = {}
+    if event == "PARTY_INVITE_REQUEST" then
+        local inviter = ...
+        eventData.inviter = inviter
+        eventData.playerName = inviter
+    end
+
+    OxedHub.Triggers:ProcessEvent(event, eventData)
 end
 
 -- Enter / leave combat handler. state is "enter" or "exit".

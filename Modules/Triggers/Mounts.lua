@@ -107,6 +107,24 @@ OxedHub.Triggers:RegisterEventType("MOUNT", {
             titleLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", xOffset, yOffset)
             titleLabel:SetText(title)
             
+            local colTestBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+            colTestBtn:SetPoint("LEFT", titleLabel, "RIGHT", 6, 0)
+            colTestBtn:SetSize(42, 18)
+            colTestBtn:SetText(OxedHub.L["BTN_TEST"] or "Test")
+            colTestBtn:SetNormalFontObject("GameFontNormalSmall")
+            colTestBtn:SetScript("OnClick", function()
+                if OxedHub.Triggers and OxedHub.Triggers.TestTrigger then
+                    OxedHub.Triggers:TestTrigger(trigger, prefix)
+                end
+            end)
+            colTestBtn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText((OxedHub.L["BTN_TEST"] or "Test") .. ": " .. title, 1, 0.82, 0)
+                GameTooltip:AddLine("Test this mount type's sound, animation, and emote.", 1, 1, 1, true)
+                GameTooltip:Show()
+            end)
+            colTestBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            
             local colY = -20
             
             -- Sound Picker
@@ -182,10 +200,56 @@ OxedHub.Triggers:RegisterEventType("MOUNT", {
                 if self.lastVal ~= val then
                     self.lastVal = val
                     UpdateAnimBtn()
+                    if self.RefreshPosControls then self.RefreshPosControls() end
                 end
             end)
-            
-            colY = colY - 38
+
+            -- Per-mount-type animation placement, same as the standard trigger
+            -- Actions section. Each mount type keeps its own position and size.
+            local posCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
+            posCheck:SetSize(18, 18)
+            posCheck:SetPoint("TOPLEFT", animIcon, "BOTTOMLEFT", 0, -2)
+            posCheck.text:SetText(OxedHub.L["LBL_CUSTOM_POSITION"] or "Custom Position")
+            posCheck.text:SetFontObject("GameFontHighlightSmall")
+
+            local posBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+            posBtn:SetPoint("TOPLEFT", posCheck, "BOTTOMLEFT", 4, -2)
+            posBtn:SetSize(110, 20)
+            posBtn:SetNormalFontObject("GameFontNormalSmall")
+            posBtn:SetText(OxedHub.L["ANIM_MOVE_SCALE"] or "Move / Scale")
+
+            local function RefreshPosControls()
+                local val = actions[prefix.."Anim"]
+                local hasAnim = val and val ~= "" and val ~= "None"
+                posCheck:SetChecked(actions[prefix.."AnimUseCustomPosition"] and true or false)
+                posCheck:SetEnabled(hasAnim)
+                posCheck:SetAlpha(hasAnim and 1 or 0.4)
+                if hasAnim and actions[prefix.."AnimUseCustomPosition"] then
+                    posBtn:Enable()
+                    posBtn:SetAlpha(1)
+                else
+                    posBtn:Disable()
+                    posBtn:SetAlpha(0.5)
+                end
+            end
+            RefreshPosControls()
+            animBtn.RefreshPosControls = RefreshPosControls
+
+            posCheck:SetScript("OnClick", function(self)
+                actions[prefix.."AnimUseCustomPosition"] = self:GetChecked()
+                RefreshPosControls()
+                if OxedHub.Triggers.ShowAutoSaved then
+                    OxedHub.Triggers.ShowAutoSaved(frame:GetParent())
+                end
+            end)
+
+            posBtn:SetScript("OnClick", function()
+                if OxedHub.Animations and OxedHub.Animations.ShowPositionFrameForTrigger then
+                    OxedHub.Animations:ShowPositionFrameForTrigger(trigger, prefix.."Anim")
+                end
+            end)
+
+            colY = colY - 78
             
             -- Emote Picker
             local emoteIcon = CreateIcon(frame, "Interface\\Icons\\UI_Chat")
@@ -236,7 +300,9 @@ OxedHub.Triggers:RegisterEventType("MOUNT", {
         CreateColumn(OxedHub.L["TR_MOUNTS_FLYING"] or "Flying Mount", 155, "flying")
         CreateColumn(OxedHub.L["TR_MOUNTS_AQUATIC"] or "Aquatic Mount", 310, "aquatic")
         
-        yOffset = yOffset - 152
+        -- Taller than before: each column now carries the Custom Position row
+        -- and Move / Scale button under its animation picker.
+        yOffset = yOffset - 192
         return yOffset
     end
 })

@@ -9,6 +9,211 @@ local function normalizeSearchText(text)
     return text:lower():gsub("%s+", " "):gsub("^%s*", ""):gsub("%s*$", "")
 end
 
+-- =========================================================================
+-- Live Animated Hover Preview for Animations
+-- =========================================================================
+function Triggers:GetOrCreateAnimationHoverPreview()
+    if self.animHoverPreview then return self.animHoverPreview end
+
+    local frame = CreateFrame("Frame", "OxedHubAnimHoverPreview", UIParent, "BackdropTemplate")
+    frame:SetSize(180, 215)
+    frame:SetFrameStrata("TOOLTIP")
+    frame:SetFrameLevel(260)
+    frame:SetClampedToScreen(true)
+
+    frame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 14,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 }
+    })
+    frame:SetBackdropColor(0.06, 0.06, 0.09, 0.96)
+    frame:SetBackdropBorderColor(1, 0.82, 0, 0.90)
+
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -10)
+    title:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -10)
+    title:SetJustifyH("CENTER")
+    title:SetTextColor(1, 0.85, 0.2)
+    frame.title = title
+
+    local previewBox = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    previewBox:SetSize(140, 140)
+    previewBox:SetPoint("TOP", title, "BOTTOM", 0, -6)
+    previewBox:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 8,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 }
+    })
+    previewBox:SetBackdropColor(0.02, 0.02, 0.03, 0.9)
+    previewBox:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+    frame.previewBox = previewBox
+
+    local animTex = previewBox:CreateTexture(nil, "ARTWORK")
+    animTex:SetPoint("TOPLEFT", previewBox, "TOPLEFT", 2, -2)
+    animTex:SetPoint("BOTTOMRIGHT", previewBox, "BOTTOMRIGHT", -2, 2)
+    frame.animTex = animTex
+
+    local info = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    info:SetPoint("TOP", previewBox, "BOTTOM", 0, -6)
+    info:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 6, 6)
+    info:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 6)
+    info:SetJustifyH("CENTER")
+    info:SetTextColor(0.8, 0.8, 0.8)
+    frame.info = info
+
+    function frame:ShowStep(s)
+        local frameNum = s
+        if self.seq and #self.seq > 0 then
+            frameNum = self.seq[s + 1] or s
+        end
+        local cCount = self.cols or 1
+        local rCount = self.rows or 1
+        local r = math.floor(frameNum / cCount)
+        local c = frameNum % cCount
+        self.animTex:SetTexCoord(c / cCount, (c + 1) / cCount, r / rCount, (r + 1) / rCount)
+    end
+
+    frame:SetScript("OnUpdate", function(self, dt)
+        if not self.isPlaying or not self.animData then return end
+        self.elapsed = (self.elapsed or 0) + dt
+        local dur = self.frameDuration or (1 / 24)
+        if self.elapsed >= dur then
+            local advance = math.floor(self.elapsed / dur)
+            self.elapsed = self.elapsed % dur
+            self.currentStep = ((self.currentStep or 0) + advance) % (self.maxFrames or 1)
+            self:ShowStep(self.currentStep)
+        end
+    end)
+
+    self.animHoverPreview = frame
+    return frame
+end
+
+function Triggers:ShowAnimationHoverPreview(anchorFrame, animId, animData)
+    if self.animHideTimer then
+        self.animHideTimer:Cancel()
+        self.animHideTimer = nil
+    end
+
+    if not animId then return end
+    if not animData then
+        animData = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.animations and OxedHub.db.profile.animations[animId]
+    end
+    if not animData or not animData.tgaPath or animData.tgaPath == "" then
+        return
+    end
+
+    local preview = self:GetOrCreateAnimationHoverPreview()
+
+    -- Avoid flickering if already showing this exact animation
+    if preview.currentAnimId == animId and preview:IsShown() then
+        return
+    end
+    preview.currentAnimId = animId
+
+    preview.title:SetText(animData.name or animId)
+
+    local cols = animData.columns or math.ceil(math.sqrt(animData.frameCount or 1))
+    local rows = animData.rows or cols
+    if cols < 1 then cols = 1 end
+    if rows < 1 then rows = 1 end
+    local seq = animData.playSequence
+    local maxFrames = (seq and #seq > 0) and #seq or (animData.frameCount or (cols * rows))
+    if maxFrames < 1 then maxFrames = 1 end
+    local fps = tonumber(animData.fps) or 24
+    if fps < 1 then fps = 24 end
+
+    -- Dynamic Box sizing based on real Aspect Ratio
+    local aspect = animData.aspectRatio or "1:1"
+    local boxW = 170
+    local boxH = 170
+
+    if aspect == "9:16" or aspect == "9/16" then
+        boxH = 210
+        boxW = math.floor(210 * 9 / 16 + 0.5)
+    elseif aspect == "16:9" or aspect == "16/9" then
+        boxW = 210
+        boxH = math.floor(210 * 9 / 16 + 0.5)
+    elseif aspect == "4:3" or aspect == "4/3" then
+        boxW = 195
+        boxH = math.floor(195 * 3 / 4 + 0.5)
+    elseif aspect == "3:4" or aspect == "3/4" then
+        boxH = 195
+        boxW = math.floor(195 * 3 / 4 + 0.5)
+    elseif animData.width and animData.height and animData.width > 0 and animData.height > 0 then
+        local ratio = animData.width / animData.height
+        if ratio > 1 then
+            boxW = 195
+            boxH = math.max(60, math.floor(195 / ratio + 0.5))
+        else
+            boxH = 195
+            boxW = math.max(60, math.floor(195 * ratio + 0.5))
+        end
+    end
+
+    preview.previewBox:SetSize(boxW, boxH)
+    preview:SetWidth(math.max(215, boxW + 40))
+    preview:SetHeight(boxH + 82)
+
+    preview.info:SetText(string.format("%d FPS • %d frames • %s", fps, maxFrames, aspect))
+    preview.animTex:SetTexture(animData.tgaPath)
+
+    preview.animData = animData
+    preview.cols = cols
+    preview.rows = rows
+    preview.seq = seq
+    preview.maxFrames = maxFrames
+    preview.fps = fps
+    preview.frameDuration = 1 / fps
+    preview.elapsed = 0
+    preview.currentStep = 0
+    preview.isPlaying = true
+    preview:ShowStep(0)
+
+    preview:ClearAllPoints()
+    if anchorFrame and anchorFrame:IsShown() then
+        preview:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", 6, 0)
+    else
+        preview:SetPoint("CENTER", UIParent, "CENTER", 200, 0)
+    end
+    preview:Show()
+end
+
+function Triggers:StopAnimationHoverTicker()
+    if self.animHoverPreview then
+        self.animHoverPreview.isPlaying = false
+        self.animHoverPreview.animData = nil
+    end
+end
+
+function Triggers:HideAnimationHoverPreview(force)
+    if not force then
+        if self.animHideTimer then
+            self.animHideTimer:Cancel()
+        end
+        self.animHideTimer = C_Timer.After(0.3, function()
+            Triggers:HideAnimationHoverPreview(true)
+        end)
+        return
+    end
+
+    if self.animHideTimer then
+        self.animHideTimer:Cancel()
+        self.animHideTimer = nil
+    end
+
+    self:StopAnimationHoverTicker()
+    if self.animHoverPreview then
+        self.animHoverPreview.currentAnimId = nil
+        self.animHoverPreview:Hide()
+    end
+end
+
+-- =========================================================================
+-- Sound Options
+-- =========================================================================
 function Triggers:GetSoundOptions()
     local options = {}
     table.insert(options, { label = "None", value = nil })
@@ -34,7 +239,6 @@ end
 function Triggers:CreateSoundPickerRow(parent)
     local row = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     row:SetHeight(28)
-    -- No background for every row as requested
 
     local useButton = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
     useButton:SetSize(235, 22)
@@ -81,6 +285,9 @@ function Triggers:RefreshPickerList(picker, actionType)
     end
 
     -- Get options based on type (handle success/fail variants)
+    if type(actionType) ~= "string" then
+        actionType = "sound"
+    end
     local baseType = actionType
     if actionType:match("Sound$") or actionType == "sound" then 
         baseType = "sound" 
@@ -206,9 +413,20 @@ function Triggers:RefreshPickerList(picker, actionType)
             insertCategory(cat, others[cat], true)
         end
     elseif baseType == "animation" then
+        local filter = picker.selectedCategory or "all"
         for id, data in pairs(OxedHub.db.profile.animations or {}) do
             local label = data.name or id
-            if query == "" or string.find(normalizeSearchText(label), query, 1, true) then
+            local passesSearch = (query == "" or string.find(normalizeSearchText(label), query, 1, true))
+            local passesFilter = true
+            if filter ~= "all" then
+                local cat = OxedHub.Animations and OxedHub.Animations:GetAnimationCategory(id, data) or "users"
+                if filter == "oxed" then
+                    passesFilter = (cat == "oxed" or cat == "male" or cat == "female")
+                else
+                    passesFilter = (cat == filter)
+                end
+            end
+            if passesSearch and passesFilter then
                 table.insert(options, { value = id, label = label, data = data })
             end
         end
@@ -244,6 +462,8 @@ function Triggers:RefreshPickerList(picker, actionType)
         table.sort(options, function(a, b) return a.label < b.label end)
     end
 
+    local ROW_HEIGHT = 20
+
     for index, option in ipairs(options) do
         local row = picker.rows[index]
         if not row then
@@ -251,19 +471,24 @@ function Triggers:RefreshPickerList(picker, actionType)
             picker.rows[index] = row
         end
         row.actionType = actionType
+        row.optionData = option.data
+        row.optionValue = option.value
 
         row:Show()
-        row:SetPoint("TOPLEFT", picker.scrollChild, "TOPLEFT", 0, -((index - 1) * 30))
-        row:SetPoint("TOPRIGHT", picker.scrollChild, "TOPRIGHT", -4, -((index - 1) * 30))
+        row:SetHeight(ROW_HEIGHT)
+        row:SetPoint("TOPLEFT", picker.scrollChild, "TOPLEFT", 0, -((index - 1) * ROW_HEIGHT))
+        row:SetPoint("TOPRIGHT", picker.scrollChild, "TOPRIGHT", 0, -((index - 1) * ROW_HEIGHT))
 
         -- Clean up any split icon from previous use of this row
         if row.splitIcon then row.splitIcon:Hide() end
 
         if option.isHeader then
+            row.useButton:ClearAllPoints()
+            row.useButton:SetPoint("LEFT", row, "LEFT", 8, 0)
+            row.useButton:SetPoint("RIGHT", row, "RIGHT", -4, 0)
             row.useButton:SetText(option.label)
-            row.useButton:SetSize(330, 22)
-            row.useButton:SetPoint("LEFT", row, "LEFT", 10, 0)
             row.useButton.optionValue = nil
+            row.useButton.optionData = nil
             row.useButton.isHeader = true
             row.useButton.catName = option.catName
             row.useButton.actionType = actionType
@@ -275,49 +500,64 @@ function Triggers:RefreshPickerList(picker, actionType)
             row:SetBackdropColor(0.2, 0.2, 0.2, 0.4)
         else
             row.useButton:SetText(option.label)
-            local hasPlay = (baseType == "sound" or baseType == "animation" or baseType == "emote" or baseType == "chatMessage") and option.value ~= nil
-            if hasPlay then
-                row.useButton:SetSize(280, 22)
-                row.playButton:Show()
-            else
-                row.useButton:SetSize(310, 22)
+            row.useButton:ClearAllPoints()
+            
+            if baseType == "animation" then
                 row.playButton:Hide()
+                local indent = (option.data and option.data.tgaPath) and 24 or 8
+                row.useButton:SetPoint("LEFT", row, "LEFT", indent, 0)
+                row.useButton:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+            else
+                local hasPlay = (baseType == "sound" or baseType == "emote" or baseType == "chatMessage") and option.value ~= nil
+                if hasPlay then
+                    row.playButton:Show()
+                    local indent = (baseType == "sound" and option.value ~= nil) and 24 or 8
+                    row.useButton:SetPoint("LEFT", row, "LEFT", indent, 0)
+                    row.useButton:SetPoint("RIGHT", row.playButton, "LEFT", -4, 0)
+                else
+                    row.playButton:Hide()
+                    local indent = 8
+                    if baseType == "toy" and (option.isMix or option.toyIcon) then
+                        indent = 24
+                    end
+                    row.useButton:SetPoint("LEFT", row, "LEFT", indent, 0)
+                    row.useButton:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+                end
             end
             
-            local indent = 12
-            if baseType == "sound" and option.value ~= nil then
-                indent = 28
-            end
-            row.useButton:SetPoint("LEFT", row, "LEFT", indent, 0)
             row.useButton.optionValue = option.value
+            row.useButton.optionData = option.data
             row.useButton.actionType = actionType
             row.useButton.itemID = option.itemID
             row.useButton.isHeader = false
             row.useButton.catName = nil
             row.playButton.optionValue = option.value
+            row.playButton.optionData = option.data
             row.playButton.actionType = actionType
             
             row.useButton:SetNormalFontObject("GameFontHighlightSmall")
 
             if baseType == "animation" and option.data and option.data.tgaPath then
                 row.icon:Show()
+                row.icon:SetSize(16, 16)
                 row.icon:SetTexture(option.data.tgaPath)
-                local grid = math.ceil(math.sqrt(option.data.frameCount or 25))
-                if grid < 1 then grid = 1 end
-                local coord = 1 / grid
-                row.icon:SetTexCoord(0, coord, 0, coord)
-                row.useButton:SetPoint("LEFT", row, "LEFT", 36, 0)
+                local cols = option.data.columns or math.ceil(math.sqrt(option.data.frameCount or 1))
+                local rows = option.data.rows or cols
+                if cols < 1 then cols = 1 end
+                if rows < 1 then rows = 1 end
+                row.icon:SetTexCoord(0, 1 / cols, 0, 1 / rows)
             elseif baseType == "toy" and option.isMix then
                 if option.customIcon then
                     row.icon:Show()
+                    row.icon:SetSize(16, 16)
                     row.icon:SetTexture(option.customIcon)
                     row.icon:SetTexCoord(0, 1, 0, 1)
-                    row.useButton:SetPoint("LEFT", row, "LEFT", 30, 0)
+                    row.useButton:SetPoint("LEFT", row, "LEFT", 24, 0)
                 elseif option.mixIcon1 then
                     -- Split icon for toy mixes
                     row.icon:Hide()
                     if not row.splitIcon then
-                        row.splitIcon = OxedHub.Toys:CreateSplitIcon(row, 22, option.mixIcon1, option.mixIcon2)
+                        row.splitIcon = OxedHub.Toys:CreateSplitIcon(row, 18, option.mixIcon1, option.mixIcon2)
                     end
                     row.splitIcon.leftTexture:SetTexture(option.mixIcon1)
                     row.splitIcon.leftTexture:SetTexCoord(0, 0.5, 0, 1)
@@ -326,14 +566,15 @@ function Triggers:RefreshPickerList(picker, actionType)
                     row.splitIcon:ClearAllPoints()
                     row.splitIcon:SetPoint("LEFT", row, "LEFT", 4, 0)
                     row.splitIcon:Show()
-                    row.useButton:SetPoint("LEFT", row, "LEFT", 30, 0)
+                    row.useButton:SetPoint("LEFT", row, "LEFT", 24, 0)
                 end
             elseif baseType == "toy" and option.toyIcon then
                 -- Single icon for individual toys
                 row.icon:Show()
+                row.icon:SetSize(16, 16)
                 row.icon:SetTexture(option.toyIcon)
                 row.icon:SetTexCoord(0, 1, 0, 1)
-                row.useButton:SetPoint("LEFT", row, "LEFT", 30, 0)
+                row.useButton:SetPoint("LEFT", row, "LEFT", 24, 0)
             else
                 row.icon:Hide()
                 row.icon:SetTexture(nil)
@@ -352,8 +593,18 @@ function Triggers:RefreshPickerList(picker, actionType)
         local row = picker.rows[index]
         row:Hide()
         row.actionType = actionType
-        if row.useButton then row.useButton.actionType = actionType end
-        if row.playButton then row.playButton.actionType = actionType end
+        row.optionData = nil
+        row.optionValue = nil
+        if row.useButton then
+            row.useButton.actionType = actionType
+            row.useButton.optionData = nil
+            row.useButton.optionValue = nil
+        end
+        if row.playButton then
+            row.playButton.actionType = actionType
+            row.playButton.optionData = nil
+            row.playButton.optionValue = nil
+        end
     end
 
     if #options == 0 then
@@ -367,21 +618,22 @@ function Triggers:RefreshPickerList(picker, actionType)
         picker.emptyText:Hide()
     end
 
-    picker.scrollChild:SetHeight(math.max(#options * 30, 1))
+    picker.scrollChild:SetHeight(math.max(#options * ROW_HEIGHT, 1))
 end
 
 function Triggers:CreatePickerRow(picker, actionType)
     local row = CreateFrame("Frame", nil, picker.scrollChild, "BackdropTemplate")
-    row:SetHeight(28)
+    row:SetHeight(20)
+    row:EnableMouse(true)
 
     local icon = row:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(22, 22)
+    icon:SetSize(16, 16)
     icon:SetPoint("LEFT", row, "LEFT", 4, 0)
     icon:Hide()
     row.icon = icon
 
     local useButton = CreateFrame("Button", nil, row)
-    useButton:SetHeight(22)
+    useButton:SetHeight(20)
     useButton:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
     useButton:SetText("")
     local fs = useButton:GetFontString()
@@ -389,21 +641,30 @@ function Triggers:CreatePickerRow(picker, actionType)
         fs:SetJustifyH("LEFT")
     end
 
+    useButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     useButton:SetScript("OnEnter", function(self)
         if self.itemID then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetItemByID(self.itemID)
+            if GameTooltip.SetToyByItemID then
+                GameTooltip:SetToyByItemID(self.itemID)
+            else
+                GameTooltip:SetItemByID(self.itemID)
+            end
+            GameTooltip:AddLine("|cff00ccffRight-Click: Copy Wowhead URL|r")
             GameTooltip:Show()
+        elseif self.actionType and (self.actionType:match("Animation$") or self.actionType:match("Anim$") or self.actionType == "animation") and self.optionValue then
+            Triggers:ShowAnimationHoverPreview(picker, self.optionValue, self.optionData)
         end
     end)
     useButton:SetScript("OnLeave", function(self)
         if self.itemID then
             GameTooltip:Hide()
         end
+        Triggers:HideAnimationHoverPreview()
     end)
 
     local playButton = CreateFrame("Button", nil, row)
-    playButton:SetSize(18, 18)
+    playButton:SetSize(16, 16)
     playButton:SetPoint("RIGHT", row, "RIGHT", -6, 0)
     
     local playIcon = playButton:CreateTexture(nil, "ARTWORK")
@@ -419,7 +680,12 @@ function Triggers:CreatePickerRow(picker, actionType)
         self.icon:SetVertexColor(0.9, 0.1, 0.1)
     end)
 
-    useButton:SetScript("OnClick", function(self)
+    useButton:SetScript("OnClick", function(self, button)
+        if button == "RightButton" and self.itemID then
+            local _, toyName = C_ToyBox.GetToyInfo(self.itemID)
+            OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or ("Toy #" .. self.itemID))
+            return
+        end
         local parentRow = self:GetParent()
         local at = self.actionType or parentRow.actionType
         if self.isHeader then
@@ -480,7 +746,7 @@ end
 
 function Triggers:CreateGenericPicker(name, titleText, actionType)
     local picker = CreateFrame("Frame", "OxedHubPicker_" .. name, UIParent, "BasicFrameTemplate")
-    picker:SetSize(420, 460)
+    picker:SetSize(440, 480)
     picker:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     picker:SetFrameStrata("DIALOG")
     picker:SetFrameLevel(220)
@@ -490,6 +756,9 @@ function Triggers:CreateGenericPicker(name, titleText, actionType)
     picker:RegisterForDrag("LeftButton")
     picker:SetScript("OnDragStart", picker.StartMoving)
     picker:SetScript("OnDragStop", picker.StopMovingOrSizing)
+    picker:SetScript("OnHide", function()
+        Triggers:HideAnimationHoverPreview(true)
+    end)
 
     if picker.TitleText then
         picker.TitleText:SetText(titleText)
@@ -499,33 +768,79 @@ function Triggers:CreateGenericPicker(name, titleText, actionType)
     end
 
     local searchLabel = picker:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    searchLabel:SetPoint("TOPLEFT", picker, "TOPLEFT", 18, -65)
+    searchLabel:SetPoint("TOPLEFT", picker, "TOPLEFT", 18, -42)
     searchLabel:SetText(L["PICKER_SEARCH"] or "Search")
 
     local searchInput = CreateFrame("EditBox", nil, picker, "InputBoxTemplate")
-    searchInput:SetSize(210, 22)
-    searchInput:SetPoint("TOPLEFT", searchLabel, "BOTTOMLEFT", 0, -6)
+    local clearSearch = CreateFrame("Button", nil, picker, "UIPanelButtonTemplate")
+
+    if name == "Animation" then
+        searchInput:SetSize(150, 22)
+        searchInput:SetPoint("TOPLEFT", searchLabel, "BOTTOMLEFT", 0, -4)
+
+        clearSearch:SetSize(48, 22)
+        clearSearch:SetPoint("LEFT", searchInput, "RIGHT", 4, 0)
+        clearSearch:SetText(L["PICKER_CLEAR"] or "Clear")
+        clearSearch:SetScript("OnClick", function() searchInput:SetText(""); searchInput:ClearFocus() end)
+
+        local categoryDropdown = CreateFrame("DropdownButton", nil, picker, "WowStyle1DropdownTemplate")
+        categoryDropdown:SetSize(160, 22)
+        categoryDropdown:SetPoint("LEFT", clearSearch, "RIGHT", 6, 0)
+
+        local filterOptions = {
+            { key = "all",   name = L["ANIM_FILTER_ALL"] or "Show All" },
+            { key = "oxed",  name = L["ANIM_FILTER_GEN"] or "General" },
+            { key = "male",  name = L["ANIM_FILTER_MALE"] or "Male" },
+            { key = "female",name = L["ANIM_FILTER_FEMALE"] or "Female" },
+        }
+        if type(_G["OxedHubMemePack"]) == "table" or type(_G["OxedHubTikTokPack"]) == "table" then
+            table.insert(filterOptions, { key = "meme", name = L["ANIM_FILTER_MEME"] or "Meme Pack" })
+        end
+        table.insert(filterOptions, { key = "users", name = L["ANIM_FILTER_USERS"] or "Users" })
+
+        picker.selectedCategory = "all"
+        categoryDropdown:OverrideText(L["ANIM_FILTER_ALL"] or "Show All")
+
+        categoryDropdown:SetupMenu(function(dropdown, rootDescription)
+            for _, opt in ipairs(filterOptions) do
+                rootDescription:CreateRadio(
+                    opt.name,
+                    function() return (picker.selectedCategory or "all") == opt.key end,
+                    function()
+                        picker.selectedCategory = opt.key
+                        categoryDropdown:OverrideText(opt.name)
+                        self:RefreshPickerList(picker, picker.currentActionType or actionType)
+                    end,
+                    opt.key
+                )
+            end
+        end)
+        picker.categoryDropdown = categoryDropdown
+    else
+        searchInput:SetSize(210, 22)
+        searchInput:SetPoint("TOPLEFT", searchLabel, "BOTTOMLEFT", 0, -4)
+
+        clearSearch:SetSize(60, 22)
+        clearSearch:SetPoint("LEFT", searchInput, "RIGHT", 8, 0)
+        clearSearch:SetText(L["PICKER_CLEAR"] or "Clear")
+        clearSearch:SetScript("OnClick", function() searchInput:SetText(""); searchInput:ClearFocus() end)
+    end
+
     searchInput:SetAutoFocus(false)
     searchInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     searchInput:SetScript("OnTextChanged", function()
         self:RefreshPickerList(picker, picker.currentActionType or actionType)
     end)
 
-    local clearSearch = CreateFrame("Button", nil, picker, "UIPanelButtonTemplate")
-    clearSearch:SetSize(60, 22)
-    clearSearch:SetPoint("LEFT", searchInput, "RIGHT", 8, 0)
-    clearSearch:SetText(L["PICKER_CLEAR"] or "Clear")
-    clearSearch:SetScript("OnClick", function() searchInput:SetText(""); searchInput:ClearFocus() end)
-
     local scrollFrame = CreateFrame("ScrollFrame", nil, picker, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", searchInput, "BOTTOMLEFT", 0, -12)
+    scrollFrame:SetPoint("TOPLEFT", searchInput, "BOTTOMLEFT", 0, -10)
     scrollFrame:SetPoint("BOTTOMRIGHT", picker, "BOTTOMRIGHT", -32, 52)
     if OxedHub.UI and OxedHub.UI.StyleScrollFrame then
         OxedHub.UI:StyleScrollFrame(scrollFrame)
     end
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetWidth(350)
+    scrollChild:SetWidth(370)
     scrollChild:SetHeight(1)
     scrollFrame:SetScrollChild(scrollChild)
 
@@ -569,7 +884,7 @@ function Triggers:CreateSoundPicker()
     if self.soundPicker then return self.soundPicker end
 
     local picker = CreateFrame("Frame", "OxedHubTriggersSoundPicker", UIParent, "BasicFrameTemplate")
-    picker:SetSize(420, 460)
+    picker:SetSize(440, 480)
     picker:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     picker:SetFrameStrata("DIALOG")
     picker:SetFrameLevel(220)
@@ -579,6 +894,9 @@ function Triggers:CreateSoundPicker()
     picker:RegisterForDrag("LeftButton")
     picker:SetScript("OnDragStart", picker.StartMoving)
     picker:SetScript("OnDragStop", picker.StopMovingOrSizing)
+    picker:SetScript("OnHide", function()
+        Triggers:HideAnimationHoverPreview(true)
+    end)
 
     if picker.TitleText then
         picker.TitleText:SetText(L["TITLE_PICK_SOUND"] or "Pick Sound")
@@ -588,19 +906,19 @@ function Triggers:CreateSoundPicker()
     end
 
     local subtitle = picker:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitle:SetPoint("TOPLEFT", picker, "TOPLEFT", 18, -48)
+    subtitle:SetPoint("TOPLEFT", picker, "TOPLEFT", 18, -42)
     subtitle:SetWidth(380)
     subtitle:SetJustifyH("LEFT")
     subtitle:SetText(L["DESC_SOUND_PICKER"] or "Search your custom sounds, preview them, then click Use.")
     subtitle:SetTextColor(0.8, 0.8, 0.8, 1)
 
     local searchLabel = picker:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    searchLabel:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -14)
+    searchLabel:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -8)
     searchLabel:SetText(L["PICKER_SEARCH"] or "Search")
 
     local searchInput = CreateFrame("EditBox", nil, picker, "InputBoxTemplate")
     searchInput:SetSize(210, 22)
-    searchInput:SetPoint("TOPLEFT", searchLabel, "BOTTOMLEFT", 0, -6)
+    searchInput:SetPoint("TOPLEFT", searchLabel, "BOTTOMLEFT", 0, -4)
     searchInput:SetAutoFocus(false)
     searchInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     searchInput:SetScript("OnTextChanged", function() self:RefreshSoundPickerList() end)
@@ -612,14 +930,14 @@ function Triggers:CreateSoundPicker()
     clearSearch:SetScript("OnClick", function() searchInput:SetText(""); searchInput:ClearFocus() end)
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, picker, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", searchInput, "BOTTOMLEFT", 0, -12)
+    scrollFrame:SetPoint("TOPLEFT", searchInput, "BOTTOMLEFT", 0, -10)
     scrollFrame:SetPoint("BOTTOMRIGHT", picker, "BOTTOMRIGHT", -32, 52)
     if OxedHub.UI and OxedHub.UI.StyleScrollFrame then
         OxedHub.UI:StyleScrollFrame(scrollFrame)
     end
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetWidth(350)
+    scrollChild:SetWidth(370)
     scrollChild:SetHeight(1)
     scrollFrame:SetScrollChild(scrollChild)
 
@@ -650,6 +968,7 @@ function Triggers:CreateSoundPicker()
 end
 
 function Triggers:HideAllPickers()
+    self:HideAnimationHoverPreview()
     if self.soundPicker then self.soundPicker:Hide() end
     if self.animationPicker then self.animationPicker:Hide() end
     if self.emotePicker then self.emotePicker:Hide() end
@@ -720,7 +1039,6 @@ function Triggers:ShowToyPicker(trigger)
     self:RefreshPickerList(self.toyPicker, "toy")
 end
 
-
 function Triggers:ScrollToTrigger(triggerId)
     self:OpenTriggerDetails(triggerId)
 end
@@ -728,4 +1046,3 @@ end
 function Triggers:GetTrigger(id)
     return OxedHub.db.profile.triggers[id]
 end
-

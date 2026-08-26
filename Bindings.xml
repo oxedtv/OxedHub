@@ -1,0 +1,11 @@
+<Bindings>
+    <Binding name="OXEDHUB_TOGGLE_TOYBOX" category="OXEDHUB_CATEGORY" header="OXEDHUB_HEADER">
+        OxedHub_ToggleToyDock()
+    </Binding>
+    <Binding name="OXEDHUB_RANDOM_TOY" category="OXEDHUB_CATEGORY">
+        OxedHub_UseRandomToy()
+    </Binding>
+    <Binding name="OXEDHUB_RANDOM_HEARTHSTONE" category="OXEDHUB_CATEGORY">
+        OxedHub_UseRandomHearthstone()
+    </Binding>
+</Bindings>

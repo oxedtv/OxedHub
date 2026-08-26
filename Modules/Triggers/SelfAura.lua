@@ -11,6 +11,23 @@ local Triggers = OxedHub.Triggers
 -- "both", and "loop sound until lost", exactly like the scanning aura event.
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- Specific mapping from each haste burst spell to its corresponding debuff ID
+-- so a trigger for Heroism ONLY triggers on Heroism, Bloodlust ONLY on Bloodlust, etc.
+local LUST_TO_DEBUFF_MAP = {
+    [2825]   = 57724,  -- Bloodlust -> Sated
+    [32182]  = 57723,  -- Heroism -> Exhaustion
+    [80353]  = 80354,  -- Time Warp -> Temporal Displacement
+    [390386] = 390435, -- Fury of the Aspects -> Exhaustion
+    [264667] = 264689, -- Primal Rage -> Fatigued
+    [90355]  = 264689, -- Ancient Hysteria -> Fatigued
+    [160452] = 264689, -- Netherwinds -> Fatigued
+    [381301] = 57724,  -- Feral Hide Drums -> Sated
+    [230935] = 57724,  -- Drums of the Mountain -> Sated
+    [256740] = 57724,  -- Drums of the Maelstrom -> Sated
+    [309658] = 57724,  -- Drums of Deathly Ferocity -> Sated
+    [466904] = 57724,  -- Drums of War -> Sated
+}
+
 -- Collect the configured spell IDs (primary + extras) as plain numbers.
 local function GetConfiguredSpellIDs(trigger)
     local ids = {}
@@ -29,6 +46,14 @@ local function GetConfiguredSpellIDs(trigger)
         if n and not seen[n] then
             seen[n] = true
             table.insert(ids, n)
+            
+            -- If this specific spell has a matching debuff (e.g. Heroism -> Exhaustion),
+            -- include its debuff ID for 12.1 combat existence tracking
+            local debuffID = LUST_TO_DEBUFF_MAP[n]
+            if debuffID and not seen[debuffID] then
+                seen[debuffID] = true
+                table.insert(ids, debuffID)
+            end
         end
     end
 
@@ -62,6 +87,14 @@ local function HasConfiguredAura(trigger)
             if ok and aura then
                 return true, sid
             end
+        end
+
+        -- Fallback: use the taint-free spell ID presence set built by Core's
+        -- aura scanner.  This works even in combat where all aura data is
+        -- secret and the native WoW APIs above return nil.
+        local Core = OxedHub.Core
+        if Core and Core.activeSpellIDs and Core.activeSpellIDs[sid] then
+            return true, sid
         end
     end
     return false, nil
@@ -164,6 +197,29 @@ local function CancelLoop(triggerId, trigger)
     end
 end
 
+local function IsLustTrigger(trigger)
+    if not trigger then return false end
+    local ids = GetConfiguredSpellIDs(trigger)
+    for _, sid in ipairs(ids) do
+        if LUST_TO_DEBUFF_MAP[sid] then
+            return true
+        end
+    end
+    local c = trigger.conditions or {}
+    local namesToCheck = { c.spellName, c.auraName, c.spellID }
+    for _, nameVal in ipairs(namesToCheck) do
+        if type(nameVal) == "string" and nameVal ~= "" then
+            local lowerName = nameVal:lower()
+            if lowerName:find("bloodlust") or lowerName:find("heroism") or lowerName:find("time warp")
+               or lowerName:find("fury of the aspects") or lowerName:find("primal rage")
+               or lowerName:find("sated") or lowerName:find("exhaustion") or lowerName:find("temporal displacement") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 -- initial=true seeds state on login without firing (so a buff already up when you
 -- log in doesn't spam), matching the DiGua BloodlustDetector pattern.
 local function EvaluateSelfAuraTriggers(initial)
@@ -171,7 +227,9 @@ local function EvaluateSelfAuraTriggers(initial)
     if not profile or not profile.triggers then return end
 
     for id, trigger in pairs(profile.triggers) do
-        if trigger.event == "SELF_AURA" and trigger.enabled then
+        local isSelfAura = (trigger.event == "SELF_AURA")
+        local isUnitAuraLust = (trigger.event == "UNIT_AURA" and IsLustTrigger(trigger))
+        if (isSelfAura or isUnitAuraLust) and trigger.enabled then
             local present, matchedSid = HasConfiguredAura(trigger)
             local was = selfAuraPresent[id]
 
@@ -200,6 +258,21 @@ local function EvaluateSelfAuraTriggers(initial)
     end
 end
 
+local selfAuraTicker = nil
+local function StartSelfAuraPolling()
+    if selfAuraTicker then return end
+    selfAuraTicker = C_Timer.NewTicker(0.25, function()
+        EvaluateSelfAuraTriggers(false)
+    end)
+end
+
+local function StopSelfAuraPolling()
+    if selfAuraTicker then
+        selfAuraTicker:Cancel()
+        selfAuraTicker = nil
+    end
+end
+
 -- ── Native aura sound (works IN COMBAT) ──────────────────────────────────────
 -- In combat WoW makes aura data "secret", so GetPlayerAuraBySpellID can't detect
 -- the buff and the monitor above won't fire. C_UnitAuras.AddAuraAppliedSound lets
@@ -207,83 +280,89 @@ end
 -- is applied, even in combat. Sound-only (no animation/loop), but reliable.
 local nativeSoundHandles = {}
 
-local function UnregisterNativeSounds()
+
+local function UnregisterNativeEffects()
     for i = #nativeSoundHandles, 1, -1 do
         local entry = nativeSoundHandles[i]
-        if type(entry) == "table" then
-            if entry.type == "private" and C_UnitAuras and C_UnitAuras.RemovePrivateAuraAppliedSound then
-                pcall(C_UnitAuras.RemovePrivateAuraAppliedSound, entry.handle)
-            elseif entry.type == "normal" and C_UnitAuras and C_UnitAuras.RemoveAuraAppliedSound then
+        if type(entry) == "table" and entry.type == "normal" and C_UnitAuras then
+            if C_UnitAuras.RemoveAuraSound then
+                pcall(C_UnitAuras.RemoveAuraSound, entry.handle)
+            elseif C_UnitAuras.RemoveAuraAppliedSound then
                 pcall(C_UnitAuras.RemoveAuraAppliedSound, entry.handle)
             end
-        else
-            if C_UnitAuras and C_UnitAuras.RemoveAuraAppliedSound then
-                pcall(C_UnitAuras.RemoveAuraAppliedSound, entry)
-            end
         end
-        nativeSoundHandles[i] = nil
     end
     wipe(nativeSoundHandles)
 end
 
-function Triggers:RefreshSelfAuraNativeSounds()
+function Triggers:RefreshSelfAuraNativeEffects()
     -- Registration APIs are protected during combat; defer if locked down.
     if InCombatLockdown() then
         Triggers._selfAuraNativePendingAfterCombat = true
         if OxedHub.debug then print("|cff00ffff[OxedHub-Debug]|r SELF_AURA native: deferred (in combat)") end
         return
     end
-    local hasNormal = C_UnitAuras and C_UnitAuras.AddAuraAppliedSound and true or false
-    local hasPrivate = C_UnitAuras and C_UnitAuras.AddPrivateAuraAppliedSound and true or false
+    local hasNormal = C_UnitAuras and (C_UnitAuras.AddAuraSound or C_UnitAuras.AddAuraAppliedSound) and true or false
     if OxedHub.debug then
-        print(("|cff00ffff[OxedHub-Debug]|r SELF_AURA native: AddAuraAppliedSound=%s AddPrivateAuraAppliedSound=%s"):format(
-            tostring(hasNormal), tostring(hasPrivate)))
+        print(("|cff00ffff[OxedHub-Debug]|r SELF_AURA native: native sound API=%s"):format(tostring(hasNormal)))
     end
-    if not hasNormal and not hasPrivate then
-        return -- client too old or missing native aura APIs; monitor-only (works out of combat)
+    if not hasNormal then
+        return -- client missing native aura sound API; fallback to runtime aura monitoring
     end
 
-    UnregisterNativeSounds()
+    UnregisterNativeEffects()
 
     local profile = OxedHub.db and OxedHub.db.profile
     if not profile or not profile.triggers then return end
     local channel = (profile.settings and profile.settings.soundChannel) or "Master"
 
     for id, trigger in pairs(profile.triggers) do
-        if (trigger.event == "SELF_AURA" or trigger.event == "UNIT_AURA") and trigger.enabled then
-            local soundVal = trigger.actions and trigger.actions.sound
-            local filePath = OxedHub.Sounds and OxedHub.Sounds.GetFilePath
-                and OxedHub.Sounds:GetFilePath(soundVal)
-            if filePath then
-                for _, sid in ipairs(GetConfiguredSpellIDs(trigger)) do
+        local isSelfAura = (trigger.event == "SELF_AURA")
+        local isUnitAuraLust = (trigger.event == "UNIT_AURA" and IsLustTrigger(trigger))
+        if (isSelfAura or isUnitAuraLust) and trigger.enabled then
+            local c = trigger.conditions or {}
+            local configuredSpellIDs = GetConfiguredSpellIDs(trigger)
+            local spellIDMap = {}
+            
+            for _, sid in ipairs(configuredSpellIDs) do
+                spellIDMap[sid] = true
+                
+                -- Sound logic operates per spell ID natively
+                local soundVal = trigger.actions and trigger.actions.sound
+                local filePath = OxedHub.Sounds and OxedHub.Sounds.GetFilePath
+                    and OxedHub.Sounds:GetFilePath(soundVal)
+                    
+                if filePath then
                     local soundInfo = {
                         unitToken = "player",
                         spellID = sid,
                         soundFileName = filePath,
                         outputChannel = channel,
                     }
-                    if hasPrivate then
-                        local ok, handle = pcall(C_UnitAuras.AddPrivateAuraAppliedSound, soundInfo)
-                        if ok then
-                            table.insert(nativeSoundHandles, { type = "private", handle = handle })
-                            if OxedHub.debug then
-                                print(("|cff00ff00[OxedHub]|r Registered native aura sound for spell %s"):format(tostring(sid)))
-                            end
+                    
+                    local ok, handle
+                    if C_UnitAuras.AddAuraSound then
+                        local triggerEnum = Enum.UnitAuraSoundTrigger.Added
+                        if c.onLost and not c.onBoth then
+                            triggerEnum = Enum.UnitAuraSoundTrigger.Removed
                         end
-                        if OxedHub.debug then
-                            print(("|cff00ffff[OxedHub-Debug]|r SELF_AURA private native register spell=%s ok=%s file=%s"):format(
-                                tostring(sid), tostring(ok), tostring(filePath)))
+                        if c.onBoth then
+                            ok, handle = pcall(C_UnitAuras.AddAuraSound, Enum.UnitAuraSoundTrigger.Added, soundInfo)
+                            pcall(C_UnitAuras.AddAuraSound, Enum.UnitAuraSoundTrigger.Removed, soundInfo)
+                        else
+                            ok, handle = pcall(C_UnitAuras.AddAuraSound, triggerEnum, soundInfo)
                         end
+                    else
+                        soundInfo.playOnAdd = c.onBoth or not c.onLost
+                        soundInfo.playOnGainApplication = c.onBoth or not c.onLost
+                        soundInfo.playOnRemove = c.onLost or c.onBoth
+                        ok, handle = pcall(C_UnitAuras.AddAuraAppliedSound, soundInfo)
                     end
-                    if hasNormal then
-                        local ok, handle = pcall(C_UnitAuras.AddAuraAppliedSound, soundInfo)
-                        if ok then
-                            table.insert(nativeSoundHandles, { type = "normal", handle = handle })
-                        end
-                        if OxedHub.debug then
-                            print(("|cff00ffff[OxedHub-Debug]|r SELF_AURA normal native register spell=%s ok=%s file=%s"):format(
-                                tostring(sid), tostring(ok), tostring(filePath)))
-                        end
+                    
+                    if ok and handle then
+                        table.insert(nativeSoundHandles, { type = "normal", handle = handle })
+                    elseif not ok then
+                        print("|cffff0000[OxedHub-Error]|r AddAuraSound failed: " .. tostring(handle))
                     end
                 end
             end
@@ -301,18 +380,25 @@ monitor:SetScript("OnEvent", function(_, event)
         -- reseed state; don't fire for auras already present at load
         wipe(selfAuraPresent)
         EvaluateSelfAuraTriggers(true)
-        Triggers:RefreshSelfAuraNativeSounds()
+        Triggers:RefreshSelfAuraNativeEffects()
     elseif event == "PLAYER_REGEN_DISABLED" then
-        -- entering combat: reseed state so procs during combat trigger gained transition
+        -- entering combat: start ticker & reseed state
+        StartSelfAuraPolling()
         EvaluateSelfAuraTriggers(true)
     elseif event == "PLAYER_REGEN_ENABLED" then
-        -- left combat: apply any registration that was deferred, and re-sync edits
+        -- left combat: stop ticker, apply any registration that was deferred, and re-sync edits
+        StopSelfAuraPolling()
         if Triggers._selfAuraNativePendingAfterCombat then
             Triggers._selfAuraNativePendingAfterCombat = nil
         end
-        Triggers:RefreshSelfAuraNativeSounds()
-    else
+        Triggers:RefreshSelfAuraNativeEffects()
         EvaluateSelfAuraTriggers(false)
+    else
+        -- Defer evaluation to the next frame tick to guarantee that Core.lua
+        -- has finished its ScanUnitAuras and updated Core.activeSpellIDs.
+        C_Timer.After(0, function()
+            EvaluateSelfAuraTriggers(false)
+        end)
     end
 end)
 
