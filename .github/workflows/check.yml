@@ -56,7 +56,7 @@ jobs:
             esac
             # sed, not tr: tr warns on every line about the trailing backslash
             # and buries the real output in noise.
-            path=$(printf '%s' "$line" | sed 's/\r$//; s#\#/#g')
+            path=$(printf '%s' "$line" | sed 's/\r$//; s#\\#/#g')
             if [ ! -f "$path" ]; then
               echo "::error file=OxedHub.toc::listed file missing: $path"
               fail=1
