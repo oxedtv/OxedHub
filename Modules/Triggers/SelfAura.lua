@@ -280,15 +280,27 @@ end
 -- is applied, even in combat. Sound-only (no animation/loop), but reliable.
 local nativeSoundHandles = {}
 
+-- Set once the client refuses the registration call. C_UnitAuras.AddAuraSound
+-- exists but stays protected for addons, so every call raises
+-- ADDON_ACTION_BLOCKED and returns nothing. The old code only guarded against
+-- combat, which is why it kept firing outside combat too: one blocked action per
+-- configured spell ID, on every zone-in and every exit from combat.
+--
+-- Presence of the function therefore proves nothing; only trying it does. One
+-- probe is enough to learn the answer, after which the aura monitor above
+-- handles these triggers on its own -- it needs no protected call.
+local nativeSoundUnavailable = false
+
 
 local function UnregisterNativeEffects()
     for i = #nativeSoundHandles, 1, -1 do
         local entry = nativeSoundHandles[i]
         if type(entry) == "table" and entry.type == "normal" and C_UnitAuras then
+            -- Direct calls for the same reason as the registration above.
             if C_UnitAuras.RemoveAuraSound then
-                pcall(C_UnitAuras.RemoveAuraSound, entry.handle)
+                C_UnitAuras.RemoveAuraSound(entry.handle)
             elseif C_UnitAuras.RemoveAuraAppliedSound then
-                pcall(C_UnitAuras.RemoveAuraAppliedSound, entry.handle)
+                C_UnitAuras.RemoveAuraAppliedSound(entry.handle)
             end
         end
     end
@@ -308,6 +320,9 @@ function Triggers:RefreshSelfAuraNativeEffects()
     end
     if not hasNormal then
         return -- client missing native aura sound API; fallback to runtime aura monitoring
+    end
+    if nativeSoundUnavailable then
+        return -- the client refused it earlier this session; the monitor covers it
     end
 
     UnregisterNativeEffects()
@@ -340,29 +355,55 @@ function Triggers:RefreshSelfAuraNativeEffects()
                         outputChannel = channel,
                     }
                     
-                    local ok, handle
+                    -- Name the culprit for the error journal: a blocked call
+                    -- here reports only the file and line, which says nothing
+                    -- about which of the user's triggers was being registered.
+                    local journal = OxedHub.ErrorJournal
+                    if journal then
+                        journal:SetContext("Triggers",
+                            trigger.name or trigger.id or "unnamed trigger",
+                            ("%s, spell %s"):format(tostring(trigger.event), tostring(sid)))
+                    end
+
+                    -- Called directly, not through pcall. pcall puts a C
+                    -- boundary between us and the protected function, and the
+                    -- engine's caller check sees that boundary rather than our
+                    -- own code -- which is what the blocked-action traceback
+                    -- pointed at ("[C]: in function 'pcall'"). The availability
+                    -- checks above are what keep this safe on older clients.
+                    local handle
                     if C_UnitAuras.AddAuraSound then
                         local triggerEnum = Enum.UnitAuraSoundTrigger.Added
                         if c.onLost and not c.onBoth then
                             triggerEnum = Enum.UnitAuraSoundTrigger.Removed
                         end
                         if c.onBoth then
-                            ok, handle = pcall(C_UnitAuras.AddAuraSound, Enum.UnitAuraSoundTrigger.Added, soundInfo)
-                            pcall(C_UnitAuras.AddAuraSound, Enum.UnitAuraSoundTrigger.Removed, soundInfo)
+                            handle = C_UnitAuras.AddAuraSound(Enum.UnitAuraSoundTrigger.Added, soundInfo)
+                            C_UnitAuras.AddAuraSound(Enum.UnitAuraSoundTrigger.Removed, soundInfo)
                         else
-                            ok, handle = pcall(C_UnitAuras.AddAuraSound, triggerEnum, soundInfo)
+                            handle = C_UnitAuras.AddAuraSound(triggerEnum, soundInfo)
                         end
                     else
                         soundInfo.playOnAdd = c.onBoth or not c.onLost
                         soundInfo.playOnGainApplication = c.onBoth or not c.onLost
                         soundInfo.playOnRemove = c.onLost or c.onBoth
-                        ok, handle = pcall(C_UnitAuras.AddAuraAppliedSound, soundInfo)
+                        handle = C_UnitAuras.AddAuraAppliedSound(soundInfo)
                     end
                     
-                    if ok and handle then
+                    if journal then journal:ClearContext() end
+
+                    if handle then
                         table.insert(nativeSoundHandles, { type = "normal", handle = handle })
-                    elseif not ok then
-                        print("|cffff0000[OxedHub-Error]|r AddAuraSound failed: " .. tostring(handle))
+                    else
+                        -- The first refusal is decisive. Carrying on would just
+                        -- repeat the same blocked call for every remaining spell
+                        -- ID, which is exactly the error storm this replaces.
+                        nativeSoundUnavailable = true
+                        UnregisterNativeEffects()
+                        if OxedHub.debug then
+                            print("|cff00ffff[OxedHub-Debug]|r SELF_AURA native: registration refused by the client, using the aura monitor instead")
+                        end
+                        return
                     end
                 end
             end

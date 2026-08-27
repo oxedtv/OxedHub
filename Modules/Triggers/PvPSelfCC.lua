@@ -54,8 +54,8 @@ local function AddOne(spellID, soundFile, channel)
         soundFileName = soundFile,
         outputChannel = channel or "Master",
     }
-    local ok, handle = pcall(C_UnitAuras.AddAuraSound, trigger, info)
-    if ok and handle then return handle end
+    local handle = C_UnitAuras.AddAuraSound(trigger, info)
+    if handle then return handle end
     return nil
 end
 
@@ -63,7 +63,7 @@ end
 ---@param handle number
 local function RemoveOne(handle)
     if handle and C_UnitAuras and C_UnitAuras.RemoveAuraSound then
-        pcall(C_UnitAuras.RemoveAuraSound, handle)
+        C_UnitAuras.RemoveAuraSound(handle)
     end
 end
 

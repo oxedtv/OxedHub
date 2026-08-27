@@ -30,13 +30,13 @@ end
 
 local function AddOne(unitToken, spellID, soundFile, channel)
     local info = { unitToken = unitToken, spellID = spellID, soundFileName = soundFile, outputChannel = channel or "Master" }
-    local ok, handle = pcall(C_UnitAuras.AddAuraSound, Enum.UnitAuraSoundTrigger.Added, info)
-    return (ok and handle) and handle or nil
+    local handle = C_UnitAuras.AddAuraSound(Enum.UnitAuraSoundTrigger.Added, info)
+    return handle or nil
 end
 
 local function RemoveOne(handle)
     if handle and C_UnitAuras and C_UnitAuras.RemoveAuraSound then
-        pcall(C_UnitAuras.RemoveAuraSound, handle)
+        C_UnitAuras.RemoveAuraSound(handle)
     end
 end
 
