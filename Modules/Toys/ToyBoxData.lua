@@ -57,36 +57,41 @@ end
 
 -- ============================================================================
 -- SUGGESTED BOXES
--- Ready-made boxes built from the player's own collection.  Each one filters
--- the collected toys by a keyword list matched against the toy name, so a
--- suggestion only ever contains toys the player actually owns.
+-- Ready-made boxes built from the player's own collection, so a suggestion only
+-- ever contains toys the player actually owns.
+--
+-- Hearthstones stay a special case because they are identified by their own ID
+-- list elsewhere in this file. Everything else comes from the shipped
+-- categories in ToyCategories.lua, which match on toy ID.
+--
+-- The old entries here matched keywords against toy names ("firework",
+-- "portal", ...). That only worked on an English client and missed any toy
+-- whose name did not happen to contain the word, so it has been dropped.
 -- ============================================================================
 Toys.SUGGESTED_BOXES = {
     {
         key = "hearthstones", name = "Hearthstones", icon = 134414,
         ids = true,  -- uses Toys.HearthstoneIds rather than a name match
     },
-    {
-        key = "transform", name = "Transform", icon = 134178,
-        words = { "costume", "disguise", "transform", "kit", "guise", "orb of deception" },
-    },
-    {
-        key = "movement", name = "Movement", icon = 132933,
-        words = { "wormhole", "teleport", "jumper", "rocket", "glider", "portal", "sling" },
-    },
-    {
-        key = "party", name = "Party", icon = 134153,
-        words = { "firework", "banner", "brazier", "party", "dance", "music", "horn", "confetti" },
-    },
-    {
-        key = "pets", name = "Critters", icon = 132598,
-        words = { "whistle", "pet", "critter", "duck", "chicken", "cat", "murloc" },
-    },
 }
+
+for _, category in ipairs(OxedHub.TOY_CATEGORIES or {}) do
+    table.insert(Toys.SUGGESTED_BOXES, category)
+end
 
 function Toys:GetSuggestedBoxToys(def)
     local out = {}
     if not def then return out end
+
+    -- A shipped category carries an explicit ID list. Filtering by ownership
+    -- here is what keeps a box from listing hundreds of toys the player has
+    -- never collected.
+    if type(def.ids) == "table" then
+        for _, id in ipairs(def.ids) do
+            if PlayerHasToy(id) then table.insert(out, id) end
+        end
+        return out
+    end
 
     if def.ids then
         for _, id in ipairs(self.HearthstoneIds or {}) do
@@ -246,12 +251,64 @@ function Toys:ConfirmRemoveToy(boxId, toyId)
         (box and box.name) or "this box")
 end
 
+-- ============================================================================
+-- HIDING BOXES
+-- ============================================================================
+-- Hiding takes a box out of both sidebars but keeps the box and its contents,
+-- so a shipped category the player has no use for right now can come back later
+-- without rebuilding it by hand. Deleting stays available for boxes they are
+-- certain about.
+
+function Toys:IsBoxHidden(boxId)
+    local box = OxedHub.db and OxedHub.db.profile
+        and OxedHub.db.profile.toyBoxes and OxedHub.db.profile.toyBoxes[boxId]
+    return box ~= nil and box.hidden == true
+end
+
+function Toys:SetBoxHidden(boxId, hidden)
+    -- These two are the entry points to the whole panel; hiding either would
+    -- leave the player with no way back to their collection.
+    if boxId == "all" or boxId == "favorites" then return false end
+
+    self:EnsureToyBoxData()
+    local box = OxedHub.db.profile.toyBoxes[boxId]
+    if not box then return false end
+
+    box.hidden = hidden and true or nil
+    if self.RefreshToyBoxesUI then self:RefreshToyBoxesUI() end
+    if self.RefreshToyDock then self:RefreshToyDock() end
+    return true
+end
+
+-- Sorted by name so the restore list reads predictably.
+function Toys:GetHiddenBoxes()
+    self:EnsureToyBoxData()
+    local out = {}
+    local boxes = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxes
+    if not boxes then return out end
+
+    for id, box in pairs(boxes) do
+        if box.hidden then
+            table.insert(out, { id = id, name = box.name or "?", icon = box.icon, count = #(box.toys or {}) })
+        end
+    end
+    table.sort(out, function(a, b) return (a.name or "") < (b.name or "") end)
+    return out
+end
+
 function Toys:ConfirmDeleteBox(boxId, boxName, toyCount)
+    -- Hide is the first button because it is the reversible one. Deleting a box
+    -- that took effort to fill is the kind of mistake worth making harder to
+    -- reach by accident.
     StaticPopupDialogs["OXEDHUB_CONFIRM_DELETE_BOX"] = {
-        text = "Delete the box |cffffd100%s|r?\n\n|cffff6666%s|r\n|cff888888The toys themselves stay in your collection.|r",
-        button1 = L["SETTINGS_BTN_YES"] or "Yes",
-        button2 = L["SETTINGS_BTN_NO"] or "No",
+        text = "Remove the box |cffffd100%s|r?\n\n|cffff6666%s|r\n|cff888888Hide keeps the box and its contents -- you can bring it back from Settings.\nDelete removes the box for good. Either way the toys stay in your collection.|r",
+        button1 = L["TOYBOX_BTN_HIDE"] or "Hide",
+        button2 = L["SETTINGS_BTN_CANCEL"] or "Cancel",
+        button3 = L["TOYBOX_BTN_DELETE"] or "Delete",
         OnAccept = function()
+            Toys:SetBoxHidden(boxId, true)
+        end,
+        OnAlt = function()
             Toys:DeleteToyBox(boxId)
             if Toys.RefreshToyBoxesUI then Toys:RefreshToyBoxesUI() end
             if Toys.RefreshToyDock then Toys:RefreshToyDock() end
@@ -347,6 +404,103 @@ function Toys:GetFavoriteToyIDs()
 end
 
 -- Initialize default boxes in profile if not already present
+-- Fills the sidebar on a fresh profile so the categories are visible without
+-- the player having to build them by hand.
+--
+-- Runs once and records that it did. Without the marker, deleting a shipped box
+-- would simply bring it back on the next load, and there would be no way to get
+-- rid of one. An empty category is skipped rather than created empty, and the
+-- toy collection is not always loaded on the first call -- so a run that finds
+-- nothing does not count, and the seeding is retried later.
+function Toys:SeedDefaultBoxes()
+    local profile = OxedHub.db and OxedHub.db.profile
+    if not profile or not OxedHub.TOY_CATEGORIES then return end
+
+    -- Seeding is recorded per category, not as one global "done" flag. A single
+    -- flag meant a category added in a later version could never reach anyone
+    -- who already had the earlier set, while re-seeding without a record would
+    -- resurrect every box the player had deleted.
+    if not profile.seededBoxKeys then
+        profile.seededBoxKeys = {}
+        -- Carry over an install seeded by the earlier flag: whatever it created
+        -- is already on screen and must not be created a second time.
+        if profile.toyBoxesSeeded then
+            for id in pairs(profile.toyBoxes or {}) do
+                local key = tostring(id):match("^default_(.+)$")
+                if key then profile.seededBoxKeys[key] = true end
+            end
+        end
+    end
+
+    -- Keep the shipped boxes in step with the category definitions. Without
+    -- this a box created by an earlier version keeps whatever name and icon it
+    -- was born with -- which is how a category whose icon path turned out not to
+    -- exist in the client stayed blank even after the definition was fixed.
+    --
+    -- Only boxes still marked as shipped are touched; renaming one opts it out
+    -- for good. Contents are never rewritten here, since the player may have
+    -- added or removed toys -- that is what RebuildDefaultBoxes is for.
+    for _, category in ipairs(OxedHub.TOY_CATEGORIES) do
+        local box = profile.toyBoxes and profile.toyBoxes["default_" .. category.key]
+        if box and box.isShipped ~= false then
+            box.isShipped = true
+            box.name = category.name
+            box.icon = category.icon
+        end
+    end
+
+    for _, category in ipairs(OxedHub.TOY_CATEGORIES) do
+        if not profile.seededBoxKeys[category.key] then
+            local owned = self:GetSuggestedBoxToys(category)
+            -- An empty result usually means the toy collection has not loaded
+            -- yet, so nothing is recorded and the category is tried again later.
+            if #owned > 0 then
+                local boxId = "default_" .. category.key
+                if not profile.toyBoxes[boxId] then
+                    profile.toyBoxes[boxId] = {
+                        id = boxId,
+                        name = category.name,
+                        icon = category.icon,
+                        toys = owned,
+                        isShipped = true,
+                        createdAt = time(),
+                    }
+                end
+                profile.seededBoxKeys[category.key] = true
+                profile.toyBoxesSeeded = true
+            end
+        end
+    end
+end
+
+-- Throws away the shipped boxes and builds them again from the current
+-- categories. Offered as an explicit action because it discards any toy the
+-- player added to or removed from one of them -- seeding alone never touches a
+-- box that already exists.
+function Toys:RebuildDefaultBoxes()
+    local profile = OxedHub.db and OxedHub.db.profile
+    if not profile or not OxedHub.TOY_CATEGORIES then return 0 end
+
+    for id in pairs(profile.toyBoxes or {}) do
+        if tostring(id):match("^default_") then
+            profile.toyBoxes[id] = nil
+        end
+    end
+    profile.seededBoxKeys = nil
+    profile.toyBoxesSeeded = nil
+
+    self:SeedDefaultBoxes()
+
+    local count = 0
+    for id in pairs(profile.toyBoxes or {}) do
+        if tostring(id):match("^default_") then count = count + 1 end
+    end
+
+    if self.RefreshToyBoxesUI then self:RefreshToyBoxesUI() end
+    if self.RefreshToyDock then self:RefreshToyDock() end
+    return count
+end
+
 function Toys:EnsureToyBoxData()
     if not OxedHub.db or not OxedHub.db.profile then return end
     local profile = OxedHub.db.profile
@@ -363,6 +517,8 @@ function Toys:EnsureToyBoxData()
             createdAt = time(),
         }
     end
+
+    self:SeedDefaultBoxes()
 
     -- Ensure all box entries have valid structure
     for id, box in pairs(profile.toyBoxes) do
@@ -401,7 +557,7 @@ function Toys:GetToyBoxes()
                     isDefault = true,
                     toys = self:GetFavoriteToyIDs(),
                 })
-            else
+            elseif not box.hidden then
                 table.insert(userBoxes, box)
             end
         end
@@ -506,6 +662,10 @@ function Toys:RenameToyBox(boxId, newName, newIcon)
     if newIcon then
         box.icon = newIcon
     end
+
+    -- Once the player has named or re-iconed a shipped box it stops tracking the
+    -- category definition, so their choice survives the next update.
+    box.isShipped = false
 
     if self.RefreshToyBoxesUI then self:RefreshToyBoxesUI() end
     if self.RefreshToyDock then self:RefreshToyDock() end

@@ -23,6 +23,31 @@ local function ApplyModernScroll(scrollFrame)
     end
 end
 
+-- Sidebar rows are 140px wide and the name gets about 90 of them, which is
+-- roughly eleven characters. Truncating produced labels like "Stuff & Ca...",
+-- so the font steps down until the name fits instead. The row tooltip still
+-- carries the full name for anything that stays too long even at the floor.
+local BOX_NAME_SIZES = { 12, 11, 10, 9 }
+
+local function FitBoxName(fontString, text)
+    text = text or ""
+    local font, _, flags = fontString:GetFont()
+    local available = fontString:GetWidth()
+
+    -- Before the first layout pass the width is not known yet; fall back to the
+    -- default size rather than shrinking on a bad measurement.
+    if not font or not available or available <= 0 then
+        fontString:SetText(text)
+        return
+    end
+
+    for _, size in ipairs(BOX_NAME_SIZES) do
+        fontString:SetFont(font, size, flags)
+        fontString:SetText(text)
+        if fontString:GetStringWidth() <= available then return end
+    end
+end
+
 local function GetToySettings()
     local profile = OxedHub.db and OxedHub.db.profile
     if not profile then return {} end
@@ -67,6 +92,28 @@ function Toys:ShowSuggestedBoxMenu(anchorFrame)
             end,
         })
     end
+
+    -- Rebuilding is destructive, so it sits at the bottom behind a confirm
+    -- rather than next to the harmless "create one box" entries above.
+    table.insert(menu, {
+        text = "|cffff8000Rebuild default boxes|r",
+        notCheckable = true,
+        func = function()
+            StaticPopupDialogs["OXEDHUB_CONFIRM_REBUILD_BOXES"] = {
+                text = "Rebuild the shipped boxes?\n\n|cff888888They are recreated from the current categories. Any toy you added to or removed from one of them is lost. Your own boxes and your collection are untouched.|r",
+                button1 = L["SETTINGS_BTN_YES"] or "Yes",
+                button2 = L["SETTINGS_BTN_CANCEL"] or "Cancel",
+                OnAccept = function()
+                    local count = Toys:RebuildDefaultBoxes()
+                    print(("|cff00d9d9Oxed Hub:|r rebuilt %d default box(es)."):format(count))
+                end,
+                timeout = 0,
+                whileDead = true,
+                hideOnEscape = true,
+            }
+            StaticPopup_Show("OXEDHUB_CONFIRM_REBUILD_BOXES")
+        end,
+    })
 
     if not self._suggestMenu then
         self._suggestMenu = CreateFrame("Frame", "OxedHubToySuggestMenu", UIParent, "UIDropDownMenuTemplate")
@@ -255,6 +302,34 @@ function Toys:ShowBoxEditorDialog(editingBoxId)
     dialog.iconPreview:SetTexture(resolvedTex or 135933)
 
     dialog:Show()
+end
+
+-- ============================================================================
+-- HIDDEN BOXES MENU
+-- ============================================================================
+-- A dropdown rather than a dialog: restoring is a single click on a name, and a
+-- modal window for that would be heavier than the action deserves.
+function Toys:ShowHiddenBoxesMenu(anchor)
+    local hidden = self:GetHiddenBoxes()
+    if #hidden == 0 then return end
+
+    MenuUtil.CreateContextMenu(anchor, function(owner, root)
+        root:CreateTitle("Hidden boxes")
+
+        for _, entry in ipairs(hidden) do
+            local label = ("%s |cff888888(%d)|r"):format(entry.name, entry.count)
+            root:CreateButton(label, function()
+                Toys:SetBoxHidden(entry.id, false)
+            end)
+        end
+
+        root:CreateDivider()
+        root:CreateButton("Show all", function()
+            for _, entry in ipairs(hidden) do
+                Toys:SetBoxHidden(entry.id, false)
+            end
+        end)
+    end)
 end
 
 -- ============================================================================
@@ -819,10 +894,46 @@ function Toys:ShowToyBoxesTab(parentPanel)
         end)
         content.settingsBtn = settingsBtn
 
+        -- [ Hidden ] Button. Only appears once something is actually hidden --
+        -- a permanently visible button for an empty list is just clutter, and
+        -- its appearance is the hint that hidden boxes can be brought back.
+        --
+        -- It sits left of Lock, so its point is set once Lock exists. Anchoring
+        -- Lock to this button instead would leave a gap the width of a hidden
+        -- frame, since hidden frames keep their position.
+        local hiddenBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+        hiddenBtn:SetSize(74, 20)
+        hiddenBtn:SetNormalFontObject("GameFontNormalSmall")
+        hiddenBtn:SetScript("OnClick", function()
+            Toys:ShowHiddenBoxesMenu(hiddenBtn)
+        end)
+        hiddenBtn:SetScript("OnEnter", function(self)
+            local s = GetToySettings()
+            if s.hideButtonTooltips then return end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine("Hidden boxes", 1, 0.85, 0.2)
+            GameTooltip:AddLine("Click to bring one back.", 0.9, 0.9, 0.9)
+            GameTooltip:Show()
+        end)
+        hiddenBtn:SetScript("OnLeave", GameTooltip_Hide)
+        function hiddenBtn:UpdateHiddenState()
+            local hidden = Toys.GetHiddenBoxes and Toys:GetHiddenBoxes() or {}
+            if #hidden > 0 then
+                self:SetText(("Hidden (%d)"):format(#hidden))
+                self:Show()
+            else
+                self:Hide()
+            end
+        end
+        content.hiddenBtn = hiddenBtn
+
         -- [ Lock / Unlock ] Toggle Button (Controls [X] Delete Badges)
         local lockBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
         lockBtn:SetSize(52, 20)
         lockBtn:SetPoint("RIGHT", settingsBtn, "LEFT", -4, 0)
+
+        hiddenBtn:SetPoint("RIGHT", lockBtn, "LEFT", -4, 0)
+        hiddenBtn:UpdateHiddenState()
         lockBtn:SetNormalFontObject("GameFontNormalSmall")
         lockBtn:SetScript("OnClick", function(self)
             local s = GetToySettings()
@@ -939,9 +1050,15 @@ function Toys:RefreshToyBoxesUI()
     -- A box can disappear underneath us (deleted from the confirm dialog, or
     -- from another view), leaving the selection pointing at nothing.  Fall back
     -- rather than rendering an empty grid with no way out.
+    -- Hiding the selected box counts too: GetToyBox still finds it, so without
+    -- this the grid would keep showing a box that is no longer in the sidebar.
     if selectedBoxId and selectedBoxId ~= "all" and selectedBoxId ~= "favorites"
-        and not self:GetToyBox(selectedBoxId) then
+        and (not self:GetToyBox(selectedBoxId) or self:IsBoxHidden(selectedBoxId)) then
         selectedBoxId = "favorites"
+    end
+
+    if toyBoxPanel.content and toyBoxPanel.content.hiddenBtn then
+        toyBoxPanel.content.hiddenBtn:UpdateHiddenState()
     end
 
     -- EnsureToyBoxData only builds the box structure.  Without the toy
@@ -1088,7 +1205,7 @@ function Toys:RefreshToyBoxesUI()
         
         local resolvedIcon = Toys:GetBoxIconTexture(box.icon)
         btn.icon:SetTexture(resolvedIcon or 135933)
-        btn.nameText:SetText(box.name)
+        FitBoxName(btn.nameText, box.name)
         btn.countText:SetText(tostring(#(box.toys or {})))
 
         if box.id == selectedBoxId then
