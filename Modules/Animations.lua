@@ -2488,6 +2488,11 @@ function Animations:AcquireAnimationFrame()
     frame.texture = tex
     frame.isActive = true
     table.insert(self.animationPool, frame)
+
+    -- Started here rather than at load: the sweeper only has anything to do
+    -- once a frame exists, and the first acquire is the earliest that is true.
+    self:StartStuckFrameSweeper()
+
     return frame
 end
 
@@ -2497,9 +2502,32 @@ function Animations:ReleaseAnimationFrame(frame)
         frame.timer:Cancel()
         frame.timer = nil
     end
+    frame.deadline = nil
     frame:Hide()
     frame.isActive = false
     frame.texture:SetTexture(nil)
+end
+
+-- Safety net for frames whose ticker never reached its release tick.
+--
+-- Every playback records the time it should be finished by. Anything still
+-- showing well past that is stuck, and one second of granularity is enough:
+-- the deadline already carries a two second margin, so a healthy animation is
+-- long gone before this ever looks at it.
+function Animations:StartStuckFrameSweeper()
+    if self.stuckSweeper then return end
+
+    self.stuckSweeper = C_Timer.NewTicker(1, function()
+        local pool = Animations.animationPool
+        if not pool then return end
+
+        local now = GetTime()
+        for _, frame in ipairs(pool) do
+            if frame.isActive and frame.deadline and now > frame.deadline then
+                Animations:ReleaseAnimationFrame(frame)
+            end
+        end
+    end)
 end
 
 -- Play animation using Soundie approach (supports multiple concurrent animations)
@@ -2554,6 +2582,15 @@ function Animations:PlayAnimationDirect(animData)
 
     -- Create animation ticker
     local fps = animData.fps or 24
+
+    -- The ticker releases the frame on its final tick and nowhere else, so
+    -- anything that stops that one tick from running leaves the last sprite
+    -- frame on screen for the rest of the session: an error raised inside the
+    -- callback, or the ticker's iteration budget running out without the
+    -- release branch being reached. The sweeper below uses this deadline to
+    -- clean up regardless of why the tick never came.
+    frame.deadline = GetTime() + ((maxLoops * maxFrames) / fps) + 2
+
     frame.timer = C_Timer.NewTicker(1/fps, function()
         frame.currentFrame = frame.currentFrame + 1
         if frame.currentFrame >= maxFrames then

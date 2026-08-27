@@ -4090,6 +4090,13 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
                     local maxLoops = 1
                     local currentLoop = 1
 
+                    -- Same safety net as the shared player: this ticker also
+                    -- releases the frame only on its final tick, so record when
+                    -- playback should be over and let the sweeper in Animations
+                    -- clear it if that tick never arrives.
+                    frame.deadline = GetTime()
+                        + ((maxLoops * animData.frameCount) / animData.fps) + 2
+
                     frame.timer = C_Timer.NewTicker(1/animData.fps, function()
                         frame.currentFrame = frame.currentFrame + 1
                         if frame.currentFrame >= animData.frameCount then
@@ -4109,6 +4116,13 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
 
             local s = self.slotData
             if s and s.type then
+                -- Name the slot for the error journal, so a failure here reads
+                -- as the node the user clicked rather than a line in this file.
+                if OxedHub.ErrorJournal then
+                    OxedHub.ErrorJournal:SetContext("ActionHub",
+                        s.label or s.name or tostring(s.id), s.type)
+                end
+
                 if s.type == "toy" then
                     if GetToyAssignmentMode(s) == "mix" then
                         local mixData = OxedHub.db.profile.toyMixes and OxedHub.db.profile.toyMixes[s.id]
@@ -4145,6 +4159,8 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
                         OxedHub.Triggers:ExecuteTriggerByID(s.id, true)
                     end
                 end
+
+                if OxedHub.ErrorJournal then OxedHub.ErrorJournal:ClearContext() end
             end
 
             ActionHub:QueueCooldownRefresh()
