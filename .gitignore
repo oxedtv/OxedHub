@@ -14,3 +14,6 @@ OxedHub/
 *.bak
 Thumbs.db
 .DS_Store
+
+# Third-party addons kept locally for reference, never shipped.
+bugrraber/
