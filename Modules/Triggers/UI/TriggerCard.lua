@@ -505,6 +505,7 @@ function Triggers:CreateTriggerCard(parent, trigger)
 
     local function SelectEvent(eventType)
         trigger.event = eventType.value
+        Triggers:ApplyDefaultZonesForEvent(trigger)
         if not Triggers:SupportsAdvancedMacros(trigger) and trigger.activeTab == "advanced" then
             trigger.activeTab = "setup"
         end

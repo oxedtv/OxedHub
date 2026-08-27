@@ -2494,6 +2494,12 @@ function Core:HandleSlashCommand(msg)
         if OxedHub.Toys and OxedHub.Toys.ToggleToyDock then
             OxedHub.Toys:ToggleToyDock(rest ~= "" and rest or nil)
         end
+    elseif command == "whatsnew" or command == "news" or command == "changelog" then
+        -- Opened by hand, so show the full history rather than only what is new
+        -- since the last version the player saw.
+        if OxedHub.WhatsNew then
+            OxedHub.WhatsNew:Show(true)
+        end
     elseif command == "reload" or command == "rl" then
         ReloadUI()
     elseif command == "trigger" then
@@ -2668,12 +2674,26 @@ function Core:InitPvPKillBaseline()
     pvpState.baselineKills = GetHonorableKillCount()
 end
 
+-- True only in instanced PvP, where every kill really is a player kill and the
+-- GUIDs are hidden from us.
+local function InInstancedPvP()
+    local ok, instanceType = pcall(function()
+        local _, t = IsInInstance()
+        return t
+    end)
+    if not ok then return false end
+    return instanceType == "pvp" or instanceType == "arena"
+end
+
 -- Did we land this killing blow, and was the victim a player?
 local function IsOurPlayerKill(attackerGUID, targetGUID)
-    -- Victim check: a hidden GUID means instanced PvP, where it's a player.
+    -- Victim check. A hidden GUID used to be treated as proof of instanced PvP,
+    -- but 12.0 hides GUIDs across all instanced content, so every raid and
+    -- dungeon NPC passed this check and the PvP triggers fired on trash.
+    -- Hidden GUIDs now only count inside an actual battleground or arena.
     local targetIsPlayer
     if IsSecretValue(targetGUID) then
-        targetIsPlayer = true
+        targetIsPlayer = InInstancedPvP()
     else
         local ok, found = pcall(function()
             return targetGUID and tostring(targetGUID):find("^Player%-") ~= nil
@@ -2686,7 +2706,15 @@ local function IsOurPlayerKill(attackerGUID, targetGUID)
     -- honorable-kill total for an increase.
     if IsSecretValue(attackerGUID) then
         local current = GetHonorableKillCount()
-        if pvpState.baselineKills and current > pvpState.baselineKills then
+        -- No baseline yet means achievement data was not ready when we asked.
+        -- Adopt the current total and skip this kill: comparing against a stale
+        -- or zero baseline is what made the trigger fire on an unrelated kill
+        -- once the real total finally loaded.
+        if not pvpState.baselineKills then
+            pvpState.baselineKills = current
+            return false
+        end
+        if current > pvpState.baselineKills then
             pvpState.baselineKills = current
             return true
         end

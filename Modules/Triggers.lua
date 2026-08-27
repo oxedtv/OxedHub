@@ -336,6 +336,49 @@ end
 
 
 
+-- ── Default zones per event ──────────────────────────────────────────────────
+-- Most events make sense everywhere, so the default is every zone ticked. PvP
+-- events are the exception: leaving them on in raids and dungeons means the
+-- addon keeps evaluating them where they can never legitimately fire, and a
+-- detection slip there shows up as a trigger going off on raid trash.
+local ALL_ZONES = {
+    OPEN_WORLD = true, PARTY = true, DELVE = true,
+    RAID = true, PVP = true, BATTLEGROUND = true,
+}
+
+-- Kills are counted from an event that cannot tell a player from an NPC outside
+-- instanced PvP, so these stay in battlegrounds unless the user says otherwise.
+local BATTLEGROUND_ONLY = { BATTLEGROUND = true }
+
+-- The aura alerts are meaningless outside PvP but arenas are their main use,
+-- so they get both PvP zone types rather than battlegrounds alone.
+local PVP_ZONES = { PVP = true, BATTLEGROUND = true }
+
+local DEFAULT_ZONES_BY_EVENT = {
+    PVP_KILL           = BATTLEGROUND_ONLY,
+    PVP_MULTIKILL      = BATTLEGROUND_ONLY,
+    PVP_SPREE          = BATTLEGROUND_ONLY,
+    PVP_ENEMY_BUFF     = PVP_ZONES,
+    PVP_SELF_CC        = PVP_ZONES,
+    PVP_HEALER_CC      = PVP_ZONES,
+    PVP_TRINKET        = PVP_ZONES,
+    PVP_CONSUMABLE     = PVP_ZONES,
+}
+
+function Triggers:GetDefaultZonesForEvent(eventKey)
+    local preset = DEFAULT_ZONES_BY_EVENT[eventKey] or ALL_ZONES
+    local zones = {}
+    for key, value in pairs(preset) do zones[key] = value end
+    return zones
+end
+
+-- Applied when the event type changes, but never over a choice the user made:
+-- ZoneTab marks the trigger as soon as a box is ticked by hand.
+function Triggers:ApplyDefaultZonesForEvent(trigger)
+    if not trigger or trigger.zonesCustomized then return end
+    trigger.zones = self:GetDefaultZonesForEvent(trigger.event)
+end
+
 -- Create a new trigger
 function Triggers:CreateNewTrigger()
     local id = OxedHub:GenerateID("trigger")
@@ -345,14 +388,7 @@ function Triggers:CreateNewTrigger()
         event = "UNIT_SPELLCAST_SUCCEEDED",
         conditions = {},
         actions = {},
-        zones = {
-            OPEN_WORLD = true,
-            PARTY = true,
-            DELVE = true,
-            RAID = true,
-            PVP = true,
-            BATTLEGROUND = true,
-        },
+        zones = Triggers:GetDefaultZonesForEvent("UNIT_SPELLCAST_SUCCEEDED"),
         enabled = true,
         customMacroIcon = nil,
         extraMacroText = nil,

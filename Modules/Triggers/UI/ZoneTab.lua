@@ -57,6 +57,12 @@ function Triggers:CreateZoneUI(frame, trigger)
         check:SetChecked(zones[data.key] or false)
         check:SetScript("OnClick", function(self)
             zones[data.key] = self:GetChecked()
+            -- Write through in case the trigger had no zone table of its own:
+            -- `zones` would then be a detached copy and the tick would be lost.
+            trigger.zones = zones
+            -- From here on the event-type defaults must leave this trigger
+            -- alone, or switching event would silently undo the user's choice.
+            trigger.zonesCustomized = true
             if frame:GetParent() and Triggers.ShowAutoSaved then
                 Triggers.ShowAutoSaved(frame:GetParent())
             end
