@@ -981,6 +981,13 @@ function OxedRing:ActivateSlice(index, isSecureRelease)
         return
     end
 
+    -- Name the node for the error journal. Cleared by the journal itself if
+    -- anything below raises, so a failure cannot mislabel the next error.
+    if OxedHub.ErrorJournal then
+        OxedHub.ErrorJournal:SetContext("OxedRing",
+            data.label or ("slice " .. tostring(index)), data.type)
+    end
+
     if data.type == "toy" then
         if data.assignmentMode == "direct" then
             -- Secure release already handled the /use macro; insecure uses SecureCmdOptionParse
@@ -1096,6 +1103,8 @@ function OxedRing:ActivateSlice(index, isSecureRelease)
             end
         end
     end
+
+    if OxedHub.ErrorJournal then OxedHub.ErrorJournal:ClearContext() end
 end
 
 function OxedRing:OnUpdate(elapsed)

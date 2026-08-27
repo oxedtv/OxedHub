@@ -4322,6 +4322,150 @@ function UI:CreateSettingsTab()
     for _, child in ipairs({ scrollChild:GetChildren() }) do Classify(child) end
     for _, region in ipairs({ scrollChild:GetRegions() }) do Classify(region) end
 
+    -- ── Debug page ────────────────────────────────────────────────────────
+    -- Sits on the tab frame rather than in the scroll child: it has its own
+    -- scrolling list, and keeping it out of the Main/Profiles widget snapshot
+    -- means the page split above does not have to know it exists.
+    local debugPage = CreateFrame("Frame", nil, tab)
+    debugPage:SetPoint("TOPLEFT", pageTabStrip, "BOTTOMLEFT", 0, -8)
+    debugPage:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -THEMED_FRAME_INSETS.right, THEMED_FRAME_INSETS.bottom)
+    debugPage:Hide()
+
+    local debugSummary = debugPage:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    debugSummary:SetPoint("TOPLEFT", debugPage, "TOPLEFT", 15, -10)
+    debugSummary:SetTextColor(1, 0.82, 0, 1)
+
+    local debugHint = debugPage:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    debugHint:SetPoint("TOPLEFT", debugSummary, "BOTTOMLEFT", 0, -4)
+    debugHint:SetText(L["DEBUG_HINT"] or "Only OxedHub's own problems are listed, newest first. Repeats are counted, not duplicated.")
+
+    local copyBtn = CreateFrame("Button", nil, debugPage, "UIPanelButtonTemplate")
+    ApplyRedButtonStyle(copyBtn)
+    copyBtn:SetSize(90, 24)
+    copyBtn:SetPoint("TOPRIGHT", debugPage, "TOPRIGHT", -30, -8)
+    copyBtn:SetText(L["DEBUG_COPY"] or "Copy")
+
+    local clearBtn = CreateFrame("Button", nil, debugPage, "UIPanelButtonTemplate")
+    ApplyRedButtonStyle(clearBtn)
+    clearBtn:SetSize(90, 24)
+    clearBtn:SetPoint("RIGHT", copyBtn, "LEFT", -6, 0)
+    clearBtn:SetText(L["DEBUG_CLEAR"] or "Clear")
+
+    local debugScroll = CreateFrame("ScrollFrame", "OxedHubDebugScrollFrame", debugPage, "UIPanelScrollFrameTemplate")
+    debugScroll:SetPoint("TOPLEFT", debugHint, "BOTTOMLEFT", 0, -10)
+    debugScroll:SetPoint("BOTTOMRIGHT", debugPage, "BOTTOMRIGHT", -30, 10)
+    StyleScrollFrame(debugScroll)
+
+    local debugList = CreateFrame("Frame", nil, debugScroll)
+    debugList:SetSize(940, 1)
+    debugScroll:SetScrollChild(debugList)
+
+    -- Rows are pooled: the list is rebuilt on every visit to the page, and
+    -- recreating frames each time would leak them for the session.
+    local debugRows = {}
+
+    local function AcquireDebugRow(index)
+        local row = debugRows[index]
+        if row then return row end
+
+        row = CreateFrame("Frame", nil, debugList, "BackdropTemplate")
+        row:SetBackdrop({
+            bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 12, edgeSize = 12,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        row:SetBackdropColor(0.04, 0.04, 0.05, 0.65)
+        row:SetBackdropBorderColor(0.24, 0.24, 0.28, 0.8)
+        row:SetWidth(920)
+
+        row.head = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.head:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -8)
+        row.head:SetJustifyH("LEFT")
+
+        row.body = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.body:SetPoint("TOPLEFT", row.head, "BOTTOMLEFT", 0, -4)
+        row.body:SetWidth(890)
+        row.body:SetJustifyH("LEFT")
+
+        row.meta = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        row.meta:SetPoint("TOPLEFT", row.body, "BOTTOMLEFT", 0, -4)
+        row.meta:SetJustifyH("LEFT")
+
+        debugRows[index] = row
+        return row
+    end
+
+    local function RefreshDebugPage()
+        local journal = OxedHub.ErrorJournal
+        if not journal then return end
+
+        local entries = journal:GetEntries()
+        local count, occurrences = journal:GetSummary()
+
+        if count == 0 then
+            debugSummary:SetText(L["DEBUG_NONE"] or "No problems recorded.")
+        else
+            debugSummary:SetText((L["DEBUG_SUMMARY"] or "%d problem(s), %d occurrence(s)"):format(count, occurrences))
+        end
+
+        local y = 0
+        for i, entry in ipairs(entries) do
+            local row = AcquireDebugRow(i)
+
+            -- Blocked calls and Lua errors need telling apart at a glance: one
+            -- means a protected API, the other a genuine fault in the addon.
+            local kindColor = (entry.kind == "Blocked") and "ffff8000" or "ffff4040"
+            local repeats = (entry.count or 1) > 1 and (" x%d"):format(entry.count) or ""
+
+            -- Feature first, then the specific thing inside it. The feature is
+            -- always known; the specific name only when that path is instrumented.
+            local where = entry.area or (L["DEBUG_UNKNOWN_AREA"] or "Unknown")
+            if entry.context then
+                where = ("%s |cff888888>|r %s"):format(where, entry.context)
+            end
+            row.head:SetText(("|c%s[%s%s]|r  |cffffd100%s|r"):format(
+                kindColor, entry.kind or "?", repeats, where))
+
+            row.body:SetText(entry.message or "")
+
+            local meta = {}
+            if entry.source then meta[#meta + 1] = entry.source end
+            meta[#meta + 1] = (L["DEBUG_LAST_SEEN"] or "last %s"):format(date("%d.%m %H:%M:%S", entry.lastSeen or time()))
+            if (entry.count or 1) > 1 and entry.firstSeen then
+                meta[#meta + 1] = (L["DEBUG_FIRST_SEEN"] or "first %s"):format(date("%d.%m %H:%M:%S", entry.firstSeen))
+            end
+            row.meta:SetText(table.concat(meta, "   |cff555555|||r   "))
+
+            row:SetHeight(row.body:GetStringHeight() + 46)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", debugList, "TOPLEFT", 8, -y)
+            row:Show()
+            y = y + row:GetHeight() + 6
+        end
+
+        for i = #entries + 1, #debugRows do
+            debugRows[i]:Hide()
+        end
+
+        debugList:SetHeight(math.max(y, 1))
+        debugScroll:SetVerticalScroll(0)
+    end
+    tab.RefreshDebugPage = RefreshDebugPage
+
+    clearBtn:SetScript("OnClick", function()
+        if OxedHub.ErrorJournal then
+            OxedHub.ErrorJournal:Clear()
+            RefreshDebugPage()
+        end
+    end)
+
+    copyBtn:SetScript("OnClick", function()
+        if OxedHub.ErrorJournal then
+            UI:ShowCopyDialog(OxedHub.ErrorJournal:BuildReport())
+        end
+    end)
+
     tab.activePage = tab.activePage or "main"
     tab.activeProfileSubPage = tab.activeProfileSubPage or "manage"
 
@@ -4329,7 +4473,17 @@ function UI:CreateSettingsTab()
 
     local function ApplyVisibility()
         local onProfiles = (tab.activePage == "profiles")
+        local onDebug = (tab.activePage == "debug")
         local sub = tab.activeProfileSubPage
+
+        -- Debug replaces the scrolling settings area outright, so the Main and
+        -- Profiles widgets need no special handling here: hiding their scroll
+        -- frame takes all of them off screen at once.
+        scrollFrame:SetShown(not onDebug)
+        debugPage:SetShown(onDebug)
+        if onDebug then
+            RefreshDebugPage()
+        end
 
         for _, w in ipairs(mainWidgets) do w:SetShown(not onProfiles) end
         for _, w in ipairs(manageWidgets) do w:SetShown(onProfiles and sub == "manage") end
@@ -4408,6 +4562,7 @@ function UI:CreateSettingsTab()
     for _, page in ipairs({
         { key = "main", label = L["SETTINGS_PAGE_MAIN"] or "Main" },
         { key = "profiles", label = L["SETTINGS_PAGE_PROFILES"] or "Profiles" },
+        { key = "debug", label = L["SETTINGS_PAGE_DEBUG"] or "Debug" },
     }) do
         local pageBtn = CreateFrame("Button", nil, pageButtonRow, "UIPanelButtonTemplate")
         ApplyRedButtonStyle(pageBtn)
@@ -8266,6 +8421,61 @@ function UI:GenerateScopedExport(f)
     else
         print("|cffff0000Oxed Hub:|r " .. (err or "Export failed."))
     end
+end
+
+-- Read-only text dialog used by the Debug page. Deliberately not
+-- CreateImportExportPopup: that helper hardcodes its global frame name, so a
+-- third caller would clobber the export frame's global.
+function UI:ShowCopyDialog(text)
+    if not UI.copyDialog then
+        local f = CreateFrame("Frame", "OxedHubCopyDialog", UIParent, "BasicFrameTemplateWithInset")
+        f:SetSize(620, 520)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("DIALOG")
+        f:SetFrameLevel(200)
+        f:SetToplevel(true)
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        if f.TitleText then f.TitleText:SetText(L["DEBUG_REPORT_TITLE"] or "OxedHub Debug Report") end
+        if f.CloseButton then f.CloseButton:SetScript("OnClick", function() f:Hide() end) end
+        tinsert(UISpecialFrames, "OxedHubCopyDialog")
+
+        local hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        hint:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -30)
+        hint:SetText(L["DEBUG_COPY_HINT"] or "Press Ctrl+C to copy.")
+
+        local scroll = CreateFrame("ScrollFrame", "OxedHubCopyDialogScroll", f, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -48)
+        scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -34, 16)
+
+        local edit = CreateFrame("EditBox", nil, scroll)
+        edit:SetMultiLine(true)
+        edit:SetFontObject(ChatFontNormal)
+        edit:SetWidth(560)
+        edit:SetAutoFocus(false)
+        -- 0 means unlimited: a long session's report easily passes the default cap.
+        edit:SetMaxLetters(0)
+        edit:SetScript("OnEscapePressed", function() f:Hide() end)
+        -- Keep it read-only without disabling it, or Ctrl+C would stop working.
+        edit:SetScript("OnTextChanged", function(self, userInput)
+            if userInput then self:SetText(self.sourceText or "") end
+        end)
+        scroll:SetScrollChild(edit)
+
+        f.editBox = edit
+        UI.copyDialog = f
+    end
+
+    local f = UI.copyDialog
+    f.editBox.sourceText = text
+    f.editBox:SetText(text)
+    f:Show()
+    f:Raise()
+    f.editBox:HighlightText()
+    f.editBox:SetFocus()
 end
 
 function UI:ShowExportFrame()
