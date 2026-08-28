@@ -379,7 +379,13 @@ function Triggers:RefreshSelfAuraNativeEffects()
                         end
                         if c.onBoth then
                             handle = C_UnitAuras.AddAuraSound(Enum.UnitAuraSoundTrigger.Added, soundInfo)
-                            C_UnitAuras.AddAuraSound(Enum.UnitAuraSoundTrigger.Removed, soundInfo)
+                            -- Only ask for the second registration once the
+                            -- first has been granted. Firing both blind is what
+                            -- made a refused probe cost two blocked calls
+                            -- instead of one.
+                            if handle then
+                                C_UnitAuras.AddAuraSound(Enum.UnitAuraSoundTrigger.Removed, soundInfo)
+                            end
                         else
                             handle = C_UnitAuras.AddAuraSound(triggerEnum, soundInfo)
                         end

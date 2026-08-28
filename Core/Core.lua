@@ -2494,6 +2494,10 @@ function Core:HandleSlashCommand(msg)
         if OxedHub.Toys and OxedHub.Toys.ToggleToyDock then
             OxedHub.Toys:ToggleToyDock(rest ~= "" and rest or nil)
         end
+    elseif command == "toydebug" then
+        if OxedHub.Toys and OxedHub.Toys.DumpToyButtons then
+            OxedHub.Toys:DumpToyButtons()
+        end
     elseif command == "whatsnew" or command == "news" or command == "changelog" then
         -- Opened by hand, so show the full history rather than only what is new
         -- since the last version the player saw.

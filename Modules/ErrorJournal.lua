@@ -207,6 +207,39 @@ function Journal:GetSummary()
     return #entries, occurrences
 end
 
+-- When the Debug page was last looked at. Anything newer is marked as new, so
+-- a problem that appeared since the last visit is not lost among the ones
+-- already read.
+function Journal:GetLastViewed()
+    local db = Store()
+    return (db and db.debugLastViewed) or 0
+end
+
+function Journal:MarkViewed()
+    local db = Store()
+    if db then db.debugLastViewed = time() end
+end
+
+-- One entry as plain text. Shared by the per-row Copy button and the full
+-- report, so both read identically.
+function Journal:FormatEntry(entry, index)
+    local lines = {}
+    local prefix = index and ("%d. "):format(index) or ""
+
+    lines[#lines + 1] = ("%s[%s x%d] %s"):format(
+        prefix, entry.kind or "?", entry.count or 1, entry.message or "")
+    lines[#lines + 1] = ("   Feature: %s"):format(entry.area or "unknown")
+    if entry.context then lines[#lines + 1] = ("   Where: %s"):format(entry.context) end
+    if entry.source then lines[#lines + 1] = ("   Source: %s"):format(entry.source) end
+    lines[#lines + 1] = ("   First seen: %s"):format(date("%d.%m.%y %H:%M:%S", entry.firstSeen or time()))
+    lines[#lines + 1] = ("   Last seen:  %s"):format(date("%d.%m.%y %H:%M:%S", entry.lastSeen or time()))
+    if entry.stack and entry.stack ~= "" then
+        lines[#lines + 1] = "   Stack:"
+        lines[#lines + 1] = "   " .. entry.stack:gsub("\n", "\n   ")
+    end
+    return table.concat(lines, "\n")
+end
+
 -- Plain text, built for pasting into a bug report.
 function Journal:BuildReport()
     local entries = Journal:GetEntries()
@@ -218,12 +251,7 @@ function Journal:BuildReport()
         "",
     }
     for i, e in ipairs(entries) do
-        lines[#lines + 1] = ("%d. [%s x%d] %s"):format(i, e.kind or "?", e.count or 1, e.message or "")
-        lines[#lines + 1] = ("   Feature: %s"):format(e.area or "unknown")
-        if e.context then lines[#lines + 1] = ("   Where: %s"):format(e.context) end
-        if e.source then lines[#lines + 1] = ("   Source: %s"):format(e.source) end
-        lines[#lines + 1] = ("   First seen: %s"):format(date("%d.%m.%y %H:%M:%S", e.firstSeen or time()))
-        lines[#lines + 1] = ("   Last seen:  %s"):format(date("%d.%m.%y %H:%M:%S", e.lastSeen or time()))
+        lines[#lines + 1] = self:FormatEntry(e, i)
         lines[#lines + 1] = ""
     end
     return table.concat(lines, "\n")
@@ -278,6 +306,7 @@ watcher:RegisterEvent("ADDON_ACTION_FORBIDDEN")
 watcher:RegisterEvent("PLAYER_LOGIN")
 watcher:SetScript("OnEvent", function(_, event, blockedAddon, blockedFunc)
     if event == "PLAYER_LOGIN" then
+        Journal:HookBugGrabber()
         -- Wrapping happens here rather than at load so this file can sit early
         -- in the TOC without depending on the trigger files being parsed yet.
         Journal:InstrumentTriggers()
@@ -301,6 +330,40 @@ end)
 -- Installed at load, not at login: a failure while the addon is still setting
 -- itself up is exactly the kind that is hardest to reproduce later.
 InstallErrorHandler()
+
+-- BugGrabber ends its setup with
+--
+--     function seterrorhandler() end
+--
+-- replacing the global with a no-op so nothing can take the handler off it
+-- afterwards. Every addon loading later, this one included, then calls a
+-- function that does nothing, which is why the Debug tab stayed empty while
+-- BugSack was showing the very same error.
+--
+-- It does publish what it catches, so subscribe to that instead. Nothing is
+-- recorded twice: where this works, our own handler was never installed.
+function Journal:HookBugGrabber()
+    local grabber = _G.BugGrabber
+    if not grabber or not grabber.GetErrorByID then return false end
+    if not EventRegistry or not EventRegistry.RegisterCallback then return false end
+    if self._bugGrabberHooked then return true end
+
+    EventRegistry:RegisterCallback("BugGrabber.BugGrabbed", function(_, tableID)
+        local ok, err = pcall(grabber.GetErrorByID, grabber, tableID)
+        if not ok or type(err) ~= "table" then return end
+
+        local message = SafeString(err.message, "")
+        local stack = SafeString(err.stack, "")
+
+        if IsOurs(message, stack) then
+            pcall(Journal.Record, Journal, "Lua", message, stack)
+        end
+        activeContext = nil
+    end, self)
+
+    self._bugGrabberHooked = true
+    return true
+end
 
 -- ── Instrumentation ──────────────────────────────────────────────────────────
 

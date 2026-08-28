@@ -4343,7 +4343,7 @@ function UI:CreateSettingsTab()
     ApplyRedButtonStyle(copyBtn)
     copyBtn:SetSize(90, 24)
     copyBtn:SetPoint("TOPRIGHT", debugPage, "TOPRIGHT", -30, -8)
-    copyBtn:SetText(L["DEBUG_COPY"] or "Copy")
+    copyBtn:SetText(L["DEBUG_COPY_ALL"] or "Copy All")
 
     local clearBtn = CreateFrame("Button", nil, debugPage, "UIPanelButtonTemplate")
     ApplyRedButtonStyle(clearBtn)
@@ -4381,16 +4381,31 @@ function UI:CreateSettingsTab()
 
         row.head = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         row.head:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -8)
+        row.head:SetPoint("RIGHT", row, "RIGHT", -70, 0)
         row.head:SetJustifyH("LEFT")
 
         row.body = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         row.body:SetPoint("TOPLEFT", row.head, "BOTTOMLEFT", 0, -4)
-        row.body:SetWidth(890)
+        row.body:SetWidth(820)
         row.body:SetJustifyH("LEFT")
 
         row.meta = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         row.meta:SetPoint("TOPLEFT", row.body, "BOTTOMLEFT", 0, -4)
         row.meta:SetJustifyH("LEFT")
+
+        -- Per-row copy: pasting one problem into a report is far more common
+        -- than pasting the whole journal.
+        row.copyBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        ApplyRedButtonStyle(row.copyBtn)
+        row.copyBtn:SetSize(52, 20)
+        row.copyBtn:SetPoint("TOPRIGHT", row, "TOPRIGHT", -8, -8)
+        row.copyBtn:SetText(L["DEBUG_COPY"] or "Copy")
+        row.copyBtn:SetNormalFontObject("GameFontNormalSmall")
+        row.copyBtn:SetScript("OnClick", function(self)
+            if self.entry and OxedHub.ErrorJournal then
+                UI:ShowCopyDialog(OxedHub.ErrorJournal:FormatEntry(self.entry))
+            end
+        end)
 
         debugRows[index] = row
         return row
@@ -4402,6 +4417,10 @@ function UI:CreateSettingsTab()
 
         local entries = journal:GetEntries()
         local count, occurrences = journal:GetSummary()
+
+        -- Read before the rows are drawn and updated after, so the visit that
+        -- reveals a new problem still shows it marked.
+        local lastViewed = journal:GetLastViewed()
 
         if count == 0 then
             debugSummary:SetText(L["DEBUG_NONE"] or "No problems recorded.")
@@ -4424,8 +4443,22 @@ function UI:CreateSettingsTab()
             if entry.context then
                 where = ("%s |cff888888>|r %s"):format(where, entry.context)
             end
-            row.head:SetText(("|c%s[%s%s]|r  |cffffd100%s|r"):format(
-                kindColor, entry.kind or "?", repeats, where))
+
+            local isNew = (entry.lastSeen or 0) > lastViewed
+            local newTag = isNew and ("|cff40ff40" .. (L["DEBUG_NEW"] or "NEW") .. "|r  ") or ""
+
+            row.head:SetText(("%s|c%s[%s%s]|r  |cffffd100%s|r"):format(
+                newTag, kindColor, entry.kind or "?", repeats, where))
+
+            -- A brighter border rather than only a word, so a fresh problem is
+            -- visible while scanning the list instead of needing to be read.
+            if isNew then
+                row:SetBackdropBorderColor(0.25, 0.9, 0.25, 0.9)
+            else
+                row:SetBackdropBorderColor(0.24, 0.24, 0.28, 0.8)
+            end
+
+            row.copyBtn.entry = entry
 
             row.body:SetText(entry.message or "")
 
@@ -4450,6 +4483,8 @@ function UI:CreateSettingsTab()
 
         debugList:SetHeight(math.max(y, 1))
         debugScroll:SetVerticalScroll(0)
+
+        journal:MarkViewed()
     end
     tab.RefreshDebugPage = RefreshDebugPage
 
