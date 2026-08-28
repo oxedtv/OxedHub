@@ -92,7 +92,17 @@ function MacroRegistry:ExecuteMix(data)
         end
     end
 
-    -- Execute actions
+    self:PlayMixActions(data)
+end
+
+-- The half of a mix that plain Lua is allowed to run: sound, animation, emote
+-- and chat. Split out because a secure button drives the toys and spells
+-- through its macro text and only needs this part on the side -- calling the
+-- whole of ExecuteMix there would try to use the toys a second time, from an
+-- insecure path where it can only fail.
+function MacroRegistry:PlayMixActions(data)
+    if type(data) ~= "table" then return end
+
     local actions = data.actions or {}
 
     if actions.emote then

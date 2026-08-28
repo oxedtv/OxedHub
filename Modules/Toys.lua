@@ -224,6 +224,43 @@ function Toys:CreateSplitIcon(parent, iconSize, i1, i2, i3, i4)
     return CreateSplitIcon(parent, iconSize, i1, i2, i3, i4)
 end
 
+-- Puts a mix's split icon on a pooled grid button, in place of its single
+-- texture. Shared by the ToyBoxes grid and the floating dock so both show a mix
+-- the way My Mixes does.
+--
+-- The frame is kept on the button and its textures updated in place. A split
+-- icon lays out differently for two slots than for three or four, so it is only
+-- rebuilt when that count changes -- frames cannot be destroyed, and making a
+-- fresh one on every redraw would leak them for the session.
+function Toys:ApplyMixSplitIcon(button, mixName, size)
+    local i1, i2, i3, i4 = self:GetMixSlotIcons(mixName)
+    local icons = { i1, i2, i3, i4 }
+
+    local count = 0
+    for _, icon in ipairs(icons) do
+        if icon then count = count + 1 end
+    end
+
+    if button._splitIcon and button._splitCount == count then
+        for index, texture in ipairs(button._splitIcon.texs or {}) do
+            texture:SetTexture(icons[index])
+        end
+    else
+        if button._splitIcon then button._splitIcon:Hide() end
+        button._splitIcon = self:CreateSplitIcon(button, size, i1, i2, i3, i4)
+        button._splitIcon:SetPoint("CENTER", button, "CENTER", 0, 0)
+        button._splitCount = count
+    end
+
+    button._splitIcon:Show()
+    if button.icon then button.icon:Hide() end
+end
+
+function Toys:ClearMixSplitIcon(button)
+    if button._splitIcon then button._splitIcon:Hide() end
+    if button.icon then button.icon:Show() end
+end
+
 local function TruncateText(text, maxLen)
     if not text then return nil end
     maxLen = maxLen or 15
@@ -1225,6 +1262,15 @@ function Toys:RefreshQuickMixesGrid()
 end
 
 local function RefreshMixConsumers()
+    -- The ToyBoxes sidebar carries a My Mixes section built from this same
+    -- table, so a saved or deleted mix has to reach it too. Without this a new
+    -- mix only showed up after reopening the panel.
+    local Toys = OxedHub.Toys
+    if Toys then
+        if Toys.RefreshToyBoxesUI then Toys:RefreshToyBoxesUI() end
+        if Toys.RefreshToyDock then Toys:RefreshToyDock() end
+    end
+
     if OxedHub.ActionHub then
         if OxedHub.ActionHub.RefreshPickerList then
             OxedHub.ActionHub:RefreshPickerList()
