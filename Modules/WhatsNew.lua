@@ -25,6 +25,19 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.39",
+        lines = {
+            { "ADDED",   "Thirty-five toy categories with descriptions, filled from the toys you own." },
+            { "ADDED",   "A My Mixes section in ToyBoxes, in the panel and the floating dock." },
+            { "ADDED",   "Hide button on a box, and Copy on each Debug entry alongside Copy All." },
+            { "FIXED",   "Clicking a toy in the ToyBoxes grid did nothing at all." },
+            { "FIXED",   "Shipped categories could not be dragged to reorder them." },
+            { "FIXED",   "The Debug tab stayed empty while BugSack showed the same errors." },
+            { "CHANGED", "Locked uses a tile, unlocked moves it -- in both the panel and the dock." },
+            { "CHANGED", "The Debug list marks what appeared since your last visit." },
+        },
+    },
+    {
         version = "2.3.38",
         lines = {
             { "ADDED",   "This window: release notes shown once per update. Reopen any time with /oxedhub whatsnew." },
