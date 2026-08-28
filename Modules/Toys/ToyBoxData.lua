@@ -28,18 +28,25 @@ end
 function Toys:ReorderBox(draggedId, targetId)
     if not draggedId or not targetId or draggedId == targetId then return end
     -- These two are fixed positions, never part of the user order.
-    if draggedId == "all" or draggedId == "favorites" then return end
-    if targetId == "all" or targetId == "favorites" then return end
+    if draggedId == "all" or draggedId == "favorites" or draggedId == "mixes" then return end
+    if targetId == "all" or targetId == "favorites" or targetId == "mixes" then return end
 
     local order = self:GetBoxOrder()
 
-    -- Seed from the current on-screen order the first time something is moved,
-    -- so a drag does not scramble everything that had no saved position.
-    if #order == 0 then
-        for _, box in ipairs(self:GetToyBoxes()) do
-            if box.id ~= "all" and box.id ~= "favorites" then
-                table.insert(order, box.id)
-            end
+    -- Rebuild from what is on screen right now, every time.
+    --
+    -- Seeding only when the list was empty is what stopped shipped categories
+    -- from moving: a profile that already had an order for the player's own
+    -- boxes never took the seeding branch, so the categories were missing from
+    -- it, their position came back nil, and the move was abandoned without a
+    -- word. The player's boxes dragged fine because they were in the list.
+    --
+    -- Rebuilding is safe because the displayed order already reflects this same
+    -- list first, so it round-trips unchanged.
+    wipe(order)
+    for _, box in ipairs(self:GetToyBoxes()) do
+        if box.id ~= "all" and box.id ~= "favorites" and box.id ~= "mixes" then
+            table.insert(order, box.id)
         end
     end
 
@@ -153,12 +160,20 @@ function Toys:FilterToyList(list, query)
     local needle = query:lower()
     local out = {}
     for _, toyId in ipairs(list) do
+        -- The mixes box holds names rather than IDs, and feeding a string to
+        -- GetToyInfo would only ever come back empty.
+        if type(toyId) == "string" then
+            if toyId:lower():find(needle, 1, true) then
+                table.insert(out, toyId)
+            end
+        else
         local _, toyName = C_ToyBox.GetToyInfo(toyId)
         if toyName and toyName:lower():find(needle, 1, true) then
             table.insert(out, toyId)
         elseif tostring(toyId):find(needle, 1, true) then
             -- Searching by item id is handy when a name is not cached yet.
             table.insert(out, toyId)
+        end
         end
     end
     return out
@@ -440,11 +455,30 @@ function Toys:SeedDefaultBoxes()
     -- Only boxes still marked as shipped are touched; renaming one opts it out
     -- for good. Contents are never rewritten here, since the player may have
     -- added or removed toys -- that is what RebuildDefaultBoxes is for.
+    -- Drop shipped boxes whose category no longer exists. Reworking the
+    -- catalogue would otherwise leave the previous set behind as orphans with
+    -- names that match nothing. A box the player has renamed is theirs now and
+    -- is left alone.
+    local known = {}
+    for _, category in ipairs(OxedHub.TOY_CATEGORIES) do
+        known["default_" .. category.key] = true
+    end
+    for id, box in pairs(profile.toyBoxes or {}) do
+        if tostring(id):match("^default_") and not known[id] and box.isShipped ~= false then
+            profile.toyBoxes[id] = nil
+        end
+    end
+
     for _, category in ipairs(OxedHub.TOY_CATEGORIES) do
         local box = profile.toyBoxes and profile.toyBoxes["default_" .. category.key]
         if box and box.isShipped ~= false then
             box.isShipped = true
             box.name = category.name
+            box.desc = category.desc
+
+            -- Overwrites unconditionally, which is the point: boxes created by
+            -- earlier versions carry icons taken from whichever toy happened to
+            -- be first, so several shared one and some had none at all.
             box.icon = category.icon
         end
     end
@@ -460,6 +494,7 @@ function Toys:SeedDefaultBoxes()
                     profile.toyBoxes[boxId] = {
                         id = boxId,
                         name = category.name,
+                        desc = category.desc,
                         icon = category.icon,
                         toys = owned,
                         isShipped = true,
@@ -544,6 +579,20 @@ function Toys:GetToyBoxes()
         toys = allToys,
     })
 
+    -- Virtual box holding every saved mix. Mixes are not toys and live in their
+    -- own table, so this box carries their names rather than toy IDs and the
+    -- grid renders it differently -- see the isMixes branch in the UI.
+    local mixNames = self:GetMixNames()
+    if #mixNames > 0 then
+        table.insert(boxes, {
+            id = "mixes",
+            name = "My Mixes",
+            icon = 134064,
+            isMixes = true,
+            toys = mixNames,
+        })
+    end
+
     if OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxes then
         local userBoxes = {}
         for id, box in pairs(OxedHub.db.profile.toyBoxes) do
@@ -569,14 +618,30 @@ function Toys:GetToyBoxes()
         local rank = {}
         for i, id in ipairs(order) do rank[id] = i end
 
+        -- Shipped boxes keep the catalogue order until the player drags one.
+        -- Sorting them by name would scramble a deliberate sequence into
+        -- Banner, Brew, Clone, Corpse and lose the grouping entirely.
+        local catalogueRank = {}
+        for i, category in ipairs(OxedHub.TOY_CATEGORIES or {}) do
+            catalogueRank["default_" .. category.key] = i
+        end
+
         table.sort(userBoxes, function(a, b)
             if a.id == "favorites" then return true end
             if b.id == "favorites" then return false end
 
+            -- An explicit drag outranks everything below it.
             local ra, rb = rank[a.id], rank[b.id]
             if ra and rb then return ra < rb end
             if ra then return true end
             if rb then return false end
+
+            local ca, cb = catalogueRank[a.id], catalogueRank[b.id]
+            if ca and cb then return ca < cb end
+            -- The player's own boxes sit after the shipped ones.
+            if ca then return true end
+            if cb then return false end
+
             return (a.name or ""):lower() < (b.name or ""):lower()
         end)
 
@@ -589,7 +654,69 @@ function Toys:GetToyBoxes()
 end
 
 -- Get a specific toybox by ID
+-- ============================================================================
+-- CLICK DIAGNOSTICS  (/oxedhub toydebug)
+-- ============================================================================
+-- Reports what a tile actually is at runtime rather than what the code intends.
+-- Every guess about why clicking did nothing was about how the attributes get
+-- set; none of them checked whether the button was still secure by the time it
+-- was clicked, which is the thing that was actually broken.
+
+local function DescribeButton(label, button)
+    if not button then
+        print(("|cff00d9d9%s:|r no button"):format(label))
+        return
+    end
+
+    local isProtected, isExplicit = button:IsProtected()
+    local hasOnClick = button:GetScript("OnClick") ~= nil
+
+    print(("|cff00d9d9%s|r  shown=%s protected=%s explicit=%s ownOnClick=%s"):format(
+        label, tostring(button:IsShown()), tostring(isProtected),
+        tostring(isExplicit), tostring(hasOnClick)))
+
+    print(("   id=%s kind=%s"):format(
+        tostring(button.toyID or button.id or button.mixName), tostring(button._kind)))
+
+    print(("   type=%s type1=%s toy=%s toy1=%s macrotext=%s"):format(
+        tostring(button:GetAttribute("type")), tostring(button:GetAttribute("type1")),
+        tostring(button:GetAttribute("toy")), tostring(button:GetAttribute("toy1")),
+        button:GetAttribute("macrotext") and "set" or "nil"))
+end
+
+function Toys:DumpToyButtons()
+    local profile = OxedHub.db and OxedHub.db.profile or {}
+    local tabLocked = profile.toyBoxSettings and profile.toyBoxSettings.isLocked
+    local dockLocked = profile.toyBoxFrame and profile.toyBoxFrame.locked
+
+    print("|cff00d9d9=== OxedHub toy click diagnostics ===|r")
+    print(("lock: tab=%s dock=%s | combat=%s | draggedToy=%s"):format(
+        tostring(tabLocked), tostring(dockLocked),
+        tostring(InCombatLockdown()), tostring(Toys._draggedToyID)))
+
+    DescribeButton("tab grid  [1]", self._gridButtons and self._gridButtons[1])
+    DescribeButton("dock grid [1]", self._dockButtons and self._dockButtons[1])
+    DescribeButton("quick slot[1]", self._quickSlots and self._quickSlots[1])
+
+    print("|cff888888Compare the quick slot with the two grids: it is the one that works.|r")
+end
+
+function Toys:GetMixNames()
+    local mixes = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyMixes
+    local names = {}
+    if type(mixes) ~= "table" then return names end
+
+    for name in pairs(mixes) do table.insert(names, name) end
+    table.sort(names, function(a, b) return a:lower() < b:lower() end)
+    return names
+end
+
 function Toys:GetToyBox(boxId)
+    if boxId == "mixes" then
+        local names = self:GetMixNames()
+        if #names == 0 then return nil end
+        return { id = "mixes", name = "My Mixes", icon = 134064, isMixes = true, toys = names }
+    end
     if boxId == "all" then
         return {
             id = "all",
@@ -674,6 +801,9 @@ end
 
 -- Add a toy ID to a box
 function Toys:AddToyToBox(boxId, toyId)
+    -- The mixes box is rebuilt from the saved mixes on every read, so a write
+    -- here would be discarded without a word.
+    if boxId == "mixes" then return false, "The My Mixes list cannot be edited here." end
     if boxId == "all" then return false end
     toyId = tonumber(toyId)
     if not toyId then return false, "Invalid toy ID." end
@@ -715,6 +845,9 @@ end
 
 -- Insert a toy ID at a specific position relative to targetToyId
 function Toys:InsertToyInBox(boxId, toyId, targetToyId)
+    -- The mixes box is rebuilt from the saved mixes on every read, so a write
+    -- here would be discarded without a word.
+    if boxId == "mixes" then return false, "The My Mixes list cannot be edited here." end
     if boxId == "all" then return false end
     local box = self:GetToyBox(boxId)
     if not box then return false end
@@ -755,6 +888,9 @@ end
 
 -- Remove a toy ID from a box
 function Toys:RemoveToyFromBox(boxId, toyId)
+    -- The mixes box is rebuilt from the saved mixes on every read, so a write
+    -- here would be discarded without a word.
+    if boxId == "mixes" then return false, "The My Mixes list cannot be edited here." end
     if boxId == "all" then return false end
     toyId = tonumber(toyId)
     if not toyId then return false end
@@ -807,6 +943,9 @@ end
 
 -- Reorder toys inside a box
 function Toys:ReorderToyInBox(boxId, sourceToyId, targetToyId)
+    -- The mixes box is rebuilt from the saved mixes on every read, so a write
+    -- here would be discarded without a word.
+    if boxId == "mixes" then return false, "The My Mixes list cannot be edited here." end
     if boxId == "all" then return false end
     local box = self:GetToyBox(boxId)
     if not box or not box.toys then return false end
@@ -849,7 +988,11 @@ function Toys:GetRandomToyFromBox(boxId)
 
     local readyToys = {}
     for _, toyId in ipairs(box.toys) do
-        if PlayerHasToy(toyId) and C_ToyBox.IsToyUsable(toyId) then
+        -- The mixes box holds names rather than item IDs. Skipping them here
+        -- covers every caller at once, instead of each one having to know which
+        -- boxes are safe to roll over.
+        if type(toyId) == "number"
+            and PlayerHasToy(toyId) and C_ToyBox.IsToyUsable(toyId) then
             local okCd, rawStart, rawDur = pcall(C_Item.GetItemCooldown, toyId)
             local start = okCd and SafeNum(rawStart) or nil
             local duration = okCd and SafeNum(rawDur) or nil
@@ -866,7 +1009,8 @@ function Toys:GetRandomToyFromBox(boxId)
     -- Fallback to any usable toy in the box
     local usableToys = {}
     for _, toyId in ipairs(box.toys) do
-        if PlayerHasToy(toyId) and C_ToyBox.IsToyUsable(toyId) then
+        if type(toyId) == "number"
+            and PlayerHasToy(toyId) and C_ToyBox.IsToyUsable(toyId) then
             table.insert(usableToys, toyId)
         end
     end

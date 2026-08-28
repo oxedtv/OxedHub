@@ -510,6 +510,11 @@ function Toys:GetOrCreateToyboxFrame()
     lockBtn:SetScript("OnClick", function(self)
         conf.locked = not conf.locked
         self:SetText(conf.locked and "Unlock" or "Lock")
+
+        -- The tiles carry their armed state as attributes now, so they have to
+        -- be redrawn for the new lock state to take effect.
+        if f.UpdateToyButtons then f:UpdateToyButtons() end
+
         if conf.locked then
             f.ResizeButton:Hide()
         else
@@ -656,6 +661,7 @@ function Toys:GetOrCreateToyboxFrame()
     quickDivider:SetColorTexture(1, 1, 1, 0.1)
 
     f.QuickSlots = {}
+    Toys._quickSlots = f.QuickSlots
     local function HandleDropOnQuickSlot(slotBtn)
         local cursorToy = GetCursorToy() or Toys._draggedToyID
         if cursorToy then
@@ -956,6 +962,7 @@ function Toys:GetOrCreateToyboxFrame()
     -- MEMBER FUNCTIONS
     -- ========================================================================
     f.ToyButtons = {}
+    Toys._dockButtons = f.ToyButtons
 
     function f:ToggleSideMenuBar(forceShow)
         if forceShow ~= nil then
@@ -1098,7 +1105,12 @@ function Toys:GetOrCreateToyboxFrame()
         local b = CreateFrame("Button", nil, holder.ScrollChild, "SecureActionButtonTemplate")
         local sz = conf.iconSize or 36
         b:SetSize(sz, sz)
-        b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        -- Both edges, exactly like the quick slots on the right. A secure button
+        -- fires on key-down or key-up depending on the client's
+        -- ActionButtonUseKeyDown setting, so registering only "...Up" left the
+        -- secure handler unreachable -- the attributes were armed correctly and
+        -- the click still did nothing.
+        b:RegisterForClicks("AnyDown", "AnyUp")
         b:SetAttribute("type", "toy")
 
         local icon = b:CreateTexture(nil, "ARTWORK")
@@ -1116,29 +1128,55 @@ function Toys:GetOrCreateToyboxFrame()
         cd:Hide()
         b.Cooldown = cd
 
-        -- Prevent casting when dragging or holding a cursor item
+        -- No attribute juggling in PreClick.
+        --
+        -- It used to flip "type" on every click, which meant the button was
+        -- only ever armed for a split second and any early return -- a stale
+        -- drag marker, something on the cursor -- left it disarmed with nothing
+        -- to put it back. The attributes are set once when the panel is drawn
+        -- and when the lock is toggled, so a tile is either armed or it is not.
         b:SetScript("PreClick", function(self, button)
-            local cursorType = GetCursorInfo()
-            if cursorType or Toys._draggedToyID or self._isDragging then
-                self:SetAttribute("type", nil)
-            else
-                self:SetAttribute("type", "toy")
-                self:SetAttribute("toy", self.id)
-            end
         end)
 
-        b:SetScript("PostClick", function(self, button)
+        b:SetScript("PostClick", function(self, button, down)
+            -- Both edges are registered now, so this runs twice per click.
+            -- Act on the release only, or every action would double up.
+            if down then return end
+
             self._isDragging = nil
-            if not InCombatLockdown() then
-                self:SetAttribute("type", "toy")
-                self:SetAttribute("toy", self.id)
+
+            -- The quick slots on the right do this and they work, so the grid
+            -- does it too: use the toy outright rather than trusting the secure
+            -- attribute alone. Out of combat this is allowed, and it is what
+            -- makes a click land every time instead of only when the attributes
+            -- happen to be armed.
+            if conf.locked and button == "LeftButton" and type(self.id) == "number" then
+                if C_ToyBox and C_ToyBox.UseToyByItemID then
+                    pcall(C_ToyBox.UseToyByItemID, self.id)
+                end
+            end
+
+            -- The macro text only carries the toys and spells. Sound, animation,
+            -- emote and chat are not macro commands, so a mix clicked here would
+            -- fire its toy and stay silent without this.
+            if self._kind == "macro" and type(self.id) == "string" then
+                local mixData = OxedHub.db and OxedHub.db.profile
+                    and OxedHub.db.profile.toyMixes and OxedHub.db.profile.toyMixes[self.id]
+                if mixData and OxedHub.MacroRegistry then
+                    OxedHub.MacroRegistry:PlayMixActions(mixData)
+                end
             end
         end)
 
         -- Drag and drop support for reordering inside the floating dock
         b:RegisterForDrag("LeftButton")
         b:SetScript("OnDragStart", function(self)
-            if self.id and not InCombatLockdown() then
+            -- Rearranging belongs to the unlocked state, the mirror of the click
+            -- rule in PreClick: locked uses the tile, unlocked moves it.
+            if conf.locked then return end
+
+            -- Only real items can go on the cursor; a mix has nothing to pick up.
+            if type(self.id) == "number" and not InCombatLockdown() then
                 self._isDragging = true
                 self:SetAttribute("type", nil)
                 C_Item.PickupItem(self.id)
@@ -1149,11 +1187,20 @@ function Toys:GetOrCreateToyboxFrame()
 
         b:SetScript("OnDragStop", function(self)
             self._isDragging = nil
+
+            -- Clear the drag marker even when the toy was dropped on nothing.
+            -- Left set, PreClick keeps stripping the type off every button and
+            -- the whole panel goes dead until a reload. Deferred by a frame so
+            -- the drop handlers, which run first, still see it.
+            C_Timer.After(0, function() Toys._draggedToyID = nil end)
         end)
 
         local function HandleDropOnDockToy(targetBtn)
             local cursorToyID = GetCursorToy() or Toys._draggedToyID
-            if cursorToyID and targetBtn.id and selectedToyboxId and selectedToyboxId ~= "all" then
+            -- The mixes box is assembled from the saved mixes rather than
+            -- stored, so there is nothing for a dropped toy to be written into.
+            if cursorToyID and targetBtn.id and selectedToyboxId
+                and selectedToyboxId ~= "all" and selectedToyboxId ~= "mixes" then
                 ClearCursor()
                 targetBtn._isDragging = nil
                 targetBtn:SetAttribute("type", nil)
@@ -1180,6 +1227,17 @@ function Toys:GetOrCreateToyboxFrame()
         end)
 
         b:SetScript("OnEnter", function(self)
+            -- A mix slot holds a name, and the toy tooltip getter only takes an
+            -- item ID: handing it a string is what produced the "outside of
+            -- expected range" error from Blizzard's tooltip code.
+            if type(self.id) == "string" then
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:AddLine(self.id, 1, 0.85, 0.2)
+                GameTooltip:AddLine("Toy mix", 0.7, 0.7, 0.7)
+                GameTooltip:Show()
+                return
+            end
+
             if self.id then
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
                 GameTooltip:SetToyByItemID(self.id)
@@ -1215,7 +1273,9 @@ function Toys:GetOrCreateToyboxFrame()
         end)
 
         function b:CheckCooldown()
-            if self.id and self:IsShown() then
+            -- A mix has no item cooldown of its own, and the getter only takes
+            -- an item ID.
+            if type(self.id) == "number" and self:IsShown() then
                 local start, duration, enable = C_Item.GetItemCooldown(self.id)
                 if start and start > 0 and duration and duration > 0 then
                     CooldownFrame_Set(self.Cooldown, start, duration, enable)
@@ -1282,13 +1342,50 @@ function Toys:GetOrCreateToyboxFrame()
             b:ClearAllPoints()
             b:SetPoint("TOPLEFT", holder.ScrollChild, "TOPLEFT", col * (iconSz + margin) + 4, -row * (iconSz + margin) - 4)
 
+            -- A mix arrives as its name, not an item ID, and is driven by macro
+            -- text rather than the "toy" attribute -- the same way ActionHub
+            -- runs one. GetToyInfo would raise on the string, so the two kinds
+            -- are separated here.
+            if type(toyID) == "string" then
+                local mixData = OxedHub.db and OxedHub.db.profile
+                    and OxedHub.db.profile.toyMixes and OxedHub.db.profile.toyMixes[toyID]
+
+                b.id = toyID
+                b._kind = "macro"
+
+                -- Attributes cannot be changed in combat. The button keeps
+                -- whatever it was last given, which stays valid.
+                if not InCombatLockdown() then
+                    local body = (mixData and Toys.GetMixMacroText
+                        and Toys:GetMixMacroText(mixData, true)) or ""
+                    b:SetAttribute("type", conf.locked and "macro" or nil)
+                    b:SetAttribute("type1", conf.locked and "macro" or nil)
+                    b:SetAttribute("macrotext", body)
+                    b:SetAttribute("macrotext1", body)
+                end
+
+                -- Split icon, the same shape My Mixes uses: one tile showing
+                -- both halves of the mix rather than only its first slot.
+                Toys:ApplyMixSplitIcon(b, toyID, iconSz)
+                if b.Cooldown then b.Cooldown:Hide() end
+                b:Show()
+            else
+
             b.id = toyID
-            b:SetAttribute("toy", toyID)
+            b._kind = "toy"
+            Toys:ClearMixSplitIcon(b)
+            if not InCombatLockdown() then
+                b:SetAttribute("type", conf.locked and "toy" or nil)
+                b:SetAttribute("type1", conf.locked and "toy" or nil)
+                b:SetAttribute("toy", toyID)
+                b:SetAttribute("toy1", toyID)
+            end
 
             local _, _, toyIcon = C_ToyBox.GetToyInfo(toyID)
             b.icon:SetTexture(toyIcon or 134400)
             b:CheckCooldown()
             b:Show()
+            end
         end
 
         if f.UpdateQuickSlots then
@@ -1305,7 +1402,12 @@ function Toys:GetOrCreateToyboxFrame()
     function f:SelectNewRandomToy()
         if InCombatLockdown() then return end
         local nextToy = Toys:GetRandomToyFromBox(selectedToyboxId)
-        if nextToy then
+        -- The mixes box yields names, which the "toy" attribute cannot use.
+        -- Roll over the whole collection instead of arming a dead button.
+        if type(nextToy) ~= "number" then
+            nextToy = Toys:GetRandomToyFromBox("all")
+        end
+        if type(nextToy) == "number" then
             f.RandomToyButton:SetAttribute("toy", nextToy)
         end
     end

@@ -875,6 +875,7 @@ function Toys:ShowToyBoxesTab(parentPanel)
         local showDockBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
         showDockBtn:SetSize(130, 20)
         showDockBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
+        content.showDockBtn = showDockBtn
         showDockBtn:SetText("Open On-Screen Dock")
         showDockBtn:SetNormalFontObject("GameFontNormalSmall")
         showDockBtn:SetScript("OnClick", function()
@@ -992,6 +993,32 @@ function Toys:ShowToyBoxesTab(parentPanel)
             end
         end)
         content.delBoxBtn = delBoxBtn
+
+        -- [ Hide Box ] Button. The delete confirmation offers hiding too, but
+        -- nobody looking for a way to tuck a box away clicks "Delete" to find
+        -- it, so the reversible action gets its own button.
+        local hideBoxBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+        hideBoxBtn:SetSize(60, 20)
+        hideBoxBtn:SetPoint("RIGHT", delBoxBtn, "LEFT", -4, 0)
+        hideBoxBtn:SetText(L["TOYBOX_BTN_HIDE"] or "Hide")
+        hideBoxBtn:SetNormalFontObject("GameFontNormalSmall")
+        hideBoxBtn:SetScript("OnClick", function()
+            if selectedBoxId and selectedBoxId ~= "favorites" and selectedBoxId ~= "all" then
+                -- No confirmation: hiding costs nothing and the Hidden button
+                -- that appears is the way straight back.
+                Toys:SetBoxHidden(selectedBoxId, true)
+            end
+        end)
+        hideBoxBtn:SetScript("OnEnter", function(self)
+            local s = GetToySettings()
+            if s.hideButtonTooltips then return end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine("Hide this box", 1, 0.85, 0.2)
+            GameTooltip:AddLine("Keeps the box and its toys. Bring it back from the Hidden button.", 0.9, 0.9, 0.9, true)
+            GameTooltip:Show()
+        end)
+        hideBoxBtn:SetScript("OnLeave", GameTooltip_Hide)
+        content.hideBoxBtn = hideBoxBtn
 
         -- Drag Target Hint Label
         local hintText = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -1135,6 +1162,11 @@ function Toys:RefreshToyBoxesUI()
                 if self.boxName then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     GameTooltip:AddLine(self.boxName, 1, 0.85, 0.2)
+                    -- Shipped categories carry a blurb explaining what belongs
+                    -- in them; a name like "Fragile" or "Incap" does not.
+                    if self.boxDesc then
+                        GameTooltip:AddLine(self.boxDesc, 0.8, 0.8, 0.8, true)
+                    end
                     if self.boxId ~= "all" then
                         GameTooltip:AddLine("|cFFFFFFFFLeft-Click:|r Select box", 0.9, 0.9, 0.9)
                         GameTooltip:AddLine("|cFF00FF00Right-Click:|r Edit box name & icon", 0.4, 1.0, 0.4)
@@ -1146,7 +1178,7 @@ function Toys:RefreshToyBoxesUI()
 
             local function HandleDropOnSidebar(selfBtn)
                 local cursorToyID = GetCursorToyID() or Toys._draggedToyID
-                if cursorToyID and selfBtn.boxId and selfBtn.boxId ~= "all" then
+                if cursorToyID and selfBtn.boxId and selfBtn.boxId ~= "all" and selfBtn.boxId ~= "mixes" then
                     ClearCursor()
                     local ok, err = Toys:AddToyToBox(selfBtn.boxId, cursorToyID)
                     if not ok and err then
@@ -1185,15 +1217,33 @@ function Toys:RefreshToyBoxesUI()
             -- "Favorites" are fixed, so they are not draggable.
             btn:RegisterForDrag("LeftButton")
             btn:SetScript("OnDragStart", function(self)
-                if self.boxId == "all" or self.boxId == "favorites" then return end
+                if self.boxId == "all" or self.boxId == "favorites" or self.boxId == "mixes" then return end
                 Toys._draggedBoxId = self.boxId
                 self:SetAlpha(0.5)
             end)
             btn:SetScript("OnDragStop", function(self)
                 self:SetAlpha(1)
-                -- Dropped somewhere that is not a box: forget the drag rather
-                -- than leaving it armed for the next unrelated click.
-                C_Timer.After(0, function() Toys._draggedBoxId = nil end)
+
+                local dragged = self.boxId
+                Toys._draggedBoxId = nil
+                if not dragged or dragged == "all" or dragged == "favorites" then
+                    return
+                end
+
+                -- The drop target has to be found here, by asking which row the
+                -- cursor is over.
+                --
+                -- The receiving row cannot detect it on its own: OnMouseUp goes
+                -- to the row the drag started on, not the one under the cursor,
+                -- and OnReceiveDrag only fires when something is actually on the
+                -- cursor, which is never true for a frame drag. Between them
+                -- nothing ever reached ReorderBox, so no box could be moved.
+                for _, other in ipairs(sidebar.boxButtons or {}) do
+                    if other ~= self and other:IsShown() and other:IsMouseOver() then
+                        Toys:ReorderBox(dragged, other.boxId)
+                        return
+                    end
+                end
             end)
 
             table.insert(sidebar.boxButtons, btn)
@@ -1202,6 +1252,7 @@ function Toys:RefreshToyBoxesUI()
         btn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -yOff)
         btn.boxId = box.id
         btn.boxName = box.name
+        btn.boxDesc = box.desc
         
         local resolvedIcon = Toys:GetBoxIconTexture(box.icon)
         btn.icon:SetTexture(resolvedIcon or 135933)
@@ -1227,8 +1278,30 @@ function Toys:RefreshToyBoxesUI()
 
     content.boxTitle:SetText(currentBox.name)
     content.boxCount:SetText(string.format("(%d toys)", #(currentBox.toys or {})))
-    content.editBoxBtn:SetShown(currentBox.id ~= "all")
-    content.delBoxBtn:SetShown(currentBox.id ~= "favorites" and currentBox.id ~= "all")
+    content.editBoxBtn:SetShown(currentBox.id ~= "all" and currentBox.id ~= "mixes")
+    content.delBoxBtn:SetShown(currentBox.id ~= "favorites" and currentBox.id ~= "all" and currentBox.id ~= "mixes")
+    content.hideBoxBtn:SetShown(currentBox.id ~= "favorites" and currentBox.id ~= "all" and currentBox.id ~= "mixes")
+
+    -- Lay the header row out right to left over the buttons that are actually
+    -- showing. Four of the seven come and go with the selected box, and static
+    -- anchors cannot express that: a chain through a hidden button leaves a gap
+    -- its width, and anchoring two buttons to the same edge stacks them on top
+    -- of each other, which is what put Hidden on top of Edit Box.
+    local previous
+    for _, button in ipairs({
+        content.showDockBtn, content.settingsBtn, content.lockBtn,
+        content.hiddenBtn, content.editBoxBtn, content.delBoxBtn, content.hideBoxBtn,
+    }) do
+        if button and button:IsShown() then
+            button:ClearAllPoints()
+            if previous then
+                button:SetPoint("RIGHT", previous, "LEFT", -4, 0)
+            else
+                button:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
+            end
+            previous = button
+        end
+    end
 
     -- Clear existing toy items
     content.toyButtons = content.toyButtons or {}
@@ -1270,9 +1343,67 @@ function Toys:RefreshToyBoxesUI()
     for i, toyID in ipairs(toysList) do
         local btn = content.toyButtons[i]
         if not btn then
-            btn = CreateFrame("Button", nil, gridChild)
+            -- Secure, so a left click can actually use the toy. A plain button
+            -- cannot: using a toy is protected and only a real click on a
+            -- secure frame is allowed to do it, which is why the grid did
+            -- nothing at all when clicked.
+            btn = CreateFrame("Button", nil, gridChild, "SecureActionButtonTemplate")
             btn:SetSize(itemSize, slotHeight)
-            btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            -- Both edges, like the working quick slots: a secure button fires on
+            -- down or up depending on ActionButtonUseKeyDown, and "...Up" alone
+            -- never reached the secure handler.
+            btn:RegisterForClicks("AnyDown", "AnyUp")
+
+            -- Only button 1 is wired to the secure action. Right click stays
+            -- free for the pin handler below.
+            -- Nothing here on purpose. Flipping the attributes on every click is
+            -- what kept the tiles disarmed: any early return left them with no
+            -- action and nothing to put it back. They are armed once when the
+            -- grid is drawn, from the lock state, and stay that way.
+            btn:SetScript("PreClick", function(self) end)
+
+            btn:SetScript("PostClick", function(self, button, down)
+                -- Registered for both edges, so this fires twice per click.
+                -- Only the release should act.
+                if down then return end
+
+                -- Same as the quick slots and the dock: use the toy outright
+                -- instead of trusting the secure attribute alone.
+                if GetToySettings().isLocked and button == "LeftButton"
+                    and type(self.toyID) == "number" then
+                    if C_ToyBox and C_ToyBox.UseToyByItemID then
+                        pcall(C_ToyBox.UseToyByItemID, self.toyID)
+                    end
+                end
+
+                -- Macro text carries only the toys and spells of a mix; its
+                -- sound, animation, emote and chat are not macro commands.
+                if self.mixName then
+                    if button == "RightButton" then
+                        if Toys.EditMix then Toys:EditMix(self.mixName) end
+                    elseif OxedHub.MacroRegistry then
+                        local mixData = OxedHub.db and OxedHub.db.profile
+                            and OxedHub.db.profile.toyMixes
+                            and OxedHub.db.profile.toyMixes[self.mixName]
+                        if mixData then
+                            OxedHub.MacroRegistry:PlayMixActions(mixData)
+                        end
+                    end
+                    return
+                end
+
+                if button ~= "RightButton" or not self.toyID then return end
+
+                local result = Toys:TogglePinnedToy(self.toyID)
+                if result == nil then
+                    UIErrorsFrame:AddExternalErrorMessage(
+                        ("You can only keep %d toys always shown."):format(Toys.MAX_PINNED_TOYS))
+                    return
+                end
+                Toys:RefreshToyBoxesUI()
+                if Toys.RefreshToyDock then Toys:RefreshToyDock() end
+                if Toys.UpdateQuickToyBar then Toys:UpdateQuickToyBar() end
+            end)
 
             local icon = btn:CreateTexture(nil, "ARTWORK")
             icon:SetSize(itemSize, itemSize)
@@ -1329,27 +1460,31 @@ function Toys:RefreshToyBoxesUI()
             btn.removeBtn = removeBtn
 
             -- Right-click pins a toy so it always sits at the front of the grid.
-            btn:SetScript("OnClick", function(self, mouseButton)
-                if mouseButton ~= "RightButton" or not self.toyID then return end
-                local result = Toys:TogglePinnedToy(self.toyID)
-                if result == nil then
-                    UIErrorsFrame:AddExternalErrorMessage(
-                        ("You can only keep %d toys always shown."):format(Toys.MAX_PINNED_TOYS))
-                    return
-                end
-                Toys:RefreshToyBoxesUI()
-                if Toys.RefreshToyDock then Toys:RefreshToyDock() end
-                if Toys.UpdateQuickToyBar then Toys:UpdateQuickToyBar() end
-            end)
+            -- No OnClick script here, deliberately.
+            --
+            -- SecureActionButtonTemplate performs its action from its own
+            -- OnClick handler. Setting one of ours replaced it, which silently
+            -- stripped the button of the very thing that made it secure -- the
+            -- attributes were armed correctly and still nothing happened. The
+            -- right-click behaviour lives in PostClick above, which the
+            -- template leaves alone.
 
             -- Drag and Drop Reordering & Insertion
             btn:RegisterForDrag("LeftButton")
             btn:SetScript("OnDragStart", function(self)
+                -- Rearranging is the unlocked state, the mirror of the click
+                -- rule in PreClick: locked uses the toy, unlocked moves it.
+                if GetToySettings().isLocked then return end
                 if self.toyID then
                     C_Item.PickupItem(self.toyID)
                     Toys._draggedToyID = self.toyID
                     Toys._draggedFromBoxId = selectedBoxId
                 end
+            end)
+            btn:SetScript("OnDragStop", function()
+                -- Dropped on nothing still has to clear the marker, or PreClick
+                -- keeps disarming every tile until a reload.
+                C_Timer.After(0, function() Toys._draggedToyID = nil end)
             end)
 
             local function HandleDropOnGridToy(targetBtn)
@@ -1374,6 +1509,14 @@ function Toys:RefreshToyBoxesUI()
             end)
 
             btn:SetScript("OnEnter", function(self)
+                if self.mixName then
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:AddLine(self.mixName, 1, 0.85, 0.2)
+                    GameTooltip:AddLine("|cFF00FF00Left-click:|r Run this mix", 0.9, 0.9, 0.9)
+                    GameTooltip:AddLine("|cFF88AAFFRight-click:|r Edit in the Mixer", 0.9, 0.9, 0.9)
+                    GameTooltip:Show()
+                    return
+                end
                 if self.toyID then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     GameTooltip:SetToyByItemID(self.toyID)
@@ -1406,6 +1549,7 @@ function Toys:RefreshToyBoxesUI()
             end)
 
             table.insert(content.toyButtons, btn)
+            Toys._gridButtons = content.toyButtons
         end
 
         btn:SetSize(itemSize, slotHeight)
@@ -1414,6 +1558,47 @@ function Toys:RefreshToyBoxesUI()
         row = math.floor((i - 1) / cols)
         btn:SetPoint("TOPLEFT", gridChild, "TOPLEFT", col * (itemSize + gapX) + 2, -row * (slotHeight + gapY) - 2)
 
+        -- The mixes box carries names, not toy IDs. Everything below keys off
+        -- btn.toyID, so clearing it leaves the toy-only handlers inert instead
+        -- of needing a guard in each one.
+        if currentBox.isMixes then
+            local mixName = toyID
+            btn.toyID = nil
+            btn.mixName = mixName
+            btn._kind = "macro"
+
+            local mixData = OxedHub.db and OxedHub.db.profile
+                and OxedHub.db.profile.toyMixes and OxedHub.db.profile.toyMixes[mixName]
+            btn._macroText = (mixData and Toys.GetMixMacroText
+                and Toys:GetMixMacroText(mixData, true)) or ""
+
+            if not InCombatLockdown() then
+                btn:SetAttribute("type", cfg.isLocked and "macro" or nil)
+                btn:SetAttribute("type1", cfg.isLocked and "macro" or nil)
+                btn:SetAttribute("macrotext", btn._macroText)
+                btn:SetAttribute("macrotext1", btn._macroText)
+            end
+
+            Toys:ApplyMixSplitIcon(btn, mixName, itemSize)
+            if btn.pinStar then btn.pinStar:Hide() end
+            btn.removeBtn:Hide()
+
+            if showNames then
+                local fontSize = cfg.toyNameFontSize or 9
+                btn.nameLabel:SetScale(fontSize / 11.5)
+                btn.nameLabel:SetText(mixName)
+                btn.nameLabel:Show()
+            else
+                btn.nameLabel:Hide()
+            end
+
+            btn:Show()
+        else
+
+        btn.mixName = nil
+        btn._kind = "toy"
+        Toys:ClearMixSplitIcon(btn)
+        btn._macroText = nil
         local _, toyName, iconTex = C_ToyBox.GetToyInfo(toyID)
 
         -- A toy the client has not cached yet still returns nil here.  Ask for
@@ -1431,6 +1616,16 @@ function Toys:RefreshToyBoxesUI()
         end
 
         btn.toyID = toyID
+
+        -- Primed here as well as in PreClick, so a tile drawn before a fight
+        -- still works during one, when attributes can no longer be changed.
+        if not InCombatLockdown() then
+            btn:SetAttribute("type", cfg.isLocked and "toy" or nil)
+            btn:SetAttribute("type1", cfg.isLocked and "toy" or nil)
+            btn:SetAttribute("toy", toyID)
+            btn:SetAttribute("toy1", toyID)
+        end
+
         btn.icon:SetTexture(iconTex or 134400)
         if btn.pinStar then
             btn.pinStar:SetShown(Toys:IsToyPinned(toyID))
@@ -1450,6 +1645,7 @@ function Toys:RefreshToyBoxesUI()
         end
 
         btn:Show()
+        end
     end
 
     local totalHeight = (math.floor(#toysList / cols) + 1) * (slotHeight + gapY) + 24
