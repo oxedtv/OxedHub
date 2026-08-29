@@ -25,6 +25,16 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.41",
+        lines = {
+            { "ADDED",   "Macro Helper in both macro editors: templates, conditions and commands, inserted at the cursor." },
+            { "ADDED",   "Templates use your own class ability -- Counterspell for a mage, Pummel for a warrior." },
+            { "FIXED",   "The macro editor would not scroll up." },
+            { "FIXED",   "Long macros drew their text twice, offset." },
+            { "FIXED",   "Self Aura flooded the error log with blocked calls." },
+        },
+    },
+    {
         version = "2.3.39",
         lines = {
             { "ADDED",   "Thirty-five toy categories with descriptions, filled from the toys you own." },
@@ -73,10 +83,49 @@ local function VersionValue(version)
     return (tonumber(major) * 1000000) + (tonumber(minor) * 1000) + tonumber(patch)
 end
 
+local function VersionParts(version)
+    local major, minor, patch = tostring(version or ""):match("^(%d+)%.(%d+)%.(%d+)$")
+    if not major then return nil end
+    return tonumber(major), tonumber(minor), tonumber(patch)
+end
+
+-- Opening on every release is noise: most are a fix or two. The window waits
+-- until this many patch versions have gone by, so it appears with something
+-- worth reading rather than interrupting after each small update.
+local PATCH_GAP = 5
+
 function WhatsNew:ShouldShow()
     local db = Store()
     if not db or db.whatsNewDisabled then return false end
-    return VersionValue(CurrentVersion()) > VersionValue(db.whatsNewSeenVersion)
+
+    local current = CurrentVersion()
+    if VersionValue(current) <= VersionValue(db.whatsNewSeenVersion) then
+        return false
+    end
+
+    -- Nothing seen yet: a fresh install gets it once.
+    local seenMajor, seenMinor, seenPatch = VersionParts(db.whatsNewSeenVersion)
+    if not seenMajor then return true end
+
+    local major, minor, patch = VersionParts(current)
+    if not major then return true end
+
+    -- A new major or minor is a real release, not a patch, and is shown
+    -- regardless of how recently the player last read the notes.
+    if major ~= seenMajor or minor ~= seenMinor then return true end
+
+    if (patch - seenPatch) >= PATCH_GAP then return true end
+
+    -- An entry can ask to be shown anyway, for the occasional patch that
+    -- changes something the player has to know about.
+    for _, release in ipairs(self.RELEASES) do
+        if release.important
+            and VersionValue(release.version) > VersionValue(db.whatsNewSeenVersion) then
+            return true
+        end
+    end
+
+    return false
 end
 
 function WhatsNew:MarkSeen()

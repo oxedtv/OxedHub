@@ -1173,12 +1173,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.39)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.41)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.39")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.41")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1188,7 +1188,7 @@ function UI:CreateDashboardTab()
     relSubtitle:SetText(L["RELEASE_SUBTITLE"] or "What's New in this Update")
 
     local relLines = {
-        "•  Chat Share: share anything in chat - triggers, rings, toy mixes, hubs & profiles.",
+        "•  Macro Helper: templates, conditions & commands inserted straight into your macro.",
         "•  Prey Hunt Tracker (Beta / Test Mode): on-screen HUD bar & Blizzard widget mover.",
         "•  Anti-AFK Tracker (Beta / Test Mode): on-screen timers & customizable sound alerts.",
         "•  Disenchant Insight (Basic Trigger): Tooltip advice, expected value vs vendor & AH prices!",
@@ -4418,9 +4418,6 @@ function UI:CreateSettingsTab()
         local entries = journal:GetEntries()
         local count, occurrences = journal:GetSummary()
 
-        -- Read before the rows are drawn and updated after, so the visit that
-        -- reveals a new problem still shows it marked.
-        local lastViewed = journal:GetLastViewed()
 
         if count == 0 then
             debugSummary:SetText(L["DEBUG_NONE"] or "No problems recorded.")
@@ -4444,7 +4441,11 @@ function UI:CreateSettingsTab()
                 where = ("%s |cff888888>|r %s"):format(where, entry.context)
             end
 
-            local isNew = (entry.lastSeen or 0) > lastViewed
+            -- Marked on the entry itself rather than compared against a
+            -- "last visited" timestamp. A timestamp has to be written after
+            -- drawing and read before it, and any path that skipped the write
+            -- left everything permanently marked as new.
+            local isNew = not entry.seen
             local newTag = isNew and ("|cff40ff40" .. (L["DEBUG_NEW"] or "NEW") .. "|r  ") or ""
 
             row.head:SetText(("%s|c%s[%s%s]|r  |cffffd100%s|r"):format(
@@ -4459,6 +4460,10 @@ function UI:CreateSettingsTab()
             end
 
             row.copyBtn.entry = entry
+
+            -- Seen now. The row keeps its mark for this viewing and is plain
+            -- from the next one on.
+            entry.seen = true
 
             row.body:SetText(entry.message or "")
 
@@ -4483,8 +4488,6 @@ function UI:CreateSettingsTab()
 
         debugList:SetHeight(math.max(y, 1))
         debugScroll:SetVerticalScroll(0)
-
-        journal:MarkViewed()
     end
     tab.RefreshDebugPage = RefreshDebugPage
 
