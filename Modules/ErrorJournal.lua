@@ -64,6 +64,17 @@ end
 local function Store()
     if type(OxedHubDB) ~= "table" then return nil end
     OxedHubDB.errorJournal = OxedHubDB.errorJournal or {}
+
+    -- This table holds entries and nothing else. An earlier version stored a
+    -- "last viewed" timestamp here by mistake, and that bare number then went
+    -- through the sort as if it were an entry. Anything that is not a table is
+    -- dropped on the way past rather than guarded against at every reader.
+    for key, value in pairs(OxedHubDB.errorJournal) do
+        if type(value) ~= "table" then
+            OxedHubDB.errorJournal[key] = nil
+        end
+    end
+
     return OxedHubDB.errorJournal
 end
 
@@ -104,7 +115,16 @@ end
 -- Pulls "Modules/Triggers/SelfAura.lua:353" out of a message or stack, which is
 -- the one part of a trace worth showing in a compact list.
 local function ExtractSource(text)
-    local file, line = text:match("([%w_/\\%.%-]+%.lua):(%d+)")
+    -- Skip this file. The journal's own frame sits at the top of a blocked-call
+    -- stack, so matching the first .lua named the recorder instead of the code
+    -- that was refused.
+    local file, line
+    for candidate, candidateLine in text:gmatch("([%w_/\\%.%-]+%.lua):(%d+)") do
+        if not candidate:find("ErrorJournal", 1, true) then
+            file, line = candidate, candidateLine
+            break
+        end
+    end
     if not file then return nil end
     file = file:gsub("^.*[/\\]OxedHub[/\\]", ""):gsub("\\", "/")
     return ("%s:%s"):format(file, line)
@@ -207,19 +227,6 @@ function Journal:GetSummary()
     return #entries, occurrences
 end
 
--- When the Debug page was last looked at. Anything newer is marked as new, so
--- a problem that appeared since the last visit is not lost among the ones
--- already read.
-function Journal:GetLastViewed()
-    local db = Store()
-    return (db and db.debugLastViewed) or 0
-end
-
-function Journal:MarkViewed()
-    local db = Store()
-    if db then db.debugLastViewed = time() end
-end
-
 -- One entry as plain text. Shared by the per-row Copy button and the full
 -- report, so both read identically.
 function Journal:FormatEntry(entry, index)
@@ -320,6 +327,14 @@ watcher:SetScript("OnEvent", function(_, event, blockedAddon, blockedFunc)
         local ok, trace = pcall(debugstack, 2)
         if ok then stack = SafeString(trace, "") end
     end
+
+    -- Counter for code that needs to know whether its own call was refused.
+    --
+    -- A blocked call is not detectable from its return value: the client fires
+    -- this event but the function still hands back what looks like a success,
+    -- which is how one refused registration turned into ten thousand. Snapshot
+    -- this before a protected call and compare after.
+    Journal.blockedCount = (Journal.blockedCount or 0) + 1
 
     -- Guarded for the same reason as the error handler: a fault while recording
     -- a blocked call must not itself raise, or one blocked call becomes a loop.

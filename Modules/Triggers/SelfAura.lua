@@ -291,6 +291,14 @@ local nativeSoundHandles = {}
 -- handles these triggers on its own -- it needs no protected call.
 local nativeSoundUnavailable = false
 
+-- Hard ceiling on registration attempts for the whole session, independent of
+-- how the refusal is detected. The blocked-action count is the accurate signal,
+-- but if it is ever unavailable this still bounds the damage: the previous
+-- version had no ceiling at all and logged ten thousand blocked calls in an
+-- hour and a half.
+local MAX_NATIVE_ATTEMPTS = 40
+local nativeAttempts = 0
+
 
 local function UnregisterNativeEffects()
     for i = #nativeSoundHandles, 1, -1 do
@@ -371,6 +379,20 @@ function Triggers:RefreshSelfAuraNativeEffects()
                     -- own code -- which is what the blocked-action traceback
                     -- pointed at ("[C]: in function 'pcall'"). The availability
                     -- checks above are what keep this safe on older clients.
+                    -- Blocked calls cannot be spotted from the return value --
+                    -- the client refuses the action but the function still
+                    -- returns a handle. Watching the addon's blocked-action
+                    -- count across the call is the only reliable answer.
+                    local blocksBefore = (journal and journal.blockedCount) or 0
+
+                    nativeAttempts = nativeAttempts + 1
+                    if nativeAttempts > MAX_NATIVE_ATTEMPTS then
+                        nativeSoundUnavailable = true
+                        if journal then journal:ClearContext() end
+                        UnregisterNativeEffects()
+                        return
+                    end
+
                     local handle
                     if C_UnitAuras.AddAuraSound then
                         local triggerEnum = Enum.UnitAuraSoundTrigger.Added
@@ -380,10 +402,10 @@ function Triggers:RefreshSelfAuraNativeEffects()
                         if c.onBoth then
                             handle = C_UnitAuras.AddAuraSound(Enum.UnitAuraSoundTrigger.Added, soundInfo)
                             -- Only ask for the second registration once the
-                            -- first has been granted. Firing both blind is what
-                            -- made a refused probe cost two blocked calls
-                            -- instead of one.
-                            if handle then
+                            -- first has actually been granted.
+                            local refused = journal
+                                and (journal.blockedCount or 0) > blocksBefore
+                            if handle and not refused then
                                 C_UnitAuras.AddAuraSound(Enum.UnitAuraSoundTrigger.Removed, soundInfo)
                             end
                         else
@@ -398,7 +420,11 @@ function Triggers:RefreshSelfAuraNativeEffects()
                     
                     if journal then journal:ClearContext() end
 
-                    if handle then
+                    -- The client refusing the call is what counts, not what the
+                    -- call returned.
+                    local wasBlocked = journal and (journal.blockedCount or 0) > blocksBefore
+
+                    if handle and not wasBlocked then
                         table.insert(nativeSoundHandles, { type = "normal", handle = handle })
                     else
                         -- The first refusal is decisive. Carrying on would just
