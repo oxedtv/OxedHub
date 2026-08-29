@@ -222,6 +222,10 @@ function Triggers:CreateAdvancedMacroUI(frame, trigger)
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
     desc:SetWidth(420)
     desc:SetJustifyH("LEFT")
+    -- Kept to a single line. Making it two pushed everything below it down,
+    -- and the macro preview's styled overlay drifted out of step with the edit
+    -- box underneath, drawing both copies of the text at once. The /run warning
+    -- lives in the info box on the right instead.
     desc:SetText(L["ADV_MACRO_EXTEND_DESC"] or "Edit the final trigger macro directly and optionally set your own icon override.")
     desc:SetTextColor(0.75, 0.75, 0.75, 1)
 
@@ -328,6 +332,14 @@ function Triggers:CreateAdvancedMacroUI(frame, trigger)
     fauxScroll:EnableMouse(false)
     fauxScroll.ScrollBar:Hide()
 
+    -- Kept hidden. The template shows its bar again whenever the content grows,
+
+    -- and this frame only mirrors the real editor: its own bar was the old-style
+
+    -- one on screen, and it scrolled independently of the text underneath.
+
+    fauxScroll.ScrollBar:HookScript("OnShow", function(self) self:Hide() end)
+
     local fauxBox = CreateFrame("EditBox", nil, fauxScroll)
     fauxBox:SetAllPoints()
     fauxBox:SetMultiLine(true)
@@ -354,6 +366,11 @@ function Triggers:CreateAdvancedMacroUI(frame, trigger)
     fauxBox:SetScript("OnUpdate", nil)
     fauxBox:SetScript("OnTextChanged", nil)
 
+    -- Declared up here because the scroll handlers below call it, and they are
+    -- written before it is defined. Without this the name resolves to a global
+    -- that never exists, and the first scroll event raises on a nil call.
+    local UpdateCursorIndicator
+
     local previewScroll = CreateFrame("ScrollFrame", nil, previewContainer, "UIPanelScrollFrameTemplate")
     previewScroll:SetPoint("TOPLEFT", gutter, "TOPRIGHT", 6, 0)
     previewScroll:SetPoint("BOTTOMRIGHT", previewContainer, "BOTTOMRIGHT", -28, 6)
@@ -362,6 +379,14 @@ function Triggers:CreateAdvancedMacroUI(frame, trigger)
     previewScroll:SetFrameLevel(previewContainer:GetFrameLevel() + 2)
     if OxedHub.UI and OxedHub.UI.StyleScrollFrame then
         OxedHub.UI:StyleScrollFrame(previewScroll)
+    end
+
+    -- The minimal bar is a child of the scroll frame, which sits below the
+    -- styled overlay. Without lifting it, it was drawn behind that layer and
+    -- looked as though it had vanished.
+    if previewScroll.oxedMinimalScrollBar then
+        previewScroll.oxedMinimalScrollBar:SetFrameStrata("HIGH")
+        previewScroll.oxedMinimalScrollBar:SetFrameLevel(previewContainer:GetFrameLevel() + 12)
     end
 
     local previewBox = CreateFrame("EditBox", nil, previewScroll)
@@ -381,6 +406,10 @@ function Triggers:CreateAdvancedMacroUI(frame, trigger)
     frame.advancedMacroPreviewContainer = previewContainer
     frame.advancedMacroPreviewScroll = previewScroll
     frame.advancedMacroPreview = previewBox
+
+    -- Exposed for /oxedhub macrodebug. The scrolling has to be measured rather
+    -- than reasoned about: every guess so far has been about the wrong number.
+    Triggers._macroDebugFrame = frame
 
     local previewRegions = { previewBox:GetRegions() }
     local previewTextRegion = nil
@@ -413,6 +442,31 @@ function Triggers:CreateAdvancedMacroUI(frame, trigger)
         end
     end
 
+    -- Measured once from the font the editor actually uses, rather than assumed.
+    -- This was hardcoded at 18 pixels a line; the real figure is about 14.4, so
+    -- a twelve line macro got a box 55 pixels taller than its text. That surplus
+    -- is empty space the view could scroll into and never come back from, and it
+    -- put the styled overlay -- which sizes itself to its own text -- out of step
+    -- with the edit box underneath.
+    local measuredLineHeight
+
+    local function GetLineHeight()
+        if measuredLineHeight then return measuredLineHeight end
+
+        local probe = previewBox:CreateFontString(nil, "ARTWORK", "ChatFontNormal")
+        probe:SetText("X")
+        local single = probe:GetStringHeight() or 0
+        probe:SetText("X\nX")
+        local double = probe:GetStringHeight() or 0
+        probe:Hide()
+
+        -- The difference between one line and two is the line pitch, spacing
+        -- included; measuring one line alone misses the gap between them.
+        local pitch = double - single
+        measuredLineHeight = (pitch > 0) and pitch or (single > 0 and single or 14)
+        return measuredLineHeight
+    end
+
     local function RefreshPreviewBoxHeight(text)
         local lineCount = 1
         for _ in tostring(text or ""):gmatch("\n") do
@@ -420,7 +474,7 @@ function Triggers:CreateAdvancedMacroUI(frame, trigger)
         end
 
         local minHeight = math.max((previewContainer:GetHeight() or 150) - 12, 138)
-        local targetHeight = math.max(minHeight, (lineCount * 18) + 12)
+        local targetHeight = math.max(minHeight, (lineCount * GetLineHeight()))
         previewBox:SetHeight(targetHeight)
         fauxBox:SetHeight(targetHeight)
         gutterText:SetHeight(targetHeight)
@@ -433,25 +487,45 @@ function Triggers:CreateAdvancedMacroUI(frame, trigger)
         RefreshPreviewBoxHeight(previewBox:GetText())
     end)
 
+    -- Re-entry guard: SetVerticalScroll fires OnVerticalScroll, which calls
+    -- back into here. Three scroll frames each re-triggering the other two was
+    -- the churn behind the stutter while scrolling.
+    local syncingScroll = false
+
     local function SyncPreviewScroll(offset)
+        if syncingScroll then return end
+        syncingScroll = true
+
         previewScroll:SetVerticalScroll(offset)
         fauxScroll:SetVerticalScroll(offset)
         gutterScroll:SetVerticalScroll(offset)
+
+        syncingScroll = false
     end
 
     previewScroll:SetScript("OnMouseWheel", function(self, delta)
         local current = self:GetVerticalScroll() or 0
-        local minScroll, maxScroll = 0, 0
-        if self.ScrollBar and self.ScrollBar.GetMinMaxValues then
-            minScroll, maxScroll = self.ScrollBar:GetMinMaxValues()
-        end
+
+        -- The range comes from the content, not from self.ScrollBar. That is
+        -- the template's original bar, which the addon's scroll styling hides
+        -- and stops updating -- it stays at 0..0 forever, so every wheel step
+        -- was clamped to zero and the view could never be brought back up,
+        -- while the edit box kept pushing it down to follow the caret.
+        local child = self:GetScrollChild()
+        local maxScroll = math.max(0, (child and child:GetHeight() or 0) - (self:GetHeight() or 0))
 
         local nextScroll = current - (delta * 24)
-        if nextScroll < minScroll then
-            nextScroll = minScroll
+        if nextScroll < 0 then
+            nextScroll = 0
         elseif nextScroll > maxScroll then
             nextScroll = maxScroll
         end
+
+        -- Cancel the pending "keep the caret visible" correction. The caret is
+        -- at the end of the macro, so without this the edit box dragged the
+        -- view straight back down on the next frame and scrolling up was
+        -- impossible.
+        previewBox.handleCursorChange = false
 
         SyncPreviewScroll(nextScroll)
     end)
@@ -470,6 +544,17 @@ function Triggers:CreateAdvancedMacroUI(frame, trigger)
     cursorText:SetPoint("LEFT", countText, "RIGHT", 18, 0)
     cursorText:SetTextColor(0.7, 0.9, 1, 1)
     frame.advancedMacroCursor = cursorText
+
+    -- The Macro Helper fills the space under the editor -- the space the info
+    -- box used to take before it moved up beside the icon picker.
+    frame.macroHelperDock = previewContainer
+
+    -- Shared with the Mix Macro editor. No refresh callback is needed: Insert()
+    -- fires the box's own OnTextChanged, which already updates the count and
+    -- saves the body.
+    if OxedHub.MacroHelper then
+        OxedHub.MacroHelper:Attach(frame, previewBox, cursorText)
+    end
 
     local caretMeasure = previewBox:CreateFontString(nil, "OVERLAY", "ChatFontNormal")
     caretMeasure:Hide()
@@ -507,7 +592,9 @@ function Triggers:CreateAdvancedMacroUI(frame, trigger)
         fakeCaret:Show()
     end
 
-    local function UpdateCursorIndicator()
+    -- Assigns the forward declaration above, so the earlier handlers share this
+    -- one function rather than looking for a global.
+    function UpdateCursorIndicator()
         local line, column = GetCursorLineAndColumn(previewBox:GetText(), previewBox:GetCursorPosition())
         cursorText:SetFormattedText("Line %d, Col %d", line, column)
         gutterText:SetText(BuildMacroLineNumberText(previewBox:GetText(), line))
@@ -653,8 +740,18 @@ function Triggers:CreateAdvancedMacroUI(frame, trigger)
         local currentText = self:GetText() or ""
         RefreshPreviewBoxHeight(currentText)
         fauxBox:SetText(BuildStyledMacroPreviewText(currentText))
+        -- Only the real edit box drives the scrolling. Letting the styled
+        -- overlay scroll itself as well gave two independent calculations that
+        -- drifted apart once the macro grew past the visible area, drawing the
+        -- coloured copy and the plain one at different offsets.
         ScrollingEdit_OnTextChanged(self, self:GetParent())
-        ScrollingEdit_OnTextChanged(fauxBox, fauxScroll)
+        C_Timer.After(0, function()
+            if not (previewScroll and fauxScroll) then return end
+
+            -- The overlay is the measurement, not the thing to be corrected.
+            -- Our SetHeight does not stick on it: the engine sizes it to its
+            SyncPreviewScroll(previewScroll:GetVerticalScroll() or 0)
+        end)
         local defaultBody = Triggers:BuildDefaultTriggerMacroBody(trigger) or ""
         local normalized = Triggers.NormalizeMacroBodyText(currentText)
         if not normalized or normalized == defaultBody then
@@ -736,25 +833,42 @@ function Triggers:CreateAdvancedMacroUI(frame, trigger)
 
     -- Help Tooltip Box
     local infoBox = CreateBorderedFrame(frame)
-    infoBox:SetHeight(65)
-    infoBox:SetPoint("TOPLEFT", previewContainer, "BOTTOMLEFT", 0, -38)
-    infoBox:SetPoint("RIGHT", previewContainer, "RIGHT", 0, 0)
+    -- Moved to the empty band beside the icon picker. It used to sit under the
+    -- editor and take the full width, which is the space the Macro Helper needs.
+    -- Starts well clear of the icon hint on its left, so the two no longer
+    -- overlap, and is tall enough for the text to wrap instead of being cut.
+    -- Anchored to the right edge of the icon hint, not to a fixed offset. The
+    -- hint is a sentence whose width depends on the locale and font scale, so a
+    -- fixed position left the box sitting on top of its tail.
+    -- Pinned by its bottom edge to just above the editor, so growing the box
+    -- taller makes it rise instead of sinking into the macro preview.
+    infoBox:SetHeight(52)
+    infoBox:SetPoint("BOTTOMRIGHT", previewContainer, "TOPRIGHT", 0, 10)
+    infoBox:SetPoint("LEFT", iconHint, "RIGHT", 24, 0)
     infoBox:SetBackdropColor(0, 0, 0, 0.6)
-    
+
     local icon = infoBox:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(28, 28)
-    icon:SetPoint("LEFT", infoBox, "LEFT", 14, 0)
+    icon:SetSize(22, 22)
+    icon:SetPoint("TOPLEFT", infoBox, "TOPLEFT", 10, -8)
     icon:SetTexture("Interface\\common\\help-i")
-    
-    local infoTitle = infoBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    infoTitle:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, 2)
-    infoTitle:SetText("|cffffd100" .. (L["ADV_MACRO_CUSTOM_TITLE"] or "Advanced Macro Customization:") .. "|r")
-    
+
+    -- No heading. The box is one short sentence next to an information icon;
+    -- a title line above it said nothing the sentence does not, and cost the
+    -- room the sentence needed to fit.
+    --
+    -- Smaller font and wrapping on: at the normal size it ran past the edge and
+    -- was clipped mid-word.
     local infoDesc = infoBox:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    infoDesc:SetPoint("TOPLEFT", infoTitle, "BOTTOMLEFT", 0, -4)
-    infoDesc:SetPoint("RIGHT", infoBox, "RIGHT", -14, 0)
+    infoDesc:SetPoint("TOPLEFT", icon, "TOPRIGHT", 8, 2)
+    infoDesc:SetPoint("BOTTOMRIGHT", infoBox, "BOTTOMRIGHT", -10, 8)
     infoDesc:SetJustifyH("LEFT")
-    infoDesc:SetText(L["ADV_MACRO_CUSTOM_DESC"] or "Custom macro code allows you to override or extend standard triggers (e.g. adding conditions or targeting commands).\nEnsure you keep the '/run OxedHub.Triggers:ExecuteTriggerByID' command, as it fires your trigger actions.")
+    infoDesc:SetJustifyV("TOP")
+    infoDesc:SetWordWrap(true)
+    -- The /run reminder lives here rather than in the description above: this
+    -- box has room to grow, the description does not without shifting the whole
+    -- column and breaking the preview overlay's alignment.
+    infoDesc:SetText(L["ADV_MACRO_CUSTOM_DESC_SHORT"]
+        or "Custom macro code lets you override or extend a standard trigger, for example by adding conditions or targeting commands.|n|cffff9900Keep the /run OxedHub.Triggers:ExecuteTriggerByID line -- it fires the trigger.|r")
 end
 
 -- Expose syntax highlighting utilities for reuse by other modules (e.g. Toys Mix Macro Editor)
@@ -764,3 +878,69 @@ Triggers.GetCursorLineAndColumn = GetCursorLineAndColumn
 Triggers.GetCursorLineText = GetCursorLineText
 Triggers.GetCursorPositionFromLineAndX = GetCursorPositionFromLineAndX
 
+
+-- ── Macro preview diagnostics  (/oxedhub macrodebug) ─────────────────────────
+-- Reports the numbers the scrolling actually depends on. Guessing at the line
+-- height and the frame levels produced three wrong fixes in a row; these are
+-- the values that decide whether the box can scroll and whether the bar shows.
+function Triggers:DumpMacroPreview()
+    local frame = Triggers._macroDebugFrame
+    if not frame then
+        print("|cff00d9d9OxedHub:|r open a trigger's Advanced Macros tab first.")
+        return
+    end
+
+    local container = frame.advancedMacroPreviewContainer
+    local scroll = frame.advancedMacroPreviewScroll
+    local box = frame.advancedMacroPreview
+    local fauxScroll = frame.advancedMacroFauxScroll
+    local fauxBox = frame.advancedMacroFauxText
+
+    local text = box and box:GetText() or ""
+    local lines = 1
+    for _ in text:gmatch("\n") do lines = lines + 1 end
+
+    print("|cff00d9d9=== OxedHub macro preview ===|r")
+    print(("lines=%d  chars=%d"):format(lines, #text))
+
+    if container then
+        print(("container: h=%.0f"):format(container:GetHeight() or 0))
+    end
+
+    if scroll then
+        local minV, maxV = 0, 0
+        if scroll.ScrollBar and scroll.ScrollBar.GetMinMaxValues then
+            minV, maxV = scroll.ScrollBar:GetMinMaxValues()
+        end
+        print(("previewScroll: h=%.0f scroll=%.1f range=%.0f..%.0f level=%d"):format(
+            scroll:GetHeight() or 0, scroll:GetVerticalScroll() or 0,
+            minV or 0, maxV or 0, scroll:GetFrameLevel() or 0))
+        print(("   clipsChildren=%s  scrollChildH=%.0f"):format(
+            tostring(scroll.DoesClipChildren and scroll:DoesClipChildren()),
+            (scroll:GetScrollChild() and scroll:GetScrollChild():GetHeight()) or 0))
+    end
+
+    if box then
+        print(("previewBox: h=%.0f  parent=%s"):format(
+            box:GetHeight() or 0, tostring(box:GetParent() == scroll)))
+    end
+
+    if fauxScroll then
+        print(("fauxScroll: h=%.0f scroll=%.1f level=%d  barShown=%s"):format(
+            fauxScroll:GetHeight() or 0, fauxScroll:GetVerticalScroll() or 0,
+            fauxScroll:GetFrameLevel() or 0,
+            tostring(fauxScroll.ScrollBar and fauxScroll.ScrollBar:IsShown())))
+    end
+    if fauxBox then
+        print(("fauxBox: h=%.0f"):format(fauxBox:GetHeight() or 0))
+    end
+
+    local bar = scroll and scroll.oxedMinimalScrollBar
+    if bar then
+        print(("minimalBar: shown=%s level=%d strata=%s w=%.0f h=%.0f"):format(
+            tostring(bar:IsShown()), bar:GetFrameLevel() or 0,
+            tostring(bar:GetFrameStrata()), bar:GetWidth() or 0, bar:GetHeight() or 0))
+    else
+        print("minimalBar: |cffff4040missing|r -- the scroll frame was never styled")
+    end
+end

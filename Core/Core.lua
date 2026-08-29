@@ -2494,6 +2494,10 @@ function Core:HandleSlashCommand(msg)
         if OxedHub.Toys and OxedHub.Toys.ToggleToyDock then
             OxedHub.Toys:ToggleToyDock(rest ~= "" and rest or nil)
         end
+    elseif command == "macrodebug" then
+        if OxedHub.Triggers and OxedHub.Triggers.DumpMacroPreview then
+            OxedHub.Triggers:DumpMacroPreview()
+        end
     elseif command == "toydebug" then
         if OxedHub.Toys and OxedHub.Toys.DumpToyButtons then
             OxedHub.Toys:DumpToyButtons()

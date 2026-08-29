@@ -227,6 +227,14 @@ function Toys:ShowMixMacroEditor(mixName)
         fauxScroll:EnableMouse(false)
         fauxScroll.ScrollBar:Hide()
 
+        -- Kept hidden. The template shows its bar again whenever the content grows,
+
+        -- and this frame only mirrors the real editor: its own bar was the old-style
+
+        -- one on screen, and it scrolled independently of the text underneath.
+
+        fauxScroll.ScrollBar:HookScript("OnShow", function(self) self:Hide() end)
+
         local fauxBox = CreateFrame("EditBox", nil, fauxScroll)
         fauxBox:SetAllPoints()
         fauxBox:SetMultiLine(true)
@@ -262,6 +270,22 @@ function Toys:ShowMixMacroEditor(mixName)
         previewScroll:SetFrameLevel(previewContainer:GetFrameLevel() + 2)
         if OxedHub.UI and OxedHub.UI.StyleScrollFrame then
             OxedHub.UI:StyleScrollFrame(previewScroll)
+        end
+
+        
+
+        -- The minimal bar is created as a child of the scroll frame, which sits
+
+        -- below the styled overlay. Without lifting it, the bar was drawn behind
+
+        -- that layer and looked as though it had disappeared.
+
+        if previewScroll.oxedMinimalScrollBar then
+
+            previewScroll.oxedMinimalScrollBar:SetFrameStrata("HIGH")
+
+            previewScroll.oxedMinimalScrollBar:SetFrameLevel(previewContainer:GetFrameLevel() + 12)
+
         end
 
         local previewBox = CreateFrame("EditBox", nil, previewScroll)
@@ -307,6 +331,16 @@ function Toys:ShowMixMacroEditor(mixName)
         cursorText:SetTextColor(0.7, 0.9, 1, 1)
         f.cursorText = cursorText
 
+        -- The Macro Helper fills the space under the editor, which the info box
+        -- used to occupy.
+        f.macroHelperDock = previewContainer
+
+        -- The same panel the trigger's Advanced Macros tab uses, so a snippet
+        -- added to the catalogue appears in both editors.
+        if OxedHub.MacroHelper then
+            f.macroHelperBtn = OxedHub.MacroHelper:Attach(f, previewBox, cursorText)
+        end
+
         -- Caret measure helper
         local caretMeasure = previewBox:CreateFontString(nil, "OVERLAY", "ChatFontNormal")
         caretMeasure:Hide()
@@ -320,34 +354,71 @@ function Toys:ShowMixMacroEditor(mixName)
         f.fakeCaret = fakeCaret
 
         -- Reset button
+        -- On the counter row next to Macro Helper, not on its own line below.
+        -- That line is where the helper panel opens, and the panel covered the
+        -- button completely.
         local resetBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        resetBtn:SetSize(130, 24)
-        resetBtn:SetPoint("TOPLEFT", previewContainer, "BOTTOMLEFT", 0, -28)
+        resetBtn:SetSize(130, 22)
+        if f.macroHelperBtn then
+            resetBtn:SetPoint("LEFT", f.macroHelperBtn, "RIGHT", 8, 0)
+        else
+            resetBtn:SetPoint("LEFT", cursorText, "RIGHT", 12, 0)
+        end
         resetBtn:SetText(L["MIX_MACRO_RESET"] or "Reset to Default")
         resetBtn:SetNormalFontObject("GameFontNormalSmall")
         f.resetBtn = resetBtn
 
         -- Info box
+        -- Laid out like the trigger's Advanced Macros tab: the info sits in the
+        -- band beside the icon picker, and the space under the editor is left
+        -- free for the Macro Helper.
         local infoBox = CreateBorderedFrame(f)
-        infoBox:SetHeight(55)
-        infoBox:SetPoint("TOPLEFT", resetBtn, "BOTTOMLEFT", 0, -12)
-        infoBox:SetPoint("RIGHT", previewContainer, "RIGHT", 0, 0)
+        -- Pinned by its bottom edge, like the trigger tab: a taller box then
+        -- rises rather than sinking into the macro preview below it.
+        infoBox:SetHeight(40)
+        infoBox:SetPoint("BOTTOMRIGHT", previewContainer, "TOPRIGHT", 0, 10)
+        infoBox:SetPoint("LEFT", iconHint, "RIGHT", 24, 0)
         infoBox:SetBackdropColor(0, 0, 0, 0.6)
 
         local infoIcon = infoBox:CreateTexture(nil, "ARTWORK")
-        infoIcon:SetSize(28, 28)
-        infoIcon:SetPoint("LEFT", infoBox, "LEFT", 14, 0)
+        infoIcon:SetSize(22, 22)
+        infoIcon:SetPoint("TOPLEFT", infoBox, "TOPLEFT", 10, -8)
         infoIcon:SetTexture("Interface\\common\\help-i")
 
-        local infoTitle = infoBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        infoTitle:SetPoint("TOPLEFT", infoIcon, "TOPRIGHT", 10, 2)
-        infoTitle:SetText("|cffffd100" .. (L["MIX_MACRO_INFO_TITLE"] or "Mix Macro Customization:") .. "|r")
-
+        -- No heading, and the note about Reset to Default is dropped: the button
+        -- is right there and says so itself.
         local infoDesc = infoBox:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        infoDesc:SetPoint("TOPLEFT", infoTitle, "BOTTOMLEFT", 0, -4)
-        infoDesc:SetPoint("RIGHT", infoBox, "RIGHT", -14, 0)
+        infoDesc:SetPoint("TOPLEFT", infoIcon, "TOPRIGHT", 8, 2)
+        infoDesc:SetPoint("BOTTOMRIGHT", infoBox, "BOTTOMRIGHT", -10, 8)
         infoDesc:SetJustifyH("LEFT")
-        infoDesc:SetText(L["MIX_MACRO_INFO_DESC"] or "Edit the macro to customize how this mix fires. You can add conditions, reorder toys, or use /castsequence.\nClick 'Reset to Default' to revert to the auto-generated macro.")
+        infoDesc:SetJustifyV("TOP")
+        infoDesc:SetWordWrap(true)
+        infoDesc:SetText(L["MIX_MACRO_INFO_DESC_SHORT"]
+            or "Edit the macro to change how this mix fires -- add conditions, reorder toys, or use /castsequence.")
+
+        -- Measured from the font in use, not assumed. This was hardcoded at 18
+        -- pixels a line while the real pitch is about 14.4, so the box came out
+        -- taller than its text -- surplus the view could scroll into and never
+        -- return from, and enough to put the styled overlay out of step with
+        -- the edit box under it.
+        local measuredLineHeight
+
+        local function GetLineHeight()
+            if measuredLineHeight then return measuredLineHeight end
+
+            local probe = previewBox:CreateFontString(nil, "ARTWORK", "ChatFontNormal")
+            probe:SetText("X")
+            local single = probe:GetStringHeight() or 0
+            probe:SetText("X\nX")
+            local double = probe:GetStringHeight() or 0
+            probe:Hide()
+
+            -- Two lines minus one gives the pitch including the gap between
+            -- them; one line alone would miss that gap.
+            local pitch = double - single
+            measuredLineHeight = (pitch > 0) and pitch or (single > 0 and single or 14)
+            return measuredLineHeight
+        end
 
         -- GgutterText update, fake caret and editing behaviors
         local function RefreshPreviewBoxHeight(text)
@@ -356,7 +427,7 @@ function Toys:ShowMixMacroEditor(mixName)
                 lineCount = lineCount + 1
             end
             local minHeight = math.max((previewContainer:GetHeight() or 180) - 12, 168)
-            local targetHeight = math.max(minHeight, (lineCount * 18) + 12)
+            local targetHeight = math.max(minHeight, (lineCount * GetLineHeight()))
             previewBox:SetHeight(targetHeight)
             fauxBox:SetHeight(targetHeight)
             gutterText:SetHeight(targetHeight)
@@ -368,10 +439,18 @@ function Toys:ShowMixMacroEditor(mixName)
             fauxBox:SetWidth(targetWidth)
         end
 
+        -- Re-entry guard: SetVerticalScroll fires OnVerticalScroll, which calls
+        -- back into here, and three scroll frames kept re-triggering each other.
+        local syncingScroll = false
+
         local function SyncPreviewScroll(offset)
+            if syncingScroll then return end
+            syncingScroll = true
             previewScroll:SetVerticalScroll(offset)
             fauxScroll:SetVerticalScroll(offset)
             gutterScroll:SetVerticalScroll(offset)
+
+            syncingScroll = false
         end
 
         local function UpdateFakeCaret()
@@ -534,8 +613,15 @@ function Toys:ShowMixMacroEditor(mixName)
             else
                 fauxBox:SetText(currentText)
             end
+            -- One source of scrolling, as in the trigger tab: two independent
+            -- calculations drifted apart once the macro outgrew the box, and
+            -- the coloured overlay ended up offset from the text under it.
             ScrollingEdit_OnTextChanged(self, self:GetParent())
-            ScrollingEdit_OnTextChanged(fauxBox, fauxScroll)
+            C_Timer.After(0, function()
+                if not (previewScroll and fauxScroll) then return end
+
+                SyncPreviewScroll(previewScroll:GetVerticalScroll() or 0)
+            end)
 
             -- Save custom body (or clear if matches default)
             local mixData = f.mixData
@@ -621,13 +707,20 @@ function Toys:ShowMixMacroEditor(mixName)
 
         previewScroll:SetScript("OnMouseWheel", function(self, delta)
             local current = self:GetVerticalScroll() or 0
-            local minScroll, maxScroll = 0, 0
-            if self.ScrollBar and self.ScrollBar.GetMinMaxValues then
-                minScroll, maxScroll = self.ScrollBar:GetMinMaxValues()
-            end
+
+            -- Range from the content, not from self.ScrollBar: that bar is
+            -- hidden by the scroll styling and never updates, so it reports
+            -- 0..0 and clamped every wheel step to zero.
+            local child = self:GetScrollChild()
+            local maxScroll = math.max(0, (child and child:GetHeight() or 0) - (self:GetHeight() or 0))
+
             local nextScroll = current - (delta * 24)
-            if nextScroll < minScroll then nextScroll = minScroll end
+            if nextScroll < 0 then nextScroll = 0 end
             if nextScroll > maxScroll then nextScroll = maxScroll end
+
+            -- Cancel the pending caret-follow, or the edit box drags the view
+            -- straight back down to the end of the macro next frame.
+            previewBox.handleCursorChange = false
             SyncPreviewScroll(nextScroll)
         end)
 
