@@ -265,14 +265,31 @@ Triggers.ShowAutoSaved = ShowAutoSaved
 function Triggers:Init()
     local triggers = OxedHub.db.profile.triggers or {}
 
-    -- Clean up old space-based macros from previous versions
-    for id, trigger in pairs(triggers) do
-        if trigger.macroName then
-            local oldIndex = GetMacroIndexByName(trigger.macroName)
-            if oldIndex > 0 then
-                DeleteMacro(oldIndex)
+    -- Name the rules that were left on the placeholder. A list of a dozen
+    -- entries all reading "New Trigger" is unusable, and the name carries
+    -- nothing worth preserving, so replacing it loses no decision the player
+    -- made. Anything they named themselves is untouched.
+    for _, trigger in pairs(triggers) do
+        if trigger.name == "New Trigger" or trigger.name == "" or trigger.name == nil then
+            trigger.autoNamed = nil
+            self:AutoNameTrigger(trigger)
+        end
+    end
+
+    -- Clean up old space-based macros from previous versions.
+    --
+    -- Guarded for combat: DeleteMacro is protected there. This code had never
+    -- run before -- Init was not called from anywhere -- so a login inside a
+    -- battleground would have met it for the first time at the worst moment.
+    if not InCombatLockdown() then
+        for id, trigger in pairs(triggers) do
+            if trigger.macroName then
+                local oldIndex = GetMacroIndexByName(trigger.macroName)
+                if oldIndex and oldIndex > 0 then
+                    DeleteMacro(oldIndex)
+                end
+                trigger.macroName = nil
             end
-            trigger.macroName = nil
         end
     end
 
@@ -379,6 +396,42 @@ function Triggers:ApplyDefaultZonesForEvent(trigger)
     trigger.zones = self:GetDefaultZonesForEvent(trigger.event)
 end
 
+-- ── Automatic naming ─────────────────────────────────────────────────────────
+-- A list of rules all called "New Trigger" tells the player nothing, and that
+-- is what a fresh install fills up with. The name follows the event until the
+-- player types one of their own, after which it is left alone for good.
+
+function Triggers:GetEventLabel(eventValue)
+    for _, entry in ipairs(OxedHub.CONFIG.EVENT_TYPES or {}) do
+        if entry.value == eventValue then return entry.label end
+    end
+    return nil
+end
+
+-- The spell is the more useful name when there is one: "Power Infusion" says
+-- more than "My Buff (by Spell ID)".
+local function DescribeTrigger(trigger)
+    local conditions = trigger.conditions or {}
+    local spellID = conditions.spellID or conditions.spellId
+
+    if spellID and C_Spell and C_Spell.GetSpellInfo then
+        local info = C_Spell.GetSpellInfo(spellID)
+        if info and info.name then return info.name end
+    end
+
+    return Triggers:GetEventLabel(trigger.event)
+end
+
+function Triggers:AutoNameTrigger(trigger)
+    if not trigger or trigger.autoNamed == false then return end
+
+    local name = DescribeTrigger(trigger)
+    if name and name ~= "" then
+        trigger.name = name
+        trigger.autoNamed = true
+    end
+end
+
 -- Create a new trigger
 function Triggers:CreateNewTrigger()
     local id = OxedHub:GenerateID("trigger")
@@ -394,7 +447,11 @@ function Triggers:CreateNewTrigger()
         extraMacroText = nil,
         customMacroBody = nil,
     }
-    
+
+    -- Named from its event straight away, so a list of new rules reads as
+    -- "Spell Cast Success" rather than a column of "New Trigger".
+    self:AutoNameTrigger(trigger)
+
     OxedHub.db.profile.triggers[id] = trigger
     self:InvalidateEnabledEventCache()
     self.selectedTriggerId = id

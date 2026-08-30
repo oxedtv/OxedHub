@@ -1293,6 +1293,15 @@ function Core:OnPlayerLogin()
 
     self:ApplyAutoClassProfile()
 
+    -- Triggers first: its Init repairs saved data -- shared condition tables
+    -- from an old copy bug, stale macro names, rules left on the placeholder
+    -- name -- and the UI reads that data as soon as it builds.
+    --
+    -- This was never called. The repairs it holds have simply not been running.
+    if OxedHub.Triggers and OxedHub.Triggers.Init then
+        OxedHub.Triggers:Init()
+    end
+
     -- Initialize UI
     if OxedHub.UI then
         OxedHub.UI:Init()
