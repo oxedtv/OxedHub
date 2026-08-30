@@ -421,7 +421,17 @@ end
 function Triggers:GetFormattedZoneSummary(trigger)
     local zones = trigger.zones or {}
     local parts = {}
-    
+
+    -- Nothing shown when the rule runs everywhere, which is the usual case.
+    -- The same six letters repeated down every row said only that no rule was
+    -- restricted; now the column speaks up only when one is.
+    local restricted = false
+    for _, key in ipairs({ "OPEN_WORLD", "PARTY", "DELVE", "RAID", "PVP", "BATTLEGROUND" }) do
+        if not zones[key] then restricted = true break end
+    end
+    if not restricted then return "" end
+
+
     table.insert(parts, zones.OPEN_WORLD and "|cff55ff55W|r" or "|cff444444W|r")
     table.insert(parts, zones.PARTY and "|cff33ccffD|r" or "|cff444444D|r")
     table.insert(parts, zones.DELVE and "|cffffcc00V|r" or "|cff444444V|r")
@@ -950,14 +960,57 @@ function Triggers:RefreshTriggersList()
             zone = L["LBL_ZONE"] or "Zone",
         })
 
+        -- Grouped by category, with a heading before each run. A flat list of
+        -- thirty rules gives no sense of what is set up where; the four
+        -- categories the events already carry do.
+        --
+        -- Collapsed groups are remembered per profile, so a category the player
+        -- is not working on stays folded away between sessions.
+        local profile = OxedHub.db and OxedHub.db.profile
+        if profile then
+            profile.collapsedTriggerGroups = profile.collapsedTriggerGroups or {}
+        end
+        local collapsed = (profile and profile.collapsedTriggerGroups) or {}
+
+        local grouped, groupOrder = {}, {}
+        for _, category in ipairs(OxedHub.CONFIG.EVENT_CATEGORIES or {}) do
+            grouped[category.value] = { label = category.label, triggers = {} }
+            groupOrder[#groupOrder + 1] = category.value
+        end
+        -- Anything whose event is not in the catalogue still has to appear.
+        grouped["other"] = { label = L["TRIGGER_GROUP_OTHER"] or "Other", triggers = {} }
+        groupOrder[#groupOrder + 1] = "other"
+
         local visibleCount = 0
         for _, trigger in ipairs(sortedTriggers) do
             if TriggerMatchesSearch(trigger) then
+                local _, evCat = self:GetEventDisplay(trigger.event)
+                local bucket = grouped[evCat] or grouped["other"]
+                table.insert(bucket.triggers, trigger)
                 visibleCount = visibleCount + 1
+            end
+        end
+
+        local rowIndex = 0
+        for _, key in ipairs(groupOrder) do
+            local group = grouped[key]
+            if #group.triggers > 0 then
+                dataProvider:Insert({
+                    isGroupHeader = true,
+                    groupKey = key,
+                    name = group.label,
+                    groupCount = #group.triggers,
+                    collapsed = collapsed[key] == true,
+                })
+            end
+
+            if #group.triggers > 0 and not collapsed[key] then
+                for _, trigger in ipairs(group.triggers) do
+                rowIndex = rowIndex + 1
                 local evLabel, evCat, evDesc = self:GetEventDisplay(trigger.event)
                 dataProvider:Insert({
                     id = trigger.id,
-                    index = visibleCount,
+                    index = rowIndex,
                     name = trigger.name,
                     event = trigger.event,
                     eventLabel = evLabel,
@@ -971,7 +1024,12 @@ function Triggers:RefreshTriggersList()
                     formattedZone = self:GetFormattedZoneSummary(trigger),
                     zoneDetails = self:GetZoneDetails(trigger),
                     enabled = trigger.enabled == true,
+                    -- A rule with no actions fires and does nothing. They are
+                    -- what half-finished experiments leave behind, and they sit
+                    -- in the list looking exactly like working ones.
+                    isEmpty = (self:GetActionsSummary(trigger) or "") == "",
                 })
+                end
             end
         end
 

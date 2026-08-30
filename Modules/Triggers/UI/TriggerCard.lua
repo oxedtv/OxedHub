@@ -336,6 +336,11 @@ function Triggers:CreateTriggerCard(parent, trigger)
     nameInput:SetText(trigger.name or "")
     nameInput:SetScript("OnTextChanged", function(self, isUserInput)
         trigger.name = self:GetText()
+
+        -- Typing a name of your own ends the automatic naming for this rule.
+        -- Only real typing counts: the field is also set programmatically when
+        -- the card is built, and that must not count as a decision.
+        if isUserInput then trigger.autoNamed = false end
         -- Update title
         if titleText then
             titleText:SetText(trigger.name ~= "" and trigger.name or "Trigger Rule")
@@ -506,6 +511,10 @@ function Triggers:CreateTriggerCard(parent, trigger)
     local function SelectEvent(eventType)
         trigger.event = eventType.value
         Triggers:ApplyDefaultZonesForEvent(trigger)
+
+        -- Follows the event unless the player has named this rule themselves.
+        Triggers:AutoNameTrigger(trigger)
+        if card.nameInput then card.nameInput:SetText(trigger.name or "") end
         if not Triggers:SupportsAdvancedMacros(trigger) and trigger.activeTab == "advanced" then
             trigger.activeTab = "setup"
         end

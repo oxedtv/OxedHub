@@ -1173,12 +1173,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.41)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.42)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.41")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.42")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -2412,6 +2412,13 @@ function UI:CreateTriggersTab()
                             if row.elementData.eventDesc and row.elementData.eventDesc ~= "" then
                                 GameTooltip:AddLine(row.elementData.eventDesc, 1, 1, 1, true)
                             end
+                            -- Say why the row is dimmed, or the mark is just a
+                            -- dot with no explanation.
+                            if row.elementData.isEmpty then
+                                GameTooltip:AddLine(" ")
+                                GameTooltip:AddLine(L["TRIGGER_NO_ACTIONS"]
+                                    or "No actions set -- this trigger fires but does nothing.", 0.9, 0.5, 0.4, true)
+                            end
                             GameTooltip:Show()
                         end
                     end)
@@ -2550,6 +2557,13 @@ function UI:CreateTriggersTab()
                 row.topLine:SetColorTexture(0, 0, 0, 0)
                 row.bottomLine:SetColorTexture(0.95, 0.74, 0.22, 0.65)
                 row.leftAccent:SetColorTexture(0, 0, 0, 0)
+            elseif elementData.isGroupHeader then
+                -- Darker band with a gold edge on the left, so a category reads
+                -- as a divider between runs of rules rather than as one of them.
+                row.bg:SetColorTexture(0.10, 0.09, 0.07, 0.9)
+                row.topLine:SetColorTexture(0.95, 0.74, 0.22, 0.25)
+                row.bottomLine:SetColorTexture(0.95, 0.74, 0.22, 0.25)
+                row.leftAccent:SetColorTexture(0.95, 0.74, 0.22, 0.8)
             else
                 if (elementData.index or 0) % 2 == 0 then
                     row.bg:SetColorTexture(0.055, 0.052, 0.048, 0.72)
@@ -2564,7 +2578,29 @@ function UI:CreateTriggersTab()
             row.actionsDivider:SetColorTexture(0.58, 0.48, 0.34, elementData.isHeader and 0 or 0.18)
             row.spellDivider:SetColorTexture(0.58, 0.48, 0.34, elementData.isHeader and 0 or 0.18)
             row.zoneDivider:SetColorTexture(0.58, 0.48, 0.34, elementData.isHeader and 0 or 0.18)
-            row.nameText:SetText(elementData.name or "")
+            -- A rule with no actions does nothing when it fires, so it is dimmed
+            -- and marked. Otherwise it sits in the list looking identical to a
+            -- working one -- which is how twenty-nine of them accumulate.
+            if elementData.isGroupHeader then
+                -- A category heading: a fold arrow, the name and how many rules
+                -- are inside. The other columns stay blank so the eye reads it
+                -- as a divider rather than another row of data.
+                local arrow = elementData.collapsed and "+" or "-"
+                row.nameText:SetText(("|cffffd100%s  %s|r  |cff888888(%d)|r"):format(
+                    arrow, elementData.name or "", elementData.groupCount or 0))
+                row.eventText:SetText("")
+                row.actionsText:SetText("")
+                row.zoneText:SetText("")
+            elseif elementData.isEmpty and not elementData.isHeader then
+                -- Plain words, not a symbol: the addon's font has no glyph for
+                -- the bullet that was here and drew it as an empty box.
+                -- "no actions" rather than "empty": the rule itself is set up,
+                -- it just has nothing to play, and "empty" read as if the whole
+                -- trigger were blank.
+                row.nameText:SetText("|cff888888" .. (elementData.name or "") .. "|r  |cffcc6666(no actions)|r")
+            else
+                row.nameText:SetText(elementData.name or "")
+            end
 
             if elementData.isHeader then
                 row.eventText:SetText(elementData.event or "")
@@ -2669,6 +2705,19 @@ function UI:CreateTriggersTab()
             end
             row:SetScript("OnMouseUp", function(_, button)
                 if button ~= "LeftButton" then return end
+
+                -- Clicking a category heading folds it away.
+                if elementData.isGroupHeader and elementData.groupKey then
+                    local profile = OxedHub.db and OxedHub.db.profile
+                    if profile then
+                        profile.collapsedTriggerGroups = profile.collapsedTriggerGroups or {}
+                        local groups = profile.collapsedTriggerGroups
+                        groups[elementData.groupKey] = not groups[elementData.groupKey] or nil
+                        OxedHub.Triggers:RefreshTriggersList()
+                    end
+                    return
+                end
+
                 if elementData.id then
                     OxedHub.Triggers:OpenTriggerDetails(elementData.id)
                 end
