@@ -25,6 +25,16 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.42",
+        lines = {
+            { "ADDED",   "Triggers are grouped by category, and a group folds away with a click." },
+            { "ADDED",   "New rules are named after their event instead of \"New Trigger\"." },
+            { "ADDED",   "A rule with no actions is dimmed and marked, so dead experiments stand out." },
+            { "FIXED",   "Trigger repairs on load had never run -- rules could share one set of conditions." },
+            { "CHANGED", "The zone column stays blank unless a rule is actually restricted." },
+        },
+    },
+    {
         version = "2.3.41",
         lines = {
             { "ADDED",   "Macro Helper in both macro editors: templates, conditions and commands, inserted at the cursor." },
