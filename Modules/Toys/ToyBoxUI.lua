@@ -1188,30 +1188,69 @@ function Toys:RefreshToyBoxesUI()
                 end
             end
 
+            -- Box reordering is not handled here. These two only fire for a toy
+            -- on the cursor: OnReceiveDrag needs one, and OnMouseUp goes to the
+            -- row the drag started on rather than the one under the pointer. The
+            -- box drop is resolved in OnDragStart's counterpart below, which can
+            -- still see where the cursor is -- and leaving a second path here
+            -- meant it cleared the drag marker first and reordered without
+            -- knowing which half of the row was aimed at.
             btn:EnableMouse(true)
             btn:SetScript("OnReceiveDrag", function(self)
-                -- A box being dragged takes priority over a toy on the cursor.
-                if Toys._draggedBoxId then
-                    -- ReorderBox refreshes both the tab and the floating panel.
-                    Toys:ReorderBox(Toys._draggedBoxId, self.boxId)
-                    Toys._draggedBoxId = nil
-                    return
-                end
                 HandleDropOnSidebar(self)
             end)
             btn:HookScript("OnMouseUp", function(self, button)
                 if button == "LeftButton" then
-                    if Toys._draggedBoxId then
-                        Toys:ReorderBox(Toys._draggedBoxId, self.boxId)
-                        Toys._draggedBoxId = nil
-                        return
-                    end
                     local cursorToyID = GetCursorToyID() or Toys._draggedToyID
                     if cursorToyID then
                         HandleDropOnSidebar(self)
                     end
                 end
             end)
+
+            -- Which row the cursor is over, and whether the drop lands above or
+            -- below it. Shared by the drop itself and by the marker that shows
+            -- where it will land, so the line cannot promise one thing and the
+            -- drop do another.
+            local function FindDropTarget(dragging)
+                for _, other in ipairs(sidebar.boxButtons or {}) do
+                    if other ~= dragging and other:IsShown() and other:IsMouseOver() then
+                        local _, cursorY = GetCursorPosition()
+                        cursorY = cursorY / (UIParent:GetEffectiveScale() or 1)
+
+                        local top, bottom = other:GetTop(), other:GetBottom()
+                        local dropAfter = false
+                        if top and bottom then
+                            dropAfter = cursorY < ((top + bottom) / 2)
+                        end
+                        return other, dropAfter
+                    end
+                end
+            end
+
+            -- A green rule drawn on the edge the box will land against, rather
+            -- than leaving the player to guess from the cursor alone.
+            local function UpdateDropLine(dragging)
+                if not sidebar.dropLine then
+                    local line = sidebar:CreateTexture(nil, "OVERLAY")
+                    line:SetHeight(2)
+                    line:SetColorTexture(0.3, 1, 0.3, 0.9)
+                    line:Hide()
+                    sidebar.dropLine = line
+                end
+
+                local target, dropAfter = FindDropTarget(dragging)
+                if not target then
+                    sidebar.dropLine:Hide()
+                    return
+                end
+
+                sidebar.dropLine:ClearAllPoints()
+                local edge = dropAfter and "BOTTOM" or "TOP"
+                sidebar.dropLine:SetPoint("LEFT", target, edge .. "LEFT", 2, 0)
+                sidebar.dropLine:SetPoint("RIGHT", target, edge .. "RIGHT", -2, 0)
+                sidebar.dropLine:Show()
+            end
 
             -- Drag a box onto another to move it there.  "All Toys" and
             -- "Favorites" are fixed, so they are not draggable.
@@ -1220,9 +1259,33 @@ function Toys:RefreshToyBoxesUI()
                 if self.boxId == "all" or self.boxId == "favorites" or self.boxId == "mixes" then return end
                 Toys._draggedBoxId = self.boxId
                 self:SetAlpha(0.5)
+
+                -- Polled while the drag lasts: there is no event for "the
+                -- cursor moved over another row" during a frame drag.
+                --
+                -- Throttled, and it stops itself the moment the drag marker is
+                -- gone. These rows are pooled and reused on every refresh, so a
+                -- handler left running would keep polling on a button that now
+                -- stands for a different box.
+                local elapsed = 0
+                self:SetScript("OnUpdate", function(dragging, delta)
+                    if not Toys._draggedBoxId then
+                        dragging:SetScript("OnUpdate", nil)
+                        if sidebar.dropLine then sidebar.dropLine:Hide() end
+                        return
+                    end
+
+                    elapsed = elapsed + (delta or 0)
+                    if elapsed < 0.05 then return end
+                    elapsed = 0
+
+                    UpdateDropLine(dragging)
+                end)
             end)
             btn:SetScript("OnDragStop", function(self)
                 self:SetAlpha(1)
+                self:SetScript("OnUpdate", nil)
+                if sidebar.dropLine then sidebar.dropLine:Hide() end
 
                 local dragged = self.boxId
                 Toys._draggedBoxId = nil
@@ -1238,11 +1301,9 @@ function Toys:RefreshToyBoxesUI()
                 -- and OnReceiveDrag only fires when something is actually on the
                 -- cursor, which is never true for a frame drag. Between them
                 -- nothing ever reached ReorderBox, so no box could be moved.
-                for _, other in ipairs(sidebar.boxButtons or {}) do
-                    if other ~= self and other:IsShown() and other:IsMouseOver() then
-                        Toys:ReorderBox(dragged, other.boxId)
-                        return
-                    end
+                local target, dropAfter = FindDropTarget(self)
+                if target then
+                    Toys:ReorderBox(dragged, target.boxId, dropAfter)
                 end
             end)
 

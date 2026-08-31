@@ -25,7 +25,11 @@ function Toys:GetBoxOrder()
 end
 
 -- Move draggedId so it sits where targetId currently is.
-function Toys:ReorderBox(draggedId, targetId)
+-- dropAfter: the box lands below the target rather than above it. The caller
+-- decides from where in the target row the cursor was released, so dropping on
+-- the upper half puts it above and the lower half below -- the same rule in
+-- both directions.
+function Toys:ReorderBox(draggedId, targetId, dropAfter)
     if not draggedId or not targetId or draggedId == targetId then return end
     -- These two are fixed positions, never part of the user order.
     if draggedId == "all" or draggedId == "favorites" or draggedId == "mixes" then return end
@@ -43,11 +47,33 @@ function Toys:ReorderBox(draggedId, targetId)
     --
     -- Rebuilding is safe because the displayed order already reflects this same
     -- list first, so it round-trips unchanged.
-    wipe(order)
+    -- Read the shown order first, then replace the saved one with it.
+    --
+    -- Wiping before the read destroyed it: GetToyBoxes sorts by this very
+    -- table, so it saw an empty order, fell back to the catalogue sequence, and
+    -- every drag quietly threw away the arrangement built by the previous one.
+    local shown = {}
     for _, box in ipairs(self:GetToyBoxes()) do
         if box.id ~= "all" and box.id ~= "favorites" and box.id ~= "mixes" then
-            table.insert(order, box.id)
+            table.insert(shown, box.id)
         end
+    end
+
+    -- Hidden boxes are absent from the shown list, so carry their ids over or
+    -- unhiding one would drop it back to the bottom of the sidebar.
+    local visible = {}
+    for _, id in ipairs(shown) do visible[id] = true end
+    local carried = {}
+    for _, id in ipairs(order) do
+        if not visible[id] then table.insert(carried, id) end
+    end
+
+    wipe(order)
+    for _, id in ipairs(shown) do
+        table.insert(order, id)
+    end
+    for _, id in ipairs(carried) do
+        table.insert(order, id)
     end
 
     local from, to
@@ -58,6 +84,17 @@ function Toys:ReorderBox(draggedId, targetId)
     if not from or not to then return end
 
     table.remove(order, from)
+
+    -- Removing the dragged box shifts everything after it down by one, so a
+    -- target that sat below it is now one index lower. Without this correction
+    -- a downward drag landed past the target and an upward drag landed on it,
+    -- which for neighbouring rows looked exactly like the two swapping places.
+    if from < to then to = to - 1 end
+    if dropAfter then to = to + 1 end
+
+    if to < 1 then to = 1 end
+    if to > #order + 1 then to = #order + 1 end
+
     table.insert(order, to, draggedId)
     self:NotifyBoxesChanged()
 end
