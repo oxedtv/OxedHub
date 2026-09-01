@@ -25,6 +25,20 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.44",
+        lines = {
+            { "ADDED",   "Move Mode unlocks several action hubs at once, so each hub's nodes can be dragged on their own." },
+            { "FIXED",   "Only the active hub reacted to a node drag -- a second bar could just be shoved around whole." },
+        },
+    },
+    {
+        version = "2.3.43",
+        lines = {
+            { "FIXED",   "Reordering toy boxes threw away the previous arrangement, sending another box back to its old spot." },
+            { "ADDED",   "A green line shows where a dragged toy box will land before you let go." },
+        },
+    },
+    {
         version = "2.3.42",
         lines = {
             { "ADDED",   "Triggers are grouped by category, and a group folds away with a click." },
