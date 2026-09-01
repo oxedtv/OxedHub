@@ -2447,8 +2447,69 @@ end
 -- directly on screen, inside a blue "move zone" overlay.
 -- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+-- Move mode used to unlock exactly one hub -- the active one.  Every other hub
+-- on screen stayed frozen, so a second bar could only be shoved around whole
+-- via shift-drag, never rearranged node by node.  It is now a set: any number
+-- of hubs can be unlocked together and each of their nodes dragged separately.
+--
+-- minimizedMoveModeHub survives as the FOCUS: the grid, the spacing sliders and
+-- Reset are stored per hub, so those still need one hub to act on.
+function ActionHub:GetMoveModeHubs()
+    self.minimizedMoveModeHubs = self.minimizedMoveModeHubs or {}
+    return self.minimizedMoveModeHubs
+end
+
 function ActionHub:IsMinimizedMoveMode(hubIndex)
-    return self.minimizedMoveModeHub ~= nil and self.minimizedMoveModeHub == hubIndex
+    if hubIndex == nil then return false end
+    return self.minimizedMoveModeHubs ~= nil and self.minimizedMoveModeHubs[hubIndex] == true
+end
+
+function ActionHub:IsMoveModeActive()
+    return self.minimizedMoveModeHub ~= nil
+end
+
+-- Unlock or freeze one hub without leaving move mode.
+function ActionHub:SetMoveModeHubEnabled(hubIndex, enabled)
+    if not hubIndex or not self:IsMoveModeActive() then return end
+    if InCombatLockdown() then return end
+
+    local set = self:GetMoveModeHubs()
+    set[hubIndex] = enabled and true or nil
+
+    -- Never leave the whole screen frozen: turning off the last hub would
+    -- strand the dialog with nothing left to drag.
+    local remaining
+    for index in pairs(set) do remaining = remaining or index end
+    if not remaining then
+        set[hubIndex] = true
+        remaining = hubIndex
+    end
+
+    -- The focused hub has to stay one that is actually unlocked, or the
+    -- sliders and Reset would quietly act on a frozen bar.
+    if not set[self.minimizedMoveModeHub] then
+        self.minimizedMoveModeHub = remaining
+    end
+
+    if enabled then
+        local w = self:CreateWidget(hubIndex)
+        if w then w:SetMovable(true) end
+    end
+
+    local doneFrame = self.moveModeDoneFrame
+    if doneFrame then
+        if doneFrame.updateHubToggles then doneFrame.updateHubToggles() end
+        if doneFrame.updateGridButtons then doneFrame.updateGridButtons() end
+        if doneFrame.SyncSpacingSliders then doneFrame.SyncSpacingSliders() end
+    end
+    self:RefreshWidget()
+end
+
+-- Which hub the per-hub controls act on.  Focusing one also unlocks it.
+function ActionHub:SetMoveModeFocus(hubIndex)
+    if not hubIndex or not self:IsMoveModeActive() then return end
+    self.minimizedMoveModeHub = hubIndex
+    self:SetMoveModeHubEnabled(hubIndex, true)
 end
 
 -- Drag a real widget node on screen, updating its slot offset live.
@@ -2586,7 +2647,14 @@ function ActionHub:BeginWidgetNodeDrag(btn)
         end
     end
 
-    local hub = self.minimizedMoveModeHub
+    -- Read the hub off the node's own widget, not off the focused one.  With
+    -- several hubs unlocked at once, the focus says which one the sliders act
+    -- on -- it says nothing about which bar this particular node belongs to,
+    -- and using it would write the drag into a different hub's slots.
+    local parentWidget = btn:GetParent()
+    local hub = (parentWidget and parentWidget.hubIndex)
+        or btn.slotHubIndex or self.minimizedMoveModeHub
+    if not self:IsMinimizedMoveMode(hub) then return end
     local w = self.widgets and self.widgets[hub]
     if not w then return end
     local slots = self:GetSlotsForSide(self:GetHubDB(hub), btn.slotSide)
@@ -2858,7 +2926,7 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
 
     -- Clean themed dialog (same style as the Pick Sound picker).
     local f = CreateFrame("Frame", "OxedHubActionHubMoveDone", UIParent, "BasicFrameTemplateWithInset")
-    f:SetSize(360, 330)
+    f:SetSize(360, 384)
     f:SetPoint("TOP", UIParent, "TOP", 0, -130)
     f:SetFrameStrata("TOOLTIP")
     f:SetFrameLevel(300)
@@ -2906,10 +2974,125 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
     end
     f.updateGridButtons = updateGridButtons
 
+    -- Row 0: which hubs are unlocked.
+    --
+    -- One button per hub, cycling locked -> unlocked -> focused -> locked.  Several hubs can
+    -- be unlocked at once so their nodes get rearranged side by side; the
+    -- focused one is what the grid and spacing sliders below act on, since
+    -- those settings are stored per hub.
+    local hubLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hubLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -34)
+    hubLabel:SetText("Unlocked hubs")
+    hubLabel:SetTextColor(0.9, 0.9, 0.9)
+
+    f.hubToggles = {}
+
+    local allBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    allBtn:SetSize(52, 20)
+    allBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -30)
+    allBtn:SetText("All")
+    allBtn:SetScript("OnClick", function()
+        local hubs = ActionHub:GetHubs() or {}
+        local set = ActionHub:GetMoveModeHubs()
+        -- Anything still locked means "unlock everything"; otherwise collapse
+        -- back to the focused hub alone.
+        local anyLocked = false
+        for i = 1, #hubs do
+            if not set[i] then anyLocked = true end
+        end
+        if anyLocked then
+            for i = 1, #hubs do ActionHub:SetMoveModeHubEnabled(i, true) end
+        else
+            local keep = ActionHub.minimizedMoveModeHub or 1
+            for i = 1, #hubs do
+                if i ~= keep then ActionHub:SetMoveModeHubEnabled(i, false) end
+            end
+        end
+    end)
+    allBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Unlock every hub at once.", 1, 1, 1)
+        GameTooltip:AddLine("Click again to leave only the focused one unlocked.", 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    allBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    local function updateHubToggles()
+        local hubs = ActionHub:GetHubs() or {}
+        local rowWidth, x, y = 332, 0, 0
+
+        for i = 1, #hubs do
+            local btn = f.hubToggles[i]
+            if not btn then
+                btn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+                btn:SetHeight(20)
+                btn.hubIndex = i
+                btn:SetScript("OnClick", function(self)
+                    local index = self.hubIndex
+                    if not ActionHub:IsMinimizedMoveMode(index) then
+                        ActionHub:SetMoveModeFocus(index)
+                    elseif ActionHub.minimizedMoveModeHub ~= index then
+                        ActionHub:SetMoveModeFocus(index)
+                    else
+                        ActionHub:SetMoveModeHubEnabled(index, false)
+                    end
+                end)
+                btn:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:AddLine(self:GetText() or "", 1, 0.85, 0.2)
+                    if not ActionHub:IsMinimizedMoveMode(self.hubIndex) then
+                        GameTooltip:AddLine("Locked. Click to unlock and drag its nodes.", 0.8, 0.8, 0.8, true)
+                    elseif ActionHub.minimizedMoveModeHub == self.hubIndex then
+                        GameTooltip:AddLine("Focused: the grid and spacing sliders act on this hub.", 0.8, 0.8, 0.8, true)
+                        GameTooltip:AddLine("Click to lock it again.", 0.8, 0.8, 0.8, true)
+                    else
+                        GameTooltip:AddLine("Unlocked. Click to focus the grid controls on it.", 0.8, 0.8, 0.8, true)
+                    end
+                    GameTooltip:Show()
+                end)
+                btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                f.hubToggles[i] = btn
+            end
+
+            local db = ActionHub:GetHubDB(i)
+            btn:SetText((db and db.name) or ("Hub " .. i))
+            btn:SetWidth(math.max(58, (btn:GetTextWidth() or 40) + 20))
+            btn.hubIndex = i
+
+            -- Wrap once the row runs out of dialog width.
+            if x > 0 and (x + btn:GetWidth()) > rowWidth then
+                x, y = 0, y - 24
+            end
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPLEFT", f, "TOPLEFT", 14 + x, -52 + y)
+            x = x + btn:GetWidth() + 4
+
+            local unlocked = ActionHub:IsMinimizedMoveMode(i)
+            local focused = ActionHub.minimizedMoveModeHub == i
+            btn:SetAlpha(unlocked and 1 or 0.5)
+            local text = btn:GetFontString()
+            if text then
+                if focused then
+                    text:SetTextColor(1, 0.82, 0)
+                elseif unlocked then
+                    text:SetTextColor(0.5, 1, 0.5)
+                else
+                    text:SetTextColor(0.6, 0.6, 0.6)
+                end
+            end
+            btn:Show()
+        end
+
+        for i = #hubs + 1, #f.hubToggles do
+            f.hubToggles[i]:Hide()
+        end
+    end
+    f.updateHubToggles = updateHubToggles
+
     -- Row 1: Grid Dropdown
     local gridBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     gridBtn:SetSize(160, 24)
-    gridBtn:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -34)
+    gridBtn:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -88)
     gridBtn:SetText(string.format(L["AH_GRID_LABEL"] or "Grid: %s", L["GRID_OFF"] or "Off"))
     
     local tex = gridBtn:CreateTexture(nil, "ARTWORK")
@@ -2992,12 +3175,12 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
     -- Screen grid: a separate aid from the snap grid above.  It changes
     -- nothing about placement, it just draws guides to line things up by eye.
     local screenGridCheck = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-    screenGridCheck:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -150)
+    screenGridCheck:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -204)
     screenGridCheck:SetSize(24, 24)
     screenGridCheck:SetChecked(ActionHub.screenGridOn == true)
 
     local moveHint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    moveHint:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -128)
+    moveHint:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -182)
     moveHint:SetWidth(320)
     moveHint:SetJustifyH("LEFT")
     moveHint:SetText("|cff88AAFFShift + drag a node|r moves that whole hub.")
@@ -3112,6 +3295,7 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
     doneBtn:SetText(L["AH_DONE_POSITIONING"] or "Done Positioning")
     doneBtn:SetScript("OnClick", function() ActionHub:ExitMinimizedMoveMode() end)
 
+    updateHubToggles()
     updateGridButtons()
 
     f:Hide()
@@ -3391,6 +3575,9 @@ function ActionHub:EnterMinimizedMoveMode()
 
     self.minimizedMoveModeHub = self:GetActiveHubIndex() or 1
 
+    -- Start on the active hub alone; the dialog's hub row unlocks the others.
+    self.minimizedMoveModeHubs = { [self.minimizedMoveModeHub] = true }
+
     local w = self:CreateWidget(self.minimizedMoveModeHub)
     if w then w:SetMovable(true) end
 
@@ -3400,6 +3587,7 @@ function ActionHub:EnterMinimizedMoveMode()
 
     local doneFrame = self:GetOrCreateMoveModeDoneFrame()
     doneFrame:Show()
+    if doneFrame.updateHubToggles then doneFrame.updateHubToggles() end
     if doneFrame.updateGridButtons then doneFrame.updateGridButtons() end
     if doneFrame.SyncSpacingSliders then doneFrame.SyncSpacingSliders() end
     self:RefreshWidget()
@@ -3409,6 +3597,7 @@ function ActionHub:ExitMinimizedMoveMode()
     -- The grid is a positioning aid only; never leave it on screen after.
     if self.SetScreenGridShown then self:SetScreenGridShown(false) end
     self.minimizedMoveModeHub = nil
+    self.minimizedMoveModeHubs = nil
     if self.moveModeDoneFrame then self.moveModeDoneFrame:Hide() end
     if OxedHub.mainFrame then OxedHub.mainFrame:Show() end
     self:RefreshWidget()
