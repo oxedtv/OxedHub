@@ -27,6 +27,7 @@ local NAV_ICONS = {
     ActionHub = "Interface\\Icons\\INV_Sword_04",
     Settings = "Interface\\Icons\\Trade_engineering",
     About = "Interface\\Icons\\INV_Misc_QuestionMark",
+    Modules = "Interface\\Icons\\Inv_misc_gear",
     Experimental = "Interface\\Icons\\Trade_engineering",
 }
 
@@ -352,6 +353,7 @@ function UI:Init()
     self:CreateToysTab()
     self:CreateOxedRingTab()
     self:CreateActionHubTab()
+    self:CreateModulesTab()
     self:CreateSettingsTab()
     self:CreateAboutTab()
     self:CreateExperimentalTab()
@@ -596,7 +598,7 @@ function UI:CreateSidebar()
     sidebar:SetFrameLevel(mainFrame:GetFrameLevel() + 50)
 
     
-    local tabs = { "Dashboard", "Triggers", "Reactions", "Toys", "OxedRing", "ActionHub", "Settings", "About" } -- , "Experimental"
+    local tabs = { "Dashboard", "Triggers", "Reactions", "Toys", "OxedRing", "ActionHub", "Settings", "About" } -- , "Experimental", "Modules"
     local yOffset = 0
     
     for i, tabName in ipairs(tabs) do
@@ -608,6 +610,13 @@ function UI:CreateSidebar()
         end)
         btn.tabName = tabName
         sidebar[tabName .. "Btn"] = btn
+        
+        if tabName == "Modules" then
+            local redBg = btn:CreateTexture(nil, "BACKGROUND")
+            redBg:SetAllPoints()
+            redBg:SetColorTexture(0.5, 0, 0, 0.6)
+            btn.text:SetTextColor(1, 0.4, 0.4, 1)
+        end
         
         -- Activate Dashboard button by default since it starts selected
         if tabName == "Dashboard" then
@@ -728,6 +737,7 @@ function UI:CreateContentArea()
     if not mainFrame then return end
     
     contentArea = CreateFrame("Frame", nil, mainFrame, "InsetFrameTemplate")
+    self.contentArea = contentArea
     contentArea:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", CONFIG.SIDEBAR_WIDTH + 20, -60)
     contentArea:SetPoint("BOTTOMRIGHT", mainFrame, "BOTTOMRIGHT", -10, 30)
     contentArea:SetFrameLevel(mainFrame:GetFrameLevel() + 2)
@@ -1173,12 +1183,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.44)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.45)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.44")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.45")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -2268,6 +2278,180 @@ function UI:CreateDashboardTab()
     contentArea.Dashboard = tab
 end
 
+-- Explain the warning on a category heading: which rules inside it are flagged.
+-- The heading carries the mark so folding a category cannot bury a problem.
+local function ShowGroupWarnTooltip(owner, warn)
+    if not warn or not warn.count or warn.count == 0 then return end
+
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    if warn.exact then
+        GameTooltip:SetText(L["TRIGGER_DUPLICATE_SOUND_TITLE"] or "Duplicate sound", 1, 0.35, 0.25)
+    else
+        GameTooltip:SetText(L["TRIGGER_SHARED_SOUND_TITLE"] or "Shared sound", 1, 0.75, 0.15)
+    end
+    GameTooltip:AddLine(string.format(
+        L["TRIGGER_GROUP_SOUND_WARN"] or "%d triggers in this category reuse a sound.", warn.count),
+        1, 1, 1, true)
+    GameTooltip:AddLine(" ")
+    for _, name in ipairs(warn.names or {}) do
+        GameTooltip:AddLine("- " .. name, 1, 0.82, 0.12)
+    end
+    GameTooltip:Show()
+end
+
+-- Explain a sound clash. Shared by the row and by the warning icon's own hover
+-- zone, so the same words appear wherever the player points at the problem.
+local function ShowSoundClashTooltip(owner, clash)
+    if not clash or not clash.names or #clash.names == 0 then return end
+
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    if clash.exact then
+        GameTooltip:SetText(L["TRIGGER_DUPLICATE_SOUND_TITLE"] or "Duplicate sound", 1, 0.35, 0.25)
+        GameTooltip:AddLine(L["TRIGGER_DUPLICATE_SOUND_DESC"]
+            or "Another enabled trigger answers the same event and spell with the same sound, so it plays twice.",
+            1, 1, 1, true)
+    else
+        GameTooltip:SetText(L["TRIGGER_SHARED_SOUND_TITLE"] or "Shared sound", 1, 0.75, 0.15)
+        GameTooltip:AddLine(L["TRIGGER_SHARED_SOUND_DESC"]
+            or "Another enabled trigger on this event uses the same sound, but answers a different spell. They only overlap if both fire at once.",
+            1, 1, 1, true)
+    end
+
+    if clash.sound then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine("|cff888888Sound:|r " .. tostring(clash.sound), 0.8, 0.8, 0.8, true)
+    end
+
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(L["TRIGGER_DUPLICATE_SOUND_ALSO"] or "Also used by:", 0.8, 0.8, 0.8)
+    for _, otherName in ipairs(clash.names) do
+        GameTooltip:AddLine("- " .. otherName, 1, 0.82, 0.12)
+    end
+
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(L["TRIGGER_SOUND_IGNORE_HINT"]
+        or "Right-click the row to ignore this warning.", 0.5, 0.7, 1, true)
+    GameTooltip:Show()
+end
+
+-- One entry point, because a heading and a rule both carry the same icon and
+-- the hover code should not have to know which kind of row it is looking at.
+local function ShowRowWarnTooltip(owner, elementData)
+    if not elementData then return end
+    if elementData.isGroupHeader then
+        ShowGroupWarnTooltip(owner, elementData.groupWarn)
+    else
+        ShowSoundClashTooltip(owner, elementData.duplicateSoundOf)
+    end
+end
+
+-- Right-click menu for one row of the trigger list.
+--
+-- The row already carried a delete and a share icon at its far right edge, so
+-- reaching either meant crossing the whole table. Gathering the actions under
+-- the cursor keeps them where the eye already is, and leaves room for the ones
+-- that never had a button at all -- duplicating, and copying into a profile you
+-- are not currently playing.
+function UI:ShowTriggerRowMenu(owner, elementData)
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+    local triggerId = elementData and elementData.id
+    if not triggerId then return end
+
+    local Triggers = OxedHub.Triggers
+    if not Triggers then return end
+
+    MenuUtil.CreateContextMenu(owner, function(_, root)
+        root:CreateTitle(elementData.name or (L["TAB_TRIGGERS"] or "Trigger"))
+
+        root:CreateButton(L["TRIGGER_MENU_OPEN"] or "Open", function()
+            Triggers:OpenTriggerDetails(triggerId)
+        end)
+
+        root:CreateButton(elementData.enabled
+            and (L["TRIGGER_MENU_DISABLE"] or "Disable")
+            or (L["TRIGGER_MENU_ENABLE"] or "Enable"), function()
+            local trigger = OxedHub.db and OxedHub.db.profile
+                and OxedHub.db.profile.triggers and OxedHub.db.profile.triggers[triggerId]
+            if not trigger then return end
+            trigger.enabled = not trigger.enabled
+            Triggers:InvalidateEnabledEventCache()
+            Triggers:RefreshTriggersList()
+        end)
+
+        -- Only offered on rows that actually carry the warning, so the menu
+        -- does not grow an entry that means nothing for most rules.
+        local trigger = OxedHub.db and OxedHub.db.profile
+            and OxedHub.db.profile.triggers and OxedHub.db.profile.triggers[triggerId]
+        if elementData.duplicateSoundOf or (trigger and trigger.ignoreSoundWarning) then
+            root:CreateDivider()
+            root:CreateButton((trigger and trigger.ignoreSoundWarning)
+                and (L["TRIGGER_MENU_UNIGNORE_SOUND"] or "Show sound warning again")
+                or (L["TRIGGER_MENU_IGNORE_SOUND"] or "Ignore sound warning"), function()
+                if not trigger then return end
+                trigger.ignoreSoundWarning = (not trigger.ignoreSoundWarning) or nil
+                Triggers:RefreshTriggersList()
+            end)
+        end
+
+        root:CreateDivider()
+
+        root:CreateButton(L["TRIGGER_MENU_DUPLICATE"] or "Duplicate here", function()
+            Triggers:DuplicateTrigger(triggerId)
+        end)
+
+        -- Every profile except the one being edited: copying a rule onto the
+        -- profile it already lives in is just Duplicate, which is right above.
+        local activeName = OxedHub.GetActiveProfileName and OxedHub:GetActiveProfileName()
+        local others = {}
+        for _, name in ipairs((OxedHub.GetProfileList and OxedHub:GetProfileList()) or {}) do
+            if name ~= activeName then
+                table.insert(others, name)
+            end
+        end
+
+        local copyLabel = L["TRIGGER_MENU_COPY_TO_PROFILE"] or "Copy to profile"
+        if #others == 0 then
+            -- Shown rather than hidden, so the feature is discoverable before
+            -- there is a second profile to use it on.
+            local entry = root:CreateButton(copyLabel, function() end)
+            if entry.SetEnabled then entry:SetEnabled(false) end
+        else
+            local submenu = root:CreateButton(copyLabel)
+            for _, name in ipairs(others) do
+                local profileName = name
+                submenu:CreateButton(
+                    (OxedHub.GetProfileDisplayName and OxedHub:GetProfileDisplayName(profileName)) or profileName,
+                    function()
+                        if Triggers:CopyTriggerToProfile(triggerId, profileName) then
+                            print(("|cff00ff00Oxed Hub:|r %s -> %s"):format(
+                                elementData.name or "Trigger", profileName))
+                        else
+                            print("|cffff5555Oxed Hub:|r " ..
+                                (L["TRIGGER_MENU_COPY_FAILED"] or "Could not copy that trigger."))
+                        end
+                    end)
+            end
+        end
+
+        root:CreateDivider()
+
+        root:CreateButton(L["TRIGGER_MENU_SHARE"] or "Share", function()
+            local Share = OxedHub.Share
+            if not Share then
+                print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+                return
+            end
+            local label = elementData.name
+            if not label or label == "" then label = "Trigger" end
+            Share:ShowChannelPicker("triggers", { triggerIDs = { triggerId } }, label)
+        end)
+
+        root:CreateButton("|cffff5555" .. (L["TRIGGER_MENU_DELETE"] or "Delete") .. "|r", function()
+            Triggers:DeleteTrigger(triggerId)
+        end)
+    end)
+end
+
 -- Create Triggers tab
 function UI:CreateTriggersTab()
     local tab = CreateFrame("Frame", nil, contentArea)
@@ -2344,6 +2528,57 @@ function UI:CreateTriggersTab()
                 row.nameText:SetPoint("LEFT", row, "LEFT", 12, 0)
                 row.nameText:SetWidth(190)
                 row.nameText:SetJustifyH("LEFT")
+
+                -- Sound-clash warning. An icon rather than words appended to
+                -- the name: the words were grey, sat inside a 190px column
+                -- that truncates, and read as part of the trigger's name.
+                --
+                -- Mouse stays disabled. The row owns the click that opens the
+                -- trigger, and a mouse-enabled child here would swallow it; the
+                -- row's own tooltip already covers this column.
+                -- The icon lives inside its own frame so pointing at it
+                -- explains it. Without that, the cursor lands in the event
+                -- column's hover zone and gets the event's tooltip instead --
+                -- an alert you cannot interrogate is just a decoration.
+                row.warnFrame = CreateFrame("Frame", nil, row)
+                row.warnFrame:SetSize(18, 18)
+                row.warnFrame:SetPoint("LEFT", row.nameText, "RIGHT", -5, 0)
+                row.warnFrame:EnableMouse(true)
+                row.warnFrame:SetFrameLevel(row:GetFrameLevel() + 5)
+                row.warnFrame:Hide()
+
+                row.warnIcon = row.warnFrame:CreateTexture(nil, "OVERLAY")
+                row.warnIcon:SetSize(16, 16)
+                row.warnIcon:SetPoint("CENTER", row.warnFrame, "CENTER", 0, 0)
+                row.warnIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+
+                row.warnFrame:SetScript("OnEnter", function(self)
+                    if row.hoverHighlight and row.elementData and not row.elementData.isHeader then
+                        row.hoverHighlight:Show()
+                    end
+                    ShowRowWarnTooltip(self, row.elementData)
+                end)
+                row.warnFrame:SetScript("OnLeave", function()
+                    if row.hoverHighlight then row.hoverHighlight:Hide() end
+                    GameTooltip:Hide()
+                end)
+                -- Clicks belong to the row: the icon sits on top of it, and
+                -- swallowing them would make this one spot of the row dead.
+                row.warnFrame:SetScript("OnMouseUp", function(_, button)
+                    local script = row:GetScript("OnMouseUp")
+                    if script then script(row, button) end
+                end)
+
+                -- Pulse, so a real clash catches the eye while scrolling. Only
+                -- ever played for the fault case, never for a shared sound --
+                -- something that blinks at you about a non-problem is worse
+                -- than no warning at all.
+                row.warnPulse = row.warnIcon:CreateAnimationGroup()
+                row.warnPulse:SetLooping("BOUNCE")
+                local fade = row.warnPulse:CreateAnimation("Alpha")
+                fade:SetFromAlpha(1)
+                fade:SetToAlpha(0.25)
+                fade:SetDuration(0.7)
 
                 row.eventText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
                 row.eventText:SetPoint("LEFT", row.nameText, "RIGHT", 12, 0)
@@ -2602,6 +2837,39 @@ function UI:CreateTriggersTab()
                 row.nameText:SetText(elementData.name or "")
             end
 
+            -- Sound clash: an alert icon in the name column, red when the two
+            -- rules genuinely double up and amber when they merely share a
+            -- file. Hidden outright once the player has chosen to ignore it.
+            if row.warnIcon then
+                -- Either a rule's own clash, or the roll-up on its category
+                -- heading. Never on the column header, which names columns.
+                local clash
+                if elementData.isHeader then
+                    clash = nil
+                elseif elementData.isGroupHeader then
+                    clash = elementData.groupWarn
+                else
+                    clash = elementData.duplicateSoundOf
+                end
+                if clash then
+                    if clash.exact then
+                        row.warnIcon:SetVertexColor(1, 0.25, 0.2)
+                        if row.warnPulse and not row.warnPulse:IsPlaying() then row.warnPulse:Play() end
+                    else
+                        row.warnIcon:SetVertexColor(1, 0.75, 0.15)
+                        if row.warnPulse then row.warnPulse:Stop() end
+                        row.warnIcon:SetAlpha(1)
+                    end
+                    row.warnFrame:Show()
+                else
+                    if row.warnPulse then row.warnPulse:Stop() end
+                    row.warnIcon:SetAlpha(1)
+                    -- Hiding the frame, not just the art: a mouse-enabled frame
+                    -- left showing over a clean row would eat hovers there.
+                    row.warnFrame:Hide()
+                end
+            end
+
             if elementData.isHeader then
                 row.eventText:SetText(elementData.event or "")
                 row.actionsText:SetText(elementData.actions or "")
@@ -2703,7 +2971,16 @@ function UI:CreateTriggersTab()
             if row.hoverHighlight then
                 row.hoverHighlight:Hide()
             end
-            row:SetScript("OnMouseUp", function(_, button)
+            row:SetScript("OnMouseUp", function(self, button)
+                -- Right-click opens the row's own menu. Everything you can do
+                -- to a rule used to live in the icons at the far right of the
+                -- row, which meant crossing the whole table to reach them.
+                if button == "RightButton" then
+                    if elementData.isHeader or elementData.isGroupHeader or not elementData.id then return end
+                    UI:ShowTriggerRowMenu(self, elementData)
+                    return
+                end
+
                 if button ~= "LeftButton" then return end
 
                 -- Clicking a category heading folds it away.
@@ -2726,11 +3003,16 @@ function UI:CreateTriggersTab()
                 if self.hoverHighlight and self.elementData and not self.elementData.isHeader then
                     self.hoverHighlight:Show()
                 end
+
+                -- The mark on the name says there is a clash; only the tooltip
+                -- can say which other rule it is with.
+                ShowRowWarnTooltip(self, self.elementData)
             end)
             row:SetScript("OnLeave", function(self)
                 if self.hoverHighlight then
                     self.hoverHighlight:Hide()
                 end
+                GameTooltip:Hide()
             end)
 
             local offset = (OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.settings and OxedHub.db.profile.settings.textSizeOffset) or 0
@@ -2888,6 +3170,37 @@ function UI:CreateOxedRingTab()
             contentArea.OxedRing = tab
         end
     end
+end
+
+-- Create Modules tab
+function UI:CreateModulesTab()
+    local tab = CreateFrame("Frame", nil, contentArea)
+    tab:SetAllPoints(contentArea)
+    tab:SetID(99)
+    ApplyToysBackground(tab)
+    
+    local scrollFrame = CreateFrame("ScrollFrame", nil, tab)
+    scrollFrame:SetPoint("TOPLEFT", tab, "TOPLEFT", THEMED_FRAME_INSETS.left, -THEMED_FRAME_INSETS.top)
+    scrollFrame:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -THEMED_FRAME_INSETS.right, THEMED_FRAME_INSETS.bottom)
+    
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollChild:SetSize(992, 586)
+    scrollFrame:SetScrollChild(scrollChild)
+    
+    local title = scrollChild:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
+    title:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 16, -16)
+    title:SetTextColor(1, 0.82, 0, 1)
+    title:SetText(L["TAB_MODULES"] or "Modules")
+    
+    local desc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
+    desc:SetText(L["MODULES_DESC"] or "Standalone addons that extend OxedHub.")
+    
+    tab.scrollFrame = scrollFrame
+    tab.scrollChild = scrollChild
+    contentArea.Modules = tab
+    
+    tab:Hide()
 end
 
 -- Create Settings tab
@@ -4927,7 +5240,7 @@ function UI:ShowTab(tabName)
     end
     
     -- Hide all tabs and reset button states
-    for _, name in ipairs({"Dashboard", "Triggers", "Reactions", "Toys", "OxedRing", "ActionHub", "Settings", "About", "Experimental"}) do
+    for _, name in ipairs({"Dashboard", "Triggers", "Reactions", "Toys", "OxedRing", "ActionHub", "Modules", "Settings", "About", "Experimental"}) do
         if contentArea[name] then
             contentArea[name]:Hide()
         end
@@ -4948,7 +5261,7 @@ function UI:ShowTab(tabName)
         searchBox.customSearchHandler = nil
         searchBox:SetText("")
         searchBox:ClearFocus()
-        if tabName == "Settings" or tabName == "About" or tabName == "Toys" or tabName == "ActionHub" or tabName == "Experimental" or tabName == "OxedRing" or tabName == "Dashboard" then
+        if tabName == "Settings" or tabName == "About" or tabName == "Toys" or tabName == "ActionHub" or tabName == "Experimental" or tabName == "OxedRing" or tabName == "Dashboard" or tabName == "Modules" then
             searchBox:GetParent():Hide()
         elseif tabName == "Reactions" then
             local subTab = (contentArea.Reactions and contentArea.Reactions.currentSubTab) or "Sounds"
@@ -4978,6 +5291,10 @@ function UI:ShowTab(tabName)
         UI:ShowSubTab((categoriesTab and categoriesTab.currentSubTab) or "Sounds")
     elseif tabName == "Toys" then
         self:ShowToysSubTab("Mixer")
+    elseif tabName == "Modules" then
+        if OxedHub.ModuleAPI and OxedHub.ModuleAPI.RefreshModulesTab then
+            OxedHub.ModuleAPI:RefreshModulesTab()
+        end
     elseif tabName == "ActionHub" then
         self:RefreshActionHubTab()
     elseif tabName == "Experimental" then

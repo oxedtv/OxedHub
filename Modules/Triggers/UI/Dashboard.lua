@@ -972,6 +972,11 @@ function Triggers:RefreshTriggersList()
         end
         local collapsed = (profile and profile.collapsedTriggerGroups) or {}
 
+        -- Worked out once for the whole list rather than per row: the check
+        -- compares every rule against every other, and doing that inside the
+        -- row loop would make it quadratic for no gain.
+        local soundConflicts = self:GetDuplicateSoundConflicts() or {}
+
         local grouped, groupOrder = {}, {}
         for _, category in ipairs(OxedHub.CONFIG.EVENT_CATEGORIES or {}) do
             grouped[category.value] = { label = category.label, triggers = {} }
@@ -995,12 +1000,27 @@ function Triggers:RefreshTriggersList()
         for _, key in ipairs(groupOrder) do
             local group = grouped[key]
             if #group.triggers > 0 then
+                -- Carried up to the heading so folding a category cannot hide a
+                -- warning. A collapsed group is exactly where an unnoticed
+                -- clash would sit forever.
+                local groupWarn
+                for _, trigger in ipairs(group.triggers) do
+                    local clash = soundConflicts[trigger.id]
+                    if clash then
+                        groupWarn = groupWarn or { count = 0, exact = false, names = {} }
+                        groupWarn.count = groupWarn.count + 1
+                        groupWarn.exact = groupWarn.exact or clash.exact
+                        table.insert(groupWarn.names, trigger.name or trigger.id)
+                    end
+                end
+
                 dataProvider:Insert({
                     isGroupHeader = true,
                     groupKey = key,
                     name = group.label,
                     groupCount = #group.triggers,
                     collapsed = collapsed[key] == true,
+                    groupWarn = groupWarn,
                 })
             end
 
@@ -1028,6 +1048,7 @@ function Triggers:RefreshTriggersList()
                     -- what half-finished experiments leave behind, and they sit
                     -- in the list looking exactly like working ones.
                     isEmpty = (self:GetActionsSummary(trigger) or "") == "",
+                    duplicateSoundOf = soundConflicts[trigger.id],
                 })
                 end
             end
@@ -1035,7 +1056,11 @@ function Triggers:RefreshTriggersList()
 
         tab.listIntro:SetText((L["DASHBOARD_STAT_ACTIVE_TRIGGERS"] or "Active Triggers") .. " (" .. visibleCount .. " visible)")
         tab.listIntro:Show()
-        tab.listDesc:SetText(string.format("Total: %d  |  Enabled: %d  |  Disabled: %d", totalTriggers, totalEnabled, totalTriggers - totalEnabled))
+        -- The stats line had spare room, and a right-click menu nobody is told
+        -- about is a menu nobody finds.
+        tab.listDesc:SetText(string.format("Total: %d  |  Enabled: %d  |  Disabled: %d   |cff888888%s|r",
+            totalTriggers, totalEnabled, totalTriggers - totalEnabled,
+            L["TRIGGERS_LIST_HINT"] or "Right-click a row for more"))
         tab.listDesc:Show()
 
         if visibleCount == 0 then

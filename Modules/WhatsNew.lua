@@ -25,6 +25,14 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.45",
+        lines = {
+            { "ADDED",   "The trigger list flags two rules that reuse one sound, on the rule and on its category heading." },
+            { "ADDED",   "Right-click a trigger for open, enable, duplicate, copy to another profile, share and delete." },
+            { "ADDED",   "A sound warning can be ignored per rule, from that same right-click menu." },
+        },
+    },
+    {
         version = "2.3.44",
         lines = {
             { "ADDED",   "Move Mode unlocks several action hubs at once, so each hub's nodes can be dragged on their own." },

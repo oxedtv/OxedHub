@@ -479,6 +479,151 @@ function Triggers:DuplicateTrigger(id)
     self:RefreshTriggersList()
 end
 
+-- Copy a trigger into another saved profile.
+--
+-- The copy is written straight into that profile's table rather than switching
+-- to it: the whole point is to seed a rule into a profile you are not currently
+-- playing, and a switch would tear down every open panel to do it.
+function Triggers:CopyTriggerToProfile(id, profileName)
+    local triggers = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.triggers
+    local source = triggers and triggers[id]
+    if not source or not profileName then return false end
+
+    local target = OxedHubDB and OxedHubDB.profiles and OxedHubDB.profiles[profileName]
+    if not target then return false end
+
+    -- Copying onto the profile you are already in is just a duplicate, and
+    -- that path already refreshes the list and selects the new rule.
+    if target == OxedHub.db.profile then
+        self:DuplicateTrigger(id)
+        return true
+    end
+
+    target.triggers = target.triggers or {}
+
+    local newId = OxedHub:GenerateID("trigger")
+    local copy = DeepCopy(source)
+    copy.id = newId
+    -- Arrives disabled. A rule dropped into a profile the player is not looking
+    -- at must never start firing behind their back.
+    copy.enabled = false
+    -- The macro belongs to the trigger it was built for; a copy that kept the
+    -- name would fight the original over the same macro slot.
+    copy.macroName = nil
+
+    target.triggers[newId] = copy
+    return true
+end
+
+-- Print what the duplicate-sound check actually sees, per rule.
+--
+-- Two rows that look identical in the list can still key differently, and the
+-- list cannot show why. This prints the key so the disagreement is visible.
+function Triggers:DumpSoundSignatures()
+    local triggers = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.triggers
+    if type(triggers) ~= "table" then
+        print("|cffff5555OxedHub:|r no triggers table.")
+        return
+    end
+
+    print("|cff00ff00OxedHub dupdebug:|r name | enabled | event | sound | spellID | auraName | auraType")
+    local rows = {}
+    for id, trigger in pairs(triggers) do
+        local conditions = trigger.conditions or {}
+        local actions = trigger.actions or {}
+        table.insert(rows, string.format("%s | en=%s | ev=%s | snd=%s | spell=%s | aura=%s | atype=%s",
+            tostring(trigger.name or id),
+            tostring(trigger.enabled),
+            tostring(trigger.event),
+            tostring(actions.sound),
+            tostring(conditions.spellID or conditions.spellId),
+            tostring(conditions.auraName),
+            tostring(conditions.auraType)))
+    end
+    table.sort(rows)
+    for _, line in ipairs(rows) do print(line) end
+
+    local conflicts = self:GetDuplicateSoundConflicts() or {}
+    local count = 0
+    for id, clash in pairs(conflicts) do
+        count = count + 1
+        local trigger = triggers[id]
+        print(("|cffffcc00%s:|r %s <-> %s"):format(
+            clash.exact and "duplicate" or "shared",
+            tostring(trigger and trigger.name or id),
+            table.concat(clash.names, ", ")))
+    end
+    print(("|cff00ff00OxedHub dupdebug:|r %d rules flagged."):format(count))
+end
+
+-- Rules on the same event that reuse the same sound.
+--
+-- Keyed on event plus sound, which is already a tight pair: sharing an event
+-- alone means nothing, since a dozen rules legitimately sit on Spell Cast
+-- Success. Two of them naming the same sound file is the thing worth saying out
+-- loud, and it is invisible in a list of thirty rows because the names differ
+-- and the rows look unrelated.
+--
+-- The spell does not narrow the key, it grades the result:
+--   exact  -- the same spell too, so both fire together and the sound doubles
+--   shared -- a different spell, so the sound is merely reused
+-- Both are worth surfacing; only the first is a fault.
+function Triggers:GetDuplicateSoundConflicts()
+    local triggers = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.triggers
+    if type(triggers) ~= "table" then return {} end
+
+    local function ConditionKey(trigger)
+        local conditions = trigger.conditions or {}
+        return table.concat({
+            tostring(conditions.spellID or conditions.spellId or ""),
+            tostring(conditions.auraName or ""),
+            tostring(conditions.auraType or ""),
+        }, "\31")
+    end
+
+    local bySignature = {}
+    for id, trigger in pairs(triggers) do
+        local sound = trigger.actions and trigger.actions.sound
+        -- Only enabled rules: a disabled twin cannot double up the sound, and
+        -- warning about one would just be a chore the player cannot act on.
+        if trigger.enabled and sound and sound ~= "" and sound ~= "None" then
+            local signature = tostring(trigger.event or "") .. "\30" .. tostring(sound)
+            bySignature[signature] = bySignature[signature] or {}
+            table.insert(bySignature[signature], id)
+        end
+    end
+
+    local conflicts = {}
+    for _, ids in pairs(bySignature) do
+        if #ids > 1 then
+            for _, id in ipairs(ids) do
+                local trigger = triggers[id]
+                local myKey = ConditionKey(trigger)
+                local others, exact = {}, false
+                for _, otherId in ipairs(ids) do
+                    if otherId ~= id then
+                        local other = triggers[otherId]
+                        table.insert(others, (other and other.name) or tostring(otherId))
+                        if other and ConditionKey(other) == myKey then
+                            exact = true
+                        end
+                    end
+                end
+                table.sort(others)
+                -- Silenced by hand: the player looked at this pair and decided
+                -- it is what they want. Dropped only from the rule they
+                -- silenced -- the other one keeps its icon, and keeps naming
+                -- this rule, because that is still true.
+                if not trigger.ignoreSoundWarning then
+                    conflicts[id] = { names = others, exact = exact, sound = trigger.actions.sound }
+                end
+            end
+        end
+    end
+
+    return conflicts
+end
+
 -- Delete a trigger
 function Triggers:_PerformDeleteTrigger(id)
     local trigger = OxedHub.db.profile.triggers[id]
