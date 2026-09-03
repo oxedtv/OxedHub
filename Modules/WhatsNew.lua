@@ -25,6 +25,15 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.46",
+        lines = {
+            { "ADDED",   "Preview button in the trigger list: every animation on screen at once, labelled with the rule and what makes it fire." },
+            { "ADDED",   "Drag a tile to place that animation, with an optional screen grid and snapping." },
+            { "ADDED",   "Change a tile's sound or animation without leaving the preview, or right-click to play it." },
+            { "FIXED",   "The animation preview in the picker vanished a moment after you hovered a row." },
+        },
+    },
+    {
         version = "2.3.45",
         lines = {
             { "ADDED",   "The trigger list flags two rules that reuse one sound, on the rule and on its category heading." },

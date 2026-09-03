@@ -2507,6 +2507,10 @@ function Core:HandleSlashCommand(msg)
         if OxedHub.Triggers and OxedHub.Triggers.DumpMacroPreview then
             OxedHub.Triggers:DumpMacroPreview()
         end
+    elseif command == "preview" or command == "animpreview" then
+        if OxedHub.AnimationPreview then
+            OxedHub.AnimationPreview:Toggle()
+        end
     elseif command == "dupdebug" then
         if OxedHub.Triggers and OxedHub.Triggers.DumpSoundSignatures then
             OxedHub.Triggers:DumpSoundSignatures()

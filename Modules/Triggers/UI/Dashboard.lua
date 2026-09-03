@@ -662,6 +662,9 @@ function Triggers:RefreshTriggersList()
         if tab.disableAllBtn then
             tab.disableAllBtn:Hide()
         end
+        if tab.animPreviewBtn then
+            tab.animPreviewBtn:Hide()
+        end
         if searchBox and searchBox:GetParent() then
             searchBox:GetParent():Hide()
         end
@@ -916,6 +919,29 @@ function Triggers:RefreshTriggersList()
             tab.disableAllBtn = db
         end
         tab.disableAllBtn:Show()
+
+        -- Preview: every animation on screen at once instead of opening one
+        -- trigger at a time to find out where its animation sits.
+        if not tab.animPreviewBtn then
+            local pv = CreateFrame("Button", nil, tab, "UIPanelButtonTemplate")
+            pv:SetSize(95, 24)
+            pv:SetPoint("LEFT", tab.disableAllBtn, "RIGHT", 6, 0)
+            pv:SetText(L["ANIMPREVIEW_BUTTON"] or "Preview")
+            pv:SetScript("OnClick", function()
+                if OxedHub.AnimationPreview then OxedHub.AnimationPreview:Enter() end
+            end)
+            pv:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText(L["ANIMPREVIEW_BUTTON"] or "Preview", 1, 0.82, 0)
+                GameTooltip:AddLine(L["ANIMPREVIEW_BUTTON_DESC"]
+                    or "Show every enabled trigger's animation on screen, labelled, and drag them into place.",
+                    1, 1, 1, true)
+                GameTooltip:Show()
+            end)
+            pv:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            tab.animPreviewBtn = pv
+        end
+        tab.animPreviewBtn:Show()
     end
     if searchBox and searchBox:GetParent() then
         searchBox:GetParent():Show()

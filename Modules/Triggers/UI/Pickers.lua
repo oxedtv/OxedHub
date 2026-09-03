@@ -193,7 +193,12 @@ function Triggers:HideAnimationHoverPreview(force)
         if self.animHideTimer then
             self.animHideTimer:Cancel()
         end
-        self.animHideTimer = C_Timer.After(0.3, function()
+        -- NewTimer, not After: After returns nothing, so the handle stored here
+        -- was always nil and the cancel above never cancelled anything. Every
+        -- OnLeave then armed a hide that no amount of hovering could call off,
+        -- and moving from one row to the next killed the preview a third of a
+        -- second after it appeared.
+        self.animHideTimer = C_Timer.NewTimer(0.3, function()
             Triggers:HideAnimationHoverPreview(true)
         end)
         return
