@@ -47,7 +47,11 @@ function Triggers:IsChatAllowedForEvent(eventType)
     -- Chat is only safe from a hardware event (ActionHub/OxedRing button click).
     -- Automatic events (Summon, etc.) get blocked by Blizzard (ADDON_ACTION_BLOCKED)
     -- when they try to SendChatMessage, so chat is disabled for them.
-    if eventType == "UNIT_SPELLCAST_SUCCEEDED" or eventType == "EAT_BUFF" then
+    -- Cast start is treated the same as cast success here because it comes from
+    -- the same key press, which is the thing that makes a chat send legal at
+    -- all. Both stay behind the same opt-in setting.
+    if eventType == "UNIT_SPELLCAST_SUCCEEDED" or eventType == "UNIT_SPELLCAST_START"
+        or eventType == "EAT_BUFF" then
         return OxedHub.db.profile.settings.allowChatOnSpellCast == true
     end
     if eventType == "MOUNT" then
@@ -737,6 +741,11 @@ function Triggers:ShouldTrigger(trigger, eventType, eventData)
     if not self:CheckZoneRestrictions(trigger.zones) then
         return false
     end
+
+    -- Check group restrictions
+    if not self:CheckGroupRestrictions(trigger.groups) then
+        return false
+    end
     
     -- Check conditions
     local conditions = trigger.conditions or {}
@@ -748,7 +757,10 @@ function Triggers:ShouldTrigger(trigger, eventType, eventData)
         -- NOTE: SPELL_INTERRUPTED is deliberately NOT in this list. It only fires
         -- when the player's own cast is actually interrupted (rare, not spammy),
         -- so leaving the spell field empty means "any interrupted cast".
-        local requiresSpell = (eventType == "UNIT_SPELLCAST_SUCCEEDED" or eventType == "UNIT_AURA" or eventType == "CD_READY" or eventType == "INTERRUPT_SUCCESS")
+        -- Cast start is as noisy as cast success -- every cast bar you begin --
+        -- so a rule with no spell chosen must not fire on all of them.
+        local requiresSpell = (eventType == "UNIT_SPELLCAST_SUCCEEDED" or eventType == "UNIT_SPELLCAST_START"
+            or eventType == "UNIT_AURA" or eventType == "CD_READY" or eventType == "INTERRUPT_SUCCESS")
         local hasSpellCond = (conditions.spellID and conditions.spellID ~= "")
         local hasAuraCond = (conditions.auraName and conditions.auraName ~= "")
         if requiresSpell and not hasSpellCond and not hasAuraCond then
@@ -894,6 +906,36 @@ function Triggers:ShouldTrigger(trigger, eventType, eventData)
 end
 
 -- Check zone restrictions
+-- Group-size restrictions, alongside the zone ones.
+--
+-- Zones answer "where am I", which is not the same question as "who am I with".
+-- A raid instance and a raid group usually coincide but need not: you can stand
+-- in one alone, and you can be in a raid group out in the world.
+local GROUP_KEYS = { "SOLO", "PARTY", "RAID" }
+
+-- Written out in full the first time a rule is looked at, so the tab shows the
+-- same three ticks the check is actually reading. An absent table means the
+-- rule predates this feature and is unrestricted.
+function Triggers:EnsureGroupRestrictions(trigger)
+    if not trigger then return nil end
+    if type(trigger.groups) ~= "table" or next(trigger.groups) == nil then
+        trigger.groups = { SOLO = true, PARTY = true, RAID = true }
+    end
+    return trigger.groups
+end
+
+function Triggers:GetCurrentGroupState()
+    if IsInRaid() then return "RAID" end
+    if IsInGroup() then return "PARTY" end
+    return "SOLO"
+end
+
+function Triggers:CheckGroupRestrictions(groups)
+    -- No table at all means a rule from before this existed: leave it alone.
+    if type(groups) ~= "table" or next(groups) == nil then return true end
+    return groups[self:GetCurrentGroupState()] == true
+end
+
 function Triggers:CheckZoneRestrictions(zones)
     if not zones or next(zones) == nil then return true end
     

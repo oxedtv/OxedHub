@@ -831,7 +831,10 @@ PreyEngine:RegisterEvent("QUEST_DETAIL")
 PreyEngine:RegisterEvent("QUEST_TURNED_IN")
 PreyEngine:RegisterEvent("QUEST_REMOVED")
 PreyEngine:RegisterEvent("PLAYER_ALIVE")
-PreyEngine:RegisterEvent("UNIT_AURA")
+-- Only the player's auras matter here, and the handler already threw the rest
+-- away. Filtering at the client instead stops UNIT_AURA for twenty other raid
+-- members from reaching Lua at all.
+PreyEngine:RegisterUnitEvent("UNIT_AURA", "player")
 PreyEngine:RegisterEvent("GOSSIP_SHOW")
 PreyEngine:RegisterEvent("GOSSIP_CLOSED")
 PreyEngine:RegisterEvent("CHAT_MSG_SYSTEM")

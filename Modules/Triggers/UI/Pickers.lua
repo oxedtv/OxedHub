@@ -4,6 +4,10 @@ local Triggers = OxedHub.Triggers
 local C_Timer = C_Timer
 local GetTime = GetTime
 
+-- Every row in these lists is the same height, laid out down a plain scroll
+-- child.
+local PICKER_ROW_HEIGHT = 20
+
 local function normalizeSearchText(text)
     if not text then return "" end
     return text:lower():gsub("%s+", " "):gsub("^%s*", ""):gsub("%s*$", "")
@@ -467,7 +471,9 @@ function Triggers:RefreshPickerList(picker, actionType)
         table.sort(options, function(a, b) return a.label < b.label end)
     end
 
-    local ROW_HEIGHT = 20
+    -- Kept as a local alias so the layout below reads unchanged; the shared
+    -- constant is what the icon binding measures against.
+    local ROW_HEIGHT = PICKER_ROW_HEIGHT
 
     for index, option in ipairs(options) do
         local row = picker.rows[index]
@@ -509,8 +515,8 @@ function Triggers:RefreshPickerList(picker, actionType)
             
             if baseType == "animation" then
                 row.playButton:Hide()
-                local indent = (option.data and option.data.tgaPath) and 24 or 8
-                row.useButton:SetPoint("LEFT", row, "LEFT", indent, 0)
+                -- No icon to make room for: see the icon branch below.
+                row.useButton:SetPoint("LEFT", row, "LEFT", 8, 0)
                 row.useButton:SetPoint("RIGHT", row, "RIGHT", 0, 0)
             else
                 local hasPlay = (baseType == "sound" or baseType == "emote" or baseType == "chatMessage") and option.value ~= nil
@@ -542,15 +548,20 @@ function Triggers:RefreshPickerList(picker, actionType)
             
             row.useButton:SetNormalFontObject("GameFontHighlightSmall")
 
-            if baseType == "animation" and option.data and option.data.tgaPath then
-                row.icon:Show()
-                row.icon:SetSize(16, 16)
-                row.icon:SetTexture(option.data.tgaPath)
-                local cols = option.data.columns or math.ceil(math.sqrt(option.data.frameCount or 1))
-                local rows = option.data.rows or cols
-                if cols < 1 then cols = 1 end
-                if rows < 1 then rows = 1 end
-                row.icon:SetTexCoord(0, 1 / cols, 0, 1 / rows)
+            if baseType == "animation" then
+                -- No thumbnail for animations.
+                --
+                -- It was a 16x16 crop of a spritesheet 1280 to 1920 pixels
+                -- square -- ten megabytes each once decompressed -- and one was
+                -- bound per row, so opening this list asked the driver to hold
+                -- every sheet at once, hundreds of megabytes, for thumbnails
+                -- too small to recognise anything in.
+                --
+                -- Hovering a row already shows the animation playing at full
+                -- size beside the list, which is the view that was doing the
+                -- work all along.
+                row.icon:Hide()
+                row.icon:SetTexture(nil)
             elseif baseType == "toy" and option.isMix then
                 if option.customIcon then
                     row.icon:Show()
@@ -596,6 +607,7 @@ function Triggers:RefreshPickerList(picker, actionType)
 
     for index = #options + 1, #picker.rows do
         local row = picker.rows[index]
+        row.icon:SetTexture(nil)
         row:Hide()
         row.actionType = actionType
         row.optionData = nil
@@ -624,7 +636,9 @@ function Triggers:RefreshPickerList(picker, actionType)
     end
 
     picker.scrollChild:SetHeight(math.max(#options * ROW_HEIGHT, 1))
+
 end
+
 
 function Triggers:CreatePickerRow(picker, actionType)
     local row = CreateFrame("Frame", nil, picker.scrollChild, "BackdropTemplate")

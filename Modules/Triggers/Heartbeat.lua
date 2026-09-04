@@ -201,8 +201,11 @@ end
 
 Engine:RegisterEvent("PLAYER_REGEN_DISABLED")
 Engine:RegisterEvent("PLAYER_REGEN_ENABLED")
-Engine:RegisterEvent("UNIT_HEALTH")
-Engine:RegisterEvent("UNIT_MAXHEALTH")
+-- Filtered at the client rather than in the handler below. Both fire for every
+-- unit in the group, so in a raid this was waking Lua hundreds of times a
+-- second only to drop the event on its first line.
+Engine:RegisterUnitEvent("UNIT_HEALTH", "player")
+Engine:RegisterUnitEvent("UNIT_MAXHEALTH", "player")
 Engine:RegisterEvent("PLAYER_DEAD")
 Engine:RegisterEvent("PLAYER_UNGHOST")
 Engine:RegisterEvent("PLAYER_ALIVE")

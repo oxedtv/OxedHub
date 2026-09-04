@@ -1183,12 +1183,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.46)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.56)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.46")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.56")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -2393,6 +2393,10 @@ function UI:ShowTriggerRowMenu(owner, elementData)
             end)
         end
 
+        root:CreateButton(L["TRIGGER_MENU_HISTORY"] or "History", function()
+            if Triggers.ShowTriggerHistory then Triggers:ShowTriggerHistory(triggerId) end
+        end)
+
         root:CreateDivider()
 
         root:CreateButton(L["TRIGGER_MENU_DUPLICATE"] or "Duplicate here", function()
@@ -2772,6 +2776,67 @@ function UI:CreateTriggersTab()
                 end)
                 row.shareBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
+                -- Today's firings. A rule that never goes off and one that goes
+                -- off constantly look identical in this list; this is the only
+                -- thing that tells them apart.
+                row.historyBtn = CreateFrame("Button", nil, row)
+                row.historyBtn:SetPoint("RIGHT", row.shareBtn, "LEFT", -22, 0)
+                row.historyBtn:SetSize(18, 18)
+                -- Matches the Share icon's style so the two read as a pair of
+                -- row actions. The micro-button art used before was dark, tiny
+                -- and unrecognisable at 18px.
+                row.historyBtn:SetNormalTexture("Interface\\Buttons\\UI-GuildButton-OfficerNote-Up")
+                row.historyBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
+
+                -- The count sits on the icon, so the list can be scanned for
+                -- what has been busy without hovering every row.
+                row.historyCount = row.historyBtn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+                row.historyCount:SetPoint("BOTTOMRIGHT", row.historyBtn, "BOTTOMRIGHT", 2, -2)
+                row.historyCount:SetTextColor(1, 0.82, 0)
+
+                row.historyBtn:SetScript("OnEnter", function(self)
+                    local data = row.elementData
+                    if not data or not data.id then return end
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(L["HISTORY_TITLE"] or "Trigger History", 1, 0.82, 0)
+
+                    local entry = OxedHub.Triggers.GetTriggerHistory
+                        and OxedHub.Triggers:GetTriggerHistory(data.id) or nil
+                    if entry and (entry.count or 0) > 0 then
+                        GameTooltip:AddLine(string.format(
+                            L["HISTORY_SUMMARY"] or "Fired %d times today, last at %s",
+                            entry.count, date("%H:%M:%S", entry.last or time())), 1, 1, 1, true)
+                        GameTooltip:AddLine(" ")
+                        -- A few most recent, newest first; the rest are in the
+                        -- window this button opens.
+                        local shown = 0
+                        for i = #entry.times, 1, -1 do
+                            local rowData = entry.times[i]
+                            GameTooltip:AddLine(date("%H:%M:%S", rowData.t or 0)
+                                .. (rowData.what and ("  " .. rowData.what) or ""), 0.9, 0.9, 0.9)
+                            shown = shown + 1
+                            if shown >= 5 then break end
+                        end
+                    else
+                        GameTooltip:AddLine(L["HISTORY_NONE"] or "Has not fired today.", 0.8, 0.8, 0.8, true)
+                    end
+
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine(L["HISTORY_CLICK"] or "Click for the full log.", 0.5, 0.7, 1, true)
+                    GameTooltip:Show()
+                end)
+                row.historyBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                row.historyBtn:SetScript("OnClick", function()
+                    local data = row.elementData
+                    if data and data.id and OxedHub.Triggers.ShowTriggerHistory then
+                        OxedHub.Triggers:ShowTriggerHistory(data.id)
+                    end
+                end)
+
+                row.historyHeaderText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                row.historyHeaderText:SetPoint("CENTER", row, "RIGHT", -151, 0)
+                row.historyHeaderText:SetText(L["TRIGGERS_HEADER_LOG"] or "Log")
+
                 row.shareHeaderText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
                 row.shareHeaderText:SetPoint("CENTER", row, "RIGHT", -107, 0)
                 row.shareHeaderText:SetText(L["BTN_SHARE"] or "Share")
@@ -2914,6 +2979,18 @@ function UI:CreateTriggersTab()
                 end
             end)
             
+            row.historyBtn:SetShown((not elementData.isHeader) and elementData.id ~= nil)
+            if elementData.id and OxedHub.Triggers.GetTriggerHistory then
+                local entry = OxedHub.Triggers:GetTriggerHistory(elementData.id)
+                local count = entry and entry.count or 0
+                -- Blank rather than "0": a zero on every quiet rule is noise,
+                -- and the absence of a number already says the same thing.
+                row.historyCount:SetText(count > 0 and (count > 99 and "99+" or tostring(count)) or "")
+                row.historyBtn:SetAlpha(count > 0 and 1 or 0.45)
+            else
+                row.historyCount:SetText("")
+            end
+
             row.shareBtn:SetShown((not elementData.isHeader) and elementData.id ~= nil)
             row.shareBtn:SetScript("OnClick", function()
                 local Share = OxedHub.Share
@@ -2950,6 +3027,10 @@ function UI:CreateTriggersTab()
                     row.deleteHeaderText:Show()
                     row.deleteHeaderText:SetTextColor(1, 0.86, 0.28, 1)
                 end
+                if row.historyHeaderText then
+                    row.historyHeaderText:Show()
+                    row.historyHeaderText:SetTextColor(1, 0.86, 0.28, 1)
+                end
                 if row.shareHeaderText then
                     row.shareHeaderText:Show()
                     row.shareHeaderText:SetTextColor(1, 0.86, 0.28, 1)
@@ -2963,6 +3044,9 @@ function UI:CreateTriggersTab()
                 end
                 if row.deleteHeaderText then
                     row.deleteHeaderText:Hide()
+                end
+                if row.historyHeaderText then
+                    row.historyHeaderText:Hide()
                 end
                 if row.shareHeaderText then
                     row.shareHeaderText:Hide()
@@ -4409,7 +4493,9 @@ function UI:CreateSettingsTab()
 
     -- Right Card: Import Hub
     local importCard = CreateFrame("Frame", nil, scrollChild, "BackdropTemplate")
-    importCard:SetSize(470, 420)
+    -- Taller than the export card beside it: this one now carries the backup
+    -- setting and its restore button under the feature list.
+    importCard:SetSize(470, 540)
     importCard:SetPoint("TOPLEFT", exportCard, "TOPRIGHT", 15, 0)
     importCard:SetBackdrop({
         bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
@@ -4459,8 +4545,85 @@ function UI:CreateSettingsTab()
     end)
     importBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
+    -- ── Safety net ────────────────────────────────────────────────────────
+    -- Lives here rather than with the general options, because this is where
+    -- somebody stands when they are about to merge a stranger's configuration
+    -- into a profile they care about.
+    --
+    -- Only partial imports can destroy anything: a whole profile always arrives
+    -- as a new one. But that is exactly the case people use.
+    local backupToggle = CreateFrame("CheckButton", nil, importCard, "UICheckButtonTemplate")
+    backupToggle:SetPoint("TOPLEFT", importBtn, "BOTTOMLEFT", 0, -10)
+    backupToggle:SetSize(24, 24)
+    backupToggle:SetChecked(OxedHub:IsImportBackupEnabled())
+    backupToggle:SetScript("OnClick", function(self)
+        OxedHub.db.profile.settings.backupBeforeImport = self:GetChecked()
+    end)
+
+    local backupLabel = importCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    backupLabel:SetPoint("LEFT", backupToggle, "RIGHT", 4, 0)
+    backupLabel:SetText(L["SETTINGS_IMPORT_BACKUP"] or "Back up before importing")
+    backupLabel:SetTextColor(1, 1, 1, 1)
+
+    local backupDesc = importCard:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    backupDesc:SetPoint("TOPLEFT", backupToggle, "BOTTOMLEFT", 26, -2)
+    backupDesc:SetPoint("RIGHT", importCard, "RIGHT", -16, 0)
+    backupDesc:SetJustifyH("LEFT")
+    backupDesc:SetText(L["SETTINGS_IMPORT_BACKUP_DESC"]
+        or "Keeps one copy of a profile taken just before an import merged into it, so a bad import can be undone.")
+
+    -- Says what it would put back. A restore button with no name and no date on
+    -- it is a gamble, not a safety net.
+    local restoreBtn = CreateFrame("Button", nil, importCard, "UIPanelButtonTemplate")
+    ApplyRedButtonStyle(restoreBtn)
+    restoreBtn:SetSize(150, 24)
+    restoreBtn:SetPoint("TOPLEFT", backupDesc, "BOTTOMLEFT", -26, -8)
+    restoreBtn:SetText(L["SETTINGS_IMPORT_RESTORE"] or "Restore backup")
+    restoreBtn:SetNormalFontObject("GameFontNormalSmall")
+
+    local restoreInfo = importCard:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    restoreInfo:SetPoint("LEFT", restoreBtn, "RIGHT", 8, 0)
+    restoreInfo:SetPoint("RIGHT", importCard, "RIGHT", -16, 0)
+    restoreInfo:SetJustifyH("LEFT")
+
+    local function RefreshRestore()
+        local backup = OxedHub:GetImportBackup()
+        restoreBtn:SetEnabled(backup ~= nil)
+        if backup then
+            restoreInfo:SetText(string.format(
+                L["SETTINGS_IMPORT_RESTORE_INFO"] or "'%s', saved %s",
+                backup.profileName or "?", date("%d %b %H:%M", backup.time or time())))
+        else
+            restoreInfo:SetText(L["SETTINGS_IMPORT_RESTORE_NONE"] or "Nothing backed up yet.")
+        end
+    end
+    RefreshRestore()
+    -- Re-checked on every open: an import made since last time changes what
+    -- this button is offering to undo.
+    importCard:HookScript("OnShow", RefreshRestore)
+    UI.RefreshImportRestore = RefreshRestore
+
+    restoreBtn:SetScript("OnClick", function()
+        local backup = OxedHub:GetImportBackup()
+        if not backup then return end
+        StaticPopupDialogs["OXEDHUB_CONFIRM_IMPORT_RESTORE"] = {
+            text = string.format(
+                L["SETTINGS_IMPORT_RESTORE_CONFIRM"]
+                    or "Replace profile '%s' with the copy saved before the last import?",
+                backup.profileName or "?"),
+            button1 = YES,
+            button2 = NO,
+            OnAccept = function()
+                OxedHub:RestoreImportBackup()
+                RefreshRestore()
+            end,
+            timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+        }
+        StaticPopup_Show("OXEDHUB_CONFIRM_IMPORT_RESTORE")
+    end)
+
     local impDivider2 = importCard:CreateTexture(nil, "BORDER")
-    impDivider2:SetPoint("TOPLEFT", importBtn, "BOTTOMLEFT", 0, -14)
+    impDivider2:SetPoint("TOPLEFT", restoreBtn, "BOTTOMLEFT", 0, -14)
     impDivider2:SetPoint("RIGHT", importCard, "RIGHT", -16, 0)
     impDivider2:SetHeight(1)
     impDivider2:SetColorTexture(0.58, 0.48, 0.34, 0.35)
@@ -4482,9 +4645,14 @@ function UI:CreateSettingsTab()
         "• |cffffd100Multi-Part Paste:|r Paste chunked multi-part strings in any order without confusion.",
     }, "\n"))
 
+    -- Flows under the feature list rather than being pinned to the bottom of
+    -- the card. Pinned, it sat at a fixed height while the list above it grew,
+    -- so a multi-line import result printed straight through the last bullet.
     local importStatus = importCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    importStatus:SetPoint("BOTTOMLEFT", importCard, "BOTTOMLEFT", 18, 14)
+    importStatus:SetPoint("TOPLEFT", impFeaturesList, "BOTTOMLEFT", 0, -12)
     importStatus:SetPoint("RIGHT", importCard, "RIGHT", -16, 0)
+    importStatus:SetJustifyV("TOP")
+    importStatus:SetSpacing(2)
     importStatus:SetJustifyH("LEFT")
     importStatus:SetText("")
     UI.importStatus = importStatus
@@ -4922,7 +5090,7 @@ function UI:CreateSettingsTab()
         -- Size the scroll area to whichever page is showing.
         local height = 1060
         if onProfiles then
-            height = (sub == "share") and 560 or 620
+            height = (sub == "share") and 690 or 620
         end
         scrollChild:SetHeight(height)
         scrollFrame:SetVerticalScroll(0)
@@ -6917,6 +7085,8 @@ function UI:ShowImportConfirm(data, onImported)
         UI:ApplyImport(data)
         if onImported then onImported() end
         UI:ReportMissingSoundsAfterImport(data)
+        -- The backup this import may have just taken is what Restore now offers.
+        if UI.RefreshImportRestore then UI.RefreshImportRestore() end
     end)
 
     -- Partial data into a fresh empty profile, leaving existing ones untouched.
@@ -7909,6 +8079,13 @@ function UI:ApplyScopedImport(env)
         print("|cffff0000Oxed Hub:|r No profile to import into.")
         return
     end
+
+    -- Snapshot before anything is written over.
+    --
+    -- This is the only import path that can destroy existing settings: a whole
+    -- profile always lands in a new one, but a partial import merges into a
+    -- profile you already use and replaces anything sharing a name or id.
+    OxedHub:BackupProfileBeforeImport(targetName)
 
     local summary
     if scope == "triggers" then

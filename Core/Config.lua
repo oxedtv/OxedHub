@@ -2,7 +2,7 @@ local addonName, OxedHub = ...
 
 -- Configuration and Constants
 OxedHub.CONFIG = {
-    VERSION = "2.3.46",
+    VERSION = "2.3.56",
     DB_VERSION = 1,
 
     -- Shown in the Export/Import "About" panel. Edit freely.
@@ -36,6 +36,7 @@ OxedHub.CONFIG = {
         -- { value = "TEST_ICON_AURA", label = "Test Trigger (by Icon ID)", desc = "Monitors a buff by resolving the chosen spell to its icon, checking if any active buff shares that icon.", category = "advanced" },
         { value = "SPELL_PROC", label = "Spell Proc Glow (by Spell ID)", desc = "Fires when a spell's proc/activation glow appears on your bar (e.g. Sudden Doom lighting up Death Coil). Uses the game's proc-glow event, so it works IN COMBAT.", category = "advanced" },
         { value = "UNIT_SPELLCAST_SUCCEEDED", label = "Spell Cast Success", desc = "When you successfully cast a spell (e.g., Sprint, Hearthstone, Portals)", category = "advanced" },
+        { value = "UNIT_SPELLCAST_START", label = "Spell Cast Start", desc = "The moment you BEGIN casting, not when it lands -- use this to call something out while the cast bar is still running (e.g. Mass Resurrection). Only works for spells with a cast time or a channel; instants have no start to announce.", category = "advanced" },
 
         -- Basic Triggers
         { value = "SHATTERSIGHT", label = "Disenchant Insight", desc = "Analyze and track Disenchant values vs vendor prices directly on tooltips", category = "basic" },

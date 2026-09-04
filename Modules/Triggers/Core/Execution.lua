@@ -100,6 +100,13 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
     end
     recentlyFired[trigger.id] = now
 
+    -- Recorded here rather than in ProcessEvent: this is the point where the
+    -- rule has passed every check and its debounce, so it is the first moment
+    -- the firing is real.
+    if Triggers.RecordTriggerFired then
+        Triggers:RecordTriggerFired(trigger, eventData)
+    end
+
     local soundKey = "sound"
     local animKey = "animation"
     local iconKey = "icon"

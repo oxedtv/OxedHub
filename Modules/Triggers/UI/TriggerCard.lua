@@ -508,6 +508,68 @@ function Triggers:CreateTriggerCard(parent, trigger)
     card.eventDropdown = eventDropdown
     card.eventLabel = eventLabel
 
+    -- The long explanation of whichever event is selected.
+    --
+    -- The label in the dropdown names the event and nothing more. When it
+    -- arrives relative to what the player sees, what it will not catch, and
+    -- what a working rule looks like are the things people get wrong, and none
+    -- of that fits in a dropdown row.
+    local eventInfo = CreateFrame("Button", nil, card)
+    eventInfo:SetSize(18, 18)
+    eventInfo:SetPoint("LEFT", eventDropdown, "RIGHT", 6, 0)
+
+    local infoTex = eventInfo:CreateTexture(nil, "ARTWORK")
+    infoTex:SetAllPoints()
+    infoTex:SetTexture("Interface\\FriendsFrame\\InformationIcon")
+    eventInfo.icon = infoTex
+
+    local infoGlow = eventInfo:CreateTexture(nil, "HIGHLIGHT")
+    infoGlow:SetAllPoints()
+    infoGlow:SetTexture("Interface\\FriendsFrame\\InformationIcon")
+    infoGlow:SetBlendMode("ADD")
+    infoGlow:SetAlpha(0.5)
+
+    eventInfo:SetScript("OnEnter", function(self)
+        local value = trigger.event or "UNIT_SPELLCAST_SUCCEEDED"
+        local info = Triggers:GetEventInfo(value)
+        local help = OxedHub.GetEventHelp and OxedHub:GetEventHelp(value) or nil
+
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText((info and info.label) or value, 1, 0.82, 0)
+
+        if help then
+            if help.fires then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("|cff88ccffWhen it fires|r", 1, 1, 1)
+                GameTooltip:AddLine(help.fires, 0.9, 0.9, 0.9, true)
+            end
+            if help.needs then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("|cffffd100What it needs|r", 1, 1, 1)
+                GameTooltip:AddLine(help.needs, 0.9, 0.9, 0.9, true)
+            end
+            if help.limits then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("|cffff8800What it will not catch|r", 1, 1, 1)
+                GameTooltip:AddLine(help.limits, 0.9, 0.9, 0.9, true)
+            end
+            if help.example then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("|cff55ff55Example|r", 1, 1, 1)
+                GameTooltip:AddLine(help.example, 0.9, 0.9, 0.9, true)
+            end
+        else
+            -- No long entry written for this event yet; the dropdown's own
+            -- one-liner is still better than an empty tooltip.
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine((info and info.desc) or "No description available.", 0.9, 0.9, 0.9, true)
+        end
+
+        GameTooltip:Show()
+    end)
+    eventInfo:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    card.eventInfo = eventInfo
+
     local function SelectEvent(eventType)
         trigger.event = eventType.value
         Triggers:ApplyDefaultZonesForEvent(trigger)
@@ -1124,8 +1186,11 @@ function Triggers:LayoutTriggerCard(card)
         card.zoneFrame:ClearAllPoints()
         card.zoneFrame:SetPoint("TOPLEFT", card.zoneLabel, "BOTTOMLEFT", 0, -10)
         card.zoneFrame:SetPoint("RIGHT", card, "RIGHT", -10, 0)
-        
-        cardHeight = 560
+
+        -- Taller than it was: the group row and its heading sit between the
+        -- zone grid and the two information boxes.
+        cardHeight = 664
+
     elseif activeTab == "tips" then
         card.tipsFrame:ClearAllPoints()
         card.tipsFrame:SetPoint("TOPLEFT", card, "TOPLEFT", 16, -26)
@@ -1179,6 +1244,10 @@ end
 
 function Triggers:ReturnToTriggerList()
     self.selectedTriggerId = nil
+    -- The log is a page of this tab too; Back means back to the list from
+    -- either of them.
+    self.showActivityLog = nil
+    self.activityLogFilter = nil
     self:RefreshTriggersList()
 end
 
@@ -1188,6 +1257,7 @@ function Triggers:OpenTriggerDetails(triggerId)
     end
 
     self.selectedTriggerId = triggerId
+    self.showActivityLog = nil
     self:RefreshTriggersList()
 end
 

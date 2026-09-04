@@ -4,6 +4,86 @@ local Toys = OxedHub.Toys or {}
 OxedHub.Toys = Toys
 local L = OxedHub.L
 
+-- ── Toy icons ────────────────────────────────────────────────────────────────
+-- Why the grid used to open full of question marks.
+--
+-- C_ToyBox.GetToyInfo returns nothing for a toy the client has not cached, and
+-- after a fresh login it has cached almost none of them. The panel dealt with
+-- that by redrawing every 0.7 seconds up to four times, so the icons trickled
+-- in over the first three seconds -- every session, from cold, forever.
+--
+-- Three changes here. Ask the item database directly, which knows the icon
+-- without the full item record. Remember what we learn, so the next login draws
+-- from the first frame. And listen for the event that says an item arrived
+-- instead of polling for it.
+--
+-- The cache is account-wide rather than per-profile on purpose: profiles are
+-- serialised separately, so a per-profile copy would be written out once per
+-- profile -- the same mistake that made the saved variables file three times
+-- larger than it needed to be.
+local QUESTION_MARK_ICON = 134400
+
+local function IconCache()
+    if type(OxedHubDB) ~= "table" then return nil end
+    OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+    OxedHubDB.globalSettings.toyIconCache = OxedHubDB.globalSettings.toyIconCache or {}
+    return OxedHubDB.globalSettings.toyIconCache
+end
+
+-- Resolve a toy's icon, remembering it for next time.
+--
+-- Returns the icon and whether it had to fall back to the placeholder, so the
+-- caller can decide whether a redraw is still owed.
+function Toys:GetToyIcon(itemID)
+    itemID = tonumber(itemID)
+    if not itemID then return QUESTION_MARK_ICON, false end
+
+    local cache = IconCache()
+
+    local icon = select(3, C_ToyBox.GetToyInfo(itemID))
+    if not icon and C_Item and C_Item.GetItemIconByID then
+        -- Icons live in the item database and are available well before the
+        -- rest of an item's data finishes loading.
+        local ok, byId = pcall(C_Item.GetItemIconByID, itemID)
+        if ok then icon = byId end
+    end
+
+    if icon then
+        if cache then cache[itemID] = icon end
+        return icon, false
+    end
+
+    if cache and cache[itemID] then
+        return cache[itemID], false
+    end
+
+    -- Nothing known yet. Ask for it; the event handler redraws when it lands.
+    if C_Item and C_Item.RequestLoadItemDataByID then
+        pcall(C_Item.RequestLoadItemDataByID, itemID)
+    end
+    return QUESTION_MARK_ICON, true
+end
+
+-- Redraw once an item the client was missing finally arrives.
+--
+-- Throttled to one redraw per frame: a fresh login resolves hundreds of items
+-- in a burst, and rebuilding the grid for each would be far worse than the
+-- question marks ever were.
+local itemInfoFrame = CreateFrame("Frame")
+itemInfoFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+itemInfoFrame:SetScript("OnEvent", function(_, _, itemID)
+    if not Toys._toyIconsPending then return end
+    if Toys._toyIconRedrawQueued then return end
+
+    Toys._toyIconRedrawQueued = true
+    C_Timer.After(0, function()
+        Toys._toyIconRedrawQueued = nil
+        Toys._toyIconsPending = false
+        if Toys.RefreshToyBoxesUI then Toys:RefreshToyBoxesUI() end
+        if Toys.RefreshToyDock then Toys:RefreshToyDock() end
+    end)
+end)
+
 -- Any change to boxes or their contents must reach BOTH views: the tab in the
 -- addon and the floating panel, which each keep their own sidebar.  Missing
 -- one is why a reorder only showed up after reopening the panel.

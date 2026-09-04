@@ -25,6 +25,22 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.56",
+        important = true,
+        lines = {
+            { "FIXED",   "The random toy and random hearthstone buttons did nothing for anyone who casts on key release." },
+            { "FIXED",   "Toy boxes opened full of question marks; icons are now remembered and appear from the first frame." },
+            { "ADDED",   "Closing a toy box locks it again, and a warning shows while unlocked, so toys never quietly stop working." },
+            { "ADDED",   "Trigger search now matches what a rule does -- its sound, animation, toy, chat text, zones and more." },
+            { "ADDED",   "Spell Cast Start: react the moment a cast begins instead of when it lands." },
+            { "ADDED",   "An info icon beside the event picker explains the selected event in depth." },
+            { "ADDED",   "Zones tab is now Zones & Groups: restrict a trigger to solo, party or raid." },
+            { "ADDED",   "Trigger history: a Log column showing what fired today, and a full activity page." },
+            { "ADDED",   "Optional backup before an import merges into a profile, with one-click restore." },
+            { "CHANGED", "Faster and lighter: saved data is a quarter of its old size and login parses far less." },
+        },
+    },
+    {
         version = "2.3.46",
         lines = {
             { "ADDED",   "Preview button in the trigger list: every animation on screen at once, labelled with the rule and what makes it fire." },

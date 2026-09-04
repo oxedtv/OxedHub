@@ -87,9 +87,71 @@ function Triggers:CreateZoneUI(frame, trigger)
         end
     end
     
+    -- ── Group ────────────────────────────────────────────────────────────────
+    -- "Where am I" and "who am I with" are different questions. A raid instance
+    -- and a raid group usually go together but need not: you can stand in one
+    -- alone, and you can be in a raid group out in the world.
+    local groups = Triggers:EnsureGroupRestrictions(trigger)
+
+    local groupTitle = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    groupTitle:SetPoint("TOP", container, "BOTTOM", 0, -16)
+    groupTitle:SetText(L["ZONES_ONLY_PLAY_GROUP"] or "And only in these groups:")
+    groupTitle:SetTextColor(1, 1, 1, 1)
+
+    local groupTypes = {
+        { key = "SOLO",  label = L["GROUPS_SOLO"] or "Solo",
+          desc = L["GROUPS_SOLO_DESC"] or "Not in a group",
+          icon = "Interface\\Icons\\INV_Misc_GroupLooking" },
+        { key = "PARTY", label = L["GROUPS_PARTY"] or "Party",
+          desc = L["GROUPS_PARTY_DESC"] or "Group of 2-5",
+          icon = 134149 },
+        { key = "RAID",  label = L["GROUPS_RAID"] or "Raid Group",
+          desc = L["GROUPS_RAID_DESC"] or "Group of 6 or more",
+          icon = 134153 },
+    }
+
+    local groupWidth = math.floor((((colWidth * 2) + spacingX) - (spacingX * 2)) / 3)
+    local groupRow = CreateFrame("Frame", nil, frame)
+    groupRow:SetPoint("TOP", groupTitle, "BOTTOM", 0, -10)
+    groupRow:SetSize((colWidth * 2) + spacingX, 52)
+
+    for index, data in ipairs(groupTypes) do
+        local tile = CreateBorderedFrame(groupRow)
+        tile:SetSize(groupWidth, 52)
+        tile:SetPoint("TOPLEFT", groupRow, "TOPLEFT", (index - 1) * (groupWidth + spacingX), 0)
+
+        local check = CreateFrame("CheckButton", nil, tile, "UICheckButtonTemplate")
+        check:SetPoint("LEFT", tile, "LEFT", 10, 0)
+        check:SetSize(28, 28)
+        check:SetChecked(groups[data.key] == true)
+        check:SetScript("OnClick", function(self)
+            groups[data.key] = self:GetChecked() or nil
+            trigger.groups = groups
+            if frame:GetParent() and Triggers.ShowAutoSaved then
+                Triggers.ShowAutoSaved(frame:GetParent())
+            end
+        end)
+
+        local icon = tile:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(30, 30)
+        icon:SetPoint("LEFT", check, "RIGHT", 6, 0)
+        icon:SetTexture(data.icon)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+        local label = tile:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        label:SetPoint("LEFT", icon, "RIGHT", 10, 7)
+        label:SetText("|cffffffff" .. data.label .. "|r")
+        label:SetJustifyH("LEFT")
+
+        local desc = tile:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        desc:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -3)
+        desc:SetText("|cffaaaaaa" .. data.desc .. "|r")
+        desc:SetJustifyH("LEFT")
+    end
+
     local infoBox1 = CreateBorderedFrame(frame)
     infoBox1:SetSize((colWidth * 2) + spacingX, 65)
-    infoBox1:SetPoint("TOP", container, "BOTTOM", 0, -20)
+    infoBox1:SetPoint("TOP", groupRow, "BOTTOM", 0, -16)
     infoBox1:SetBackdropColor(0, 0, 0, 0.6)
     
     local icon1 = infoBox1:CreateTexture(nil, "ARTWORK")

@@ -510,6 +510,7 @@ function Toys:GetOrCreateToyboxFrame()
     lockBtn:SetScript("OnClick", function(self)
         conf.locked = not conf.locked
         self:SetText(conf.locked and "Unlock" or "Lock")
+        if f.UpdateUnlockedBanner then f:UpdateUnlockedBanner() end
 
         -- The tiles carry their armed state as attributes now, so they have to
         -- be redrawn for the new lock state to take effect.
@@ -521,14 +522,56 @@ function Toys:GetOrCreateToyboxFrame()
             f.ResizeButton:Show()
         end
     end)
+    lockBtn:SetScript("OnEnter", function(self)
+        local cfg = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxSettings or {}
+        if cfg.hideButtonTooltips then return end
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        if conf.locked then
+            GameTooltip:AddLine("|cFF00FF00Click to Unlock|r")
+            GameTooltip:AddLine("Move and resize the dock, and rearrange its tiles.", 1, 1, 1, true)
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine(L["TOYBOX_UNLOCK_WARNING"]
+                or "While unlocked, clicking a tile will not use the toy.", 1, 0.4, 0.3, true)
+        else
+            GameTooltip:AddLine("|cFFFF5555Click to Lock|r")
+            GameTooltip:AddLine("Back to using toys.", 1, 1, 1, true)
+        end
+        GameTooltip:Show()
+    end)
+    lockBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     f.LockButton = lockBtn
+
+    -- Same rule as the ToyBox panel: unlocked is a mode you are in while
+    -- arranging, so hiding the dock ends it rather than storing it for the next
+    -- time the player wants to actually use a toy.
+    f:HookScript("OnHide", function()
+        if conf.locked then return end
+        conf.locked = true
+        lockBtn:SetText("Unlock")
+        if f.UpdateUnlockedBanner then f:UpdateUnlockedBanner() end
+        if f.ResizeButton then f.ResizeButton:Hide() end
+        -- Re-arming the tiles writes secure attributes, which is forbidden in
+        -- combat. The dock can be hidden by a fight starting, so skip it there;
+        -- showing it again redraws anyway, and the saved state is already right.
+        if not InCombatLockdown() and f.UpdateToyButtons then
+            f:UpdateToyButtons()
+        end
+    end)
 
     -- [ Random Hearthstone ] Secure Button
     local randomHsBtn = CreateFrame("Button", "$parent_RandomHsBtn", controlBar, "SecureActionButtonTemplate, UIPanelButtonTemplate")
     randomHsBtn:SetSize(22, 20)
     randomHsBtn:SetPoint("RIGHT", lockBtn, "LEFT", -6, 0)
-    randomHsBtn:RegisterForClicks("AnyDown")
+    -- Both edges, and both attribute forms.
+    --
+    -- Whether a secure action fires on the press or the release is the player's
+    -- ActionButtonUseKeyDown setting, not ours. Registering only for the press
+    -- means the button does nothing at all for anyone who casts on release --
+    -- which is why this worked here and not for other people. The grid and
+    -- slot buttons were already fixed this way; these two were missed.
+    randomHsBtn:RegisterForClicks("AnyDown", "AnyUp")
     randomHsBtn:SetAttribute("type", "toy")
+    randomHsBtn:SetAttribute("type1", "toy")
     
     local hsIcon = randomHsBtn:CreateTexture(nil, "ARTWORK")
     hsIcon:SetPoint("TOPLEFT", 2, -2)
@@ -546,8 +589,14 @@ function Toys:GetOrCreateToyboxFrame()
     hsTimer:SetScale(0.65)
     randomHsBtn.Timer = hsTimer
 
+    -- Re-rolled next frame, not inline.
+    --
+    -- Registered for both edges, this hook now runs twice per click, and one of
+    -- those runs happens on the same edge that casts. Re-arming the attribute
+    -- there could swap the toy out from under the press. A zero-delay timer
+    -- puts the new roll safely after the click is done with.
     randomHsBtn:HookScript("OnClick", function()
-        f:SelectNewRandomHearthstone()
+        C_Timer.After(0, function() f:SelectNewRandomHearthstone() end)
     end)
     randomHsBtn:SetScript("OnEnter", function(self)
         local cfg = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxSettings or {}
@@ -564,8 +613,9 @@ function Toys:GetOrCreateToyboxFrame()
     local randomToyBtn = CreateFrame("Button", "$parent_RandomToyBtn", controlBar, "SecureActionButtonTemplate, UIPanelButtonTemplate")
     randomToyBtn:SetSize(22, 20)
     randomToyBtn:SetPoint("RIGHT", randomHsBtn, "LEFT", -4, 0)
-    randomToyBtn:RegisterForClicks("AnyDown")
+    randomToyBtn:RegisterForClicks("AnyDown", "AnyUp")
     randomToyBtn:SetAttribute("type", "toy")
+    randomToyBtn:SetAttribute("type1", "toy")
     
     local diceIcon = randomToyBtn:CreateTexture(nil, "ARTWORK")
     diceIcon:SetPoint("TOPLEFT", 2, -2)
@@ -575,7 +625,7 @@ function Toys:GetOrCreateToyboxFrame()
     randomToyBtn.diceIcon = diceIcon
 
     randomToyBtn:HookScript("OnClick", function()
-        f:SelectNewRandomToy()
+        C_Timer.After(0, function() f:SelectNewRandomToy() end)
     end)
     randomToyBtn:SetScript("OnEnter", function(self)
         local cfg = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxSettings or {}
@@ -842,9 +892,10 @@ function Toys:GetOrCreateToyboxFrame()
                 local toyID = pinned[i]
                 slot.toyID = toyID
                 if toyID then
-                    local _, name, icon = C_ToyBox.GetToyInfo(toyID)
-                    if not icon then icon = C_Item.GetItemIconByID(toyID) end
-                    slot.icon:SetTexture(icon or 135933)
+                    local _, name = C_ToyBox.GetToyInfo(toyID)
+                    local icon, stillMissing = Toys:GetToyIcon(toyID)
+                    if stillMissing then Toys._toyIconsPending = true end
+                    slot.icon:SetTexture(icon)
                     slot.icon:Show()
                     slot.emptyTxt:Hide()
                     slot:SetBackdropBorderColor(0.85, 0.70, 0.20, 0.9)
@@ -888,6 +939,36 @@ function Toys:GetOrCreateToyboxFrame()
     holder.ScrollChild = toyChild
     holder.ScrollFrame = toyScroll
     ApplyModernScroll(toyScroll)
+
+    -- Said across the top of the grid, where the player is already looking.
+    -- Nothing about the tiles changes when the dock is unlocked, so someone who
+    -- forgot to lock it again just finds their toys have stopped working.
+    local unlockedBanner = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    -- Lifted clear of the first row of tiles. There are only eight pixels
+    -- between the button row and the grid, so it rides up into that gap rather
+    -- than sitting on top of the icons.
+    unlockedBanner:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 13)
+    unlockedBanner:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, 13)
+    unlockedBanner:SetHeight(15)
+    unlockedBanner:SetFrameLevel(f:GetFrameLevel() + 30)
+    unlockedBanner:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+    unlockedBanner:SetBackdropColor(0.35, 0.05, 0.03, 0.9)
+
+    local unlockedText = unlockedBanner:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    unlockedText:SetPoint("CENTER", unlockedBanner, "CENTER", 0, 0)
+    unlockedText:SetTextColor(1, 0.55, 0.45)
+    unlockedText:SetText(L["TOYBOX_UNLOCKED_WARNING"]
+        or "Toys Use Blocked While Unlocked")
+    unlockedBanner:Hide()
+    f.UnlockedBanner = unlockedBanner
+
+    function f:UpdateUnlockedBanner()
+        if self.UnlockedBanner then
+            self.UnlockedBanner:SetShown(not conf.locked)
+        end
+    end
+    f:UpdateUnlockedBanner()
+
     toyScroll:HookScript("OnScrollRangeChanged", function(self, xrange, yrange)
         if self.oxedMinimalScrollBar then
             self.oxedMinimalScrollBar:SetShown(yrange and yrange > 0)
@@ -1381,8 +1462,9 @@ function Toys:GetOrCreateToyboxFrame()
                 b:SetAttribute("toy1", toyID)
             end
 
-            local _, _, toyIcon = C_ToyBox.GetToyInfo(toyID)
-            b.icon:SetTexture(toyIcon or 134400)
+            local toyIcon, stillMissing = Toys:GetToyIcon(toyID)
+            if stillMissing then Toys._toyIconsPending = true end
+            b.icon:SetTexture(toyIcon)
             b:CheckCooldown()
             b:Show()
             end
@@ -1408,7 +1490,11 @@ function Toys:GetOrCreateToyboxFrame()
             nextToy = Toys:GetRandomToyFromBox("all")
         end
         if type(nextToy) == "number" then
+            -- Both forms: "toy" is the fallback, "toy1" is what a left click
+            -- actually reads, and a button carrying only one of them stays
+            -- inert for some click setups.
             f.RandomToyButton:SetAttribute("toy", nextToy)
+            f.RandomToyButton:SetAttribute("toy1", nextToy)
         end
     end
 
@@ -1419,6 +1505,7 @@ function Toys:GetOrCreateToyboxFrame()
             local pick = hsList[math.random(1, #hsList)]
             selectedHearthstoneId = pick
             f.RandomHearthstoneButton:SetAttribute("toy", pick)
+            f.RandomHearthstoneButton:SetAttribute("toy1", pick)
         end
     end
 

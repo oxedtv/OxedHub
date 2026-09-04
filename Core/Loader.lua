@@ -44,6 +44,11 @@ local function DoRegister()
     -- Restrict spellcast traffic to units the addon actually inspects.
     -- This still covers player/pet casts plus common interrupt targets.
     eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "pet", "target", "focus", "mouseover")
+    -- Cast start, for rules that need to speak up while the cast bar is still
+    -- running rather than after it lands. Channels report their beginning under
+    -- a different event, so both are taken and treated the same.
+    eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_START", "player", "pet")
+    eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "player", "pet")
     eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_INTERRUPTED", "player", "pet", "target", "focus", "mouseover")
 
     -- Other trigger events

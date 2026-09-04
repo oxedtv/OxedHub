@@ -534,7 +534,9 @@ function Triggers:RefreshTriggersList()
         card:SetParent(nil)
     end
     wipe(Triggers.triggerCards)
-    local searchText = OxedHub.globalSearchText or ""
+    -- Lowered once here: everything it is matched against is lowercase, so a
+    -- capital letter used to make a search silently return nothing.
+    local searchText = (OxedHub.globalSearchText or ""):lower()
     local sortedTriggers = {}
     for id, trigger in pairs(OxedHub.db.profile.triggers) do
         table.insert(sortedTriggers, trigger)
@@ -558,6 +560,117 @@ function Triggers:RefreshTriggersList()
             -- Since IDs contain timestamp, sorting descending puts newest at top
             return (a.id or "") > (b.id or "")
         end)
+    end
+
+    -- Everything about a rule, flattened into one lowercase string to search.
+    --
+    -- The list used to match on the name, the event and the spell only, which
+    -- meant the one question people actually ask it -- "which rule plays that
+    -- sound", "what have I got set up for battlegrounds" -- could not be
+    -- answered without opening rules one at a time.
+    --
+    -- Plain words go in alongside the ids, so "toy", "chat" or "raid" find the
+    -- rules that use them even though no stored field contains those strings.
+    local function BuildSearchText(trigger)
+        local parts = {}
+        local function Add(value)
+            if value == nil then return end
+            value = tostring(value)
+            if value ~= "" then parts[#parts + 1] = value:lower() end
+        end
+
+        Add(trigger.name)
+        Add(trigger.event)
+        Add(trigger.enabled and "enabled" or "disabled")
+
+        local info = Triggers:GetEventInfo(trigger.event)
+        if info then
+            Add(info.label)
+            Add(info.category)
+        end
+
+        local conditions = trigger.conditions or {}
+        Add(conditions.auraName)
+        Add(conditions.auraType)
+        for _, key in ipairs({ "spellID", "spellId" }) do
+            local id = tonumber(conditions[key])
+            if id then
+                Add(id)
+                local spell = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(id)
+                if spell then Add(spell.name) end
+            end
+        end
+        for _, id in ipairs(conditions.extraSpellIDs or {}) do
+            Add(id)
+            local spell = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(tonumber(id))
+            if spell then Add(spell.name) end
+        end
+        if conditions.inCombat then Add("in combat") end
+        if conditions.critical then Add("critical crit") end
+
+        -- Only the string slots: the rest of this table is layout, and indexing
+        -- an animation's saved X offset would let a search for "200" hit it.
+        local actions = trigger.actions or {}
+        for key, value in pairs(actions) do
+            if type(value) == "string" and value ~= "" and value ~= "None" then
+                Add(value)
+                -- The key names the kind of thing this is, so "sound" or
+                -- "animation" typed on its own lists everything that has one.
+                Add(key)
+            end
+        end
+
+        -- The same test the list itself uses to dim a rule, so what the search
+        -- calls empty and what the row calls empty cannot drift apart.
+        if (Triggers:GetActionsSummary(trigger) or "") == "" then
+            Add("no actions empty")
+        end
+
+        -- Chat templates and toys are stored as references; search the thing
+        -- the player would actually recognise, not the id.
+        local profile = OxedHub.db and OxedHub.db.profile
+        local template = profile and profile.chatTemplates and actions.chat
+            and profile.chatTemplates[actions.chat]
+        if template then
+            Add(template.text)
+            Add(template.channel)
+        end
+        local toyID = tonumber(actions.toy)
+        if toyID and C_ToyBox and C_ToyBox.GetToyInfo then
+            Add((select(2, C_ToyBox.GetToyInfo(toyID))))
+        end
+
+        Add(trigger.customMacroBody)
+        Add(trigger.extraMacroText)
+
+        -- Zone words, but only for a rule that is actually restricted.
+        --
+        -- Having every zone ticked means "runs everywhere", which is the usual
+        -- case and is why the Zone column stays blank for it. Indexing those
+        -- ticks anyway put "raid", "bg" and "arena" on nearly every rule, so a
+        -- search for any of them matched the whole list.
+        local zones = trigger.zones or {}
+        local ZONE_KEYS = { "OPEN_WORLD", "PARTY", "DELVE", "RAID", "PVP", "BATTLEGROUND" }
+        local restricted = false
+        for _, key in ipairs(ZONE_KEYS) do
+            if not zones[key] then restricted = true break end
+        end
+
+        if restricted then
+            local ZONE_WORDS = {
+                OPEN_WORLD = "world outdoor open",
+                PARTY = "party dungeon",
+                DELVE = "delve",
+                RAID = "raid",
+                PVP = "pvp arena",
+                BATTLEGROUND = "battleground bg",
+            }
+            for _, key in ipairs(ZONE_KEYS) do
+                if zones[key] then Add(ZONE_WORDS[key]) end
+            end
+        end
+
+        return table.concat(parts, " ")
     end
 
     local function TriggerMatchesSearch(trigger)
@@ -584,35 +697,16 @@ function Triggers:RefreshTriggersList()
 
         local match = true
         if searchText ~= "" then
-            match = false
-            local name = (trigger.name or ""):lower()
-            local event = (trigger.event or ""):lower()
-            local eventLabel = ""
-            local info = Triggers:GetEventInfo(trigger.event)
-            if info and info.label then
-                eventLabel = info.label:lower()
-            end
-            local spellName = ""
-            local spellId = ""
-            if trigger.conditions and trigger.conditions.spellID then
-                spellId = tostring(trigger.conditions.spellID):lower()
-                local spellInfo = C_Spell.GetSpellInfo(tonumber(trigger.conditions.spellID) or trigger.conditions.spellID)
-                if spellInfo and spellInfo.name then
-                    spellName = spellInfo.name:lower()
-                end
-            end
-            local soundName = ""
-            if trigger.actions and trigger.actions.sound then
-                soundName = tostring(trigger.actions.sound):lower()
-            end
+            local haystack = BuildSearchText(trigger)
 
-            if name:find(searchText, 1, true) or
-               event:find(searchText, 1, true) or
-               eventLabel:find(searchText, 1, true) or
-               spellName:find(searchText, 1, true) or
-               spellId:find(searchText, 1, true) or
-               soundName:find(searchText, 1, true) then
-                match = true
+            -- Every word must appear, so "sound raid" narrows instead of
+            -- widening. One long phrase still works: it is simply one word.
+            match = true
+            for term in searchText:gmatch("%S+") do
+                if not haystack:find(term, 1, true) then
+                    match = false
+                    break
+                end
             end
         end
 
@@ -626,6 +720,113 @@ function Triggers:RefreshTriggersList()
     end
 
     self._lastFilterMatch = TriggerMatchesSearch
+
+    -- ── Activity log ─────────────────────────────────────────────────────────
+    -- A third view of this tab, alongside the list and the single-trigger page,
+    -- rather than a window of its own. It is part of the addon, so it belongs
+    -- inside the addon's frame and behind the same Back to List everything else
+    -- uses.
+    if self.showActivityLog then
+        if tab.scrollBox then tab.scrollBox:Hide() end
+        if tab.scrollBar then tab.scrollBar:Hide() end
+        if tab.scrollFrame then
+            tab.scrollFrame:Show()
+            tab.scrollFrame:EnableMouseWheel(true)
+            if tab.scrollFrame.ScrollBar then tab.scrollFrame.ScrollBar:Show() end
+            if tab.scrollFrame.scrollBar then tab.scrollFrame.scrollBar:Show() end
+        end
+        if tab.listIntro then tab.listIntro:Hide() end
+        if tab.listDesc then tab.listDesc:Hide() end
+        for _, key in ipairs({ "addBtn", "sortDropdown", "statusFilterDropdown",
+            "categoryFilterDropdown", "quickSetupBtn", "enableAllBtn",
+            "disableAllBtn", "animPreviewBtn" }) do
+            if tab[key] then tab[key]:Hide() end
+        end
+        if searchBox and searchBox:GetParent() then searchBox:GetParent():Hide() end
+        if tab.title then tab.title:SetText(L["HISTORY_LOG_TITLE"] or "Activity Log") end
+
+        local backBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+        backBtn:SetSize(110, 24)
+        backBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 5, -5)
+        backBtn:SetText(L["BTN_BACK_TO_LIST"] or "Back to List")
+        backBtn:SetScript("OnClick", function()
+            Triggers.showActivityLog = nil
+            Triggers.activityLogFilter = nil
+            Triggers:RefreshTriggersList()
+        end)
+
+        local filterId = self.activityLogFilter
+        local filtered = filterId and OxedHub.db.profile.triggers[filterId] or nil
+
+        local clearBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+        clearBtn:SetSize(110, 24)
+        clearBtn:SetPoint("LEFT", backBtn, "RIGHT", 10, 0)
+        clearBtn:SetText(filtered and (L["HISTORY_CLEAR"] or "Clear this rule")
+            or (L["HISTORY_CLEAR_ALL"] or "Clear all"))
+        clearBtn:SetScript("OnClick", function()
+            Triggers:ClearTriggerHistory(filterId)
+        end)
+
+        -- Narrowed to one rule, the page still shows every rule one click away.
+        if filtered then
+            local allBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+            allBtn:SetSize(110, 24)
+            allBtn:SetPoint("LEFT", clearBtn, "RIGHT", 10, 0)
+            allBtn:SetText(L["HISTORY_SHOW_ALL"] or "All triggers")
+            allBtn:SetScript("OnClick", function()
+                Triggers.activityLogFilter = nil
+                Triggers:RefreshTriggersList()
+            end)
+        end
+
+        local events, ruleCount, total, trimmed = self:CollectActivityLog(filterId)
+
+        local heading = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        heading:SetPoint("TOPLEFT", backBtn, "BOTTOMLEFT", 0, -14)
+        heading:SetTextColor(1, 0.82, 0)
+        heading:SetText(filtered and (filtered.name or filterId)
+            or (L["HISTORY_LOG_HEADING"] or "Everything that fired today"))
+
+        local summary = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        summary:SetPoint("TOPLEFT", heading, "BOTTOMLEFT", 0, -4)
+        summary:SetTextColor(0.75, 0.75, 0.75)
+
+        local body = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        body:SetPoint("TOPLEFT", summary, "BOTTOMLEFT", 0, -12)
+        body:SetPoint("RIGHT", scrollChild, "RIGHT", -20, 0)
+        body:SetJustifyH("LEFT")
+        body:SetJustifyV("TOP")
+
+        if total == 0 then
+            summary:SetText(filtered and (L["HISTORY_NONE"] or "Has not fired today.")
+                or (L["HISTORY_LOG_EMPTY"] or "Nothing has fired today."))
+            body:SetText("|cff888888" .. (L["HISTORY_NONE_HINT"]
+                or "Counting starts fresh each day.") .. "|r")
+        else
+            summary:SetText(filtered
+                and string.format(L["HISTORY_SUMMARY"] or "Fired %d times today, last at %s",
+                    total, date("%H:%M:%S", events[1] and events[1].t or time()))
+                or string.format(L["HISTORY_LOG_SUMMARY"] or "%d firings today across %d rules",
+                    total, ruleCount))
+
+            local lines = {}
+            for _, row in ipairs(events) do
+                -- With one rule on screen its name is the heading already, so
+                -- the column would just repeat it on every line.
+                lines[#lines + 1] = ("|cffffd100%s|r   %s%s"):format(
+                    date("%H:%M:%S", row.t),
+                    filtered and "" or row.name,
+                    row.what and ((filtered and "" or "   ") .. "|cffcccccc" .. row.what .. "|r") or "")
+            end
+            if trimmed > 0 then
+                lines[#lines + 1] = ("|cff888888... and %d earlier, no longer kept|r"):format(trimmed)
+            end
+            body:SetText(table.concat(lines, "\n"))
+        end
+
+        scrollChild:SetHeight(math.max(320, 110 + body:GetStringHeight()))
+        return
+    end
 
     local selectedTrigger = self.selectedTriggerId and OxedHub.db.profile.triggers[self.selectedTriggerId] or nil
     if selectedTrigger then
@@ -942,6 +1143,7 @@ function Triggers:RefreshTriggersList()
             tab.animPreviewBtn = pv
         end
         tab.animPreviewBtn:Show()
+
     end
     if searchBox and searchBox:GetParent() then
         searchBox:GetParent():Show()

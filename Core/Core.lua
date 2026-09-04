@@ -496,6 +496,8 @@ function Core:OnEvent(event, ...)
         self:OnUnitAura(...)
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         self:OnSpellCastSucceeded(...)
+    elseif event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START" then
+        self:OnSpellCastStart(...)
     elseif event == "UNIT_SPELLCAST_INTERRUPTED" then
         self:OnSpellInterrupted(...)
     elseif event == "RESURRECT_REQUEST" then
@@ -797,6 +799,23 @@ function Core:Bootstrap()
     CleanupAccidentalSeededProfiles()
     EnsureGlobalSettings()
     ApplyBuiltInProfileMetadata()
+
+    -- Let the bundled profiles go.
+    --
+    -- BuiltInProfiles.lua is by far the largest thing this addon loads -- a
+    -- 1.5MB literal that becomes a table of every shipped profile. The three
+    -- places that read it have now all run, and what has been seeded lives in
+    -- SavedVariables from here on, so keeping the originals resident costs
+    -- megabytes for the rest of the session and buys nothing.
+    --
+    -- DeleteProfile still has to recognise a built-in by name, so the names are
+    -- kept and only the payload is dropped.
+    if type(OxedHub.BUILT_IN_PROFILES) == "table" then
+        local names = {}
+        for name in pairs(OxedHub.BUILT_IN_PROFILES) do names[name] = true end
+        OxedHub.BUILT_IN_PROFILE_NAMES = names
+        OxedHub.BUILT_IN_PROFILES = nil
+    end
 
     -- Ensure active profile name is valid for this character
     local charKey = OxedHub:GetCharacterKey()
@@ -1245,7 +1264,8 @@ function OxedHub:DeleteProfile(name)
 
     -- If this is a built-in profile, remember that the user deleted it
     -- so SeedBuiltInProfiles won't re-create it on next reload.
-    local bundledProfiles = OxedHub.BUILT_IN_PROFILES
+    -- Names only: the profile bodies are released once seeding is done.
+    local bundledProfiles = OxedHub.BUILT_IN_PROFILE_NAMES or OxedHub.BUILT_IN_PROFILES
     if type(bundledProfiles) == "table" and bundledProfiles[name] then
         OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
         OxedHubDB.globalSettings.deletedBuiltInProfiles = OxedHubDB.globalSettings.deletedBuiltInProfiles or {}
@@ -2027,6 +2047,35 @@ function Core:OnPlayerDead()
     OxedHub.Triggers:ProcessEvent("PLAYER_DEAD", {})
 end
 
+-- Spell cast START handler.
+--
+-- Deliberately thin next to OnSpellCastSucceeded: none of the interrupt, raid
+-- tool or cooldown bookkeeping belongs to a cast that has not happened yet.
+-- All this does is announce that one has begun.
+local recentSpellCastStarts = {}
+function Core:OnSpellCastStart(unit, castGUID, spellID)
+    if unit ~= "player" and unit ~= "pet" then return end
+    if not self:HasEnabledTrigger("UNIT_SPELLCAST_START") then return end
+
+    -- A spell that both starts and channels would otherwise announce twice.
+    local now = GetTime()
+    local last = recentSpellCastStarts[spellID]
+    if last and (now - last) < SPELL_CAST_DEDUP_WINDOW then return end
+    recentSpellCastStarts[spellID] = now
+
+    local castName
+    if C_Spell and C_Spell.GetSpellName then
+        local okName, name = pcall(C_Spell.GetSpellName, spellID)
+        if okName then castName = name end
+    end
+
+    OxedHub.Triggers:ProcessEvent("UNIT_SPELLCAST_START", {
+        spellID = spellID,
+        spellName = castName,
+        unit = unit,
+    })
+end
+
 -- Spell cast succeeded handler
 function Core:OnSpellCastSucceeded(unit, castGUID, spellID)
     if unit ~= "player" and unit ~= "pet" then return end
@@ -2480,6 +2529,310 @@ function Core:OnUnitPet(unit)
     end
 end
 
+-- ── Import safety net ────────────────────────────────────────────────────────
+-- A copy of a profile taken just before an import writes over it.
+--
+-- Only the partial import path needs this: a whole profile always arrives as a
+-- new one, but importing triggers or sounds into a profile you already use
+-- replaces anything sharing a name or id, and there was no way back.
+--
+-- Exactly one slot, not a history. A profile is a couple of hundred kilobytes,
+-- and keeping several would put back the saved-variables weight we just spent a
+-- session removing. One is what the situation actually calls for: the undo is
+-- wanted in the minute after an import goes wrong, not next week.
+
+function OxedHub:IsImportBackupEnabled()
+    local settings = self.db and self.db.profile and self.db.profile.settings
+    -- On unless turned off: the cost is one copy, the alternative is losing
+    -- work with no way back.
+    return not (settings and settings.backupBeforeImport == false)
+end
+
+function OxedHub:BackupProfileBeforeImport(profileName)
+    if not self:IsImportBackupEnabled() then return false end
+    if type(OxedHubDB) ~= "table" then return false end
+
+    local profile = OxedHubDB.profiles and OxedHubDB.profiles[profileName]
+    if type(profile) ~= "table" then return false end
+
+    local copy = CopyTable(profile)
+
+    -- Two things are dropped from the copy because they are not the player's
+    -- settings and would make it enormous.
+    --
+    -- customSounds is the shared table every profile points at: the shipped
+    -- catalogue, rebuilt from the addon on every load. Copying it here would
+    -- put back most of the saved-variables weight that was just removed, and it
+    -- is restored by SyncSharedCustomSounds anyway.
+    copy.customSounds = nil
+    -- The toy collection cache is a snapshot of what the character owns, which
+    -- the game tells us again at login.
+    copy.toyCollectionCache = nil
+
+    OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+    OxedHubDB.globalSettings.importBackup = {
+        profileName = profileName,
+        time = time(),
+        data = copy,
+    }
+    return true
+end
+
+function OxedHub:GetImportBackup()
+    local settings = OxedHubDB and OxedHubDB.globalSettings
+    local backup = settings and settings.importBackup
+    if type(backup) ~= "table" or type(backup.data) ~= "table" then return nil end
+    return backup
+end
+
+function OxedHub:RestoreImportBackup()
+    local backup = self:GetImportBackup()
+    if not backup then
+        local Lang = OxedHub.L or {}
+        print("|cffff5555Oxed Hub:|r " .. (Lang["IMPORT_BACKUP_NONE"]
+            or "No import backup to restore."))
+        return false
+    end
+
+    local name = backup.profileName
+    if not name or not OxedHubDB.profiles then return false end
+
+    -- Restored in place, under its own name. Creating "X (restored)" would
+    -- leave the player still pointed at the damaged profile.
+    OxedHubDB.profiles[name] = CopyTable(backup.data)
+    if OxedHubDB.activeProfile == name then
+        OxedHubDB.profile = OxedHubDB.profiles[name]
+        self.db = OxedHubDB
+    end
+    self:SyncSharedCustomSounds(OxedHubDB.profiles[name])
+
+    -- Used once and gone: leaving it would invite a second restore that quietly
+    -- throws away whatever was done since the first.
+    OxedHubDB.globalSettings.importBackup = nil
+
+    print(("|cff00ff00Oxed Hub:|r restored '%s' from the pre-import backup. |cffffd100/reload|r to apply it everywhere."):format(name))
+    return true
+end
+
+-- ── Trimming SavedVariables on the way out ───────────────────────────────────
+-- Two things get written to disk that never needed to be there.
+--
+-- The shipped sound catalogue is copied into customSounds on every load, each
+-- entry flagged autoImported. Sounds.lua already prunes the ones the catalogue
+-- no longer lists and re-adds the ones it does, so every flagged entry is
+-- reconstructible from a file that ships inside the addon.
+--
+-- Worse, SyncSharedCustomSounds points every profile's customSounds at ONE
+-- shared table -- correct in memory, but the game's serialiser does not
+-- preserve shared references. It writes the table out once per profile, so 642
+-- catalogue entries became roughly eleven thousand lines across sixteen
+-- profiles, and all of them were parsed again on the next login.
+--
+-- Dropped at logout rather than never stored: the in-memory shape stays exactly
+-- as the rest of the addon expects it, and only the file shrinks.
+local function TrimSavedVariables(verbose)
+    local report = {}
+    local function Say(fmt, ...)
+        if verbose then print(("|cff00ff00trim:|r " .. fmt):format(...)) end
+        report[#report + 1] = true
+    end
+
+    if type(OxedHubDB) ~= "table" then
+        Say("OxedHubDB is %s -- nothing to do", type(OxedHubDB))
+        return
+    end
+
+    local shared = OxedHubDB.sharedCustomSounds
+    Say("sharedCustomSounds: %s", type(shared))
+
+    local strippedShared = 0
+    if type(shared) == "table" then
+        for id, sound in pairs(shared) do
+            if type(sound) == "table" and sound.autoImported then
+                shared[id] = nil
+                strippedShared = strippedShared + 1
+            end
+        end
+    end
+    Say("stripped %d catalogue entries from the shared table", strippedShared)
+
+    -- Per-profile copies.
+    --
+    -- The identity test this used to do was wrong. SyncSharedCustomSounds does
+    -- point every profile at the one shared table, but MergeDefaults and the
+    -- profile-switch path can hand a profile a table of its own again, and a
+    -- profile that was never activated this session still holds whatever the
+    -- last save wrote. Comparing against the shared table therefore matched
+    -- almost nothing, which is why the file never shrank.
+    --
+    -- What actually matters is not identity but content: catalogue entries are
+    -- rebuilt from the shipped file at load, so they can go from any profile.
+    local clearedProfiles, strippedProfiles = 0, 0
+    local function TrimProfile(profile)
+        if type(profile) ~= "table" then return end
+        local sounds = profile.customSounds
+        if type(sounds) ~= "table" then return end
+
+        if sounds == shared then
+            profile.customSounds = nil
+            clearedProfiles = clearedProfiles + 1
+            return
+        end
+
+        for id, sound in pairs(sounds) do
+            if type(sound) == "table" and sound.autoImported then
+                sounds[id] = nil
+                strippedProfiles = strippedProfiles + 1
+            end
+        end
+        if next(sounds) == nil then
+            profile.customSounds = nil
+            clearedProfiles = clearedProfiles + 1
+        end
+    end
+
+    if type(OxedHubDB.profiles) == "table" then
+        for _, profile in pairs(OxedHubDB.profiles) do
+            TrimProfile(profile)
+        end
+    end
+    TrimProfile(OxedHubDB.profile)
+
+    Say("profiles: %d emptied, %d catalogue entries removed", clearedProfiles, strippedProfiles)
+end
+
+OxedHub.TrimSavedVariables = TrimSavedVariables
+
+local logoutFrame = CreateFrame("Frame")
+logoutFrame:RegisterEvent("PLAYER_LOGOUT")
+logoutFrame:SetScript("OnEvent", function()
+    local ok, err = pcall(TrimSavedVariables, false)
+    if not ok then
+        -- Never let a tidy-up stop the game from saving. Losing the trim is
+        -- nothing; losing the write is the player's whole configuration.
+        geterrorhandler()(err)
+    end
+end)
+
+-- ── Performance report ───────────────────────────────────────────────────────
+-- What this addon actually costs, measured rather than guessed.
+--
+-- Memory is always available. CPU needs the scriptProfile CVar, which is off by
+-- default and only takes effect after a reload, so the report says so instead
+-- of printing a zero that looks like an answer.
+
+local function AddOnCount()
+    if C_AddOns and C_AddOns.GetNumAddOns then return C_AddOns.GetNumAddOns() end
+    return GetNumAddOns and GetNumAddOns() or 0
+end
+
+local function AddOnName(index)
+    if C_AddOns and C_AddOns.GetAddOnInfo then
+        local name = C_AddOns.GetAddOnInfo(index)
+        return name
+    end
+    return GetAddOnInfo and GetAddOnInfo(index) or nil
+end
+
+local function AddOnLoaded(index)
+    if C_AddOns and C_AddOns.IsAddOnLoaded then return C_AddOns.IsAddOnLoaded(index) end
+    return IsAddOnLoaded and IsAddOnLoaded(index) or false
+end
+
+local function FormatKB(kb)
+    if kb >= 1024 then return ("%.2f MB"):format(kb / 1024) end
+    return ("%.0f KB"):format(kb)
+end
+
+function OxedHub:ReportPerformance(collect)
+    local ADDON = "OxedHub"
+
+    -- A plain reading counts allocated-but-not-yet-collected memory, so a
+    -- number taken right after opening a window is mostly the garbage that
+    -- building it threw off. Collecting first separates what is actually held
+    -- from what is merely waiting to be swept.
+    --
+    -- Off by default: a full collection stalls a frame, which is fine for a
+    -- diagnostic asked for by hand and not fine as a side effect of one.
+    local beforeKB
+    if collect then
+        if UpdateAddOnMemoryUsage then UpdateAddOnMemoryUsage() end
+        beforeKB = (GetAddOnMemoryUsage and GetAddOnMemoryUsage(ADDON)) or 0
+        collectgarbage("collect")
+    end
+
+    if UpdateAddOnMemoryUsage then UpdateAddOnMemoryUsage() end
+    local profiling = (GetCVar and GetCVar("scriptProfile") == "1") and UpdateAddOnCPUUsage
+    if profiling then UpdateAddOnCPUUsage() end
+
+    -- Every loaded addon, so the number has something to be compared against.
+    -- "4 MB" means nothing on its own; "4 MB out of 61 across 23 addons" does.
+    local rows, totalMem, totalCpu, ourMem, ourCpu = {}, 0, 0, 0, 0
+    for i = 1, AddOnCount() do
+        if AddOnLoaded(i) then
+            local name = AddOnName(i) or ("#" .. i)
+            local mem = (GetAddOnMemoryUsage and GetAddOnMemoryUsage(i)) or 0
+            local cpu = profiling and (GetAddOnCPUUsage and GetAddOnCPUUsage(i)) or 0
+            totalMem = totalMem + mem
+            totalCpu = totalCpu + cpu
+            if name == ADDON then ourMem, ourCpu = mem, cpu end
+            table.insert(rows, { name = name, mem = mem, cpu = cpu })
+        end
+    end
+    table.sort(rows, function(a, b) return a.mem > b.mem end)
+
+    print("|cff00ff00Oxed Hub performance|r")
+    print(("  Memory: |cffffd100%s|r  (%.1f%% of %s across %d addons)"):format(
+        FormatKB(ourMem),
+        totalMem > 0 and (ourMem / totalMem * 100) or 0,
+        FormatKB(totalMem), #rows))
+
+    if beforeKB then
+        print(("  |cff888888Held after collection; %s was garbage awaiting sweep.|r"):format(
+            FormatKB(math.max(0, beforeKB - ourMem))))
+    else
+        print("  |cff888888Includes uncollected garbage. Use|r |cffffd100/oxedhub perf gc|r |cff888888for what is really held.|r")
+    end
+
+    -- Textures are not Lua memory and never appear above. Worth saying, or the
+    -- reading looks like it covers everything the addon costs.
+    print("  |cff888888Lua only -- texture and sound memory are not reported by the game.|r")
+
+    if profiling then
+        print(("  CPU: |cffffd100%.1f ms|r total since login  (%.1f%% of %.0f ms)"):format(
+            ourCpu, totalCpu > 0 and (ourCpu / totalCpu * 100) or 0, totalCpu))
+    else
+        print("  CPU: |cff888888not measured.|r Run |cffffd100/console scriptProfile 1|r then reload.")
+    end
+
+    -- Where our own memory sits, so a big number can be blamed on something.
+    local profile = self.db and self.db.profile
+    local function Count(tbl)
+        local n = 0
+        for _ in pairs(tbl or {}) do n = n + 1 end
+        return n
+    end
+    if profile then
+        print(("  Data: %d triggers, %d animations, %d sounds, %d toys, %d profiles"):format(
+            Count(profile.triggers), Count(profile.animations),
+            Count(self.GetSharedCustomSounds and self:GetSharedCustomSounds() or profile.customSounds),
+            Count(profile.toys),
+            Count(OxedHubDB and OxedHubDB.profiles)))
+    end
+
+    local journal = self.ErrorJournal
+    if journal then
+        print(("  Blocked calls this session: %d"):format(journal.blockedCount or 0))
+    end
+
+    print("  Heaviest loaded addons:")
+    for i = 1, math.min(5, #rows) do
+        local row = rows[i]
+        local mark = (row.name == ADDON) and "|cffffd100" or "|cff888888"
+        print(("    %s%-24s %s|r"):format(mark, row.name, FormatKB(row.mem)))
+    end
+end
+
 -- Slash commands
 function Core:RegisterSlashCommands()
     SLASH_OXEDHUB1 = "/oxedhub"
@@ -2507,6 +2860,15 @@ function Core:HandleSlashCommand(msg)
         if OxedHub.Triggers and OxedHub.Triggers.DumpMacroPreview then
             OxedHub.Triggers:DumpMacroPreview()
         end
+    elseif command == "trim" then
+        -- Runs the logout tidy-up by hand and says what it found, so the effect
+        -- can be checked without a logout cycle to inspect afterwards.
+        if OxedHub.TrimSavedVariables then
+            OxedHub.TrimSavedVariables(true)
+            print("|cff00ff00Oxed Hub:|r trimmed. |cffffd100/reload|r to write it out.")
+        end
+    elseif command == "perf" or command == "cpu" or command == "memory" then
+        OxedHub:ReportPerformance(rest == "gc" or rest == "collect")
     elseif command == "preview" or command == "animpreview" then
         if OxedHub.AnimationPreview then
             OxedHub.AnimationPreview:Toggle()

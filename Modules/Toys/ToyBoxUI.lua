@@ -936,6 +936,7 @@ function Toys:ShowToyBoxesTab(parentPanel)
         hiddenBtn:SetPoint("RIGHT", lockBtn, "LEFT", -4, 0)
         hiddenBtn:UpdateHiddenState()
         lockBtn:SetNormalFontObject("GameFontNormalSmall")
+
         lockBtn:SetScript("OnClick", function(self)
             local s = GetToySettings()
             s.isLocked = not s.isLocked
@@ -949,6 +950,9 @@ function Toys:ShowToyBoxesTab(parentPanel)
             else
                 self:SetText("|cFFFF5555Lock|r")
             end
+            if content.unlockedBanner then
+                content.unlockedBanner:SetShown(not s.isLocked)
+            end
         end
         lockBtn:SetScript("OnEnter", function(self)
             local s = GetToySettings()
@@ -956,16 +960,29 @@ function Toys:ShowToyBoxesTab(parentPanel)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             if s.isLocked then
                 GameTooltip:AddLine("|cFF00FF00Click to Unlock|r")
-                GameTooltip:AddLine("Shows [X] delete badges on toy icons so they can be removed.", 1, 1, 1)
+                GameTooltip:AddLine("Rearrange tiles by dragging, and remove them with the [X] badges.", 1, 1, 1, true)
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine(L["TOYBOX_UNLOCK_WARNING"]
+                    or "While unlocked, clicking a tile will not use the toy.", 1, 0.4, 0.3, true)
             else
                 GameTooltip:AddLine("|cFFFF5555Click to Lock|r")
-                GameTooltip:AddLine("Hides delete badges to prevent accidental deletion.", 1, 1, 1)
+                GameTooltip:AddLine("Back to using toys. Delete badges are hidden so nothing goes by accident.", 1, 1, 1, true)
             end
             GameTooltip:Show()
         end)
         lockBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
         lockBtn:UpdateLockState()
         content.lockBtn = lockBtn
+
+        -- Closing the window ends the edit. Unlocked is a mode you are in while
+        -- arranging, not a setting worth keeping: leaving it on is the reason
+        -- people come back later to a box whose toys will not fire.
+        parentPanel:HookScript("OnHide", function()
+            local s = GetToySettings()
+            if s.isLocked then return end
+            s.isLocked = true
+            if content.lockBtn then content.lockBtn:UpdateLockState() end
+        end)
 
         -- [ Edit Box ] Button
         local editBoxBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
@@ -1029,6 +1046,31 @@ function Toys:ShowToyBoxesTab(parentPanel)
         local gridScroll = CreateFrame("ScrollFrame", "$parent_GridScroll", content, "UIPanelScrollFrameTemplate")
         gridScroll:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -34)
         gridScroll:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -12, 4)
+
+        -- Unlocking turns the tiles into something you rearrange, not something
+        -- you click to play. Nothing about the grid looks different either way,
+        -- so a player who forgot to lock again simply finds that their toys
+        -- stopped working. Said here, across the top of the grid itself, rather
+        -- than only in a tooltip nobody has a reason to open.
+        local unlockedBanner = CreateFrame("Frame", nil, content, "BackdropTemplate")
+        -- Lifted clear of the first row of tiles, into the gap under the
+        -- button row, so it warns without covering what it warns about.
+        unlockedBanner:SetPoint("TOPLEFT", gridScroll, "TOPLEFT", 0, 13)
+        unlockedBanner:SetPoint("TOPRIGHT", gridScroll, "TOPRIGHT", 0, 13)
+        unlockedBanner:SetHeight(15)
+        unlockedBanner:SetFrameLevel(content:GetFrameLevel() + 20)
+        unlockedBanner:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+        unlockedBanner:SetBackdropColor(0.35, 0.05, 0.03, 0.9)
+
+        local unlockedText = unlockedBanner:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        unlockedText:SetPoint("CENTER", unlockedBanner, "CENTER", 0, 0)
+        unlockedText:SetTextColor(1, 0.55, 0.45)
+        unlockedText:SetText(L["TOYBOX_UNLOCKED_WARNING"]
+            or "Toys Use Blocked While Unlocked")
+        unlockedBanner:Hide()
+        content.unlockedBanner = unlockedBanner
+        -- Created after the button that drives it, so sync the state once now.
+        if content.lockBtn then content.lockBtn:UpdateLockState() end
 
         local gridScrollChild = CreateFrame("Frame", nil, gridScroll)
         gridScrollChild:SetSize(480, 400)
@@ -1660,21 +1702,9 @@ function Toys:RefreshToyBoxesUI()
         btn._kind = "toy"
         Toys:ClearMixSplitIcon(btn)
         btn._macroText = nil
-        local _, toyName, iconTex = C_ToyBox.GetToyInfo(toyID)
-
-        -- A toy the client has not cached yet still returns nil here.  Ask for
-        -- it and flag one redraw, rather than leaving a "?" on screen forever.
-        if not iconTex then
-            local okItem, _, _, _, _, _, _, _, _, itemIcon = pcall(C_Item.GetItemInfo, toyID)
-            if okItem and itemIcon then
-                iconTex = itemIcon
-            else
-                Toys._toyIconsPending = true
-                if C_Item and C_Item.RequestLoadItemDataByID then
-                    pcall(C_Item.RequestLoadItemDataByID, toyID)
-                end
-            end
-        end
+        local _, toyName = C_ToyBox.GetToyInfo(toyID)
+        local iconTex, stillMissing = Toys:GetToyIcon(toyID)
+        if stillMissing then Toys._toyIconsPending = true end
 
         btn.toyID = toyID
 
@@ -1712,17 +1742,7 @@ function Toys:RefreshToyBoxesUI()
     local totalHeight = (math.floor(#toysList / cols) + 1) * (slotHeight + gapY) + 24
     gridChild:SetHeight(math.max(totalHeight, 320))
 
-    -- Some icons were not cached yet; redraw shortly so they fill in.  Capped
-    -- so an id the client can never resolve cannot loop forever.
-    if Toys._toyIconsPending and not Toys._toyIconRedrawQueued then
-        Toys._toyIconRedrawQueued = true
-        Toys._toyIconRedrawTries = (Toys._toyIconRedrawTries or 0) + 1
-        C_Timer.After(0.7, function()
-            Toys._toyIconRedrawQueued = nil
-            Toys._toyIconsPending = false
-            if (Toys._toyIconRedrawTries or 0) <= 4 and toyBoxPanel and toyBoxPanel:IsShown() then
-                Toys:RefreshToyBoxesUI()
-            end
-        end)
-    end
+    -- Icons that are still missing are now filled in by GET_ITEM_INFO_RECEIVED
+    -- rather than by redrawing on a timer, so there is nothing to schedule
+    -- here. The flag above is what tells that handler a redraw is worth doing.
 end
