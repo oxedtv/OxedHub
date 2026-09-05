@@ -350,6 +350,7 @@ function Triggers:CreateTriggerCard(parent, trigger)
     card.nameInput = nameInput
     card.nameLabel = nameLabel
 
+
     -- Modern WoW-Style side tabs using PetList atlases
     local TRIGGER_SIDE_TAB_WIDTH = 28
     local TRIGGER_SIDE_TAB_HEIGHT = 90
@@ -817,6 +818,53 @@ function Triggers:CreateTriggerCard(parent, trigger)
         Triggers.ShowAutoSaved(card)
     end)
     card.enableCheck = enableCheck
+
+    -- How this rule fares when two sounds land in the same instant.
+    --
+    -- Placed after the Enabled toggle and anchored to it, because both share
+    -- the strip to the right of the name field -- anchoring this one to the
+    -- name field printed the two on top of each other.
+    --
+    -- It is a property of the rule as a whole, not of one action, which is why
+    -- it lives up here rather than on the Actions tab. Does nothing until the
+    -- matching setting is on, and the tooltip says so rather than leaving a
+    -- field that silently has no effect.
+    local priorityLabel = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    priorityLabel:SetPoint("LEFT", enableCheck.text, "RIGHT", 20, 0)
+    priorityLabel:SetText(L["TRIGGER_SOUND_PRIORITY"] or "Sound priority")
+    priorityLabel:SetTextColor(1, 0.82, 0, 1)
+
+    local priorityInput = CreateFrame("EditBox", nil, card, "InputBoxTemplate")
+    priorityInput:SetSize(44, 22)
+    priorityInput:SetPoint("LEFT", priorityLabel, "RIGHT", 10, 0)
+    priorityInput:SetAutoFocus(false)
+    priorityInput:SetNumeric(true)
+    priorityInput:SetMaxLetters(3)
+    priorityInput:SetText(tostring(tonumber(trigger.soundPriority) or 0))
+    priorityInput:SetScript("OnTextChanged", function(self, isUserInput)
+        if not isUserInput then return end
+        trigger.soundPriority = tonumber(self:GetText()) or 0
+        Triggers.ShowAutoSaved(card)
+    end)
+    priorityInput:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    priorityInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    priorityInput:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L["TRIGGER_SOUND_PRIORITY"] or "Sound priority", 1, 0.82, 0)
+        GameTooltip:AddLine(L["TRIGGER_SOUND_PRIORITY_DESC"]
+            or "Higher wins when two triggers want to be heard at the same moment. Ties keep whichever started first.",
+            1, 1, 1, true)
+        local settings = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.settings
+        if not (settings and settings.soundPriority) then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine(L["TRIGGER_SOUND_PRIORITY_OFF"]
+                or "Currently ignored: turn on 'Let the more important trigger win' in Settings.",
+                1, 0.5, 0.3, true)
+        end
+        GameTooltip:Show()
+    end)
+    priorityInput:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    card.priorityInput = priorityInput
     
 
     

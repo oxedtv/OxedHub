@@ -25,6 +25,16 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.57",
+        lines = {
+            { "FIXED",   "Freezes and stutter, most noticeably while typing in the trigger search: the font resizer was walking every row's whole frame tree on every keystroke, usually to set each font to the size it already was." },
+            { "FIXED",   "Action hub settings were rebuilt from scratch on every single lookup, a hundred and twenty times over across the addon." },
+            { "ADDED",   "Undo for a deleted trigger: its row stays as a greyed placeholder until you reload." },
+            { "ADDED",   "Control what happens when several triggers fire at once -- skip duplicates, let the more important rule win, or fade the previous sound." },
+            { "CHANGED", "A refused aura sound is remembered, so it stops logging the same blocked call on every login. Settings has a button to test it again." },
+        },
+    },
+    {
         version = "2.3.56",
         important = true,
         lines = {

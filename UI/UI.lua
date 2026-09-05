@@ -245,6 +245,15 @@ local function CreateSettingsSectionHeader(parent, relativeTo, relativePoint, xO
     return header
 end
 
+-- Walks a frame and every region, child and scroll child under it, resizing
+-- fonts. Thorough, and correspondingly expensive: the main window alone is a
+-- deep tree, and this was being run over every row of the trigger list on every
+-- rebuild -- which is every keystroke in the search box.
+--
+-- ApplyTextSizeIfNeeded below is what callers should use; it remembers what a
+-- frame was last set to and does nothing when the answer has not changed. The
+-- default offset is zero, so for most players the whole traversal is now
+-- skipped rather than spent setting every font to the size it already was.
 local function TraverseAndApplyTextSize(frame, delta)
     if not frame then return end
     
@@ -317,6 +326,23 @@ local function TraverseAndApplyTextSize(frame, delta)
     end
 end
 
+-- Only walk when the answer would actually change.
+--
+-- A frame with no stamp has never been resized, which is the same state as an
+-- offset of zero -- so the default case costs one comparison instead of a full
+-- tree walk. Rows of the trigger list are pooled and re-initialised constantly;
+-- after the first pass each one is a no-op until the player moves the slider.
+local function ApplyTextSizeIfNeeded(frame, delta)
+    if not frame then return end
+    delta = tonumber(delta) or 0
+    if (frame._oxedTextSizeApplied or 0) == delta then
+        frame._oxedTextSizeApplied = delta
+        return
+    end
+    frame._oxedTextSizeApplied = delta
+    TraverseAndApplyTextSize(frame, delta)
+end
+
 function UI:ApplyGlobalTextSize()
     local offset = (OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.settings and OxedHub.db.profile.settings.textSizeOffset) or 0
     offset = tonumber(offset) or 0
@@ -326,7 +352,7 @@ function UI:ApplyGlobalTextSize()
             if frame.SetScale then
                 frame:SetScale(1.0)
             end
-            TraverseAndApplyTextSize(frame, offset)
+            ApplyTextSizeIfNeeded(frame, offset)
         end
     end
 
@@ -1183,12 +1209,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.56)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.57)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.56")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.57")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -2833,6 +2859,35 @@ function UI:CreateTriggersTab()
                     end
                 end)
 
+                -- Undo for a rule deleted this session. Sits over the row's own
+                -- buttons, which are hidden for a placeholder: there is nothing
+                -- left to enable, share or delete.
+                row.undoBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+                row.undoBtn:SetSize(70, 20)
+                row.undoBtn:SetPoint("RIGHT", row, "RIGHT", -12, 0)
+                row.undoBtn:SetText(L["TRIGGER_UNDO"] or "Undo")
+                row.undoBtn:SetNormalFontObject("GameFontNormalSmall")
+                row.undoBtn:Hide()
+                row.undoBtn:SetScript("OnClick", function()
+                    local data = row.elementData
+                    if data and data.id then
+                        OxedHub.Triggers:UndoDeleteTrigger(data.id)
+                    end
+                end)
+
+                row.dismissBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+                row.dismissBtn:SetSize(70, 20)
+                row.dismissBtn:SetPoint("RIGHT", row.undoBtn, "LEFT", -6, 0)
+                row.dismissBtn:SetText(L["TRIGGER_UNDO_DISMISS"] or "Dismiss")
+                row.dismissBtn:SetNormalFontObject("GameFontNormalSmall")
+                row.dismissBtn:Hide()
+                row.dismissBtn:SetScript("OnClick", function()
+                    local data = row.elementData
+                    if data and data.id then
+                        OxedHub.Triggers:ForgetDeletedTrigger(data.id)
+                    end
+                end)
+
                 row.historyHeaderText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
                 row.historyHeaderText:SetPoint("CENTER", row, "RIGHT", -151, 0)
                 row.historyHeaderText:SetText(L["TRIGGERS_HEADER_LOG"] or "Log")
@@ -2891,6 +2946,12 @@ function UI:CreateTriggersTab()
                 row.eventText:SetText("")
                 row.actionsText:SetText("")
                 row.zoneText:SetText("")
+            elseif elementData.isDeleted then
+                -- Holds the rule's place in the list, greyed, and says plainly
+                -- what happens if it is left alone.
+                row.nameText:SetText(("|cff777777%s|r  |cffcc6666%s|r"):format(
+                    elementData.name or "",
+                    L["TRIGGER_DELETED_MARK"] or "(deleted)"))
             elseif elementData.isEmpty and not elementData.isHeader then
                 -- Plain words, not a symbol: the addon's font has no glyph for
                 -- the bullet that was here and drew it as an empty box.
@@ -2972,14 +3033,30 @@ function UI:CreateTriggersTab()
                 end
             end
             
-            row.deleteBtn:SetShown((not elementData.isHeader) and elementData.id ~= nil)
+            local isPlaceholder = elementData.isDeleted == true
+            row.undoBtn:SetShown(isPlaceholder)
+            row.dismissBtn:SetShown(isPlaceholder)
+            if isPlaceholder then
+                -- The whole row explains itself: the columns are meaningless
+                -- for something that no longer exists.
+                row.eventText:SetText("|cff777777" .. (elementData.eventLabel or "") .. "|r")
+                row.actionsText:SetText("")
+                row.zoneText:SetText("|cff777777"
+                    .. (L["TRIGGER_DELETED_HINT"] or "Gone for good after a reload") .. "|r")
+                row.spellAnchor:SetText("")
+                row.spellIconFrame:Hide()
+                row.spellIdText:SetText("")
+                if row.warnFrame then row.warnFrame:Hide() end
+            end
+
+            row.deleteBtn:SetShown((not elementData.isHeader) and (not elementData.isDeleted) and elementData.id ~= nil)
             row.deleteBtn:SetScript("OnClick", function()
                 if elementData.id then
                     OxedHub.Triggers:DeleteTrigger(elementData.id)
                 end
             end)
             
-            row.historyBtn:SetShown((not elementData.isHeader) and elementData.id ~= nil)
+            row.historyBtn:SetShown((not elementData.isHeader) and (not elementData.isDeleted) and elementData.id ~= nil)
             if elementData.id and OxedHub.Triggers.GetTriggerHistory then
                 local entry = OxedHub.Triggers:GetTriggerHistory(elementData.id)
                 local count = entry and entry.count or 0
@@ -2991,7 +3068,7 @@ function UI:CreateTriggersTab()
                 row.historyCount:SetText("")
             end
 
-            row.shareBtn:SetShown((not elementData.isHeader) and elementData.id ~= nil)
+            row.shareBtn:SetShown((not elementData.isHeader) and (not elementData.isDeleted) and elementData.id ~= nil)
             row.shareBtn:SetScript("OnClick", function()
                 local Share = OxedHub.Share
                 if not Share then
@@ -3004,7 +3081,7 @@ function UI:CreateTriggersTab()
                 Share:ShowChannelPicker("triggers", { triggerIDs = { elementData.id } }, label)
             end)
 
-            row.enabledCheck:SetShown((not elementData.isHeader) and elementData.id ~= nil)
+            row.enabledCheck:SetShown((not elementData.isHeader) and (not elementData.isDeleted) and elementData.id ~= nil)
             row.enabledCheck:SetChecked(elementData.enabled == true)
             row.enabledCheck:SetScript("OnClick", function(check)
                 local trigger = elementData.id and OxedHub.db.profile.triggers[elementData.id]
@@ -3060,7 +3137,8 @@ function UI:CreateTriggersTab()
                 -- to a rule used to live in the icons at the far right of the
                 -- row, which meant crossing the whole table to reach them.
                 if button == "RightButton" then
-                    if elementData.isHeader or elementData.isGroupHeader or not elementData.id then return end
+                    if elementData.isHeader or elementData.isGroupHeader
+                        or elementData.isDeleted or not elementData.id then return end
                     UI:ShowTriggerRowMenu(self, elementData)
                     return
                 end
@@ -3079,7 +3157,8 @@ function UI:CreateTriggersTab()
                     return
                 end
 
-                if elementData.id then
+                -- A placeholder has no page to open.
+                if elementData.id and not elementData.isDeleted then
                     OxedHub.Triggers:OpenTriggerDetails(elementData.id)
                 end
             end)
@@ -3101,7 +3180,7 @@ function UI:CreateTriggersTab()
 
             local offset = (OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.settings and OxedHub.db.profile.settings.textSizeOffset) or 0
             offset = tonumber(offset) or 0
-            TraverseAndApplyTextSize(row, offset)
+            ApplyTextSizeIfNeeded(row, offset)
         end)
 
         tab.scrollBox = CreateFrame("Frame", nil, tab, "WowScrollBoxList")
@@ -3387,7 +3466,116 @@ function UI:CreateSettingsTab()
         end
     end
 
-    local triggerSection = CreateSettingsSectionHeader(scrollChild, dropdownBtn, "BOTTOMLEFT", -18, -34, L["SETTINGS_SECTION_TRIGGER"])
+    -- ── When several sounds land at once ──────────────────────────────────
+    -- Each of these is off-by-default except dedupe, so nobody's audio changes
+    -- character without asking. See the comment block in Sounds.lua for why
+    -- fading applies to the outgoing sound rather than the arriving one.
+    local collideLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    collideLabel:SetPoint("TOPLEFT", dropdownBtn, "BOTTOMLEFT", 0, -16)
+    collideLabel:SetText(L["SETTINGS_AUDIO_COLLIDE"] or "When several triggers fire at once")
+    collideLabel:SetTextColor(1, 0.82, 0, 1)
+
+    local function AudioSetting(key, default)
+        local settings = OxedHub.db.profile.settings
+        if settings[key] == nil then return default end
+        return settings[key]
+    end
+
+    local dedupeCheck = CreateFrame("CheckButton", nil, scrollChild, "UICheckButtonTemplate")
+    dedupeCheck:SetPoint("TOPLEFT", collideLabel, "BOTTOMLEFT", 0, -6)
+    dedupeCheck:SetSize(24, 24)
+    dedupeCheck:SetChecked(AudioSetting("soundDedupe", true) ~= false)
+    dedupeCheck:SetScript("OnClick", function(self)
+        OxedHub.db.profile.settings.soundDedupe = self:GetChecked()
+    end)
+    local dedupeLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    dedupeLabel:SetPoint("LEFT", dedupeCheck, "RIGHT", 4, 0)
+    dedupeLabel:SetText(L["SETTINGS_AUDIO_DEDUPE"] or "Never play the same sound twice at once")
+    dedupeLabel:SetTextColor(1, 1, 1, 1)
+    local dedupeDesc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    dedupeDesc:SetPoint("TOPLEFT", dedupeCheck, "BOTTOMLEFT", 26, -2)
+    dedupeDesc:SetWidth(540)
+    dedupeDesc:SetJustifyH("LEFT")
+    dedupeDesc:SetText(L["SETTINGS_AUDIO_DEDUPE_DESC"]
+        or "Two copies of one file do not sound louder, they phase against each other.")
+
+    local priorityCheck = CreateFrame("CheckButton", nil, scrollChild, "UICheckButtonTemplate")
+    priorityCheck:SetPoint("TOPLEFT", dedupeDesc, "BOTTOMLEFT", -26, -8)
+    priorityCheck:SetSize(24, 24)
+    priorityCheck:SetChecked(AudioSetting("soundPriority", false) == true)
+    priorityCheck:SetScript("OnClick", function(self)
+        OxedHub.db.profile.settings.soundPriority = self:GetChecked()
+    end)
+    local priorityLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    priorityLabel:SetPoint("LEFT", priorityCheck, "RIGHT", 4, 0)
+    priorityLabel:SetText(L["SETTINGS_AUDIO_PRIORITY"] or "Let the more important trigger win")
+    priorityLabel:SetTextColor(1, 1, 1, 1)
+    local priorityDesc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    priorityDesc:SetPoint("TOPLEFT", priorityCheck, "BOTTOMLEFT", 26, -2)
+    priorityDesc:SetWidth(540)
+    priorityDesc:SetJustifyH("LEFT")
+    priorityDesc:SetText(L["SETTINGS_AUDIO_PRIORITY_DESC"]
+        or "Set a rule's importance on its own page. Without this the winner is whichever fired first, which is a lottery.")
+
+    local fadeCheck = CreateFrame("CheckButton", nil, scrollChild, "UICheckButtonTemplate")
+    fadeCheck:SetPoint("TOPLEFT", priorityDesc, "BOTTOMLEFT", -26, -8)
+    fadeCheck:SetSize(24, 24)
+    fadeCheck:SetChecked(AudioSetting("soundFadePrevious", false) == true)
+    fadeCheck:SetScript("OnClick", function(self)
+        OxedHub.db.profile.settings.soundFadePrevious = self:GetChecked()
+    end)
+    local fadeLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fadeLabel:SetPoint("LEFT", fadeCheck, "RIGHT", 4, 0)
+    fadeLabel:SetText(L["SETTINGS_AUDIO_FADE"] or "Fade the previous sound instead of overlapping")
+    fadeLabel:SetTextColor(1, 1, 1, 1)
+    local fadeDesc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    fadeDesc:SetPoint("TOPLEFT", fadeCheck, "BOTTOMLEFT", 26, -2)
+    fadeDesc:SetWidth(540)
+    fadeDesc:SetJustifyH("LEFT")
+    fadeDesc:SetText(L["SETTINGS_AUDIO_FADE_DESC"]
+        or "A new sound cannot start quietly -- the game gives addons no volume control -- so the one being replaced is faded out instead.")
+
+    local fadeSlider = CreateFrame("Slider", "OxedHubSoundFadeSlider", scrollChild, "OptionsSliderTemplate")
+    fadeSlider:SetPoint("TOPLEFT", fadeDesc, "BOTTOMLEFT", 4, -18)
+    fadeSlider:SetWidth(260)
+    fadeSlider:SetMinMaxValues(0, 1000)
+    fadeSlider:SetValueStep(50)
+    fadeSlider:SetObeyStepOnDrag(true)
+    if fadeSlider.Low then fadeSlider.Low:SetText("0") end
+    if fadeSlider.High then fadeSlider.High:SetText("1000 ms") end
+    fadeSlider:SetValue(tonumber(AudioSetting("soundFadeMs", 250)) or 250)
+    if fadeSlider.Text then
+        fadeSlider.Text:SetText(string.format(L["SETTINGS_AUDIO_FADE_MS"] or "Fade time  %d ms",
+            fadeSlider:GetValue()))
+    end
+    fadeSlider:SetScript("OnValueChanged", function(self, value)
+        value = math.floor((value or 250) / 50 + 0.5) * 50
+        OxedHub.db.profile.settings.soundFadeMs = value
+        if self.Text then
+            self.Text:SetText(string.format(L["SETTINGS_AUDIO_FADE_MS"] or "Fade time  %d ms", value))
+        end
+    end)
+
+    local windowSlider = CreateFrame("Slider", "OxedHubSoundWindowSlider", scrollChild, "OptionsSliderTemplate")
+    windowSlider:SetPoint("TOPLEFT", fadeSlider, "BOTTOMLEFT", 0, -28)
+    windowSlider:SetWidth(260)
+    windowSlider:SetMinMaxValues(0.05, 1)
+    windowSlider:SetValueStep(0.05)
+    windowSlider:SetObeyStepOnDrag(true)
+    if windowSlider.Low then windowSlider.Low:SetText("0.05s") end
+    if windowSlider.High then windowSlider.High:SetText("1s") end
+    windowSlider:SetValue(tonumber(AudioSetting("soundCollisionWindow", 0.1)) or 0.1)
+    local function FormatWindow(value)
+        return string.format(L["SETTINGS_AUDIO_WINDOW"] or "Count as 'at once' within  %.2fs", value)
+    end
+    if windowSlider.Text then windowSlider.Text:SetText(FormatWindow(windowSlider:GetValue())) end
+    windowSlider:SetScript("OnValueChanged", function(self, value)
+        value = math.floor((value or 0.1) * 20 + 0.5) / 20
+        OxedHub.db.profile.settings.soundCollisionWindow = value
+        if self.Text then self.Text:SetText(FormatWindow(value)) end
+    end)
+
+    local triggerSection = CreateSettingsSectionHeader(scrollChild, windowSlider, "BOTTOMLEFT", -22, -40, L["SETTINGS_SECTION_TRIGGER"])
 
     -- Trigger Effects Delay
     local effectsDelayLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -4880,6 +5068,48 @@ function UI:CreateSettingsTab()
     clearBtn:SetSize(90, 24)
     clearBtn:SetPoint("RIGHT", copyBtn, "LEFT", -6, 0)
     clearBtn:SetText(L["DEBUG_CLEAR"] or "Clear")
+
+    -- Retry the one protected call this addon depends on.
+    --
+    -- The native aura sound is allowed only from an untainted call path, and
+    -- the client will not say in advance whether it will allow it -- the call
+    -- returns a handle either way, so the only way to find out is to try and
+    -- watch for a blocked action. The answer is remembered against the addon
+    -- version and the game build so the question is not asked, and logged,
+    -- every single login. Neither of those numbers changes when the player
+    -- simply disables the addon that was causing the taint, which is why this
+    -- button exists.
+    local retryNativeBtn = CreateFrame("Button", nil, debugPage, "UIPanelButtonTemplate")
+    ApplyRedButtonStyle(retryNativeBtn)
+    retryNativeBtn:SetSize(150, 24)
+    retryNativeBtn:SetPoint("RIGHT", clearBtn, "LEFT", -6, 0)
+    retryNativeBtn:SetText(L["DEBUG_RETRY_NATIVE"] or "Retry aura sound")
+    retryNativeBtn:SetNormalFontObject("GameFontNormalSmall")
+    retryNativeBtn:SetScript("OnClick", function()
+        local Triggers = OxedHub.Triggers
+        if not (Triggers and Triggers.ResetSelfAuraNativeCheck) then return end
+        if InCombatLockdown() then
+            print("|cffff5555Oxed Hub:|r " .. (L["DEBUG_RETRY_NATIVE_COMBAT"]
+                or "Can't test that during combat."))
+            return
+        end
+        if Triggers:ResetSelfAuraNativeCheck() then
+            print("|cff00ff00Oxed Hub:|r " .. (L["DEBUG_RETRY_NATIVE_OK"]
+                or "Native aura sound is allowed now; My Buff triggers will use it."))
+        else
+            print("|cffffd100Oxed Hub:|r " .. (L["DEBUG_RETRY_NATIVE_STILL"]
+                or "Still refused by the client. The aura monitor keeps handling these triggers."))
+        end
+    end)
+    retryNativeBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText(L["DEBUG_RETRY_NATIVE"] or "Retry aura sound", 1, 0.82, 0)
+        GameTooltip:AddLine(L["DEBUG_RETRY_NATIVE_DESC"]
+            or "My Buff triggers prefer the game's own aura sound, which plays in combat. If the client refused it, that answer is remembered until the addon or the game updates. Use this after changing your addons.",
+            1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    retryNativeBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     local debugScroll = CreateFrame("ScrollFrame", "OxedHubDebugScrollFrame", debugPage, "UIPanelScrollFrameTemplate")
     debugScroll:SetPoint("TOPLEFT", debugHint, "BOTTOMLEFT", 0, -10)

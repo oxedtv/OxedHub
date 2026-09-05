@@ -8,9 +8,86 @@ OxedHub.Sounds = Sounds
 local PlaySoundFile = PlaySoundFile
 local GetTime = GetTime
 
--- Sound cooldown
+-- ── Collisions ───────────────────────────────────────────────────────────────
+-- What happens when several triggers want to be heard at the same moment.
+--
+-- This used to be a flat 0.1 second gate: the first sound through won and every
+-- other was discarded without a word. That is not "no stacking", it is a
+-- lottery -- the sound you cared about lost to whatever happened to fire fifty
+-- milliseconds earlier.
+--
+-- Three rules replace it, each optional:
+--
+--   dedupe    the same file asked for twice in the window plays once. Two
+--             copies of one sound do not sound twice as loud, they phase
+--             against each other, and nobody ever wants that.
+--   priority  when two different sounds collide, the trigger the player marked
+--             as more important wins. Ties keep the one already playing.
+--   fade      the outgoing sound is faded rather than cut, so replacing it is
+--             not a click.
+--
+-- Starting a sound quietly is not possible: PlaySoundFile takes no volume, and
+-- the only volume control is the channel CVar, which would duck the game's own
+-- audio too. StopSound does accept a fade, which is why the fading happens to
+-- the sound being replaced rather than the one arriving.
 local lastSoundTime = 0
 local SOUND_COOLDOWN = 0.1
+
+-- What is playing right now, as far as this module knows.
+local activeSound = { path = nil, handle = nil, priority = 0, time = 0 }
+
+local function SoundSettings()
+    return (OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.settings) or {}
+end
+
+local function CollisionWindow()
+    local value = tonumber(SoundSettings().soundCollisionWindow)
+    if not value then return SOUND_COOLDOWN end
+    return math.max(0, math.min(2, value))
+end
+
+-- Returns false when this sound should not start, with the reason for debug.
+local function ArbitrateSound(filePath, priority)
+    local settings = SoundSettings()
+    local now = GetTime()
+    local elapsed = now - (activeSound.time or 0)
+    local window = CollisionWindow()
+
+    -- Outside the window nothing is colliding; whatever played before has had
+    -- its moment.
+    if elapsed >= window then return true end
+
+    if settings.soundDedupe ~= false and activeSound.path == filePath then
+        return false, "duplicate"
+    end
+
+    if settings.soundPriority then
+        -- Equal priorities keep the incumbent, so a burst of same-ranked rules
+        -- still yields one sound rather than the last one to arrive.
+        if priority <= (activeSound.priority or 0) then
+            return false, "lower priority"
+        end
+        -- Higher priority wins: silence what is playing and take over.
+        if activeSound.handle and StopSound then
+            local fade = settings.soundFadePrevious and (tonumber(settings.soundFadeMs) or 250) or 0
+            pcall(StopSound, activeSound.handle, fade)
+        end
+        return true
+    end
+
+    -- No priority arbitration. Fading is then the only way two sounds can share
+    -- a moment without overlapping.
+    if settings.soundFadePrevious then
+        if activeSound.handle and StopSound then
+            pcall(StopSound, activeSound.handle, tonumber(settings.soundFadeMs) or 250)
+        end
+        return true
+    end
+
+    -- Nothing enabled: the old flat gate, kept so behaviour is unchanged for
+    -- anyone who turns all of this off.
+    return false, "cooldown"
+end
 
 -- Currently playing sound tracking
 local currentPlayingHandle = nil
@@ -864,17 +941,14 @@ function Sounds:GetFilePath(soundIdOrPath)
 end
 
 -- Play sound
-function Sounds:Play(soundIdOrPath, soundName)
+-- priority is optional and defaults to zero, so every existing caller keeps
+-- working; only triggers that were given one take part in the arbitration.
+function Sounds:Play(soundIdOrPath, soundName, priority)
     if OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.soundsEnabled == false then
         return
     end
 
     local now = GetTime()
-    if now - lastSoundTime < SOUND_COOLDOWN then
-        return -- On cooldown
-    end
-    lastSoundTime = now
-
     local resolvedIdOrPath = self:ResolvePathOrId(soundIdOrPath)
     local filePath = resolvedIdOrPath
 
@@ -891,6 +965,20 @@ function Sounds:Play(soundIdOrPath, soundName)
         return
     end
 
+    -- Decided on the resolved path, not the id: two triggers can name the same
+    -- file through different ids, and to the ear that is still one sound twice.
+    priority = tonumber(priority) or 0
+    local allowed, reason = ArbitrateSound(filePath, priority)
+    if not allowed then
+        if OxedHub.debug then
+            print(("|cff00ffff[OxedHub-Debug]|r sound skipped (%s): %s"):format(
+                tostring(reason), tostring(soundName or filePath)))
+        end
+        return nil
+    end
+
+    lastSoundTime = now
+
     -- Attempt to play
     local willPlay, handle = PlaySoundFile(filePath, OxedHub.db.profile.settings.soundChannel or "Master")
 
@@ -898,6 +986,11 @@ function Sounds:Play(soundIdOrPath, soundName)
         print("|cffff0000Oxed Hub:|r " .. OxedHub:GetString("ERR_SOUND_NOT_FOUND", soundName or filePath))
         return nil
     end
+
+    activeSound.path = filePath
+    activeSound.handle = handle
+    activeSound.priority = priority
+    activeSound.time = now
 
     return handle
 end

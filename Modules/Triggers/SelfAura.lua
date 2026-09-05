@@ -299,6 +299,73 @@ local nativeSoundUnavailable = false
 local MAX_NATIVE_ATTEMPTS = 40
 local nativeAttempts = 0
 
+-- ── Remembering the refusal between sessions ─────────────────────────────────
+-- The flag above only lasts a session, so every login and every reload probed
+-- the client again, was refused again, and logged another blocked action. One
+-- per session is not a storm, but it is a permanent trickle of errors for
+-- something already known.
+--
+-- Stamped with the addon version and the game build, and only trusted while
+-- both still match. Whether the call is allowed depends on the client and on
+-- this addon's own code, so an update to either is reason to ask again rather
+-- than assume the old answer still holds. Settings also carries a button to
+-- force a retry, for the case that matters and neither number covers: a
+-- different set of addons loaded.
+local nativeBlockedStateLoaded = false
+
+local function CurrentNativeStamp()
+    local version = (OxedHub.CONFIG and OxedHub.CONFIG.VERSION) or "?"
+    local _, build = GetBuildInfo()
+    return version, tostring(build or "?")
+end
+
+local function LoadNativeBlockedState()
+    if nativeBlockedStateLoaded then return end
+    nativeBlockedStateLoaded = true
+
+    local settings = OxedHubDB and OxedHubDB.globalSettings
+    local stored = settings and settings.selfAuraNativeBlocked
+    if type(stored) ~= "table" then return end
+
+    local version, build = CurrentNativeStamp()
+    if stored.version == version and stored.build == build then
+        nativeSoundUnavailable = true
+        if OxedHub.debug then
+            print("|cff00ffff[OxedHub-Debug]|r SELF_AURA native: refused before on this build, not probing again")
+        end
+    end
+end
+
+local function SaveNativeBlockedState()
+    if type(OxedHubDB) ~= "table" then return end
+    OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+    local version, build = CurrentNativeStamp()
+    OxedHubDB.globalSettings.selfAuraNativeBlocked = {
+        version = version,
+        build = build,
+        time = time(),
+    }
+end
+
+-- Forget the stored answer and probe once more. Called from the Settings
+-- button; the aura monitor keeps working either way, so the worst case is one
+-- more blocked action in the log.
+function Triggers:ResetSelfAuraNativeCheck()
+    if OxedHubDB and OxedHubDB.globalSettings then
+        OxedHubDB.globalSettings.selfAuraNativeBlocked = nil
+    end
+    nativeSoundUnavailable = false
+    nativeAttempts = 0
+    nativeBlockedStateLoaded = true
+    self:RefreshSelfAuraNativeEffects()
+    return not nativeSoundUnavailable
+end
+
+function Triggers:IsSelfAuraNativeBlocked()
+    LoadNativeBlockedState()
+    return nativeSoundUnavailable
+end
+
 
 local function UnregisterNativeEffects()
     for i = #nativeSoundHandles, 1, -1 do
@@ -329,8 +396,11 @@ function Triggers:RefreshSelfAuraNativeEffects()
     if not hasNormal then
         return -- client missing native aura sound API; fallback to runtime aura monitoring
     end
+    -- Read the remembered answer before deciding to probe. Done here rather
+    -- than at file scope because saved variables are not loaded yet then.
+    LoadNativeBlockedState()
     if nativeSoundUnavailable then
-        return -- the client refused it earlier this session; the monitor covers it
+        return -- refused before; the monitor covers these triggers on its own
     end
 
     UnregisterNativeEffects()
@@ -388,6 +458,7 @@ function Triggers:RefreshSelfAuraNativeEffects()
                     nativeAttempts = nativeAttempts + 1
                     if nativeAttempts > MAX_NATIVE_ATTEMPTS then
                         nativeSoundUnavailable = true
+                        SaveNativeBlockedState()
                         if journal then journal:ClearContext() end
                         UnregisterNativeEffects()
                         return
@@ -430,7 +501,11 @@ function Triggers:RefreshSelfAuraNativeEffects()
                         -- The first refusal is decisive. Carrying on would just
                         -- repeat the same blocked call for every remaining spell
                         -- ID, which is exactly the error storm this replaces.
+                        --
+                        -- Written down as well, so the next login does not ask
+                        -- the same question and log the same refusal.
                         nativeSoundUnavailable = true
+                        SaveNativeBlockedState()
                         UnregisterNativeEffects()
                         if OxedHub.debug then
                             print("|cff00ffff[OxedHub-Debug]|r SELF_AURA native: registration refused by the client, using the aura monitor instead")

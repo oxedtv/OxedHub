@@ -629,13 +629,74 @@ function Triggers:GetDuplicateSoundConflicts()
 end
 
 -- Delete a trigger
+-- ── Undo for a deleted rule ──────────────────────────────────────────────────
+-- A deleted trigger is set aside in memory rather than thrown away, and the
+-- list keeps its place with a greyed row offering Undo.
+--
+-- Held only for the session, deliberately. Writing it to saved variables would
+-- make "deleted" mean "hidden", and a file full of rules the player believes
+-- are gone is worse than no undo at all. Reload is the commit.
+--
+-- The trigger table itself is kept, not a copy: it has just been taken out of
+-- the profile, so nothing else refers to it, and a copy would only risk the two
+-- drifting apart.
+Triggers.deletedTriggers = Triggers.deletedTriggers or {}
+
+function Triggers:GetDeletedTriggers()
+    return self.deletedTriggers or {}
+end
+
+function Triggers:FindDeletedTrigger(id)
+    for index, entry in ipairs(self:GetDeletedTriggers()) do
+        if entry.id == id then return entry, index end
+    end
+end
+
+-- Put a deleted rule back where it was.
+function Triggers:UndoDeleteTrigger(id)
+    local entry, index = self:FindDeletedTrigger(id)
+    if not entry then return false end
+
+    table.remove(self.deletedTriggers, index)
+
+    -- An id that came back into use in the meantime would mean overwriting
+    -- something real, so the undo is dropped instead.
+    if OxedHub.db.profile.triggers[id] then
+        self:RefreshTriggersList()
+        return false
+    end
+
+    OxedHub.db.profile.triggers[id] = entry.trigger
+    self:InvalidateEnabledEventCache()
+
+    -- The macro went with the rule, so it has to come back with it. Macro APIs
+    -- are blocked in combat; the rule still works, only its macro is missing,
+    -- and editing the rule later recreates it.
+    if entry.hadMacro and not InCombatLockdown() and self.CreateMacroForTrigger then
+        pcall(self.CreateMacroForTrigger, self, entry.trigger)
+    end
+
+    self:RefreshTriggersList()
+    return true
+end
+
+-- Drop the placeholder without restoring: the player has confirmed they meant
+-- it. Only the row goes; the rule was already gone.
+function Triggers:ForgetDeletedTrigger(id)
+    local _, index = self:FindDeletedTrigger(id)
+    if index then table.remove(self.deletedTriggers, index) end
+    self:RefreshTriggersList()
+end
+
 function Triggers:_PerformDeleteTrigger(id)
     local trigger = OxedHub.db.profile.triggers[id]
+    local hadMacro = false
     if trigger then
         -- Delete associated WoW macro if it exists
         local macroName = self:GetTriggerMacroName(trigger)
         local index = GetMacroIndexByName(macroName)
         if index > 0 then
+            hadMacro = true
             DeleteMacro(index)
         end
         -- Also clean up old space-based macro if present
@@ -648,6 +709,17 @@ function Triggers:_PerformDeleteTrigger(id)
         end
     end
     OxedHub.db.profile.triggers[id] = nil
+
+    -- Set aside for the session so the list can offer Undo in its place.
+    if trigger then
+        table.insert(self.deletedTriggers, {
+            id = id,
+            trigger = trigger,
+            hadMacro = hadMacro,
+            time = time(),
+        })
+    end
+
     self:InvalidateEnabledEventCache()
     if Triggers.triggerCards[id] then
         Triggers.triggerCards[id]:Hide()

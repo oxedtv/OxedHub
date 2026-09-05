@@ -171,8 +171,11 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
     if canRunEffects and soundVal and soundVal ~= "" and soundVal ~= "None" then
         if OxedHub.Sounds then
             if OxedHub.debug then print("[OxedHub-Debug] Actually playing sound:", soundVal) end
-            OxedHub.Sounds:Play(soundVal)
-            
+            -- The rule's own importance, used only when two sounds land in the
+            -- same instant and the player asked for priority to decide.
+            local soundPriority = tonumber(trigger.soundPriority) or 0
+            OxedHub.Sounds:Play(soundVal, nil, soundPriority)
+
             if (trigger.event == "UNIT_AURA" or trigger.event == "SELF_AURA" or trigger.event == "SPELL_PROC") and trigger.conditions and trigger.conditions.loopSound and eventData and not eventData.isLost then
                 local interval = tonumber(trigger.conditions.loopInterval) or 2
                 if interval > 0 then
@@ -184,7 +187,7 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
                             Triggers.activeAuraLoops[loopKey]:Cancel()
                         end
                         Triggers.activeAuraLoops[loopKey] = C_Timer.NewTicker(interval, function()
-                            OxedHub.Sounds:Play(soundVal)
+                            OxedHub.Sounds:Play(soundVal, nil, soundPriority)
                         end)
                     end
                 end

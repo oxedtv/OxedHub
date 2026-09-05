@@ -354,12 +354,36 @@ function ActionHub:TriggerEmoteById(emoteId)
 end
 
 -- Multi-hub helpers
+-- Validated once, then trusted.
+--
+-- Every GetHubDB and GetActiveHubDB call went through here, and each one
+-- rebuilt the defaults for every hub -- roughly twenty field checks per hub,
+-- from a hundred and twenty places in the addon, including per-button loops
+-- while a panel is being drawn. The work was real but almost always repeated:
+-- nothing about a hub changes between two lookups in the same frame.
+--
+-- The cache is keyed on the table itself and its length, so switching profile
+-- (a new table) or adding and removing a hub (a new length) both invalidate it
+-- without anyone having to remember to say so.
+local validatedHubs, validatedCount = nil, -1
+
+function ActionHub:InvalidateHubCache()
+    validatedHubs, validatedCount = nil, -1
+end
+
 function ActionHub:GetHubs()
     local ah = OxedHub.db.profile.actionHub
     if not ah.hubs then ah.hubs = {} end
+
+    if validatedHubs == ah.hubs and validatedCount == #ah.hubs then
+        return ah.hubs
+    end
+
     for i = 1, #ah.hubs do
         ah.hubs[i] = EnsureHubData(ah.hubs[i], i)
     end
+
+    validatedHubs, validatedCount = ah.hubs, #ah.hubs
     return ah.hubs
 end
 

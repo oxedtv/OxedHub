@@ -541,6 +541,18 @@ function Triggers:RefreshTriggersList()
     for id, trigger in pairs(OxedHub.db.profile.triggers) do
         table.insert(sortedTriggers, trigger)
     end
+
+    -- Rules deleted this session ride along through the sort and the grouping,
+    -- so their placeholder appears exactly where the rule used to sit rather
+    -- than being tacked on at the end. They are marked, not separated, because
+    -- everything downstream keys off name and event -- which they still have.
+    local deletedIds = {}
+    for _, entry in ipairs(self:GetDeletedTriggers()) do
+        if entry.trigger and not OxedHub.db.profile.triggers[entry.id] then
+            deletedIds[entry.id] = true
+            table.insert(sortedTriggers, entry.trigger)
+        end
+    end
     
     local sortMode = OxedHub.db.profile.settings and OxedHub.db.profile.settings.triggerSortMode
     if sortMode == "az" or sortMode == "za" then
@@ -1256,6 +1268,18 @@ function Triggers:RefreshTriggersList()
                 for _, trigger in ipairs(group.triggers) do
                 rowIndex = rowIndex + 1
                 local evLabel, evCat, evDesc = self:GetEventDisplay(trigger.event)
+
+                -- A rule deleted this session: a placeholder holding its place
+                -- in the list, with the offer to put it back.
+                if deletedIds[trigger.id] then
+                    dataProvider:Insert({
+                        id = trigger.id,
+                        index = rowIndex,
+                        name = trigger.name,
+                        eventLabel = evLabel,
+                        isDeleted = true,
+                    })
+                else
                 dataProvider:Insert({
                     id = trigger.id,
                     index = rowIndex,
@@ -1278,6 +1302,7 @@ function Triggers:RefreshTriggersList()
                     isEmpty = (self:GetActionsSummary(trigger) or "") == "",
                     duplicateSoundOf = soundConflicts[trigger.id],
                 })
+                end
                 end
             end
         end
