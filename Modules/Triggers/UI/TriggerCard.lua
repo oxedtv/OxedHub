@@ -865,6 +865,9 @@ function Triggers:CreateTriggerCard(parent, trigger)
     end)
     priorityInput:SetScript("OnLeave", function() GameTooltip:Hide() end)
     card.priorityInput = priorityInput
+    -- Kept on the card too, or the tab switching below has no handle on it and
+    -- the label stays on screen over every other tab.
+    card.priorityLabel = priorityLabel
     
 
     
@@ -1124,6 +1127,10 @@ function Triggers:LayoutTriggerCard(card)
         if card.nameLabel then card.nameLabel:Show() end
         if card.nameInput then card.nameInput:Show() end
         if card.enableCheck then card.enableCheck:Show() end
+        -- Both belong to the header strip, so they follow the name and the
+        -- Enabled toggle rather than staying on screen over the other tabs.
+        if card.priorityLabel then card.priorityLabel:Show() end
+        if card.priorityInput then card.priorityInput:Show() end
         card.eventLabel:Show()
         card.eventDropdown:Show()
         if card.categoryDropdown then card.categoryDropdown:Show() end
@@ -1145,6 +1152,8 @@ function Triggers:LayoutTriggerCard(card)
         if card.nameLabel then card.nameLabel:Hide() end
         if card.nameInput then card.nameInput:Hide() end
         if card.enableCheck then card.enableCheck:Hide() end
+        if card.priorityLabel then card.priorityLabel:Hide() end
+        if card.priorityInput then card.priorityInput:Hide() end
         card.eventLabel:Hide()
         card.eventDropdown:Hide()
         if card.categoryDropdown then card.categoryDropdown:Hide() end
@@ -1164,6 +1173,8 @@ function Triggers:LayoutTriggerCard(card)
         if card.nameLabel then card.nameLabel:Hide() end
         if card.nameInput then card.nameInput:Hide() end
         if card.enableCheck then card.enableCheck:Hide() end
+        if card.priorityLabel then card.priorityLabel:Hide() end
+        if card.priorityInput then card.priorityInput:Hide() end
         card.eventLabel:Hide()
         card.eventDropdown:Hide()
         if card.categoryDropdown then card.categoryDropdown:Hide() end
@@ -1184,6 +1195,8 @@ function Triggers:LayoutTriggerCard(card)
         if card.nameLabel then card.nameLabel:Hide() end
         if card.nameInput then card.nameInput:Hide() end
         if card.enableCheck then card.enableCheck:Hide() end
+        if card.priorityLabel then card.priorityLabel:Hide() end
+        if card.priorityInput then card.priorityInput:Hide() end
         card.eventLabel:Hide()
         card.eventDropdown:Hide()
         if card.categoryDropdown then card.categoryDropdown:Hide() end
@@ -1237,7 +1250,7 @@ function Triggers:LayoutTriggerCard(card)
 
         -- Taller than it was: the group row and its heading sit between the
         -- zone grid and the two information boxes.
-        cardHeight = 664
+        cardHeight = 750
 
     elseif activeTab == "tips" then
         card.tipsFrame:ClearAllPoints()

@@ -818,6 +818,11 @@ function Triggers:ShouldTrigger(trigger, eventType, eventData)
     if not self:CheckGroupRestrictions(trigger.groups) then
         return false
     end
+
+    -- Check specialisation restrictions
+    if not self:CheckSpecRestrictions(trigger.specs) then
+        return false
+    end
     
     -- Check conditions
     local conditions = trigger.conditions or {}
@@ -1006,6 +1011,65 @@ function Triggers:CheckGroupRestrictions(groups)
     -- No table at all means a rule from before this existed: leave it alone.
     if type(groups) ~= "table" or next(groups) == nil then return true end
     return groups[self:GetCurrentGroupState()] == true
+end
+
+-- Specialisation restrictions, the third axis alongside zone and group.
+--
+-- Zones ask where you are, groups ask who you are with, this asks what you are
+-- playing as. It exists for the player who keeps one profile for everything:
+-- the healing rule set up on Holy has no business firing on Retribution.
+--
+-- Specialisations, not roles. Frost and Unholy are both Damage, so a role would
+-- not tell them apart -- and a rule written for one of them firing on the other
+-- is exactly the complaint this is meant to answer.
+--
+-- Stored as spec IDs, which are unique across the whole game, so there is never
+-- any question which class a stored entry belonged to.
+
+-- The specialisations this character actually has, in the game's own order.
+function Triggers:GetClassSpecs()
+    local specs = {}
+    local count = GetNumSpecializations and GetNumSpecializations() or 0
+
+    for index = 1, count do
+        local id, name, _, icon, role = GetSpecializationInfo(index)
+        if id then
+            specs[#specs + 1] = { id = id, name = name, icon = icon, role = role }
+        end
+    end
+    return specs
+end
+
+-- Read fresh every time, never cached: specs are swapped between pulls, and one
+-- decided at login would be wrong for the rest of the evening.
+function Triggers:GetCurrentSpecID()
+    if not GetSpecialization then return nil end
+    local index = GetSpecialization()
+    if not index then return nil end
+    local id = GetSpecializationInfo(index)
+    return id
+end
+
+function Triggers:CheckSpecRestrictions(specs)
+    -- No table means a rule that was never restricted.
+    if type(specs) ~= "table" or next(specs) == nil then return true end
+
+    local current = self:GetCurrentSpecID()
+    -- Unknown specialisation lets the rule through: low level, none chosen yet,
+    -- data still loading. Silence there would look like the addon had broken.
+    if not current then return true end
+
+    -- Restricted to specialisations of a different class entirely -- a profile
+    -- carried over from another character. Nothing here can be a considered
+    -- answer about this class, so the restriction is treated as not applying
+    -- rather than silencing every rule on an imported profile.
+    local mine = false
+    for _, spec in ipairs(self:GetClassSpecs()) do
+        if specs[spec.id] ~= nil then mine = true break end
+    end
+    if not mine then return true end
+
+    return specs[current] == true
 end
 
 function Triggers:CheckZoneRestrictions(zones)

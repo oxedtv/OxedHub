@@ -25,6 +25,15 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.58",
+        lines = {
+            { "ADDED",   "Restrict a trigger to specific specialisations, so a rule set up for healing stays quiet on your damage spec." },
+            { "ADDED",   "Specialisations are listed by their real names -- Blood, Frost, Unholy -- because two of them can share a role but need different rules." },
+            { "CHANGED", "The Zones & Groups tab is now Conditions: zone, group size and specialisation all live there." },
+            { "FIXED",   "The Sound priority field stayed on screen over the Conditions and Tips tabs." },
+        },
+    },
+    {
         version = "2.3.57",
         lines = {
             { "FIXED",   "Freezes and stutter, most noticeably while typing in the trigger search: the font resizer was walking every row's whole frame tree on every keystroke, usually to set each font to the size it already was." },

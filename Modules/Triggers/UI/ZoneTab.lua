@@ -149,9 +149,81 @@ function Triggers:CreateZoneUI(frame, trigger)
         desc:SetJustifyH("LEFT")
     end
 
+    -- ── Role ─────────────────────────────────────────────────────────────────
+    -- For the player who keeps one profile for everything: a healing rule set
+    -- up on Holy has no business firing on Retribution. Read at the moment the
+    -- rule fires, so swapping spec between pulls takes effect immediately.
+    -- The character's real specialisations, named and iconed by the game. Frost
+    -- and Unholy are both Damage, so a role could not tell them apart.
+    local specs = Triggers:GetClassSpecs()
+
+    local roleTitle = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    roleTitle:SetPoint("TOP", groupRow, "BOTTOM", 0, -16)
+    roleTitle:SetText(L["ZONES_ONLY_PLAY_SPEC"] or "And only in these specialisations:")
+    roleTitle:SetTextColor(1, 1, 1, 1)
+
+    local roleRow = CreateFrame("Frame", nil, frame)
+    roleRow:SetPoint("TOP", roleTitle, "BOTTOM", 0, -10)
+    roleRow:SetSize((colWidth * 2) + spacingX, 52)
+
+    -- Sized to the number this class has: three for most, four for a Druid.
+    local specCount = math.max(1, #specs)
+    local specWidth = math.floor((((colWidth * 2) + spacingX) - (spacingX * (specCount - 1))) / specCount)
+
+    -- Nothing stored means unrestricted, and every box shows ticked to say so.
+    -- The table is only written the moment the player unticks something: doing
+    -- it on open would stamp this character's spec ids onto a rule that may be
+    -- shared with other characters through a profile or an import.
+    local stored = type(trigger.specs) == "table" and next(trigger.specs) ~= nil
+
+    for index, spec in ipairs(specs) do
+        local tile = CreateBorderedFrame(roleRow)
+        tile:SetSize(specWidth, 52)
+        tile:SetPoint("TOPLEFT", roleRow, "TOPLEFT", (index - 1) * (specWidth + spacingX), 0)
+
+        local check = CreateFrame("CheckButton", nil, tile, "UICheckButtonTemplate")
+        check:SetPoint("LEFT", tile, "LEFT", 10, 0)
+        check:SetSize(28, 28)
+        check:SetChecked((not stored) or trigger.specs[spec.id] == true)
+        check:SetScript("OnClick", function(self)
+            -- First untick turns "unrestricted" into a real list: everything
+            -- this class has, minus the one just cleared.
+            if type(trigger.specs) ~= "table" or next(trigger.specs) == nil then
+                trigger.specs = {}
+                for _, other in ipairs(specs) do trigger.specs[other.id] = true end
+            end
+            trigger.specs[spec.id] = self:GetChecked() or nil
+            stored = next(trigger.specs) ~= nil
+            if frame:GetParent() and Triggers.ShowAutoSaved then
+                Triggers.ShowAutoSaved(frame:GetParent())
+            end
+        end)
+
+        local icon = tile:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(30, 30)
+        icon:SetPoint("LEFT", check, "RIGHT", 6, 0)
+        icon:SetTexture(spec.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+        local label = tile:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        label:SetPoint("LEFT", icon, "RIGHT", 10, 7)
+        label:SetText("|cffffffff" .. (spec.name or "?") .. "|r")
+        label:SetJustifyH("LEFT")
+
+        local ROLE_WORDS = {
+            TANK = L["ROLES_TANK"] or "Tank",
+            HEALER = L["ROLES_HEALER"] or "Healer",
+            DAMAGER = L["ROLES_DAMAGER"] or "Damage",
+        }
+        local desc = tile:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        desc:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -3)
+        desc:SetText("|cffaaaaaa" .. (ROLE_WORDS[spec.role] or "") .. "|r")
+        desc:SetJustifyH("LEFT")
+    end
+
     local infoBox1 = CreateBorderedFrame(frame)
     infoBox1:SetSize((colWidth * 2) + spacingX, 65)
-    infoBox1:SetPoint("TOP", groupRow, "BOTTOM", 0, -16)
+    infoBox1:SetPoint("TOP", roleRow, "BOTTOM", 0, -16)
     infoBox1:SetBackdropColor(0, 0, 0, 0.6)
     
     local icon1 = infoBox1:CreateTexture(nil, "ARTWORK")
