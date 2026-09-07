@@ -25,6 +25,15 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.59",
+        lines = {
+            { "ADDED",   "Potion and Trinket triggers: react when you drink a potion or one of your trinkets goes off, and pick exactly which ones count." },
+            { "ADDED",   "Every picked item gets its own sound and animation -- click an item and the Actions section edits that one." },
+            { "CHANGED", "Picked items are highlighted and refresh live, and a trinket you take off is dropped from the rule." },
+            { "FIXED",   "Macros on an action hub never showed their cooldown." },
+        },
+    },
+    {
         version = "2.3.58",
         lines = {
             { "ADDED",   "Restrict a trigger to specific specialisations, so a rule set up for healing stays quiet on your damage spec." },
