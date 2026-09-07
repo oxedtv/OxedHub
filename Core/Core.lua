@@ -2084,7 +2084,12 @@ function Core:OnSpellCastSucceeded(unit, castGUID, spellID)
     local wantsInterrupt = self:HasEnabledTrigger("INTERRUPT_USED")
     local wantsRaidTool = self:HasEnabledTrigger("RAID_TOOL")
     local wantsCDReady = self:HasEnabledTrigger("CD_READY")
-    if not wantsSpellcast and not wantsInterrupt and not wantsRaidTool and not wantsCDReady then
+    -- Potion and trinket rules feed off this same cast, so they have to keep
+    -- the function alive as well; without them in this gate a player whose only
+    -- rule is a potion would leave here before it could ever fire.
+    local wantsItem = self:HasEnabledTrigger("ITEM_TRINKET") or self:HasEnabledTrigger("ITEM_POTION")
+    if not wantsSpellcast and not wantsInterrupt and not wantsRaidTool
+        and not wantsCDReady and not wantsItem then
         return
     end
 
@@ -2202,6 +2207,26 @@ function Core:OnSpellCastSucceeded(unit, castGUID, spellID)
             spellName = castName,
             unit = unit,
         })
+    end
+
+    -- Potions and trinkets ride on the same cast.
+    --
+    -- Using an item casts a spell and the game announces the cast, not the
+    -- item; there is no "item used" event. Each of these rules resolves its own
+    -- item to a spell and compares, so all this has to do is pass the cast on.
+    --
+    -- Sent only for the player: a trinket going off on the target is not the
+    -- player's trinket.
+    if unit == "player" then
+        for _, itemEvent in ipairs({ "ITEM_TRINKET", "ITEM_POTION" }) do
+            if self:HasEnabledTrigger(itemEvent) then
+                OxedHub.Triggers:ProcessEvent(itemEvent, {
+                    spellID = spellID,
+                    spellName = castName,
+                    unit = unit,
+                })
+            end
+        end
     end
 end
 
@@ -2872,6 +2897,14 @@ function Core:HandleSlashCommand(msg)
     elseif command == "preview" or command == "animpreview" then
         if OxedHub.AnimationPreview then
             OxedHub.AnimationPreview:Toggle()
+        end
+    elseif command == "itemdebug" then
+        if OxedHub.Triggers and OxedHub.Triggers.DumpItemRule then
+            OxedHub.Triggers:DumpItemRule()
+        end
+    elseif command == "cddebug" then
+        if OxedHub.ActionHub and OxedHub.ActionHub.DumpCooldowns then
+            OxedHub.ActionHub:DumpCooldowns()
         end
     elseif command == "dupdebug" then
         if OxedHub.Triggers and OxedHub.Triggers.DumpSoundSignatures then

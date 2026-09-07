@@ -31,6 +31,39 @@ function Triggers:CreateActionsUI(frame, trigger)
         return iconFrame
     end
 
+    -- ── Which item these fields are editing ──────────────────────────────────
+    -- Potion and trinket rules can hold a different sound for each item they
+    -- watch. Rather than growing extra rows for each one, the item picked in
+    -- Conditions decides what this whole section is editing: choose a trinket
+    -- and these fields are that trinket's, choose the other and they are its.
+    --
+    -- The choice is not saved. It is a view of the rule, not part of it.
+    local function EditingItemID()
+        if trigger.event ~= "ITEM_TRINKET" and trigger.event ~= "ITEM_POTION" then return nil end
+        if not Triggers.GetTriggerItems then return nil end
+
+        local picked = Triggers:GetTriggerItems(trigger)
+        if #picked == 0 then return nil end
+
+        -- Default to the first, so the fields always belong to something rather
+        -- than silently editing a shared set nobody asked for.
+        local current = Triggers._editingItem and Triggers._editingItem[trigger.id]
+        for _, itemID in ipairs(picked) do
+            if itemID == current then return current end
+        end
+        return picked[1]
+    end
+
+    -- Turns a base action key into the one currently being edited.
+    local function ActionKey(base)
+        local itemID = EditingItemID()
+        if not itemID then return base end
+        local prefix = Triggers:GetItemActionPrefix(itemID)
+        -- "animation" becomes item123Anim, "sound" becomes item123Sound.
+        if base == "animation" then return prefix .. "Anim" end
+        return prefix .. base:gsub("^%l", string.upper)
+    end
+
     -- Sound picker button
     local soundIcon = CreateActionIcon(frame, "Interface\\Icons\\INV_Misc_Horn_01")
     frame.soundIcon = soundIcon
@@ -53,9 +86,10 @@ function Triggers:CreateActionsUI(frame, trigger)
     local function UpdateSoundButton()
         local text = L["NONE"] or "None"
         local fullName = L["NONE"] or "None"
-        if actions.sound and actions.sound ~= "" then
-            local soundData = OxedHub.db.profile.customSounds and OxedHub.db.profile.customSounds[actions.sound]
-            fullName = soundData and soundData.name or actions.sound
+        local soundVal = actions[ActionKey("sound")]
+        if soundVal and soundVal ~= "" then
+            local soundData = OxedHub.db.profile.customSounds and OxedHub.db.profile.customSounds[soundVal]
+            fullName = soundData and soundData.name or soundVal
             text = TruncateText(fullName, 20)
         end
         soundButton:SetText(text)
@@ -75,7 +109,7 @@ function Triggers:CreateActionsUI(frame, trigger)
         GameTooltip:Hide()
     end)
 
-    soundButton:SetScript("OnClick", function() Triggers:ShowSoundPicker(trigger) end)
+    soundButton:SetScript("OnClick", function() Triggers:ShowSoundPicker(trigger, ActionKey("sound")) end)
     frame.soundButton = soundButton
     yOffset = yOffset - 28
     
@@ -94,9 +128,10 @@ function Triggers:CreateActionsUI(frame, trigger)
     local function UpdateAnimButton()
         local text = L["NONE"] or "None"
         local fullName = L["NONE"] or "None"
-        if actions.animation then
-            local data = OxedHub.db.profile.animations and OxedHub.db.profile.animations[actions.animation]
-            fullName = data and data.name or actions.animation
+        local animVal = actions[ActionKey("animation")]
+        if animVal then
+            local data = OxedHub.db.profile.animations and OxedHub.db.profile.animations[animVal]
+            fullName = data and data.name or animVal
             text = TruncateText(fullName, 20)
         end
         animButton:SetText(text)
@@ -116,7 +151,7 @@ function Triggers:CreateActionsUI(frame, trigger)
         GameTooltip:Hide()
     end)
 
-    animButton:SetScript("OnClick", function() Triggers:ShowAnimationPicker(trigger) end)
+    animButton:SetScript("OnClick", function() Triggers:ShowAnimationPicker(trigger, ActionKey("animation")) end)
     frame.animButton = animButton
 
     -- Per-trigger animation placement. Without this the animation always uses
@@ -147,16 +182,23 @@ function Triggers:CreateActionsUI(frame, trigger)
     frame.animDisabledWarn = animDisabledWarn
 
     local function RefreshAnimPositionControls()
-        local hasAnim = actions.animation and actions.animation ~= "" and actions.animation ~= "None"
+        -- Through the key resolver, like the buttons above. Reading the plain
+        -- "animation" field left Custom Position greyed out on potion and
+        -- trinket rules even with an animation clearly chosen, because theirs
+        -- is stored per item.
+        local animKey = ActionKey("animation")
+        local animVal = actions[animKey]
+        local hasAnim = animVal and animVal ~= "" and animVal ~= "None"
 
         local animData = hasAnim and OxedHub.db.profile.animations
-            and OxedHub.db.profile.animations[actions.animation]
+            and OxedHub.db.profile.animations[animVal]
         animDisabledWarn:SetShown(animData ~= nil and not animData.enabled)
 
-        animPosCheck:SetChecked(actions.animationUseCustomPosition and true or false)
+        local posKey = animKey .. "UseCustomPosition"
+        animPosCheck:SetChecked(actions[posKey] and true or false)
         animPosCheck:SetEnabled(hasAnim)
         animPosCheck:SetAlpha(hasAnim and 1 or 0.4)
-        if hasAnim and actions.animationUseCustomPosition then
+        if hasAnim and actions[posKey] then
             animPosBtn:Enable()
             animPosBtn:SetAlpha(1)
         else
@@ -168,14 +210,14 @@ function Triggers:CreateActionsUI(frame, trigger)
     RefreshAnimPositionControls()
 
     animPosCheck:SetScript("OnClick", function(self)
-        actions.animationUseCustomPosition = self:GetChecked()
+        actions[ActionKey("animation") .. "UseCustomPosition"] = self:GetChecked()
         RefreshAnimPositionControls()
         if Triggers.ShowAutoSaved then Triggers.ShowAutoSaved(frame:GetParent()) end
     end)
 
     animPosBtn:SetScript("OnClick", function()
         if OxedHub.Animations and OxedHub.Animations.ShowPositionFrameForTrigger then
-            OxedHub.Animations:ShowPositionFrameForTrigger(trigger, "animation")
+            OxedHub.Animations:ShowPositionFrameForTrigger(trigger, ActionKey("animation"))
         end
     end)
 
@@ -1093,6 +1135,7 @@ function Triggers:CreateActionsUI(frame, trigger)
             {label = summonDeclinedChatLabel, btn = summonDeclinedChatButton},
             {label = nil, btn = cdAnimCheck},
         }
+
         local y = 0
         local spacing = 32
         
@@ -1119,10 +1162,18 @@ function Triggers:CreateActionsUI(frame, trigger)
                             item.inlineIcon.border:Show()
                             item.inlineIcon:ClearAllPoints()
                             item.inlineIcon:SetPoint("LEFT", item.btn, "RIGHT", 15, 0)
-                            item.inlineLabel:ClearAllPoints()
-                            item.inlineLabel:SetPoint("LEFT", item.inlineIcon, "RIGHT", 8, 0)
                             item.inlineBtn:ClearAllPoints()
-                            item.inlineBtn:SetPoint("LEFT", item.inlineIcon, "RIGHT", 45, 0)
+                            -- A label is optional here. The per-item rows name
+                            -- their action with an icon alone, and the button
+                            -- then sits against the icon rather than leaving a
+                            -- gap where a caption would have been.
+                            if item.inlineLabel then
+                                item.inlineLabel:ClearAllPoints()
+                                item.inlineLabel:SetPoint("LEFT", item.inlineIcon, "RIGHT", 8, 0)
+                                item.inlineBtn:SetPoint("LEFT", item.inlineIcon, "RIGHT", 45, 0)
+                            else
+                                item.inlineBtn:SetPoint("LEFT", item.inlineIcon, "RIGHT", 8, 0)
+                            end
                         else
                             item.inlineIcon:Hide()
                             item.inlineIcon.border:Hide()
@@ -1160,9 +1211,21 @@ function Triggers:CreateActionsUI(frame, trigger)
         local isSummon = (trigger.event == "SUMMON")
         local isPvP = (trigger.event == "PVP_ENEMY_BUFF" or trigger.event == "PVP_SELF_CC" or trigger.event == "PVP_HEALER_CC" or trigger.event == "PVP_TRINKET" or trigger.event == "PVP_CONSUMABLE")
 
-        iconLabel:Show(); iconCheck:Show()
+        -- Hidden on potion and trinket rules for now.
+        --
+        -- The icon action has not been checked against the per-item actions
+        -- these rules use, and an unverified control is worse than a missing
+        -- one. Delete this branch to bring it back once it has been tested.
+        local isItemRule = (trigger.event == "ITEM_TRINKET" or trigger.event == "ITEM_POTION")
+
+        iconLabel:SetShown(not isItemRule)
+        iconCheck:SetShown(not isItemRule)
+        -- The whole row goes together: leaving "Custom Position" and its
+        -- buttons behind would be an orphaned control with nothing above it.
+        if frame.iconPosCheck then frame.iconPosCheck:SetShown(not isItemRule) end
+        if frame.iconPosBtn then frame.iconPosBtn:SetShown(not isItemRule) end
         if frame.iconTexBtn then
-            frame.iconTexBtn:SetShown(not isPvP)
+            frame.iconTexBtn:SetShown(not isPvP and not isItemRule)
         end
 
         -- Enter/Exit Combat: the split sound+animation rows live here in Actions,

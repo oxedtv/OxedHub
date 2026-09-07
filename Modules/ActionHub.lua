@@ -681,6 +681,32 @@ local function UpdateChargeCount(btn, spellID, style)
     btn.chargeText:Show()
 end
 
+-- Declared here and defined further down: the cooldown dump below needs it, and
+-- a local is invisible to anything written above its definition.
+local GetSlotSpellID
+
+-- An item's own cooldown, falling back to the spell it casts.
+--
+-- Shared by item, toy and macro slots -- three callers that were about to have
+-- three copies of the same eight lines between them.
+local function ItemCooldown(itemID)
+    if not itemID then return nil, nil end
+
+    local getCooldown = C_Item and C_Item.GetItemCooldown or GetItemCooldown
+    local okItem, rawStart, rawDur = pcall(getCooldown, itemID)
+    if okItem then
+        local s, d = SafeNum(rawStart), SafeNum(rawDur)
+        -- Anything at or under the global cooldown is not worth a swirl.
+        if d and s and d > 1.5 and s > 0 then return s, d end
+    end
+
+    local _, spellID = GetItemSpell(itemID)
+    if spellID then
+        return SpellCooldown(spellID)
+    end
+    return nil, nil
+end
+
 local function GetSlotCooldown(slot)
     local ok, startTime, duration = pcall(function()
         if not slot then return nil, nil end
@@ -692,16 +718,37 @@ local function GetSlotCooldown(slot)
         end
 
         if slot.type == "toy" or slot.type == "item" then
-            local getCooldown = C_Item and C_Item.GetItemCooldown or GetItemCooldown
-            local okItem, rawStart, rawDur = pcall(getCooldown, id)
-            if okItem then
-                local s, d = SafeNum(rawStart), SafeNum(rawDur)
-                if d and s and d > 1.5 and s > 0 then return s, d end
-            end
+            return ItemCooldown(id)
+        end
 
-            local _, spellID = GetItemSpell(id)
+        -- A macro has no cooldown of its own; what it casts does.
+        --
+        -- Asked by name rather than by index: indices shift whenever a macro is
+        -- added or removed above this one, and the slot would then be reading a
+        -- different macro's cooldown -- or none, which is what was happening
+        -- here, since macros had no branch at all.
+        --
+        -- GetMacroSpell resolves the macro's conditionals as they stand right
+        -- now, so a [mod] or [spec] macro reports whatever it would actually
+        -- cast this second.
+        if slot.type == "macro" then
+            local key = slot.label
+            if not key or (GetMacroIndexByName and GetMacroIndexByName(key) == 0) then
+                key = id
+            end
+            if not key then return nil, nil end
+
+            local spellID = GetMacroSpell and GetMacroSpell(key)
             if spellID then
                 return SpellCooldown(spellID)
+            end
+
+            local _, itemLink = GetMacroItem and GetMacroItem(key)
+            if itemLink and GetItemInfoInstant then
+                local itemID = GetItemInfoInstant(itemLink)
+                if itemID then
+                    return ItemCooldown(itemID)
+                end
             end
             return nil, nil
         end
@@ -774,6 +821,24 @@ function ActionHub:DumpCooldowns()
                         line = line .. " | spell query failed"
                     end
                 end
+
+                -- Macros resolve through a chain of lookups, any link of which
+                -- can be the one returning nothing. Print every link.
+                if slot.type == "macro" then
+                    local byName = GetMacroIndexByName and GetMacroIndexByName(slot.label or "") or -1
+                    local mName, _, mBody = GetMacroInfo and GetMacroInfo(slot.id)
+                    local key = slot.label
+                    if not key or byName == 0 then key = slot.id end
+                    local mSpell = GetMacroSpell and GetMacroSpell(key)
+                    local mItemName, mItemLink = nil, nil
+                    if GetMacroItem then mItemName, mItemLink = GetMacroItem(key) end
+                    line = line .. ("\n      label=%s byName=%s infoName=%s key=%s macroSpell=%s macroItem=%s body=%s")
+                        :format(Raw(slot.label), Raw(byName), Raw(mName), Raw(key),
+                            Raw(mSpell), Raw(mItemName),
+                            Raw(mBody and mBody:gsub("\n", " | "):sub(1, 60)))
+                end
+
+                line = line .. (" | SLOTSPELL=%s"):format(Raw(GetSlotSpellID(slot)))
 
                 local rs, rd = GetSlotCooldown(slot)
                 line = line .. (" | RESULT start=%s dur=%s"):format(Raw(rs), Raw(rd))
@@ -950,7 +1015,7 @@ end
 local activeProcSpells = {}
 
 -- Which spell (if any) does this slot ultimately cast?
-local function GetSlotSpellID(slot)
+function GetSlotSpellID(slot)
     if not slot or not slot.id then return nil end
     local ok, spellID = pcall(function()
         if slot.type == "spell" then
@@ -967,6 +1032,38 @@ local function GetSlotSpellID(slot)
             local _, sid = GetItemSpell(slot.id)
             return sid
         end
+        -- A macro has no cooldown of its own; whatever it casts does. Without
+        -- this branch a macro node simply never painted a swirl, because this
+        -- is the function the painter asks for a spell.
+        --
+        -- Looked up by name, not by the stored index: indices shift as soon as
+        -- a macro above this one is added or deleted, and the node would then
+        -- be reading a different macro. GetMacroSpell also resolves the macro's
+        -- conditionals as they stand now, so a [mod] or [spec] macro reports
+        -- whatever it would actually cast this second.
+        if slot.type == "macro" then
+            local key = slot.label
+            if not key or (GetMacroIndexByName and GetMacroIndexByName(key) == 0) then
+                key = slot.id
+            end
+            if not key then return nil end
+
+            local sid = GetMacroSpell and GetMacroSpell(key)
+            if sid then return sid end
+
+            -- Item macros: a potion or a trinket has its cooldown on the spell
+            -- the item casts.
+            local _, itemLink = GetMacroItem and GetMacroItem(key)
+            if itemLink and GetItemInfoInstant then
+                local itemID = GetItemInfoInstant(itemLink)
+                if itemID then
+                    local _, itemSpell = GetItemSpell(itemID)
+                    return itemSpell
+                end
+            end
+            return nil
+        end
+
         if slot.type == "trigger" then
             local trg = OxedHub.db.profile.triggers[slot.id]
             if trg and OxedHub.Triggers and OxedHub.Triggers.GetTriggerCooldownSpellID then

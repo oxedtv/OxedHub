@@ -163,6 +163,25 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
         end
     end
 
+    -- Potion and trinket rules can give each chosen item its own sound. The
+    -- item that produced this cast decides which slot is used; an item left
+    -- empty falls back to the rule's plain actions, so filling in one item does
+    -- not silence the rest.
+    if trigger.event == "ITEM_TRINKET" or trigger.event == "ITEM_POTION" then
+        local itemID = Triggers.GetMatchedItemID and Triggers:GetMatchedItemID(trigger, eventData)
+        if itemID then
+            local prefix = Triggers:GetItemActionPrefix(itemID)
+            local itemSound = actions[prefix .. "Sound"]
+            local itemAnim = actions[prefix .. "Anim"]
+            if itemSound and itemSound ~= "" and itemSound ~= "None" then
+                soundKey = prefix .. "Sound"
+            end
+            if itemAnim and itemAnim ~= "" and itemAnim ~= "None" then
+                animKey = prefix .. "Anim"
+            end
+        end
+    end
+
     local canRunEffects = self:CanRunTriggerEffects(trigger, actions, soundKey, animKey, iconKey, chatMsgKey, skipChat)
     if OxedHub.debug then print("[OxedHub-Debug] canRunEffects:", canRunEffects, "sound:", actions[soundKey]) end
     

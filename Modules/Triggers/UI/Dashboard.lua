@@ -492,7 +492,25 @@ function Triggers:GetActionsSummary(trigger)
     if actions.cooldownAnimation then
         table.insert(parts, "CD")
     end
-    
+
+    -- Sounds and animations attached to one branch of a rule rather than to the
+    -- rule as a whole: a mount's ground/flying pair, a potion rule's per-item
+    -- slots. Without this a rule that only uses those reads as having no
+    -- actions at all, and the list dims it as a dead experiment.
+    if #parts == 0 then
+        for key, value in pairs(actions) do
+            if type(value) == "string" and value ~= "" and value ~= "None" then
+                if key:match("Sound$") then
+                    table.insert(parts, "S")
+                    break
+                elseif key:match("Anim$") or key:match("Animation$") then
+                    table.insert(parts, "A")
+                    break
+                end
+            end
+        end
+    end
+
     return table.concat(parts, "/")
 end
 
