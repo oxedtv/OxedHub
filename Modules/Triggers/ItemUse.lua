@@ -101,6 +101,15 @@ end
 -- Returns the item id so the actions can be chosen per item; nil when the rule
 -- watches everything of its kind, which is when the plain actions apply.
 function Triggers:GetMatchedItemID(trigger, eventData)
+    -- A proc names its item outright: there is no cast to work back from.
+    local direct = tonumber(eventData and eventData.itemID)
+    if direct then
+        for _, itemID in ipairs(self:GetTriggerItems(trigger)) do
+            if itemID == direct then return itemID end
+        end
+        return nil
+    end
+
     local castSpell = tonumber(eventData and eventData.spellID)
     if not castSpell then return nil end
 
@@ -138,13 +147,18 @@ end
 
 -- Shared matcher. eventData carries the spell that was cast.
 local function MatchesConfiguredItem(trigger, eventData, candidates)
+    local procItem = tonumber(eventData and eventData.itemID)
     local castSpell = tonumber(eventData and eventData.spellID)
-    if not castSpell then return false end
+    if not procItem and not castSpell then return false end
 
     local chosen = Triggers:GetTriggerItems(trigger)
     if #chosen > 0 then
         return Triggers:GetMatchedItemID(trigger, eventData) ~= nil
     end
+
+    -- A proc always comes from something the player has on, so with nothing
+    -- picked it counts on its own.
+    if procItem then return true end
 
     -- Nothing chosen: any of this kind counts.
     for _, entry in ipairs(candidates) do
@@ -463,8 +477,33 @@ local function BuildItemPicker(frame, trigger, yOffset, entries, emptyText, belo
         note:SetText(L["ITEMUSE_PICK_FIRST"]
             or "Pick an item above, then Actions below sets that item's sound and animation.")
     end
+    yOffset = yOffset - 24
 
-    return yOffset - 24
+    -- Say so when an equipped trinket can never fire this rule.
+    --
+    -- A trinket with no use effect is one you never press: it goes off on its
+    -- own, and the game tells an addon nothing when it does -- no cast, no
+    -- readable cooldown, and buffs are secret in this version. The rule is
+    -- silent for that trinket and always will be, so it is said here rather
+    -- than left to be reported as a bug.
+    if dropMissing then
+        for _, entry in ipairs(entries) do
+            if not entry.missing and not ItemSpellID(entry.itemID) then
+                local warn = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+                warn:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
+                warn:SetWidth(560)
+                warn:SetJustifyH("LEFT")
+                local itemName = (C_Item and C_Item.GetItemNameByID
+                    and C_Item.GetItemNameByID(entry.itemID)) or ("Item " .. entry.itemID)
+                warn:SetText(("|cffff8800%s|r %s"):format(itemName,
+                    L["ITEMUSE_PROC_ONLY"]
+                    or "has no button to press -- it fires on its own, and the game gives addons no way to see that, so this rule cannot react to it."))
+                yOffset = yOffset - 26
+            end
+        end
+    end
+
+    return yOffset
 end
 
 -- Print exactly what the rule holds, so the tiles and the caption can be
@@ -549,10 +588,131 @@ watcher:SetScript("OnEvent", function()
     end)
 end)
 
+-- ── Trinkets that go off by themselves ───────────────────────────────────────
+-- A proc trinket is never used, so it never casts anything, so the cast-based
+-- path above never sees it. Its effect just happens.
+--
+-- What it does leave behind is its own cooldown: the moment the effect lands
+-- the trinket goes on its internal cooldown, exactly as if it had been used.
+-- So a trinket that was ready one moment and is not the next has fired, and
+-- that is the signal watched here.
+--
+-- A trinket the player clicked also starts a cooldown, and that one has already
+-- been announced through the cast. Its spell is remembered for a moment so the
+-- same trinket is not reported twice.
+
+local PROC_MIN_COOLDOWN = 1.5   -- below this it is the global cooldown, not a proc
+
+local procWatcher = CreateFrame("Frame")
+local procState = {}            -- slot -> { itemID = , onCooldown = }
+local recentUse = {}            -- itemID -> time it was used by hand
+
+local function TrinketOnCooldown(itemID)
+    if not itemID then return false end
+    local getCooldown = C_Item and C_Item.GetItemCooldown or GetItemCooldown
+    local ok, rawStart, rawDuration = pcall(getCooldown, itemID)
+    if not ok then return false end
+    local startTime = tonumber(rawStart)
+    local duration = tonumber(rawDuration)
+    if not startTime or not duration then return false end
+    return startTime > 0 and duration > PROC_MIN_COOLDOWN
+end
+
+local function ScanTrinkets(announce)
+    local now = GetTime()
+
+    for _, slot in ipairs(TRINKET_SLOTS) do
+        local itemID = GetInventoryItemID("player", slot)
+        local state = procState[slot]
+
+        if not state or state.itemID ~= itemID then
+            -- A freshly equipped trinket starts from whatever it is doing now,
+            -- so putting one on while it is on cooldown is not read as a proc.
+            state = { itemID = itemID }
+            procState[slot] = state
+            state.onCooldown = TrinketOnCooldown(itemID)
+        else
+            local onCooldown = TrinketOnCooldown(itemID)
+            local started = onCooldown and not state.onCooldown
+            state.onCooldown = onCooldown
+
+            if started and announce and itemID then
+                local usedAt = recentUse[itemID]
+                if not usedAt or (now - usedAt) > 1 then
+                    OxedHub.Triggers:ProcessEvent("ITEM_TRINKET", {
+                        itemID = itemID,
+                        slot = slot,
+                        proc = true,
+                    })
+                end
+            end
+        end
+    end
+end
+
+procWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+procWatcher:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+procWatcher:RegisterEvent("BAG_UPDATE_COOLDOWN")
+procWatcher:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
+procWatcher:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+procWatcher:SetScript("OnEvent", function(_, event, _, _, spellID)
+    if event == "UNIT_SPELLCAST_SUCCEEDED" then
+        -- Note which trinket was used by hand, so its cooldown starting is not
+        -- also reported as a proc a fraction of a second later.
+        local cast = tonumber(spellID)
+        if cast then
+            for _, entry in ipairs(EquippedTrinkets()) do
+                if tonumber(ItemSpellID(entry.itemID)) == cast then
+                    recentUse[entry.itemID] = GetTime()
+                end
+            end
+        end
+        return
+    end
+
+    -- The cooldown events fire in bursts during combat. A trinket's cooldown
+    -- does not disappear between two of them, so a tenth of a second between
+    -- scans loses nothing and keeps this off the hot path.
+    local now = GetTime()
+    if event == "ACTIONBAR_UPDATE_COOLDOWN" or event == "BAG_UPDATE_COOLDOWN" then
+        if procWatcher.lastScan and (now - procWatcher.lastScan) < 0.1 then return end
+    end
+    procWatcher.lastScan = now
+
+    -- Nobody is listening: keep the state current but stay quiet, so enabling a
+    -- rule later does not fire on a cooldown that started before it existed.
+    local listening = OxedHub.Core and OxedHub.Core.HasEnabledTrigger
+        and OxedHub.Core:HasEnabledTrigger("ITEM_TRINKET")
+
+    ScanTrinkets(listening and event ~= "PLAYER_ENTERING_WORLD"
+        and event ~= "PLAYER_EQUIPMENT_CHANGED")
+end)
+
+-- Print what is actually readable about the equipped trinkets, so a silent
+-- rule can be told apart from one whose trinket the client never reports.
+function Triggers:DumpTrinketProcs()
+    print("|cff00ff00OxedHub procdebug:|r equipped trinkets")
+    for _, slot in ipairs(TRINKET_SLOTS) do
+        local itemID = GetInventoryItemID("player", slot)
+        if not itemID then
+            print(("  slot %d: empty"):format(slot))
+        else
+            local getCooldown = C_Item and C_Item.GetItemCooldown or GetItemCooldown
+            local ok, rawStart, rawDuration = pcall(getCooldown, itemID)
+            print(("  slot %d: item=%s useSpell=%s cd=%s/%s%s"):format(
+                slot, tostring(itemID), tostring(ItemSpellID(itemID)),
+                ok and tostring(rawStart) or "?", ok and tostring(rawDuration) or "?",
+                TrinketOnCooldown(itemID) and "  ON COOLDOWN" or ""))
+        end
+    end
+    print(("  listening=%s"):format(tostring(OxedHub.Core
+        and OxedHub.Core:HasEnabledTrigger("ITEM_TRINKET"))))
+end
+
 -- ── Registration ─────────────────────────────────────────────────────────────
 
 Triggers:RegisterEventType("ITEM_TRINKET", {
-    name = "Trinket Used",
+    name = "Trinket Used (on-use)",
     CheckCondition = function(trigger, eventData)
         return MatchesConfiguredItem(trigger, eventData, EquippedTrinkets())
     end,

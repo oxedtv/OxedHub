@@ -195,25 +195,9 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
             local soundPriority = tonumber(trigger.soundPriority) or 0
             OxedHub.Sounds:Play(soundVal, nil, soundPriority)
 
-            if (trigger.event == "UNIT_AURA" or trigger.event == "SELF_AURA" or trigger.event == "SPELL_PROC") and trigger.conditions and trigger.conditions.loopSound and eventData and not eventData.isLost then
-                local interval = tonumber(trigger.conditions.loopInterval) or 2
-                if interval > 0 then
-                    local spellID = eventData.spellID or eventData.spellName
-                    if spellID then
-                        Triggers.activeAuraLoops = Triggers.activeAuraLoops or {}
-                        local loopKey = Triggers:BuildAuraLoopKey(trigger.id, spellID)
-                        if Triggers.activeAuraLoops[loopKey] then
-                            Triggers.activeAuraLoops[loopKey]:Cancel()
-                        end
-                        Triggers.activeAuraLoops[loopKey] = C_Timer.NewTicker(interval, function()
-                            OxedHub.Sounds:Play(soundVal, nil, soundPriority)
-                        end)
-                    end
-                end
-            end
         end
     end
-    
+
     -- Play animation, honouring a per-trigger position when one was set with
     -- Move / Scale in the trigger's Actions section.
     local animVal = actions[animKey]
@@ -229,10 +213,165 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
                     displayHeight = actions[animKey .. "DisplayHeight"],
                 }
             end
-            OxedHub.Animations:Play(animVal, posData)
+            -- Not on top of a copy already showing. A buff refreshing arrives
+            -- as another gain, and the repeat may still have the last run on
+            -- screen; a second copy started here is what stacked them.
+            if not (OxedHub.Animations.IsPlaying
+                and OxedHub.Animations:IsPlaying(animVal)) then
+                OxedHub.Animations:Play(animVal, posData)
+            end
         end
     end
-    
+
+    -- Kept for loopdebug: says whether execution even reached the repeat, and
+    -- with what. The block below is guarded by four things at once, and from
+    -- outside there is no telling which of them said no.
+    Triggers._lastExecute = {
+        trigger = trigger.name,
+        event = trigger.event,
+        canRunEffects = canRunEffects and true or false,
+        isLost = (eventData and eventData.isLost) and true or false,
+        hasEventData = eventData ~= nil,
+        at = GetTime(),
+    }
+
+    -- Keep going while the buff is up.
+    --
+    -- One ticker for both effects rather than two: they share a stop -- the
+    -- aura being lost -- and the code that cancels them looks the loop up by a
+    -- single key. Two tickers under one key would leave whichever was stored
+    -- second running forever after the buff dropped.
+    if canRunEffects and eventData and not eventData.isLost
+        and (trigger.event == "UNIT_AURA" or trigger.event == "SELF_AURA"
+            or trigger.event == "SPELL_PROC") then
+        local conditions = trigger.conditions or {}
+        local loopSound = conditions.loopSound and soundVal and soundVal ~= "" and soundVal ~= "None"
+        local loopAnim = actions[animKey .. "LoopUntilLost"] and animVal and animVal ~= ""
+        local interval = tonumber(conditions.loopInterval) or 2
+        local spellID = eventData.spellID or eventData.spellName
+
+        -- Kept for loopdebug. Every one of these has to be true for a repeat to
+        -- start, and from the outside a repeat that never started looks exactly
+        -- like one that started and stopped.
+        Triggers._lastLoopAttempt = {
+            trigger = trigger.name,
+            animKey = animKey,
+            animVal = tostring(animVal),
+            loopAnim = loopAnim and true or false,
+            loopSound = loopSound and true or false,
+            interval = interval,
+            hasSpell = spellID ~= nil,
+            at = GetTime(),
+        }
+
+        if (loopSound or loopAnim) and interval > 0 and spellID then
+            local soundPriority = tonumber(trigger.soundPriority) or 0
+            local animPos
+            if actions[animKey .. "UseCustomPosition"] then
+                animPos = {
+                    useCustomPosition = true,
+                    x = actions[animKey .. "PositionX"] or 0,
+                    y = actions[animKey .. "PositionY"] or 200,
+                    displayWidth = actions[animKey .. "DisplayWidth"],
+                    displayHeight = actions[animKey .. "DisplayHeight"],
+                }
+            end
+
+            -- One loop per rule, whatever it was started by.
+            --
+            -- The key mixes in the spell, and the spell arrives as an id when
+            -- the aura lands but sometimes only as a name when it drops -- two
+            -- different keys for one aura, so the cancel missed and the ticker
+            -- was left running. Every new gain then added another, which is
+            -- both the stacking animations and the ones still playing long
+            -- after the buff was gone. Clearing by rule cannot miss.
+            Triggers:CancelTriggerLoops(trigger.id)
+            -- Fresh start, so the last stop reason belongs to the run that has
+            -- just ended, not to this one.
+            Triggers._lastLoopStop = nil
+
+            Triggers.activeAuraLoops = Triggers.activeAuraLoops or {}
+            Triggers.auraLoopByTrigger = Triggers.auraLoopByTrigger or {}
+            local loopKey = Triggers:BuildAuraLoopKey(trigger.id, spellID)
+
+            -- Only where the spell is genuinely a buff. A proc glow is not an
+            -- aura and never appears in the active set, so checking for it
+            -- there would cancel the loop on its first tick.
+            local watchedSpell = (trigger.event ~= "SPELL_PROC")
+                and tonumber(eventData.spellID) or nil
+            -- A repeat that outlives its buff is the worst failure here, so it
+            -- is given two ways to die that do not depend on an event arriving.
+            local startedAt = GetTime()
+            local ticker
+            -- Checked several times a second, not once per interval.
+            --
+            -- The interval belongs to the sound and says how often to repeat
+            -- it. Driving the animation off the same grid left a gap between
+            -- the end of one run and the next tick, which is the pause you see
+            -- as stuttering; here it simply starts again the moment the last
+            -- one has finished. Each check is a walk of a handful of pooled
+            -- frames, and only while a repeat is actually running.
+            local nextSoundAt = startedAt + interval
+            ticker = C_Timer.NewTicker(0.1, function()
+                -- No buff lasts an hour in a fight, and one that does is not
+                -- worth an animation every two seconds. Whatever went wrong
+                -- upstream, this ends it.
+                if (GetTime() - startedAt) > 300 then
+                    Triggers._lastLoopStop = "ran for five minutes"
+                    Triggers:CancelTriggerLoops(trigger.id)
+                    return
+                end
+
+                -- A backstop, not the normal way out.
+                --
+                -- The aura being lost is what stops this; the check below only
+                -- covers a lost event that never arrives. It was doing far more
+                -- than that: the set is keyed by the ids Core's scan produced,
+                -- the event can name the same aura by a different id, and the
+                -- set is only rebuilt when that scan runs -- so a healthy
+                -- repeat was cancelling itself on its very first tick.
+                --
+                -- Hence the delay and the emptiness test: it only speaks up
+                -- when it has been given time and has something to say.
+                if watchedSpell and (GetTime() - startedAt) > 10 then
+                    local active = OxedHub.Core and OxedHub.Core.activeSpellIDs
+                    if active and next(active) and not active[watchedSpell] then
+                        Triggers._lastLoopStop = "buff no longer in the active set"
+                        Triggers:CancelTriggerLoops(trigger.id)
+                        return
+                    end
+                end
+
+                if loopSound and OxedHub.Sounds and GetTime() >= nextSoundAt then
+                    nextSoundAt = GetTime() + interval
+                    OxedHub.Sounds:Play(soundVal, nil, soundPriority)
+                end
+                -- Straight after the last run ends, so the animation reads as
+                -- continuous. A check that lands while it is still playing does
+                -- nothing rather than stacking a second copy on top.
+                if loopAnim and OxedHub.Animations
+                    and not (OxedHub.Animations.IsPlaying
+                        and OxedHub.Animations:IsPlaying(animVal)) then
+                    OxedHub.Animations:Play(animVal, animPos)
+                end
+            end)
+
+            Triggers.activeAuraLoops[loopKey] = ticker
+            Triggers.auraLoopByTrigger[trigger.id] = {
+                ticker = ticker,
+                key = loopKey,
+                spellID = watchedSpell,
+                startedAt = startedAt,
+                interval = interval,
+                triggerName = trigger.name,
+                -- Only when the animation is the looping one. A one-shot
+                -- animation is meant to finish; cutting it off because some
+                -- other rule's buff dropped is not what was asked for.
+                animation = loopAnim and animVal or nil,
+            }
+        end
+    end
+
     -- Play Icon
     if canRunEffects and actions.showIcon then
         if OxedHub.Icons then

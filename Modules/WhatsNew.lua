@@ -25,6 +25,14 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.60",
+        lines = {
+            { "ADDED",   "Repeat while buff is up: an aura trigger can keep its animation running for as long as the buff lasts, and it disappears the moment the buff does." },
+            { "CHANGED", "A buff refreshing itself no longer restarts the animation, so something you keep topped up plays continuously." },
+            { "CHANGED", "Trinket Used is now Trinket Used (on-use), and a trinket that fires on its own says so: the game reports nothing an addon can react to." },
+        },
+    },
+    {
         version = "2.3.59",
         lines = {
             { "ADDED",   "Potion and Trinket triggers: react when you drink a potion or one of your trinkets goes off, and pick exactly which ones count." },

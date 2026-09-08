@@ -2902,6 +2902,14 @@ function Core:HandleSlashCommand(msg)
         if OxedHub.Triggers and OxedHub.Triggers.DumpItemRule then
             OxedHub.Triggers:DumpItemRule()
         end
+    elseif command == "loopdebug" then
+        if OxedHub.Triggers and OxedHub.Triggers.DumpLoops then
+            OxedHub.Triggers:DumpLoops()
+        end
+    elseif command == "procdebug" then
+        if OxedHub.Triggers and OxedHub.Triggers.DumpTrinketProcs then
+            OxedHub.Triggers:DumpTrinketProcs()
+        end
     elseif command == "cddebug" then
         if OxedHub.ActionHub and OxedHub.ActionHub.DumpCooldowns then
             OxedHub.ActionHub:DumpCooldowns()

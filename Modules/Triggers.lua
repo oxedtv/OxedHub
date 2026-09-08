@@ -775,19 +775,181 @@ function Triggers:BuildAuraLoopKey(triggerId, spellID)
     return tostring(triggerId) .. "_" .. part
 end
 
+-- Stop a rule's repeat, whichever spell started it.
+--
+-- Cancelling by key alone was unreliable: the key carries the spell, and the
+-- same aura reaches us as an id on the way in and sometimes only as a name on
+-- the way out, so the cancel looked under a key nothing was stored at. A rule
+-- only ever has one repeat running, so the rule is the safe thing to key on.
+-- keepAnimation is for a refresh: the buff was reapplied rather than lost, the
+-- loop is only being restarted on the new duration, and whatever is on screen
+-- should carry straight on. Clearing it there would make every refresh blink.
+function Triggers:CancelTriggerLoops(triggerId, keepAnimation)
+    local entry = self.auraLoopByTrigger and self.auraLoopByTrigger[triggerId]
+    if entry then
+        -- Recorded for loopdebug. A repeat that ends too early and one that was
+        -- never started look the same afterwards; this says which happened.
+        self._lastLoopStop = self._lastLoopStop
+            or "cancelled -- aura lost, or the rule fired again"
+        self._lastLoopStopAt = GetTime()
+
+        if entry.ticker then entry.ticker:Cancel() end
+
+        -- Take the animation off the screen with it.
+        --
+        -- The buff is what the animation was saying is up, so letting the
+        -- current run play itself out leaves it saying so for another second
+        -- or two after it stopped being true.
+        if not keepAnimation and entry.animation
+            and OxedHub.Animations and OxedHub.Animations.Stop then
+            OxedHub.Animations:Stop(entry.animation)
+        end
+        if entry.key and self.activeAuraLoops then
+            self.activeAuraLoops[entry.key] = nil
+        end
+        self.auraLoopByTrigger[triggerId] = nil
+    end
+end
+
+-- What is repeating right now, and whether its buff is still up.
+--
+-- A repeat still playing after the buff has gone can fail in three different
+-- places -- the lost event never arrived, it arrived naming the spell in a form
+-- the loop was not stored under, or the aura set the ticker checks is not being
+-- refreshed. They look identical on screen; this tells them apart.
+function Triggers:DumpLoops()
+    print("|cff00ff00OxedHub loopdebug:|r")
+    local any = false
+    for triggerId, entry in pairs(self.auraLoopByTrigger or {}) do
+        any = true
+        local active = OxedHub.Core and OxedHub.Core.activeSpellIDs
+        local present = "unknown"
+        if entry.spellID and active then
+            present = active[entry.spellID] and "YES" or "|cffff5555NO -- should have stopped|r"
+        elseif not entry.spellID then
+            present = "not checked (no numeric spell id)"
+        end
+        print(("  %s  spell=%s  buff up: %s"):format(
+            tostring(entry.triggerName or triggerId), tostring(entry.spellID), present))
+        print(("    animation=%s  interval=%ss  running for %.0fs"):format(
+            tostring(entry.animation), tostring(entry.interval),
+            GetTime() - (entry.startedAt or GetTime())))
+    end
+    if not any then print("  no repeats running.") end
+
+    local stuck = 0
+    for _ in pairs(self.activeAuraLoops or {}) do stuck = stuck + 1 end
+    print(("  tickers held by key: %d  (should match the count above)"):format(stuck))
+
+    -- What the open rule actually stored. "No repeats running" has two very
+    -- different causes -- the repeat stopped, or it was never asked for -- and
+    -- the settings are what tells them apart.
+    local id = self.selectedTriggerId
+    local trigger = id and OxedHub.db and OxedHub.db.profile
+        and OxedHub.db.profile.triggers and OxedHub.db.profile.triggers[id]
+    if trigger then
+        local actions = trigger.actions or {}
+        local conditions = trigger.conditions or {}
+        print(("  open rule: %s  event=%s"):format(tostring(trigger.name), tostring(trigger.event)))
+        print(("    animation=%s  animationLoopUntilLost=%s"):format(
+            tostring(actions.animation), tostring(actions.animationLoopUntilLost)))
+        print(("    loopSound=%s  loopInterval=%s"):format(
+            tostring(conditions.loopSound), tostring(conditions.loopInterval)))
+        for key, value in pairs(actions) do
+            if tostring(key):find("Loop") then
+                print(("    action key holding a loop setting: %s = %s"):format(
+                    tostring(key), tostring(value)))
+            end
+        end
+    else
+        print("  no rule open -- open the trigger's page and run this again.")
+    end
+
+    local exec = self._lastExecute
+    if exec then
+        print(("  last fire: %s  event=%s  %.0fs ago"):format(
+            tostring(exec.trigger), tostring(exec.event), GetTime() - exec.at))
+        print(("    canRunEffects=%s  hasEventData=%s  isLost=%s"):format(
+            tostring(exec.canRunEffects), tostring(exec.hasEventData), tostring(exec.isLost)))
+    else
+        print("  |cffff5555nothing has fired since login|r -- the repeat is not the part failing.")
+    end
+
+    if self._lastLoopStop then
+        print(("    last repeat stopped: %s%s"):format(self._lastLoopStop,
+            self._lastLoopStopAt and ((" (%.0fs ago)"):format(GetTime() - self._lastLoopStopAt)) or ""))
+    end
+
+    local attempt = self._lastLoopAttempt
+    if attempt then
+        print(("    animKey=%s  animation=%s"):format(
+            tostring(attempt.animKey), tostring(attempt.animVal)))
+        print(("    loopAnim=%s  loopSound=%s  interval=%s  spell present=%s"):format(
+            tostring(attempt.loopAnim), tostring(attempt.loopSound),
+            tostring(attempt.interval), tostring(attempt.hasSpell)))
+    else
+        print("    |cffff5555the repeat block was never reached|r -- one of the four checks above said no.")
+    end
+end
+
 -- Process event and execute matching triggers
 function Triggers:ProcessEvent(eventType, eventData)
     local profile = OxedHub.db.profile
     
-    if eventType == "UNIT_AURA" and eventData and eventData.isLost and self.activeAuraLoops then
+    if eventType == "UNIT_AURA" and eventData and eventData.isLost then
         for id, trigger in pairs(profile.triggers) do
             if trigger.event == "UNIT_AURA" or trigger.event == "SELF_AURA" then
                 local spellID = eventData.spellID or eventData.spellName
-                if spellID then
+                -- The aura this rule's repeat was started by has gone, so the
+                -- repeat goes with it -- but only on a positive match.
+                --
+                -- This used to cancel whenever the two could not be compared,
+                -- on the reasoning that a missed stop is worse than an early
+                -- one. It is not: auras drop constantly in a fight, plenty of
+                -- them arrive without a usable id, and every one of those was
+                -- killing every running repeat within a second of it starting.
+                -- An unmatched loss is left to the aura-lost handler for its own
+                -- rule and to the backstop inside the ticker.
+                --
+                -- Not straight away, either. A buff refreshing is reported as
+                -- the old one going and a new one arriving, so a loss is not
+                -- proof the buff is gone -- and acting on it immediately was
+                -- killing the repeat in the same instant the refresh created
+                -- it. The stop waits a moment and then only goes through if
+                -- nothing has re-armed the repeat and the buff really is away.
+                local entry = self.auraLoopByTrigger and self.auraLoopByTrigger[id]
+                local lost = tonumber(eventData.spellID)
+                if entry and lost and entry.spellID == lost then
+                    local triggerId, watched = id, entry
+                    C_Timer.After(0.15, function()
+                        local current = self.auraLoopByTrigger and self.auraLoopByTrigger[triggerId]
+                        if current ~= watched then return end  -- a refresh replaced it
+
+                        local active = OxedHub.Core and OxedHub.Core.activeSpellIDs
+                        if active and next(active) and active[lost] then
+                            return  -- still up: that loss was a refresh
+                        end
+
+                        self._lastLoopStop = "aura lost"
+                        self:CancelTriggerLoops(triggerId)
+                    end)
+                end
+                -- The older path, kept only for a stray ticker with no rule
+                -- record behind it. Anything with a record goes through the
+                -- deferred stop above instead -- cancelling here as well would
+                -- undo the refresh check by taking the ticker out immediately.
+                if spellID and self.activeAuraLoops
+                    and not (self.auraLoopByTrigger and self.auraLoopByTrigger[id]) then
                     local loopKey = self:BuildAuraLoopKey(id, spellID)
                     if self.activeAuraLoops[loopKey] then
                         self.activeAuraLoops[loopKey]:Cancel()
                         self.activeAuraLoops[loopKey] = nil
+                        -- Clear the rule's record with it, or the repeat shows
+                        -- as running when its ticker is already gone.
+                        if self.auraLoopByTrigger and self.auraLoopByTrigger[id]
+                            and self.auraLoopByTrigger[id].key == loopKey then
+                            self.auraLoopByTrigger[id] = nil
+                        end
                     end
                 end
             end

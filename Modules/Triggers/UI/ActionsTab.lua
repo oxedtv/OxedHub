@@ -170,6 +170,31 @@ function Triggers:CreateActionsUI(frame, trigger)
     animPosBtn:SetNormalFontObject("GameFontNormalSmall")
     frame.animPosBtn = animPosBtn
 
+    -- Keep the animation going for as long as the buff is up.
+    --
+    -- Sits beside Custom Position rather than in Conditions with the sound's
+    -- own loop box: this is something the animation does, and looking for it
+    -- two sections away from the animation itself is where nobody looks.
+    --
+    -- Only where the addon can tell when the buff ends -- the aura events. On
+    -- anything else there is no end to wait for, so the box would promise
+    -- something that could not be delivered.
+    local animLoopCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
+    animLoopCheck:SetSize(20, 20)
+    animLoopCheck:SetPoint("LEFT", animPosBtn, "RIGHT", 10, 0)
+    animLoopCheck.text:SetText(L["LBL_ANIM_LOOP"] or "Repeat while buff is up")
+    frame.animLoopCheck = animLoopCheck
+
+    animLoopCheck:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L["LBL_ANIM_LOOP"] or "Repeat while buff is up")
+        GameTooltip:AddLine(L["LBL_ANIM_LOOP_DESC"]
+            or "Plays the animation again every few seconds until the buff drops. Uses the same interval as the looping sound.",
+            1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    animLoopCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
     -- An animation that's switched off in the Animations tab is skipped by
     -- Animations:Play, so a trigger can point at one and silently do nothing.
     -- Warn instead of leaving the user guessing.
@@ -194,6 +219,16 @@ function Triggers:CreateActionsUI(frame, trigger)
             and OxedHub.db.profile.animations[animVal]
         animDisabledWarn:SetShown(animData ~= nil and not animData.enabled)
 
+        -- The events whose buff the addon can actually watch expire.
+        local canLoop = trigger.event == "UNIT_AURA" or trigger.event == "SELF_AURA"
+            or trigger.event == "SPELL_PROC"
+        animLoopCheck:SetShown(canLoop)
+        if canLoop then
+            animLoopCheck:SetChecked(actions[animKey .. "LoopUntilLost"] and true or false)
+            animLoopCheck:SetEnabled(hasAnim)
+            animLoopCheck:SetAlpha(hasAnim and 1 or 0.4)
+        end
+
         local posKey = animKey .. "UseCustomPosition"
         animPosCheck:SetChecked(actions[posKey] and true or false)
         animPosCheck:SetEnabled(hasAnim)
@@ -212,6 +247,11 @@ function Triggers:CreateActionsUI(frame, trigger)
     animPosCheck:SetScript("OnClick", function(self)
         actions[ActionKey("animation") .. "UseCustomPosition"] = self:GetChecked()
         RefreshAnimPositionControls()
+        if Triggers.ShowAutoSaved then Triggers.ShowAutoSaved(frame:GetParent()) end
+    end)
+
+    animLoopCheck:SetScript("OnClick", function(self)
+        actions[ActionKey("animation") .. "LoopUntilLost"] = self:GetChecked() or nil
         if Triggers.ShowAutoSaved then Triggers.ShowAutoSaved(frame:GetParent()) end
     end)
 

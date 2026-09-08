@@ -2,7 +2,7 @@ local addonName, OxedHub = ...
 
 -- Configuration and Constants
 OxedHub.CONFIG = {
-    VERSION = "2.3.59",
+    VERSION = "2.3.60",
     DB_VERSION = 1,
 
     -- Shown in the Export/Import "About" panel. Edit freely.
@@ -37,7 +37,7 @@ OxedHub.CONFIG = {
         { value = "SPELL_PROC", label = "Spell Proc Glow (by Spell ID)", desc = "Fires when a spell's proc/activation glow appears on your bar (e.g. Sudden Doom lighting up Death Coil). Uses the game's proc-glow event, so it works IN COMBAT.", category = "advanced" },
         { value = "UNIT_SPELLCAST_SUCCEEDED", label = "Spell Cast Success", desc = "When you successfully cast a spell (e.g., Sprint, Hearthstone, Portals)", category = "advanced" },
         { value = "UNIT_SPELLCAST_START", label = "Spell Cast Start", desc = "The moment you BEGIN casting, not when it lands -- use this to call something out while the cast bar is still running (e.g. Mass Resurrection). Only works for spells with a cast time or a channel; instants have no start to announce.", category = "advanced" },
-        { value = "ITEM_TRINKET", label = "Trinket Used", desc = "When one of your equipped trinkets goes off. Pick a specific trinket, or leave it unpicked to react to either of them.", category = "advanced" },
+        { value = "ITEM_TRINKET", label = "Trinket Used (on-use)", desc = "When you press one of your equipped trinkets. Pick a specific trinket, or leave it unpicked to react to either of them.\n\nOnly trinkets you click. A trinket that goes off by itself cannot be detected: it casts nothing, its cooldown is not readable, and this game version does not let an addon read your buffs at all -- so nothing reaches the addon to react to.", category = "advanced" },
         { value = "ITEM_POTION", label = "Potion Used", desc = "When you drink a potion, flask or elixir. Pick a specific one from your bags, or leave it unpicked to react to any.", category = "advanced" },
 
         -- Basic Triggers

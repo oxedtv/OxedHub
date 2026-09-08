@@ -203,6 +203,8 @@ Triggers:RegisterEventType("TEST_ICON_AURA", {
 local testAuraPresent = {}
 
 local function CancelLoop(triggerId, trigger)
+    -- By rule first: that one cannot miss, whatever form the spell arrived in.
+    if Triggers.CancelTriggerLoops then Triggers:CancelTriggerLoops(triggerId) end
     if not Triggers.activeAuraLoops then return end
     local targetIcons = GetConfiguredIconIDs(trigger)
     for _, iconID in ipairs(targetIcons) do

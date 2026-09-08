@@ -2615,12 +2615,39 @@ function Animations:PlayAnimationDirect(animData)
     end, maxLoops * maxFrames)
 end
 
+-- Is this animation on screen right now?
+--
+-- Asked before a repeat starts another run. A looping trigger fires on a fixed
+-- interval, and an animation longer than that interval was being started again
+-- while the previous copy was still playing, stacking them down the screen.
+--
+-- Read from the frame pool rather than kept as a flag: the pool is what
+-- actually holds a playing animation, and a flag would drift the moment a run
+-- ended any way other than the one that set it.
+function Animations:IsPlaying(animationIdOrName)
+    if not animationIdOrName or not self.animationPool then return false end
+    for _, frame in ipairs(self.animationPool) do
+        if frame.isActive and frame.animData then
+            if frame.animData.id == animationIdOrName
+                or frame.animData.name == animationIdOrName then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 -- Stop animation
+--
+-- Matches the name as well as the id, because a trigger stores whichever of the
+-- two the player picked with, and a repeat that has to be cut short knows only
+-- what the trigger stored.
 function Animations:Stop(id)
     -- Release all active animation frames matching this id
     if self.animationPool then
         for _, frame in ipairs(self.animationPool) do
-            if frame.isActive and frame.animData and frame.animData.id == id then
+            if frame.isActive and frame.animData
+                and (frame.animData.id == id or frame.animData.name == id) then
                 self:ReleaseAnimationFrame(frame)
             end
         end

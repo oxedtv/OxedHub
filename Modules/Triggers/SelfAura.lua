@@ -186,6 +186,8 @@ Triggers:RegisterEventType("SELF_AURA", {
 local selfAuraPresent = {}
 
 local function CancelLoop(triggerId, trigger)
+    -- By rule first: that one cannot miss, whatever form the spell arrived in.
+    if Triggers.CancelTriggerLoops then Triggers:CancelTriggerLoops(triggerId) end
     if not Triggers.activeAuraLoops then return end
     for _, sid in ipairs(GetConfiguredSpellIDs(trigger)) do
         local key = Triggers:BuildAuraLoopKey(triggerId, sid)
