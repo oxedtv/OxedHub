@@ -369,6 +369,30 @@ function Toys:GetOrCreateToyboxFrame()
     end
 
     function f:Minimize()
+        -- The dock holds secure toy buttons, so hiding it in combat is a
+        -- protected action and the client refuses it: the frame stayed on
+        -- screen and the log got a blocked action. Remembered and done the
+        -- moment combat ends instead.
+        if InCombatLockdown() then
+            if not self.minimizeWhenSafe then
+                -- Said out loud, or the button looks broken: clicking it in
+                -- combat did nothing at all and gave no reason.
+                print("|cff00ff00OxedHub:|r the toy dock will minimise when you leave combat.")
+            end
+            self.minimizeWhenSafe = true
+            if not self.combatWatcher then
+                self.combatWatcher = CreateFrame("Frame")
+                self.combatWatcher:RegisterEvent("PLAYER_REGEN_ENABLED")
+                self.combatWatcher:SetScript("OnEvent", function()
+                    if f.minimizeWhenSafe then
+                        f.minimizeWhenSafe = nil
+                        f:Minimize()
+                    end
+                end)
+            end
+            return
+        end
+
         self:Hide()
         local profile = OxedHub.db and OxedHub.db.profile
         if profile then

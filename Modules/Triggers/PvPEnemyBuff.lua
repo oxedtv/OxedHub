@@ -62,6 +62,13 @@ end
 ---@param channel string    Audio channel ("Master", "SFX", etc.)
 ---@return number|nil       The handle ID, or nil on failure
 local function AddOneAuraSound(unitToken, spellID, soundFile, channel)
+    -- The client may refuse this outright, and this watcher registers one sound
+    -- per spell per unit -- hundreds of calls on entering an arena, each one a
+    -- blocked action in the log. Ask once whether it is allowed at all.
+    if Triggers.IsSelfAuraNativeBlocked and Triggers:IsSelfAuraNativeBlocked() then
+        return nil
+    end
+
     local trigger = Enum.UnitAuraSoundTrigger.Added
     local info = {
         unitToken = unitToken,
@@ -69,11 +76,25 @@ local function AddOneAuraSound(unitToken, spellID, soundFile, channel)
         soundFileName = soundFile,
         outputChannel = channel or "Master",
     }
+
+    -- A refusal cannot be read from the return value: the action is blocked and
+    -- a handle comes back regardless. The addon's blocked-action count across
+    -- the call is the only honest answer.
+    local journal = OxedHub.ErrorJournal
+    local blocksBefore = (journal and journal.blockedCount) or 0
+
     local handle = C_UnitAuras.AddAuraSound(trigger, info)
-    if handle then
-        return handle
+
+    if journal and (journal.blockedCount or 0) > blocksBefore then
+        -- Remembered account-wide, so the rest of this registration pass and
+        -- every later one stop before making the same call again.
+        if Triggers.MarkNativeAuraSoundBlocked then
+            Triggers:MarkNativeAuraSoundBlocked()
+        end
+        return nil
     end
-    return nil
+
+    return handle
 end
 
 --- Remove a single AddAuraSound registration by handle.
@@ -180,6 +201,11 @@ local function RegisterToken(unitToken, spellDB, configuredSounds, channel, disa
 
     local handles = {}
     for spellID, val in pairs(spellDB) do
+        -- Stop the moment the client says no. Without this the loop carried on
+        -- through every remaining spell, asking a question already answered.
+        if Triggers.IsSelfAuraNativeBlocked and Triggers:IsSelfAuraNativeBlocked() then
+            break
+        end
         if val and not disabledSpells[tostring(spellID)] then
             for _, soundPath in ipairs(configuredSounds) do
                 local handle = AddOneAuraSound(unitToken, spellID, soundPath, channel)

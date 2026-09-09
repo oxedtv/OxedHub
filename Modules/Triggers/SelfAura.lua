@@ -368,6 +368,20 @@ function Triggers:IsSelfAuraNativeBlocked()
     return nativeSoundUnavailable
 end
 
+-- Shared with anything else that registers a native aura sound.
+--
+-- Whether the client allows AddAuraSound is a property of the client, not of
+-- the feature asking, so the answer learned here holds everywhere. The enemy
+-- buff watcher had its own copy of the registration and none of this, and it
+-- logged thirty-seven thousand blocked calls over six days -- one per spell,
+-- per unit token, on every arena and target change.
+function Triggers:MarkNativeAuraSoundBlocked()
+    LoadNativeBlockedState()
+    if nativeSoundUnavailable then return end
+    nativeSoundUnavailable = true
+    SaveNativeBlockedState()
+end
+
 
 local function UnregisterNativeEffects()
     for i = #nativeSoundHandles, 1, -1 do
