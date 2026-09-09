@@ -651,14 +651,18 @@ local function AnimFileExists(path)
     return _fileTestTex:GetTexture() ~= nil
 end
 
--- Resolve an animation file: searched in OxedHub_MemePack first, then OxedHub_CustomMedia, then default.
+-- Resolve an animation file: searched in OxedHub_MemePack / OxedHub_GamingPack first, then OxedHub_CustomMedia, then default.
 local function ResolveAnimationPath(filename)
     if not filename or filename == "" then return "" end
     if filename:find("\\") then return filename end  -- Full path provided, use as-is
     local meme = "Interface\\AddOns\\OxedHub_MemePack\\Animations\\" .. filename
     if AnimFileExists(meme) then return meme end
+    local gaming = "Interface\\AddOns\\OxedHub_GamingPack\\Animations\\" .. filename
+    if AnimFileExists(gaming) then return gaming end
     local memeRoot = "Interface\\AddOns\\OxedHub_MemePack\\" .. filename
     if AnimFileExists(memeRoot) then return memeRoot end
+    local gamingRoot = "Interface\\AddOns\\OxedHub_GamingPack\\" .. filename
+    if AnimFileExists(gamingRoot) then return gamingRoot end
     local custom = "Interface\\AddOns\\OxedHub_CustomMedia\\" .. filename
     if AnimFileExists(custom) then return custom end
     return "Interface\\AddOns\\OxedHub\\Media\\Animations\\" .. filename
@@ -669,62 +673,76 @@ function Animations:SyncMemePack()
     if not profile then return end
     profile.animations = profile.animations or {}
 
-    local manifest = _G["OxedHubMemePack"] or _G["OxedHubTikTokPack"]
-    if type(manifest) == "table" and type(manifest.Animations) == "table" and #manifest.Animations > 0 then
-        for _, animData in ipairs(manifest.Animations) do
-            if type(animData) == "table" then
-                local id = animData.id or (animData.name and ("meme_" .. animData.name:lower():gsub("[^a-z0-9_]", "_")))
-                if id then
-                    local filename = animData.file or animData.tgaPath or ""
-                    local tgaPath = animData.tgaPath
-                    if not tgaPath or tgaPath == "" then
-                        if filename:find("\\") then
-                            tgaPath = filename
-                        else
-                            tgaPath = "Interface\\AddOns\\OxedHub_MemePack\\Animations\\" .. filename
+    local packs = {
+        { global = "OxedHubMemePack", folder = "OxedHub_MemePack", flag = "autoImportedFromMemePack", idPrefix = "meme_" },
+        { global = "OxedHubGamingPack", folder = "OxedHub_GamingPack", flag = "autoImportedFromGamingPack", idPrefix = "gaming_" },
+        { global = "OxedHubTikTokPack", folder = "OxedHub_TikTokPack", flag = "autoImportedFromTikTokPack", idPrefix = "tiktok_" },
+    }
+
+    local activePacks = {}
+    for _, pack in ipairs(packs) do
+        local manifest = _G[pack.global]
+        if type(manifest) == "table" and type(manifest.Animations) == "table" and #manifest.Animations > 0 then
+            activePacks[pack.flag] = true
+            for _, animData in ipairs(manifest.Animations) do
+                if type(animData) == "table" then
+                    local id = animData.id or (animData.name and (pack.idPrefix .. animData.name:lower():gsub("[^a-z0-9_]", "_")))
+                    if id then
+                        local filename = animData.file or animData.tgaPath or ""
+                        local tgaPath = animData.tgaPath
+                        if not tgaPath or tgaPath == "" then
+                            if filename:find("\\") then
+                                tgaPath = filename
+                            else
+                                tgaPath = "Interface\\AddOns\\" .. pack.folder .. "\\Animations\\" .. filename
+                            end
                         end
-                    end
 
-                    local cols = tonumber(animData.cols or animData.columns) or 1
-                    local rows = tonumber(animData.rows) or 1
-                    local frameCount = tonumber(animData.frameCount) or (cols * rows)
-                    local playSeq = animData.playSequence
+                        local cols = tonumber(animData.cols or animData.columns) or 1
+                        local rows = tonumber(animData.rows) or 1
+                        local frameCount = tonumber(animData.frameCount) or (cols * rows)
+                        local playSeq = animData.playSequence
 
-                    -- If frameCount was specified (e.g. 154) but no explicit playSequence, generate 0..frameCount-1
-                    if not playSeq and frameCount < (cols * rows) then
-                        playSeq = {}
-                        for f = 0, frameCount - 1 do
-                            table.insert(playSeq, f)
+                        -- If frameCount was specified (e.g. 154) but no explicit playSequence, generate 0..frameCount-1
+                        if not playSeq and frameCount < (cols * rows) then
+                            playSeq = {}
+                            for f = 0, frameCount - 1 do
+                                table.insert(playSeq, f)
+                            end
                         end
-                    end
 
-                    local existing = profile.animations[id]
-                    profile.animations[id] = {
-                        name = animData.name or id,
-                        tgaPath = tgaPath,
-                        width = (existing and existing.width) or tonumber(animData.width) or 72,
-                        height = (existing and existing.height) or tonumber(animData.height) or 128,
-                        frameCount = frameCount,
-                        columns = cols,
-                        rows = rows,
-                        aspectRatio = animData.aspectRatio or (existing and existing.aspectRatio) or "9:16",
-                        fps = (existing and existing.fps) or tonumber(animData.fps) or 24,
-                        loopCount = (existing and existing.loopCount) or animData.loop or animData.loopCount or 1,
-                        playSequence = (existing and existing.playSequence) or playSeq,
-                        autoImportedFromMemePack = true,
-                        enabled = (existing and existing.enabled ~= nil) and existing.enabled or true,
-                        useCustomPosition = (existing and existing.useCustomPosition ~= nil) and existing.useCustomPosition or false,
-                        customPositionX = (existing and existing.customPositionX) or 0,
-                        customPositionY = (existing and existing.customPositionY) or 200,
-                    }
+                        local existing = profile.animations[id]
+                        profile.animations[id] = {
+                            name = animData.name or id,
+                            tgaPath = tgaPath,
+                            width = (existing and existing.width) or tonumber(animData.width) or 72,
+                            height = (existing and existing.height) or tonumber(animData.height) or 128,
+                            frameCount = frameCount,
+                            columns = cols,
+                            rows = rows,
+                            aspectRatio = animData.aspectRatio or (existing and existing.aspectRatio) or "9:16",
+                            fps = (existing and existing.fps) or tonumber(animData.fps) or 24,
+                            loopCount = (existing and existing.loopCount) or animData.loop or animData.loopCount or 1,
+                            playSequence = (existing and existing.playSequence) or playSeq,
+                            [pack.flag] = true,
+                            enabled = (existing and existing.enabled ~= nil) and existing.enabled or true,
+                            useCustomPosition = (existing and existing.useCustomPosition ~= nil) and existing.useCustomPosition or false,
+                            customPositionX = (existing and existing.customPositionX) or 0,
+                            customPositionY = (existing and existing.customPositionY) or 200,
+                        }
+                    end
                 end
             end
         end
-    else
-        -- Clean up any MemePack auto-imported animations if the pack is not installed
-        for id, anim in pairs(profile.animations) do
-            if type(anim) == "table" and (anim.autoImportedFromMemePack or anim.autoImportedFromTikTokPack) then
-                profile.animations[id] = nil
+    end
+
+    -- Clean up any uninstalled pack auto-imported animations
+    for id, anim in pairs(profile.animations) do
+        if type(anim) == "table" then
+            for _, pack in ipairs(packs) do
+                if anim[pack.flag] and not activePacks[pack.flag] then
+                    profile.animations[id] = nil
+                end
             end
         end
     end
@@ -1879,6 +1897,9 @@ function Animations:ShowUI(parent)
     if type(_G["OxedHubMemePack"]) == "table" or type(_G["OxedHubTikTokPack"]) == "table" then
         table.insert(filterOptions, { key = "meme", name = L["ANIM_FILTER_MEME"] or "Meme Pack" })
     end
+    if type(_G["OxedHubGamingPack"]) == "table" then
+        table.insert(filterOptions, { key = "gaming", name = L["ANIM_FILTER_GAMING"] or "Gaming Pack" })
+    end
     table.insert(filterOptions, { key = "users", name = L["ANIM_FILTER_USERS"] or "Users" })
 
     local function IsFilterSelected(key)
@@ -1940,6 +1961,9 @@ end
 function Animations:GetAnimationCategory(id, anim)
     if anim.autoImportedFromMemePack or anim.autoImportedFromTikTokPack then
         return "meme"
+    end
+    if anim.autoImportedFromGamingPack then
+        return "gaming"
     end
     if anim.isBuiltIn then
         local path = anim.tgaPath or ""

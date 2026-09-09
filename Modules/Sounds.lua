@@ -194,36 +194,50 @@ function Sounds:SyncMemePack()
     local catalog = OxedHub.GENERATED_SOUND_CATALOG
     if not catalog then return end
 
-    local manifest = _G["OxedHubMemePack"] or _G["OxedHubTikTokPack"]
-    if type(manifest) == "table" and type(manifest.Sounds) == "table" and #manifest.Sounds > 0 then
-        for _, soundData in ipairs(manifest.Sounds) do
-            if type(soundData) == "table" then
-                local id = soundData.id or (soundData.name and ("meme_" .. soundData.name:lower():gsub("[^a-z0-9_]", "_")))
-                if id then
-                    local filename = soundData.file or soundData.filePath or ""
-                    local filePath = soundData.filePath
-                    if not filePath or filePath == "" then
-                        if filename:find("\\") then
-                            filePath = filename
-                        else
-                            filePath = "Interface\\AddOns\\OxedHub_MemePack\\Sounds\\" .. filename
-                        end
-                    end
+    local packs = {
+        { global = "OxedHubMemePack", folder = "OxedHub_MemePack", flag = "isMemePack", category = "Meme Pack", idPrefix = "meme_" },
+        { global = "OxedHubGamingPack", folder = "OxedHub_GamingPack", flag = "isGamingPack", category = "Gaming Pack", idPrefix = "gaming_" },
+        { global = "OxedHubTikTokPack", folder = "OxedHub_TikTokPack", flag = "isTikTokPack", category = "TikTok Pack", idPrefix = "tiktok_" },
+    }
 
-                    catalog[id] = {
-                        name = soundData.name or id,
-                        filePath = filePath,
-                        category = soundData.category or "Meme",
-                        isMemePack = true,
-                    }
+    local activePacks = {}
+    for _, pack in ipairs(packs) do
+        local manifest = _G[pack.global]
+        if type(manifest) == "table" and type(manifest.Sounds) == "table" and #manifest.Sounds > 0 then
+            activePacks[pack.flag] = true
+            for _, soundData in ipairs(manifest.Sounds) do
+                if type(soundData) == "table" then
+                    local id = soundData.id or (soundData.name and (pack.idPrefix .. soundData.name:lower():gsub("[^a-z0-9_]", "_")))
+                    if id then
+                        local filename = soundData.file or soundData.filePath or ""
+                        local filePath = soundData.filePath
+                        if not filePath or filePath == "" then
+                            if filename:find("\\") then
+                                filePath = filename
+                            else
+                                filePath = "Interface\\AddOns\\" .. pack.folder .. "\\Sounds\\" .. filename
+                            end
+                        end
+
+                        catalog[id] = {
+                            name = soundData.name or id,
+                            filePath = filePath,
+                            category = soundData.category or pack.category,
+                            [pack.flag] = true,
+                        }
+                    end
                 end
             end
         end
-    else
-        -- Clean up Meme catalog entries if pack is not installed
-        for id, sound in pairs(catalog) do
-            if type(sound) == "table" and (sound.isMemePack or sound.isTikTokPack) then
-                catalog[id] = nil
+    end
+
+    -- Clean up catalog entries for uninstalled packs
+    for id, sound in pairs(catalog) do
+        if type(sound) == "table" then
+            for _, pack in ipairs(packs) do
+                if sound[pack.flag] and not activePacks[pack.flag] then
+                    catalog[id] = nil
+                end
             end
         end
     end

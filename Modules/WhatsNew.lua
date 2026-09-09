@@ -25,6 +25,16 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.63",
+        important = true,
+        lines = {
+            { "ADDED",   "OxedHub Gaming Pack is out: a second pack of sounds and animations to sit alongside the Meme Pack. Both are on the front page, click either logo for its CurseForge link." },
+            { "ADDED",   "An animation can now run for as long as the buff lasts instead of playing once -- tick Repeat while buff is up beside the animation." },
+            { "CHANGED", "A buff that keeps refreshing itself plays continuously, and the animation clears the instant the buff drops." },
+            { "CHANGED", "The front page now lists what actually changed in the latest releases, rather than features from long ago." },
+        },
+    },
+    {
         version = "2.3.60",
         lines = {
             { "ADDED",   "Repeat while buff is up: an aura trigger can keep its animation running for as long as the buff lasts, and it disappears the moment the buff does." },

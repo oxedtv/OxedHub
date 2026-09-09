@@ -1209,12 +1209,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.60)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.63)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.60")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.63")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1223,13 +1223,69 @@ function UI:CreateDashboardTab()
     relSubtitle:SetTextColor(0.22, 0.18, 0.17, 1)
     relSubtitle:SetText(L["RELEASE_SUBTITLE"] or "What's New in this Update")
 
+    -- One dialog for both packs.
+    --
+    -- There are two of them now, and a second copy of the same twenty lines is
+    -- how the two links end up disagreeing after somebody edits one of them.
+    local PACKS = {
+        meme = {
+            title = "OxedHub Meme Pack",
+            url = "https://www.curseforge.com/wow/addons/oxed-hub-meme-pack",
+            texture = "Interface\\AddOns\\OxedHub\\Media\\Textures\\logo\\OxedHubMemePack.png",
+        },
+        gaming = {
+            title = "OxedHub Gaming Pack",
+            url = "https://www.curseforge.com/wow/addons/oxedhub-gaming-pack",
+            texture = "Interface\\AddOns\\OxedHub\\Media\\Textures\\logo\\OxedHubGamingPack.png",
+        },
+    }
+
+    local function ShowPackLink(which)
+        local pack = PACKS[which]
+        if not pack then return end
+
+        if not StaticPopupDialogs["OXEDHUB_PACK_URL"] then
+            StaticPopupDialogs["OXEDHUB_PACK_URL"] = {
+                text = "Copy the CurseForge link (Ctrl+C):",
+                button1 = "Done",
+                hasEditBox = true,
+                EditBoxOnEscapePressed = function(dialog)
+                    dialog:GetParent():Hide()
+                end,
+                timeout = 0,
+                whileDead = true,
+                hideOnEscape = true,
+                preferredIndex = 3,
+            }
+        end
+
+        local dialog = StaticPopup_Show("OXEDHUB_PACK_URL")
+        if dialog then
+            -- Filled in here rather than in OnShow: the dialog is shared, so
+            -- which pack was clicked is known at this point and nowhere else.
+            if dialog.text then
+                dialog.text:SetText("Copy the " .. pack.title .. " link (Ctrl+C):")
+            end
+            if dialog.EditBox then
+                dialog.EditBox:SetText(pack.url)
+                dialog.EditBox:HighlightText()
+                dialog.EditBox:SetFocus()
+            end
+        end
+    end
+
+    -- The newest releases, not a standing feature list.
+    --
+    -- This is the first thing anybody sees on opening the addon, and it was
+    -- describing features that shipped many versions ago -- so an update
+    -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  Macro Helper: templates, conditions & commands inserted straight into your macro.",
-        "•  Prey Hunt Tracker (Beta / Test Mode): on-screen HUD bar & Blizzard widget mover.",
-        "•  Anti-AFK Tracker (Beta / Test Mode): on-screen timers & customizable sound alerts.",
-        "•  Disenchant Insight (Basic Trigger): Tooltip advice, expected value vs vendor & AH prices!",
-        "•  ToyBoxes: Custom boxes, on-screen floating dock, random hearthstones & quick mixer.",
-        "•  Click buttons to quickly setup triggers, copy Meme Pack link, or open ToyBoxes:",
+        "•  NEW Gaming Pack: a second sound & animation pack, alongside the Meme Pack.",
+        "•  Animations can now run for as long as the buff lasts, instead of playing once.",
+        "•  A buff that refreshes itself keeps its animation going, and it clears the moment the buff drops.",
+        "•  Potion and Trinket triggers: pick which ones count, each with its own sound and animation.",
+        "•  Trigger history, undo for a deleted trigger, and backups before an import overwrites a profile.",
+        "•  Grab either pack from CurseForge:",
     }
 
     local listPanel = CreateFrame("Frame", nil, card1)
@@ -1246,106 +1302,54 @@ function UI:CreateDashboardTab()
         lineFS:SetShadowOffset(0, 0) -- Remove default shadow to prevent blurry/double text effect
         
         if idx == 6 then
-            -- Setup Disenchant Insight Trigger Button
-            local setupInsightBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
-            setupInsightBtn:SetSize(115, 22)
-            setupInsightBtn:SetPoint("LEFT", listPanel, "TOPLEFT", 14, -((idx) * 32) + 2)
-            setupInsightBtn:SetText("Setup Disenchant")
-            setupInsightBtn:SetNormalFontObject("GameFontNormalSmall")
-            setupInsightBtn:SetScript("OnClick", function()
-                local trigger = OxedHub.Triggers:CreateNewTrigger()
-                trigger.name = "Disenchant Insight"
-                trigger.event = "SHATTERSIGHT"
-                trigger.conditions = { enableTooltip = true, showBreakdown = true, autoScan = true }
-                OxedHub.Triggers.selectedTriggerId = trigger.id
-                OxedHub.Triggers:RefreshTriggersList()
-                OxedHub.UI:ShowTab("Triggers")
-            end)
-
-            -- Meme Pack Link Button
             local memeLinkBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
             memeLinkBtn:SetSize(115, 22)
-            memeLinkBtn:SetPoint("LEFT", setupInsightBtn, "RIGHT", 8, 0)
+            memeLinkBtn:SetPoint("LEFT", listPanel, "TOPLEFT", 14, -((idx) * 32) + 2)
             memeLinkBtn:SetText("Meme Pack Link")
             memeLinkBtn:SetNormalFontObject("GameFontNormalSmall")
-            memeLinkBtn:SetScript("OnClick", function()
-                if not StaticPopupDialogs["OXEDHUB_MEMEPACK_URL"] then
-                    StaticPopupDialogs["OXEDHUB_MEMEPACK_URL"] = {
-                        text = "Copy CurseForge Meme Pack link (Ctrl+C):",
-                        button1 = "Done",
-                        hasEditBox = true,
-                        OnShow = function(dialog)
-                            dialog.EditBox:SetText("https://www.curseforge.com/wow/addons/oxed-hub-meme-pack")
-                            dialog.EditBox:HighlightText()
-                            dialog.EditBox:SetFocus()
-                        end,
-                        EditBoxOnEscapePressed = function(dialog)
-                            dialog:GetParent():Hide()
-                        end,
-                        timeout = 0,
-                        whileDead = true,
-                        hideOnEscape = true,
-                        preferredIndex = 3,
-                    }
-                end
-                StaticPopup_Show("OXEDHUB_MEMEPACK_URL")
-            end)
+            memeLinkBtn:SetScript("OnClick", function() ShowPackLink("meme") end)
 
-            -- Open ToyBox Button
-            local toyBoxBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
-            toyBoxBtn:SetSize(105, 22)
-            toyBoxBtn:SetPoint("LEFT", memeLinkBtn, "RIGHT", 8, 0)
-            toyBoxBtn:SetText("Open ToyBox")
-            toyBoxBtn:SetNormalFontObject("GameFontNormalSmall")
-            toyBoxBtn:SetScript("OnClick", function()
-                OxedHub.UI:ShowTab("Toys")
-                -- Was calling Toys:SwitchSubTab, which does not exist -- the
-                -- guard made it a silent no-op, so this only ever opened the
-                -- Toys tab on whatever sub-tab happened to be active.
-                OxedHub.UI:ShowToysSubTab("ToyBoxes")
-            end)
+            local gamingLinkBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
+            gamingLinkBtn:SetSize(125, 22)
+            gamingLinkBtn:SetPoint("LEFT", memeLinkBtn, "RIGHT", 8, 0)
+            gamingLinkBtn:SetText("Gaming Pack Link")
+            gamingLinkBtn:SetNormalFontObject("GameFontNormalSmall")
+            gamingLinkBtn:SetScript("OnClick", function() ShowPackLink("gaming") end)
         end
     end
 
-    local memePackBtn = CreateFrame("Button", nil, card1)
-    memePackBtn:SetSize(220, 220)
-    memePackBtn:SetPoint("RIGHT", card1, "RIGHT", -60, -10)
-    
-    local memePackImg = memePackBtn:CreateTexture(nil, "ARTWORK")
-    memePackImg:SetAllPoints()
-    memePackImg:SetTexture("Interface\\AddOns\\OxedHub\\Media\\Textures\\logo\\OxedHubMemePack.png")
-    
-    memePackBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine("OxedHub Meme Pack", 1, 0.82, 0)
-        GameTooltip:AddLine("Click to copy CurseForge link", 1, 1, 1)
-        GameTooltip:Show()
-    end)
-    memePackBtn:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-    memePackBtn:SetScript("OnClick", function()
-        if not StaticPopupDialogs["OXEDHUB_MEMEPACK_URL"] then
-            StaticPopupDialogs["OXEDHUB_MEMEPACK_URL"] = {
-                text = "Copy CurseForge Meme Pack link (Ctrl+C):",
-                button1 = "Done",
-                hasEditBox = true,
-                OnShow = function(dialog)
-                    dialog.EditBox:SetText("https://www.curseforge.com/wow/addons/oxed-hub-meme-pack")
-                    dialog.EditBox:HighlightText()
-                    dialog.EditBox:SetFocus()
-                end,
-                EditBoxOnEscapePressed = function(dialog)
-                    dialog:GetParent():Hide()
-                end,
-                timeout = 0,
-                whileDead = true,
-                hideOnEscape = true,
-                preferredIndex = 3,
-            }
+    -- Both packs on show, side by side.
+    --
+    -- Only the Meme Pack had artwork here, so the Gaming Pack existed for
+    -- anybody who happened to read the line about it. Two logos is the whole
+    -- announcement.
+    local packArt = { { key = "gaming" }, { key = "meme" } }
+    local previousArt
+    for _, art in ipairs(packArt) do
+        local pack = PACKS[art.key]
+
+        local packBtn = CreateFrame("Button", nil, card1)
+        packBtn:SetSize(165, 165)
+        if previousArt then
+            packBtn:SetPoint("RIGHT", previousArt, "LEFT", -6, 0)
+        else
+            packBtn:SetPoint("RIGHT", card1, "RIGHT", -40, -10)
         end
-        StaticPopup_Show("OXEDHUB_MEMEPACK_URL")
-    end)
+        previousArt = packBtn
+
+        local packImg = packBtn:CreateTexture(nil, "ARTWORK")
+        packImg:SetAllPoints()
+        packImg:SetTexture(pack.texture)
+
+        packBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine(pack.title, 1, 0.82, 0)
+            GameTooltip:AddLine("Click to copy CurseForge link", 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        packBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        packBtn:SetScript("OnClick", function() ShowPackLink(art.key) end)
+    end
 
     -- ───────────────────────────────────────────────────────────────
     -- CARD 2: CHARACTER SHOWCASE

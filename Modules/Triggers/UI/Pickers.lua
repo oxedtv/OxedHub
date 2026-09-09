@@ -397,6 +397,7 @@ function Triggers:RefreshPickerList(picker, actionType)
             "Worrier Pack",
             "Death",
             "Effects",
+            "Gaming Pack",
             "Meme",
             "Legions",
             "Quote",
@@ -814,6 +815,9 @@ function Triggers:CreateGenericPicker(name, titleText, actionType)
         }
         if type(_G["OxedHubMemePack"]) == "table" or type(_G["OxedHubTikTokPack"]) == "table" then
             table.insert(filterOptions, { key = "meme", name = L["ANIM_FILTER_MEME"] or "Meme Pack" })
+        end
+        if type(_G["OxedHubGamingPack"]) == "table" then
+            table.insert(filterOptions, { key = "gaming", name = L["ANIM_FILTER_GAMING"] or "Gaming Pack" })
         end
         table.insert(filterOptions, { key = "users", name = L["ANIM_FILTER_USERS"] or "Users" })
 
