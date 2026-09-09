@@ -25,6 +25,14 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.64",
+        lines = {
+            { "FIXED",   "A huge pile of blocked-action errors in the log: the enemy buff watcher kept asking the client to register a sound it will not allow, once per spell per unit, on every arena and target change. It now asks once and remembers the answer." },
+            { "FIXED",   "Minimising the toy dock during combat did nothing and logged an error. It now minimises the moment combat ends, and says so." },
+            { "CHANGED", "What's New shows both packs, and the front page carries the Gaming Pack link." },
+        },
+    },
+    {
         version = "2.3.63",
         important = true,
         lines = {
