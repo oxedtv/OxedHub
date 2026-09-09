@@ -1288,10 +1288,8 @@ function UI:CreateDashboardTab()
         "•  Grab either pack from CurseForge:",
     }
 
-    -- Narrower than the card: the two pack logos sit to the right, and at the
-    -- old width the lines ran under them.
     local listPanel = CreateFrame("Frame", nil, card1)
-    listPanel:SetSize(560, 200)
+    listPanel:SetSize(620, 200)
     listPanel:SetPoint("TOPLEFT", card1, "TOPLEFT", 45, -70)
 
     for idx, lineText in ipairs(relLines) do
@@ -1320,38 +1318,26 @@ function UI:CreateDashboardTab()
         end
     end
 
-    -- Both packs on show, side by side.
-    --
-    -- Only the Meme Pack had artwork here, so the Gaming Pack existed for
-    -- anybody who happened to read the line about it. Two logos is the whole
-    -- announcement.
-    local packArt = { { key = "gaming" }, { key = "meme" } }
-    local previousArt
-    for _, art in ipairs(packArt) do
-        local pack = PACKS[art.key]
+    -- The new pack, on its own. This card announces what has just come out, and
+    -- the Meme Pack is not that; it keeps its own panel in What's New.
+    local gamingPack = PACKS.gaming
 
-        local packBtn = CreateFrame("Button", nil, card1)
-        packBtn:SetSize(150, 150)
-        if previousArt then
-            packBtn:SetPoint("RIGHT", previousArt, "LEFT", -6, 0)
-        else
-            packBtn:SetPoint("RIGHT", card1, "RIGHT", -40, -10)
-        end
-        previousArt = packBtn
+    local packBtn = CreateFrame("Button", nil, card1)
+    packBtn:SetSize(220, 220)
+    packBtn:SetPoint("RIGHT", card1, "RIGHT", -60, -10)
 
-        local packImg = packBtn:CreateTexture(nil, "ARTWORK")
-        packImg:SetAllPoints()
-        packImg:SetTexture(pack.texture)
+    local packImg = packBtn:CreateTexture(nil, "ARTWORK")
+    packImg:SetAllPoints()
+    packImg:SetTexture(gamingPack.texture)
 
-        packBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine(pack.title, 1, 0.82, 0)
-            GameTooltip:AddLine("Click to copy CurseForge link", 1, 1, 1)
-            GameTooltip:Show()
-        end)
-        packBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        packBtn:SetScript("OnClick", function() ShowPackLink(art.key) end)
-    end
+    packBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine(gamingPack.title, 1, 0.82, 0)
+        GameTooltip:AddLine("Click to copy CurseForge link", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    packBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    packBtn:SetScript("OnClick", function() ShowPackLink("gaming") end)
 
     -- ───────────────────────────────────────────────────────────────
     -- CARD 2: CHARACTER SHOWCASE
