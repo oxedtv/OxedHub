@@ -1288,8 +1288,10 @@ function UI:CreateDashboardTab()
         "•  Grab either pack from CurseForge:",
     }
 
+    -- Narrower than the card: the two pack logos sit to the right, and at the
+    -- old width the lines ran under them.
     local listPanel = CreateFrame("Frame", nil, card1)
-    listPanel:SetSize(620, 200)
+    listPanel:SetSize(560, 200)
     listPanel:SetPoint("TOPLEFT", card1, "TOPLEFT", 45, -70)
 
     for idx, lineText in ipairs(relLines) do
@@ -1329,7 +1331,7 @@ function UI:CreateDashboardTab()
         local pack = PACKS[art.key]
 
         local packBtn = CreateFrame("Button", nil, card1)
-        packBtn:SetSize(165, 165)
+        packBtn:SetSize(150, 150)
         if previousArt then
             packBtn:SetPoint("RIGHT", previousArt, "LEFT", -6, 0)
         else

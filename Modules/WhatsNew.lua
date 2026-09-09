@@ -264,6 +264,30 @@ local LOGO_TEXTURE = "Interface\\AddOns\\OxedHub\\Media\\Textures\\logo\\128.png
 local MEMEPACK_TEXTURE = "Interface\\AddOns\\OxedHub\\Media\\Textures\\logo\\OxedHubMemePack.png"
 local MEMEPACK_URL = "https://www.curseforge.com/wow/addons/oxed-hub-meme-pack"
 
+-- Both packs, in the order they came out. Described in a table because the
+-- panel below is now built twice, and two hand-written copies of it is how the
+-- second one ends up with the first one's link.
+local PACKS = {
+    {
+        key = "meme",
+        title = "Oxed Hub Meme Pack",
+        texture = MEMEPACK_TEXTURE,
+        url = MEMEPACK_URL,
+        button = "Get the Meme Pack",
+        body = "Updated 2-3 times a week with new animations and sounds. "
+            .. "Install it alongside Oxed Hub and everything new shows up in your pickers automatically.",
+    },
+    {
+        key = "gaming",
+        title = "Oxed Hub Gaming Pack",
+        texture = "Interface\\AddOns\\OxedHub\\Media\\Textures\\logo\\OxedHubGamingPack.png",
+        url = "https://www.curseforge.com/wow/addons/oxedhub-gaming-pack",
+        button = "Get the Gaming Pack",
+        body = "Sounds and animations from the games everyone knows. "
+            .. "A separate pack, installed the same way, and it fills the same pickers.",
+    },
+}
+
 -- A thin gold rule, used to separate the header and the footer from the notes.
 local function AddDivider(parent)
     local line = parent:CreateTexture(nil, "ARTWORK")
@@ -302,6 +326,23 @@ local function BuildWindow()
     logo:SetPoint("TOP", f, "TOP", 0, -30)
     logo:SetTexture(LOGO_TEXTURE)
 
+    -- The packs flanking the addon's own mark.
+    --
+    -- There are three things a player can install now, and the header showed
+    -- one of them. Small, and to the sides, so the heading below still reads
+    -- as the title of the window rather than competing with them.
+    local packMarks = { PACKS[1], PACKS[2] }
+    for index, pack in ipairs(packMarks) do
+        local mark = f:CreateTexture(nil, "ARTWORK")
+        mark:SetSize(62, 62)
+        if index == 1 then
+            mark:SetPoint("RIGHT", logo, "LEFT", -10, 0)
+        else
+            mark:SetPoint("LEFT", logo, "RIGHT", 10, 0)
+        end
+        mark:SetTexture(pack.texture)
+    end
+
     local heading = f:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
     heading:SetPoint("TOP", logo, "BOTTOM", 0, -6)
     heading:SetText("What's New")
@@ -337,68 +378,71 @@ local function BuildWindow()
     scroll:SetScrollChild(content)
     f.content = content
 
-    -- ── Meme Pack panel ──────────────────────────────────────────────────
-    -- Inside the scroll child rather than pinned to the window, so it sits
-    -- after the notes instead of stealing the space they need.
-    local promo = CreateFrame("Frame", nil, content, "BackdropTemplate")
-    promo:SetWidth(524)
-    promo:SetBackdrop({
-        bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 12, edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    promo:SetBackdropColor(0.06, 0.05, 0.03, 0.85)
-    promo:SetBackdropBorderColor(1, 0.82, 0, 0.35)
+    -- ── Pack panels ──────────────────────────────────────────────────────
+    -- One per pack, built from the table above. Inside the scroll child rather
+    -- than pinned to the window, so they sit after the notes instead of
+    -- stealing the space the notes need.
+    f.promos = {}
+    for _, pack in ipairs(PACKS) do
+        local promo = CreateFrame("Frame", nil, content, "BackdropTemplate")
+        promo:SetWidth(524)
+        promo:SetBackdrop({
+            bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 12, edgeSize = 12,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        promo:SetBackdropColor(0.06, 0.05, 0.03, 0.85)
+        promo:SetBackdropBorderColor(1, 0.82, 0, 0.35)
 
-    local packLogo = promo:CreateTexture(nil, "ARTWORK")
-    packLogo:SetSize(64, 64)
-    packLogo:SetPoint("TOPLEFT", promo, "TOPLEFT", 12, -12)
-    packLogo:SetTexture(MEMEPACK_TEXTURE)
+        local packLogo = promo:CreateTexture(nil, "ARTWORK")
+        packLogo:SetSize(64, 64)
+        packLogo:SetPoint("TOPLEFT", promo, "TOPLEFT", 12, -12)
+        packLogo:SetTexture(pack.texture)
 
-    local packTitle = promo:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    packTitle:SetPoint("TOPLEFT", packLogo, "TOPRIGHT", 12, -2)
-    packTitle:SetText("Oxed Hub Meme Pack")
-    packTitle:SetTextColor(1, 0.82, 0, 1)
+        local packTitle = promo:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        packTitle:SetPoint("TOPLEFT", packLogo, "TOPRIGHT", 12, -2)
+        packTitle:SetText(pack.title)
+        packTitle:SetTextColor(1, 0.82, 0, 1)
 
-    local packBody = promo:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    packBody:SetPoint("TOPLEFT", packTitle, "BOTTOMLEFT", 0, -6)
-    packBody:SetWidth(410)
-    packBody:SetJustifyH("LEFT")
-    packBody:SetText("Updated 2-3 times a week with new animations and sounds. "
-        .. "Install it alongside Oxed Hub and everything new shows up in your pickers automatically.")
+        local packBody = promo:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        packBody:SetPoint("TOPLEFT", packTitle, "BOTTOMLEFT", 0, -6)
+        packBody:SetWidth(410)
+        packBody:SetJustifyH("LEFT")
+        packBody:SetText(pack.body)
 
-    local packBtn = CreateFrame("Button", nil, promo, "UIPanelButtonTemplate")
-    packBtn:SetSize(150, 22)
-    packBtn:SetPoint("TOPLEFT", packBody, "BOTTOMLEFT", 0, -8)
-    packBtn:SetText("Get the Meme Pack")
-    packBtn:SetNormalFontObject("GameFontNormalSmall")
-    packBtn:SetScript("OnClick", function()
-        StaticPopupDialogs["OXEDHUB_WHATSNEW_MEMEPACK_URL"] = {
-            text = "Copy the Meme Pack link (Ctrl+C):",
-            button1 = "Done",
-            hasEditBox = true,
-            OnShow = function(dialog)
-                dialog.EditBox:SetText(MEMEPACK_URL)
-                dialog.EditBox:HighlightText()
-                dialog.EditBox:SetFocus()
-            end,
-            EditBoxOnEscapePressed = function(dialog) dialog:GetParent():Hide() end,
-            timeout = 0,
-            whileDead = true,
-            hideOnEscape = true,
-            preferredIndex = 3,
-        }
-        StaticPopup_Show("OXEDHUB_WHATSNEW_MEMEPACK_URL")
-    end)
+        local packBtn = CreateFrame("Button", nil, promo, "UIPanelButtonTemplate")
+        packBtn:SetSize(150, 22)
+        packBtn:SetPoint("TOPLEFT", packBody, "BOTTOMLEFT", 0, -8)
+        packBtn:SetText(pack.button)
+        packBtn:SetNormalFontObject("GameFontNormalSmall")
+        packBtn:SetScript("OnClick", function()
+            StaticPopupDialogs["OXEDHUB_WHATSNEW_PACK_URL"] = {
+                text = "Copy the " .. pack.title .. " link (Ctrl+C):",
+                button1 = "Done",
+                hasEditBox = true,
+                OnShow = function(dialog)
+                    dialog.EditBox:SetText(pack.url)
+                    dialog.EditBox:HighlightText()
+                    dialog.EditBox:SetFocus()
+                end,
+                EditBoxOnEscapePressed = function(dialog) dialog:GetParent():Hide() end,
+                timeout = 0,
+                whileDead = true,
+                hideOnEscape = true,
+                preferredIndex = 3,
+            }
+            StaticPopup_Show("OXEDHUB_WHATSNEW_PACK_URL")
+        end)
 
-    -- Height is set in RenderReleases, once the body text has wrapped and its
-    -- real height is known.
-    promo.body = packBody
-    promo.button = packBtn
-    promo.logo = packLogo
-    content.promo = promo
-    f.promo = promo
+        -- Height is set in RenderReleases, once the body text has wrapped and
+        -- its real height is known.
+        promo.body = packBody
+        promo.button = packBtn
+        promo.logo = packLogo
+        table.insert(f.promos, promo)
+    end
+    content.promos = f.promos
 
     -- Bottom row: the opt-out on the left, where it reads as a footnote rather
     -- than as the main action, and Close on the right.
@@ -514,8 +558,7 @@ local function RenderReleases(content, releases)
         end
     end
 
-    local promo = content.promo
-    if promo then
+    for _, promo in ipairs(content.promos or {}) do
         y = y + 16
 
         -- Measured rather than guessed: the body wraps to a different number of
