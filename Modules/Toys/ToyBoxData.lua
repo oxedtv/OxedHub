@@ -301,6 +301,26 @@ function Toys:GetPinnedToys()
     local profile = OxedHub.db and OxedHub.db.profile
     if not profile then return {} end
     profile.toyBoxPinned = profile.toyBoxPinned or {}
+
+    -- Drop anything pinned that is not actually owned.
+    --
+    -- Right-clicking in the wish list used to pin an uncollected toy, and it
+    -- then sat at the front of All Toys and in the quick slots doing nothing.
+    -- Cleaning up here rather than at the click, so a pin made before this fix
+    -- also goes away.
+    --
+    -- Only once the collection is known: PlayerHasToy answers no for everything
+    -- until the toy data has loaded, and acting on that would clear the lot.
+    if not self._pinnedChecked and #self:GetAllCollectedToyIDs() > 0 then
+        self._pinnedChecked = true
+        for i = 1, self.MAX_PINNED_TOYS do
+            local id = profile.toyBoxPinned[i]
+            if type(id) == "number" and not PlayerHasToy(id) then
+                profile.toyBoxPinned[i] = nil
+            end
+        end
+    end
+
     return profile.toyBoxPinned
 end
 
@@ -332,6 +352,308 @@ function Toys:TogglePinnedToy(toyId)
     end
 
     return nil
+end
+
+-- ============================================================================
+-- HOW OFTEN A TOY IS USED
+-- Counted here rather than read from the game: nothing tells an addon that a
+-- toy was used. Every place that can use one -- the grid, the dock, the quick
+-- bar, the random button -- reports it through this one call.
+--
+-- Kept account-wide, next to the icon cache. Which toys you reach for is a
+-- habit, not a property of a profile, and having the count reset by switching
+-- profile would make the ordering look random.
+-- ============================================================================
+
+local function UsageStore()
+    OxedHubDB = OxedHubDB or {}
+    OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+    OxedHubDB.globalSettings.toyUsage = OxedHubDB.globalSettings.toyUsage or {}
+    return OxedHubDB.globalSettings.toyUsage
+end
+
+function Toys:RecordToyUse(toyId)
+    if type(toyId) ~= "number" then return end
+    local store = UsageStore()
+    local key = tostring(toyId)
+    store[key] = (tonumber(store[key]) or 0) + 1
+end
+
+-- ── Counting from the game rather than from our own buttons ─────────────────
+-- Hanging the count off click handlers was wrong, and it showed: a toy used
+-- five times from the dock counted zero. The tiles are secure buttons, so the
+-- game itself fires the toy from an attribute, and whether our own handler also
+-- ran depended on the lock state, on which panel it was, and on the branch it
+-- happened to take. Four places to count in, each able to miss.
+--
+-- Using a toy casts its spell, and that the client does announce. One listener,
+-- and it catches every route -- our grid, our dock, the quick slots, a macro, a
+-- keybind, even Blizzard's own toy box.
+
+local spellToToy = nil
+
+local function BuildSpellMap()
+    spellToToy = {}
+    for _, itemID in ipairs(Toys:GetAllCollectedToyIDs()) do
+        local _, spellID = GetItemSpell(itemID)
+        if spellID then spellToToy[spellID] = itemID end
+    end
+end
+
+function Toys:InvalidateToySpellMap()
+    spellToToy = nil
+end
+
+function Toys:NoteToySpellCast(spellID)
+    spellID = tonumber(spellID)
+    if not spellID then return end
+
+    if not spellToToy then BuildSpellMap() end
+    local itemID = spellToToy[spellID]
+    -- A toy learned since the map was built would be missed, so a miss is worth
+    -- one rebuild before it is believed.
+    if not itemID and not self._spellMapFresh then
+        BuildSpellMap()
+        self._spellMapFresh = true
+        itemID = spellToToy[spellID]
+    end
+    if not itemID then return end
+
+    self:RecordToyUse(itemID)
+    self:RefreshAfterUsageChange()
+end
+
+local usageWatcher = CreateFrame("Frame")
+usageWatcher:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+usageWatcher:RegisterEvent("TOYS_UPDATED")
+usageWatcher:SetScript("OnEvent", function(_, event, _, _, spellID)
+    if event == "TOYS_UPDATED" then
+        Toys:InvalidateToySpellMap()
+        Toys._spellMapFresh = nil
+        return
+    end
+    Toys:NoteToySpellCast(spellID)
+end)
+
+-- Use a toy and count it, in that order, from one place.
+--
+-- Every caller had its own pcall around C_ToyBox.UseToyByItemID, so counting
+-- meant remembering to add a line beside each of them -- and the one that gets
+-- forgotten is the one that makes the ordering wrong.
+function Toys:UseToyById(toyId)
+    if type(toyId) ~= "number" then return false end
+    if not (C_ToyBox and C_ToyBox.UseToyByItemID) then return false end
+
+    -- The count is not taken here. It is taken from the spell the toy casts,
+    -- which catches every way a toy can be used rather than only this one.
+    local ok = pcall(C_ToyBox.UseToyByItemID, toyId)
+    return ok
+end
+
+-- Redraw so a new count actually shows.
+--
+-- The order is worked out while the grid is being drawn, so counting a use
+-- changed nothing on screen until something else forced a redraw -- which is
+-- why a toy used ten times sat exactly where it was.
+--
+-- Never during a fight: the tiles carry secure attributes that cannot be
+-- changed in combat, and moving buttons around under the cursor mid-pull is
+-- not something to do for a cosmetic reordering either. It waits.
+function Toys:RefreshAfterUsageChange()
+    local cfg = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxSettings
+    if not cfg or not cfg.sortByUsage then return end
+
+    if InCombatLockdown() then
+        if not self._usageCombatWatcher then
+            self._usageCombatWatcher = CreateFrame("Frame")
+            self._usageCombatWatcher:RegisterEvent("PLAYER_REGEN_ENABLED")
+            self._usageCombatWatcher:SetScript("OnEvent", function()
+                if Toys._usageRefreshPending then
+                    Toys._usageRefreshPending = nil
+                    Toys:RefreshAfterUsageChange()
+                end
+            end)
+        end
+        self._usageRefreshPending = true
+        return
+    end
+
+    -- One redraw for a burst of uses, not one per click.
+    if self._usageRefreshQueued then return end
+    self._usageRefreshQueued = true
+    C_Timer.After(0.5, function()
+        Toys._usageRefreshQueued = nil
+        if InCombatLockdown() then
+            Toys._usageRefreshPending = true
+            return
+        end
+        if Toys.RefreshToyBoxesUI then Toys:RefreshToyBoxesUI() end
+        if Toys.RefreshToyDock then Toys:RefreshToyDock() end
+        if Toys.UpdateQuickToyBar then Toys:UpdateQuickToyBar() end
+    end)
+end
+
+function Toys:GetToyUseCount(toyId)
+    if type(toyId) ~= "number" then return 0 end
+    return tonumber(UsageStore()[tostring(toyId)]) or 0
+end
+
+-- What the counter actually holds, and whether the ordering is switched on.
+--
+-- "I used it ten times and it did not move" has three possible causes -- the
+-- setting is off, the uses were never counted, or they were counted and the
+-- sort is not being applied -- and they look identical from the outside.
+function Toys:DumpToyUsage()
+    local cfg = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxSettings or {}
+    print(("|cff00ff00OxedHub usagedebug:|r sortByUsage=%s"):format(tostring(cfg.sortByUsage)))
+    if not cfg.sortByUsage then
+        print("  |cffff5555the setting is off|r -- ToyBoxes > Settings > Sort toys by how often you use them.")
+    end
+
+    -- The map is what turns a cast into a toy; empty means nothing can ever be
+    -- counted, however many times a toy is used.
+    if not spellToToy then BuildSpellMap() end
+    local mapped = 0
+    for _ in pairs(spellToToy) do mapped = mapped + 1 end
+    print(("  %d toys mapped to their spell"):format(mapped))
+
+    local store = UsageStore()
+    local rows = {}
+    for key, count in pairs(store) do
+        rows[#rows + 1] = { id = tonumber(key), count = tonumber(count) or 0 }
+    end
+    table.sort(rows, function(a, b) return a.count > b.count end)
+
+    if #rows == 0 then
+        print("  |cffff5555nothing counted yet|r -- no toy use has been recorded since this went in.")
+        return
+    end
+
+    print(("  %d toys counted, most used first:"):format(#rows))
+    for index = 1, math.min(10, #rows) do
+        local row = rows[index]
+        local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(row.id))
+            or ("item " .. tostring(row.id))
+        print(("    %-40s %d use(s)"):format(tostring(name), row.count))
+    end
+end
+
+function Toys:ClearToyUsage()
+    if OxedHubDB and OxedHubDB.globalSettings then
+        OxedHubDB.globalSettings.toyUsage = nil
+    end
+end
+
+-- Most used first, when the player has asked for it.
+--
+-- Stable in the ties: everything with the same count keeps the order it came
+-- in with, so a box of unused toys looks exactly as it did rather than being
+-- shuffled into whatever order pairs() happened to produce.
+function Toys:ApplyToySorting(list, box)
+    local cfg = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxSettings
+    if not cfg or not cfg.sortByUsage then return list end
+    -- Mixes are names, not toy ids, and a wish list is of toys never used.
+    if box and (box.isMixes or box.isWishList) then return list end
+
+    local position = {}
+    for index, id in ipairs(list) do position[id] = index end
+
+    local sorted = {}
+    for _, id in ipairs(list) do sorted[#sorted + 1] = id end
+
+    table.sort(sorted, function(a, b)
+        local ua, ub = self:GetToyUseCount(a), self:GetToyUseCount(b)
+        if ua ~= ub then return ua > ub end
+        return (position[a] or 0) < (position[b] or 0)
+    end)
+
+    return sorted
+end
+
+-- ============================================================================
+-- WISH LIST
+-- Every toy the player has not collected, as one box. Built from the game's
+-- own toy list with the collected ones taken out.
+--
+-- The client's toy box carries filters -- collected, uncollected, a search
+-- string, source and expansion -- and they decide what the enumeration returns.
+-- They are read, widened for the length of the scan and put back exactly as
+-- they were, because they belong to the player's own toy box window.
+-- ============================================================================
+
+function Toys:GetUncollectedToyIDs()
+    -- Rebuilt when the collection changes, not on every draw: this walks the
+    -- whole toy list, which is thousands of entries.
+    if self._wishListCache then return self._wishListCache end
+
+    local list = {}
+    if not (C_ToyBox and C_ToyBox.GetNumFilteredToys and C_ToyBox.GetToyFromIndex) then
+        return list
+    end
+
+    local restore = {}
+    local function Widen(getter, setter, value)
+        if not (C_ToyBox[getter] and C_ToyBox[setter]) then return end
+        local ok, current = pcall(C_ToyBox[getter])
+        if ok then
+            restore[#restore + 1] = { setter = setter, value = current }
+            pcall(C_ToyBox[setter], value)
+        end
+    end
+
+    Widen("GetCollectedShown", "SetCollectedShown", true)
+    Widen("GetUncollectedShown", "SetUncollectedShown", true)
+
+    local ok, count = pcall(C_ToyBox.GetNumFilteredToys)
+    if ok and count then
+        for index = 1, count do
+            local okToy, itemID = pcall(C_ToyBox.GetToyFromIndex, index)
+            if okToy and itemID and itemID > 0 and not PlayerHasToy(itemID) then
+                list[#list + 1] = itemID
+            end
+        end
+    end
+
+    for i = #restore, 1, -1 do
+        pcall(C_ToyBox[restore[i].setter], restore[i].value)
+    end
+
+    self._wishListCache = list
+    return list
+end
+
+function Toys:InvalidateWishList()
+    self._wishListCache = nil
+end
+
+-- Prove what the wish list holds, rather than judging it by the icons.
+--
+-- "These are toys I already have" and "the scan is picking up the wrong ones"
+-- look identical on screen; PlayerHasToy for each entry settles it.
+function Toys:DumpWishList()
+    local missing = self:GetUncollectedToyIDs()
+    local owned = self:GetAllCollectedToyIDs()
+    print(("|cff00ff00OxedHub wishdebug:|r %d not collected, %d collected"):format(
+        #missing, #owned))
+
+    local wrong = 0
+    for _, itemID in ipairs(missing) do
+        if PlayerHasToy(itemID) then wrong = wrong + 1 end
+    end
+    if wrong > 0 then
+        print(("  |cffff5555%d entries are toys you DO own|r -- the scan is wrong."):format(wrong))
+    else
+        print("  every entry is a toy you do not own.")
+    end
+
+    print("  first few:")
+    for index = 1, math.min(8, #missing) do
+        local itemID = missing[index]
+        local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID))
+            or ("item " .. tostring(itemID))
+        print(("    %s (%s)  owned=%s"):format(
+            tostring(name), tostring(itemID), tostring(PlayerHasToy(itemID))))
+    end
 end
 
 -- Move pinned toys to the front, keeping the rest in their existing order.
@@ -710,6 +1032,23 @@ function Toys:GetToyBoxes()
         })
     end
 
+    -- Everything still missing, as a wish list. Off the list entirely when the
+    -- player has hidden it, rather than shown empty: somebody who does not care
+    -- what they are missing should not have a box for it at all.
+    local toySettings = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxSettings
+    if toySettings and toySettings.showWishList then
+        local missing = self:GetUncollectedToyIDs()
+        if #missing > 0 then
+            table.insert(boxes, {
+                id = "wishlist",
+                name = "Wish List",
+                icon = 134153,
+                isWishList = true,
+                toys = missing,
+            })
+        end
+    end
+
     if OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxes then
         local userBoxes = {}
         for id, box in pairs(OxedHub.db.profile.toyBoxes) do
@@ -833,6 +1172,18 @@ function Toys:GetToyBox(boxId)
         local names = self:GetMixNames()
         if #names == 0 then return nil end
         return { id = "mixes", name = "My Mixes", icon = 134064, isMixes = true, toys = names }
+    end
+    if boxId == "wishlist" then
+        -- Every virtual box needs its own branch here. The sidebar lists what
+        -- GetToyBoxes returns, but selecting one asks this function for it, and
+        -- a box missing from here simply refuses to open when clicked.
+        return {
+            id = "wishlist",
+            name = "Wish List",
+            icon = 134153,
+            isWishList = true,
+            toys = self:GetUncollectedToyIDs(),
+        }
     end
     if boxId == "all" then
         return {

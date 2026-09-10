@@ -74,7 +74,13 @@ function MacroRegistry:ExecuteMix(data)
             if slot then
                 if slot.type == "toy" then
                     if PlayerHasToy(slot.id) then
-                        local ok, err = pcall(function() C_ToyBox.UseToyByItemID(slot.id) end)
+                        local ok, err = pcall(function()
+                            if OxedHub.Toys and OxedHub.Toys.UseToyById then
+                                OxedHub.Toys:UseToyById(slot.id)
+                            else
+                                C_ToyBox.UseToyByItemID(slot.id)
+                            end
+                        end)
                         if not ok then
                             print("|cffff0000OxedHub:|r Cannot use toy from this context. Click the Run button instead.")
                         end

@@ -2906,6 +2906,14 @@ function Core:HandleSlashCommand(msg)
         if OxedHub.Triggers and OxedHub.Triggers.DumpLoops then
             OxedHub.Triggers:DumpLoops()
         end
+    elseif command == "usagedebug" then
+        if OxedHub.Toys and OxedHub.Toys.DumpToyUsage then
+            OxedHub.Toys:DumpToyUsage()
+        end
+    elseif command == "wishdebug" then
+        if OxedHub.Toys and OxedHub.Toys.DumpWishList then
+            OxedHub.Toys:DumpWishList()
+        end
     elseif command == "procdebug" then
         if OxedHub.Triggers and OxedHub.Triggers.DumpTrinketProcs then
             OxedHub.Triggers:DumpTrinketProcs()

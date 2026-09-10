@@ -25,6 +25,14 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.65",
+        lines = {
+            { "ADDED",   "Sort toys by how often you use them: a new option in ToyBoxes > Settings that puts the ones you actually reach for at the front." },
+            { "ADDED",   "Wish List: a box holding every toy you have not collected yet, to browse and hunt down. Switch it off in the same settings if you would rather not see it." },
+            { "CHANGED", "Toy use is counted from the toy going off, so it counts wherever you used it from -- the grid, the dock, a quick slot, a macro or a keybind." },
+        },
+    },
+    {
         version = "2.3.64",
         lines = {
             { "FIXED",   "A huge pile of blocked-action errors in the log: the enemy buff watcher kept asking the client to register a sound it will not allow, once per spell per unit, on every arena and target change. It now asks once and remembers the answer." },

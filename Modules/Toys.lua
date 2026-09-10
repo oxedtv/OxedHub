@@ -584,6 +584,8 @@ function Toys:Init()
         self._toyEventFrame:SetScript("OnEvent", function(_, event)
             if event == "TOYS_UPDATED" then
                 Toys.toyDataDirty = true
+                -- A toy just learned is one the wish list must stop offering.
+                if Toys.InvalidateWishList then Toys:InvalidateWishList() end
                 local cache = OxedHub.db.profile.toyCollectionCache
                 if cache then
                     cache.stale = true
@@ -4052,7 +4054,11 @@ function Toys:UseToy(itemID, eventData)
     local id = tonumber(itemID)
     if not id then return end
     if PlayerHasToy(id) then
-        C_ToyBox.UseToyByItemID(id)
+        if self.UseToyById then
+            self:UseToyById(id)
+        else
+            C_ToyBox.UseToyByItemID(id)
+        end
     end
 end
 

@@ -339,7 +339,9 @@ function Toys:ShowToyBoxesSettingsDialog()
     local dialog = _G["OxedHubToyBoxSettingsDialog"]
     if not dialog then
         dialog = CreateFrame("Frame", "OxedHubToyBoxSettingsDialog", UIParent, "BasicFrameTemplate")
-        dialog:SetSize(450, 380)
+        -- Two more options on the Main tab; at the old height the last slider
+        -- sat under the Save button.
+        dialog:SetSize(470, 430)
         dialog:SetPoint("CENTER", UIParent, "CENTER", 0, 50)
         dialog:SetFrameStrata("DIALOG")
         dialog:SetFrameLevel(9950)
@@ -433,9 +435,51 @@ function Toys:ShowToyBoxesSettingsDialog()
         end)
         dialog.showNamesCb = showNamesCb
 
+        -- Order by how often each toy is used.
+        local sortUsageCb = CreateFrame("CheckButton", "$parent_SortUsageCb", mainPanel, "UICheckButtonTemplate")
+        sortUsageCb:SetPoint("TOPLEFT", showNamesCb, "BOTTOMLEFT", 0, -2)
+        sortUsageCb.text:SetText("Sort toys by how often you use them")
+        sortUsageCb.text:SetFontObject("GameFontHighlightSmall")
+        sortUsageCb:SetScript("OnClick", function(self)
+            GetToySettings().sortByUsage = self:GetChecked() or nil
+            if Toys.RefreshToyBoxesUI then Toys:RefreshToyBoxesUI() end
+            if Toys.RefreshToyDock then Toys:RefreshToyDock() end
+        end)
+        sortUsageCb:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Sort toys by how often you use them")
+            GameTooltip:AddLine("Counted from the moment you switch this on, across every character. "
+                .. "Toys you have always shown stay at the front.", 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        sortUsageCb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        dialog.sortUsageCb = sortUsageCb
+
+        -- The wish list box.
+        local wishListCb = CreateFrame("CheckButton", "$parent_WishListCb", mainPanel, "UICheckButtonTemplate")
+        wishListCb:SetPoint("TOPLEFT", sortUsageCb, "BOTTOMLEFT", 0, -2)
+        wishListCb.text:SetText("Show a Wish List box of toys you haven't collected")
+        wishListCb.text:SetFontObject("GameFontHighlightSmall")
+        wishListCb:SetScript("OnClick", function(self)
+            GetToySettings().showWishList = self:GetChecked() or nil
+            if Toys.InvalidateWishList then Toys:InvalidateWishList() end
+            if Toys.NotifyBoxesChanged then Toys:NotifyBoxesChanged() end
+            if Toys.RefreshToyBoxesUI then Toys:RefreshToyBoxesUI() end
+            if Toys.RefreshToyDock then Toys:RefreshToyDock() end
+        end)
+        wishListCb:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Wish List")
+            GameTooltip:AddLine("A box holding every toy you do not own yet, to browse and hunt down. "
+                .. "Its tiles cannot be used, only inspected.", 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        wishListCb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        dialog.wishListCb = wishListCb
+
         -- Font Size Slider
         local fontTitle = mainPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        fontTitle:SetPoint("TOPLEFT", showNamesCb, "BOTTOMLEFT", 6, -14)
+        fontTitle:SetPoint("TOPLEFT", wishListCb, "BOTTOMLEFT", 6, -14)
         fontTitle:SetText("Toy Names Font Size:")
 
         local fontSlider = CreateFrame("Slider", "$parent_FontSlider", mainPanel, "OptionsSliderTemplate")
@@ -713,6 +757,8 @@ function Toys:ShowToyBoxesSettingsDialog()
             cfg.showDockHearthstone = dialog.showHsCb:GetChecked()
             cfg.showDockRandomToy = dialog.showRandomCb:GetChecked()
             cfg.hideButtonTooltips = dialog.hideTooltipsCb:GetChecked()
+            if dialog.sortUsageCb then cfg.sortByUsage = dialog.sortUsageCb:GetChecked() or nil end
+            if dialog.wishListCb then cfg.showWishList = dialog.wishListCb:GetChecked() or nil end
 
             dialog.savedSnapshot = nil
             dialog:Hide()
@@ -730,6 +776,8 @@ function Toys:ShowToyBoxesSettingsDialog()
     local cfg = GetToySettings()
     -- Snapshot settings for rollback on Cancel
     dialog.savedSnapshot = {
+        sortByUsage = cfg.sortByUsage,
+        showWishList = cfg.showWishList,
         showToyNames = cfg.showToyNames,
         toyNameFontSize = cfg.toyNameFontSize,
         gridIconSize = cfg.gridIconSize,
@@ -745,6 +793,8 @@ function Toys:ShowToyBoxesSettingsDialog()
     dialog.SwitchTab("Main")
 
     dialog.showNamesCb:SetChecked(cfg.showToyNames == true)
+    if dialog.sortUsageCb then dialog.sortUsageCb:SetChecked(cfg.sortByUsage == true) end
+    if dialog.wishListCb then dialog.wishListCb:SetChecked(cfg.showWishList == true) end
     local fontSize = cfg.toyNameFontSize or 9
     dialog.fontSlider:SetValue(fontSize)
     dialog.fontValText:SetText(fontSize .. " pt")
@@ -1414,6 +1464,9 @@ function Toys:RefreshToyBoxesUI()
 
     -- Search filter, plus the "always shown" picks pinned to the front.
     local toysList = Toys:FilterToyList(currentBox.toys or {}, Toys._boxSearch)
+    if Toys.ApplyToySorting then
+        toysList = Toys:ApplyToySorting(toysList, currentBox)
+    end
     toysList = Toys:ApplyPinnedToys(toysList, currentBox.id)
 
     if Toys._boxSearch and Toys._boxSearch ~= "" then
@@ -1472,10 +1525,13 @@ function Toys:RefreshToyBoxesUI()
 
                 -- Same as the quick slots and the dock: use the toy outright
                 -- instead of trusting the secure attribute alone.
-                if GetToySettings().isLocked and button == "LeftButton"
-                    and type(self.toyID) == "number" then
-                    if C_ToyBox and C_ToyBox.UseToyByItemID then
-                        pcall(C_ToyBox.UseToyByItemID, self.toyID)
+                if button == "LeftButton" and type(self.toyID) == "number"
+                    and not self.isWishList then
+                    -- Only while locked. Unlocked, the tile is not armed at all
+                    -- and the click rearranges rather than uses, so counting it
+                    -- would invent a use that never happened.
+                    if GetToySettings().isLocked then
+                        Toys:UseToyById(self.toyID)
                     end
                 end
 
@@ -1496,6 +1552,16 @@ function Toys:RefreshToyBoxesUI()
                 end
 
                 if button ~= "RightButton" or not self.toyID then return end
+
+                -- Not from the wish list. Those are toys you do not own: pinning
+                -- one put it in front of All Toys and into the quick slots,
+                -- where it looked like part of your collection and did nothing
+                -- when clicked.
+                if self.isWishList then
+                    UIErrorsFrame:AddExternalErrorMessage(
+                        "You do not own this toy yet, so it cannot be kept on screen.")
+                    return
+                end
 
                 local result = Toys:TogglePinnedToy(self.toyID)
                 if result == nil then
@@ -1710,20 +1776,35 @@ function Toys:RefreshToyBoxesUI()
 
         -- Primed here as well as in PreClick, so a tile drawn before a fight
         -- still works during one, when attributes can no longer be changed.
+        -- A toy you do not own reads as greyed out everywhere else in the game,
+        -- and the wish list is nothing but those.
+        local isWish = currentBox.isWishList == true
+
         if not InCombatLockdown() then
-            btn:SetAttribute("type", cfg.isLocked and "toy" or nil)
-            btn:SetAttribute("type1", cfg.isLocked and "toy" or nil)
-            btn:SetAttribute("toy", toyID)
-            btn:SetAttribute("toy1", toyID)
+            -- Nothing to arm in the wish list: the toy is not owned, so the
+            -- action would be refused anyway. Left unset, a click does nothing
+            -- quietly instead of failing.
+            local armed = cfg.isLocked and not isWish
+            btn:SetAttribute("type", armed and "toy" or nil)
+            btn:SetAttribute("type1", armed and "toy" or nil)
+            btn:SetAttribute("toy", not isWish and toyID or nil)
+            btn:SetAttribute("toy1", not isWish and toyID or nil)
         end
 
         btn.icon:SetTexture(iconTex or 134400)
+
+        btn.icon:SetDesaturated(isWish)
+        -- Carried on the button: the click handlers are written once, when the
+        -- tile is created, and cannot see which box is on screen later.
+        btn.isWishList = isWish
+
         if btn.pinStar then
-            btn.pinStar:SetShown(Toys:IsToyPinned(toyID))
+            btn.pinStar:SetShown(not isWish and Toys:IsToyPinned(toyID))
         end
 
         -- Red [X] badge only shown if unlocked AND not in "All Toys"
         local canDelete = (selectedBoxId ~= "all") and (not cfg.isLocked)
+            and not isWish
         btn.removeBtn:SetShown(canDelete)
 
         if showNames then

@@ -834,9 +834,7 @@ function Toys:GetOrCreateToyboxFrame()
                 if Toys.RefreshToyBoxesUI then Toys:RefreshToyBoxesUI() end
                 f:UpdateToyButtons()
             elseif button == "LeftButton" and self.toyID then
-                if C_ToyBox and C_ToyBox.UseToyByItemID then
-                    pcall(C_ToyBox.UseToyByItemID, self.toyID)
-                end
+                Toys:UseToyById(self.toyID)
                 if not InCombatLockdown() then
                     self:SetAttribute("type", "toy")
                     self:SetAttribute("type1", "toy")
@@ -1255,9 +1253,9 @@ function Toys:GetOrCreateToyboxFrame()
             -- attribute alone. Out of combat this is allowed, and it is what
             -- makes a click land every time instead of only when the attributes
             -- happen to be armed.
-            if conf.locked and button == "LeftButton" and type(self.id) == "number" then
-                if C_ToyBox and C_ToyBox.UseToyByItemID then
-                    pcall(C_ToyBox.UseToyByItemID, self.id)
+            if button == "LeftButton" and type(self.id) == "number" then
+                if conf.locked then
+                    Toys:UseToyById(self.id)
                 end
             end
 
@@ -1416,6 +1414,9 @@ function Toys:GetOrCreateToyboxFrame()
         local toysList = Toys.FilterToyList
             and Toys:FilterToyList(box.toys or {}, Toys._dockSearch)
             or (box.toys or {})
+        if Toys.ApplyToySorting then
+            toysList = Toys:ApplyToySorting(toysList, box)
+        end
         if Toys.ApplyPinnedToys then
             toysList = Toys:ApplyPinnedToys(toysList, box.id)
         end
@@ -1489,6 +1490,9 @@ function Toys:GetOrCreateToyboxFrame()
             local toyIcon, stillMissing = Toys:GetToyIcon(toyID)
             if stillMissing then Toys._toyIconsPending = true end
             b.icon:SetTexture(toyIcon)
+            -- Greyed in the wish list, as an uncollected toy is everywhere
+            -- else. In full colour it looked like a toy you already own.
+            b.icon:SetDesaturated(box.isWishList == true)
             b:CheckCooldown()
             b:Show()
             end
@@ -1644,18 +1648,14 @@ function OxedHub_UseRandomToy()
     if not Toys then return end
     local boxId = (Toys.ToyboxFrame and Toys.ToyboxFrame.selectedBoxId) or "all"
     local toyId = Toys.GetRandomToyFromBox and Toys:GetRandomToyFromBox(boxId)
-    if toyId and C_ToyBox and C_ToyBox.UseToyByItemID then
-        pcall(C_ToyBox.UseToyByItemID, toyId)
-    end
+    if toyId then Toys:UseToyById(toyId) end
 end
 
 function OxedHub_UseRandomHearthstone()
     local Toys = OxedHub.Toys
     if not Toys or not Toys.GetUsableHearthstones then return end
     local list = Toys:GetUsableHearthstones()
-    if #list > 0 and C_ToyBox and C_ToyBox.UseToyByItemID then
-        pcall(C_ToyBox.UseToyByItemID, list[math.random(1, #list)])
-    end
+    if #list > 0 then Toys:UseToyById(list[math.random(1, #list)]) end
 end
 
 -- Pick which way the panel opens from the minimised button.
