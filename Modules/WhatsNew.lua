@@ -25,6 +25,17 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.66",
+        important = true,
+        lines = {
+            { "ADDED",   "Modules (Beta): a new page of small tools built into OxedHub, sorted into categories and switched on and off from their cards. We're testing it live, so tell us what you think." },
+            { "ADDED",   "KickBar: a kick alert on the enemy nameplate when your interrupt is ready. It now greys out while the interrupt is on cooldown, even in combat." },
+            { "ADDED",   "Auto Vendor: sells your junk and repairs your gear whenever you open a vendor, using guild funds first if you want. Hold Shift to skip a visit." },
+            { "ADDED",   "Auto Delete: types the confirmation word for you when you destroy an item. You still press Accept yourself." },
+            { "CHANGED", "About has moved to the ? button next to the close button." },
+        },
+    },
+    {
         version = "2.3.65",
         lines = {
             { "ADDED",   "Sort toys by how often you use them: a new option in ToyBoxes > Settings that puts the ones you actually reach for at the front." },

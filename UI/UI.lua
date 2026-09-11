@@ -27,7 +27,7 @@ local NAV_ICONS = {
     ActionHub = "Interface\\Icons\\INV_Sword_04",
     Settings = "Interface\\Icons\\Trade_engineering",
     About = "Interface\\Icons\\INV_Misc_QuestionMark",
-    Modules = "Interface\\Icons\\Inv_misc_gear",
+    Modules = "Interface\\Icons\\INV_Misc_EngGizmos_01",
     Experimental = "Interface\\Icons\\Trade_engineering",
 }
 
@@ -507,6 +507,37 @@ function UI:CreateMainFrame()
         frame.CloseButton:SetScript("OnClick", function()
             UI:HideMainWindow()
         end)
+
+        -- "?" for About, sitting just left of the close button.
+        --
+        -- Sized from the close button rather than hard-coded, so the pair stays
+        -- matched whatever the frame template hands us. A plain square button
+        -- with the mark drawn on top: the close button's own art has its X
+        -- baked into the texture and cannot be reused for anything else.
+        local helpBtn = CreateFrame("Button", nil, frame)
+        local cw, ch = frame.CloseButton:GetSize()
+        helpBtn:SetSize(cw or 24, ch or 24)
+        helpBtn:SetPoint("RIGHT", frame.CloseButton, "LEFT", -2, 0)
+        helpBtn:SetFrameLevel(frame.CloseButton:GetFrameLevel())
+        helpBtn:SetNormalTexture("Interface\\Buttons\\UI-SquareButton-Up")
+        helpBtn:SetPushedTexture("Interface\\Buttons\\UI-SquareButton-Down")
+        helpBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+
+        local mark = helpBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        mark:SetPoint("CENTER", helpBtn, "CENTER", 0, 1)
+        mark:SetText("?")
+        mark:SetTextColor(1, 0.82, 0, 1)
+        helpBtn:SetScript("OnMouseDown", function() mark:SetPoint("CENTER", helpBtn, "CENTER", 1, 0) end)
+        helpBtn:SetScript("OnMouseUp", function() mark:SetPoint("CENTER", helpBtn, "CENTER", 0, 1) end)
+
+        helpBtn:SetScript("OnClick", function() UI:ShowTab("About") end)
+        helpBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText(L["TAB_ABOUT"] or "About")
+            GameTooltip:Show()
+        end)
+        helpBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        frame.HelpButton = helpBtn
     end
     tinsert(UISpecialFrames, frame:GetName())
 
@@ -624,11 +655,21 @@ function UI:CreateSidebar()
     sidebar:SetFrameLevel(mainFrame:GetFrameLevel() + 50)
 
     
-    local tabs = { "Dashboard", "Triggers", "Reactions", "Toys", "OxedRing", "ActionHub", "Settings", "About" } -- , "Experimental", "Modules"
+    -- About is reached from the "?" beside the close button instead: it is read
+    -- once, and a permanent row in the sidebar gave it the same weight as the
+    -- pages people actually work in.
+    local tabs = { "Dashboard", "Triggers", "Reactions", "Toys", "OxedRing", "ActionHub", "Modules", "Settings" } -- , "Experimental", "About"
     local yOffset = 0
     
     for i, tabName in ipairs(tabs) do
-        local btn = CreateNavButton(sidebar, tabName, L["TAB_" .. tabName:upper()] or tabName)
+        local label = L["TAB_" .. tabName:upper()] or tabName
+        -- Part of the label itself rather than a second string beside it: a
+        -- separate one would be placed by the label's width, and that width
+        -- changes whenever the text-size setting does.
+        if tabName == "Modules" then
+            label = label .. " |cffff3333*BETA|r"
+        end
+        local btn = CreateNavButton(sidebar, tabName, label)
         btn:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 5, -yOffset)
         btn:SetFrameLevel(sidebar:GetFrameLevel() + 3)
         btn:SetScript("OnClick", function()
@@ -636,13 +677,6 @@ function UI:CreateSidebar()
         end)
         btn.tabName = tabName
         sidebar[tabName .. "Btn"] = btn
-        
-        if tabName == "Modules" then
-            local redBg = btn:CreateTexture(nil, "BACKGROUND")
-            redBg:SetAllPoints()
-            redBg:SetColorTexture(0.5, 0, 0, 0.6)
-            btn.text:SetTextColor(1, 0.4, 0.4, 1)
-        end
         
         -- Activate Dashboard button by default since it starts selected
         if tabName == "Dashboard" then
@@ -1209,12 +1243,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.65)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.66)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.65")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.66")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1280,11 +1314,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  NEW Gaming Pack: a second sound & animation pack, alongside the Meme Pack.",
-        "•  Animations can now run for as long as the buff lasts, instead of playing once.",
-        "•  A buff that refreshes itself keeps its animation going, and it clears the moment the buff drops.",
-        "•  Potion and Trinket triggers: pick which ones count, each with its own sound and animation.",
-        "•  Trigger history, undo for a deleted trigger, and backups before an import overwrites a profile.",
+        "•  NEW Modules (Beta): extra tools built into OxedHub, switched on and off from one page.",
+        "•  KickBar: a kick alert on the enemy nameplate, grey while your interrupt is on cooldown.",
+        "•  Auto Vendor: sells your junk and repairs your gear at any vendor. Hold Shift to skip.",
+        "•  Auto Delete: types the confirmation word for you when you destroy an item.",
+        "•  ToyBoxes: sort toys by how often you use them, and a Wish List of toys you're missing.",
         "•  Grab either pack from CurseForge:",
     }
 
@@ -3349,7 +3383,7 @@ function UI:CreateModulesTab()
     
     local desc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
-    desc:SetText(L["MODULES_DESC"] or "Standalone addons that extend OxedHub.")
+    desc:SetText(L["MODULES_DESC"] or "Modules are a new feature of OxedHub, and we're currently testing them live.")
     
     tab.scrollFrame = scrollFrame
     tab.scrollChild = scrollChild

@@ -27,6 +27,9 @@ local customOverlays = {
     ActionHub = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\actionhub.png",
     Settings = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\settings.png",
     About = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\about.png",
+    -- Borrows About's plate: About left the sidebar for the "?" by the close
+    -- button, and without an entry here Modules drew as a bare dark bar.
+    Modules = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\about.png",
 }
 
 function Navigation.CreateButton(parent, tabName, label, config, icons)
