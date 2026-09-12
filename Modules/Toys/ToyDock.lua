@@ -1629,7 +1629,13 @@ end)
 -- calls.  Bindings.xml is loaded by the client automatically from the addon
 -- root, so it needs no TOC entry.
 -- ============================================================================
+-- ⚠ A binding needs BOTH globals. The header and the category are looked up
+-- separately, and a missing one makes the Key Bindings panel print the raw key
+-- ("OXEDHUB_CATEGORY") as the section title. Set every BINDING_* name at file
+-- scope like these, never inside a function: a module that is switched off
+-- still has its key listed, and an unnamed binding shows the raw key there too.
 BINDING_HEADER_OXEDHUB_HEADER = "Oxed Hub"
+BINDING_CATEGORY_OXEDHUB_CATEGORY = "Oxed Hub"
 BINDING_NAME_OXEDHUB_TOGGLE_TOYBOX = "Toggle ToyBox Panel"
 BINDING_NAME_OXEDHUB_RANDOM_TOY = "Use Random Toy"
 BINDING_NAME_OXEDHUB_RANDOM_HEARTHSTONE = "Use Random Hearthstone"

@@ -25,6 +25,14 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.67",
+        important = true,
+        lines = {
+            { "ADDED",   "Three more Modules (Beta): Attributes, an Attributes tab on your character window with live movement speed and the stats the sheet leaves out. Auto Banker, which puts your reagents away and restocks whatever you already keep in the bank. Copy Chat, which opens any chat window as text you can copy -- set a key for it under Key Bindings, OxedHub." },
+            { "FIXED",   "Repeating sounds: Bloodlust no longer replays itself when the game hides aura data mid-fight, and a channelled spell counts as one cast instead of one per tick." },
+        },
+    },
+    {
         version = "2.3.66",
         important = true,
         lines = {

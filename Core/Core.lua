@@ -497,7 +497,21 @@ function Core:OnEvent(event, ...)
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         self:OnSpellCastSucceeded(...)
     elseif event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START" then
+        if event == "UNIT_SPELLCAST_CHANNEL_START" then
+            local unit, _, spellID = ...
+            if unit == "player" then
+                OxedHub._activeChannel = spellID
+                -- Clear the record of the last time this spell was cast, so the
+                -- channel's first tick is let through and announced. Without
+                -- this the leftover entry from an earlier cast would look like
+                -- a tick and silence the spell entirely.
+                recentSpellCasts[spellID] = nil
+            end
+        end
         self:OnSpellCastStart(...)
+    elseif event == "UNIT_SPELLCAST_CHANNEL_STOP" then
+        local unit = ...
+        if unit == "player" then OxedHub._activeChannel = nil end
     elseif event == "UNIT_SPELLCAST_INTERRUPTED" then
         self:OnSpellInterrupted(...)
     elseif event == "RESURRECT_REQUEST" then
@@ -2177,6 +2191,25 @@ function Core:OnSpellCastSucceeded(unit, castGUID, spellID)
     -- General spell cast
     -- Deduplicate: reticle spells (Death and Decay, etc.) fire this event twice.
     local now = GetTime()
+
+    -- ⚠ CHANNEL TICKS. DO NOT REPLACE THIS WITH A LONGER DEDUP WINDOW.
+    -- A channelled spell reports every tick as a successful cast -- Arcane
+    -- Missiles, Penance, Fists of Fury and the rest fire this event four or
+    -- five times for one press. The first tick is the cast; the rest are the
+    -- same cast still running, and announcing each of them is what played the
+    -- sound over and over (a real, reported bug).
+    --
+    -- A window cannot solve it: ticks are spaced further apart than any window
+    -- short enough to still let a genuine re-cast through. The channel is
+    -- tracked instead, from UNIT_SPELLCAST_CHANNEL_START / _STOP in the event
+    -- handler near the top of this file -- which also clears this spell's entry
+    -- in recentSpellCasts, so the first tick is let through. Both halves are
+    -- needed: without the clear, the leftover entry from an earlier cast is
+    -- read as a tick and the spell goes silent entirely.
+    if OxedHub._activeChannel == spellID and recentSpellCasts[spellID] then
+        return
+    end
+
     local lastCast = recentSpellCasts[spellID]
     if lastCast and (now - lastCast) < SPELL_CAST_DEDUP_WINDOW then
         return

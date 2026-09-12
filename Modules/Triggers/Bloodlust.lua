@@ -13,6 +13,17 @@ local Triggers = OxedHub.Triggers
 -- never read its fields — so polling the known lust ids works mid-combat.
 --
 -- eventData.spellID / spellName identify which version landed.
+--
+-- ⚠ DO NOT SIMPLIFY THE STATE HANDLING BELOW.
+-- Secret aura data does not just hide fields, it makes reads fail at random:
+-- a poll that should have found the buff comes back empty, then the next one
+-- finds it again. Code shaped like "not found, so clear the state" therefore
+-- flaps, and every recovery looks like a brand new Bloodlust and replays the
+-- sound -- several times per cast. This was a real, reported bug.
+-- CLEAR_AFTER_MISSES (a run of empty reads before believing it) and MIN_REFIRE
+-- (a floor on how often this may announce) are both load-bearing. Removing
+-- either brings the repeating sound straight back. Any new polled aura trigger
+-- should copy this pattern.
 -- ─────────────────────────────────────────────────────────────────────────
 
 -- Buff ids granted by every source of the 30% haste burst.
@@ -89,15 +100,41 @@ Triggers:RegisterEventType("BLOODLUST", {
 local watcher = CreateFrame("Frame")
 local activeBuff = nil          -- id currently on the player, nil when none
 local pollTicker = nil
+local missedReads = 0           -- consecutive polls that found nothing
+local lastFired = 0             -- when the trigger last announced a lust
 
+-- In combat the aura data is secret, and a read that should have found the buff
+-- comes back empty every so often. Clearing on the first empty read made the
+-- next successful one look like a fresh lust, which is what played the sound
+-- again -- several times per cast. The buff is only treated as gone once it has
+-- been missing for a run of reads.
+local CLEAR_AFTER_MISSES = 8    -- 8 x 0.25s = two seconds of nothing
+
+-- No source of lust can land again this soon, so anything inside the window is
+-- the same one being seen twice. A last line of defence behind the miss count.
+local MIN_REFIRE = 25
 local function CheckLust()
     -- Nothing to fire into until the profile is loaded.
     if not (OxedHub.db and OxedHub.db.profile) then return end
 
     local current = GetActiveLustBuff()
+    local now = GetTime()
+
+    if current then
+        missedReads = 0
+    end
 
     if current and not activeBuff then
+        if (now - lastFired) < MIN_REFIRE then
+            -- Same lust, seen again through a gap in the aura data. Take the
+            -- buff back without announcing it.
+            activeBuff = current
+            return
+        end
+
         activeBuff = current
+        lastFired = now
+
         local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(current)
         local spellName = info and info.name
 
@@ -111,7 +148,11 @@ local function CheckLust()
             spellName = spellName,
         })
     elseif not current and activeBuff then
-        activeBuff = nil
+        missedReads = missedReads + 1
+        if missedReads >= CLEAR_AFTER_MISSES then
+            activeBuff = nil
+            missedReads = 0
+        end
     end
 end
 

@@ -8,4 +8,7 @@
     <Binding name="OXEDHUB_RANDOM_HEARTHSTONE" category="OXEDHUB_CATEGORY">
         OxedHub_UseRandomHearthstone()
     </Binding>
+    <Binding name="OXEDHUB_COPY_CHAT" category="OXEDHUB_CATEGORY">
+        OxedHub_CopyChat()
+    </Binding>
 </Bindings>

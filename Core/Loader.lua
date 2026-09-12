@@ -49,6 +49,10 @@ local function DoRegister()
     -- a different event, so both are taken and treated the same.
     eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_START", "player", "pet")
     eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "player", "pet")
+    -- The end of a channel. Needed because a channel reports every one of its
+    -- ticks as a successful cast, and knowing when it stopped is what tells
+    -- those ticks apart from the player casting the spell again.
+    eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", "player", "pet")
     eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_INTERRUPTED", "player", "pet", "target", "focus", "mouseover")
 
     -- Other trigger events

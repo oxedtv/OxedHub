@@ -511,6 +511,10 @@ function ModuleAPI:RefreshModulesTab()
             card.icon:SetDesaturated(true)
         end
         
+        -- ⚠ The card has a fixed height and no ellipsis handling, so a long
+        -- desc is cut off mid-word with no sign that anything is missing. Keep
+        -- desc in ModuleAPI:Register to roughly 100 characters; anything longer
+        -- belongs in the module's options window, via AddNote.
         card.desc:SetText(mod.desc or "")
         
         if mod.OnOptionsShow then
