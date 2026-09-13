@@ -25,6 +25,14 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.69",
+        important = true,
+        lines = {
+            { "CHANGED", "Modules (Beta) are now off until you switch them on. Any module you had not turned on yourself was switched off once -- open Modules to turn back on the ones you use." },
+            { "ADDED",   "Chat Filter (an unlimited ignore list, word filters and spam blocking), Missing Gems, a sell list and a Yes / No check for Auto Vendor and Auto Banker, and Auto Confirm to choose which game popups to skip." },
+        },
+    },
+    {
         version = "2.3.67",
         important = true,
         lines = {

@@ -15,7 +15,7 @@
 local addonName, OxedHub = ...
 
 local DEFAULTS = {
-    enabled     = true,
+    enabled     = false,  -- off until the player switches it on (see ModuleAPI:Register)
     button      = true,    -- the button on each chat window
     strip       = true,    -- remove colour codes and link markup from the copy
     timestamps  = true,    -- keep the timestamp at the start of a line
@@ -86,8 +86,6 @@ local function GetRow(index)
     row:SetAutoFocus(false)
     row:SetFontObject("ChatFontNormal")
     row:SetHeight(14)
-    row:SetPoint("LEFT", window.content, "LEFT", 0, 0)
-    row:SetPoint("RIGHT", window.content, "RIGHT", 0, 0)
 
     row:SetScript("OnEscapePressed", function() window:Hide() end)
     -- A viewer, not an editor: an edit here would go nowhere, so it is undone.
@@ -121,7 +119,11 @@ local function BuildWindow()
         "BasicFrameTemplateWithInset")
     window:SetSize(620, 440)
     window:SetPoint("CENTER")
-    window:SetFrameStrata("DIALOG")
+    -- FULLSCREEN_DIALOG, like OxedHub's own popups: the main window lives in DIALOG
+    -- with parts as high as level 500. Toplevel raises it on every click.
+    window:SetFrameStrata("FULLSCREEN_DIALOG")
+    window:SetFrameLevel(210)
+    window:SetToplevel(true)
     window:SetClampedToScreen(true)
     window:EnableMouse(true)
     window:SetMovable(true)
@@ -214,7 +216,9 @@ function Redraw(self)
         local row = GetRow(shown)
         row.original = lines[index]
         row:SetText(lines[index])
-        row:SetPoint("TOP", self.content, "TOP", 0, -y)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, -y)
+        row:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", 0, -y)
         row:Show()
         y = y + 15
     end

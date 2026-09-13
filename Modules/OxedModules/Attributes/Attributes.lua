@@ -16,7 +16,7 @@
 local addonName, OxedHub = ...
 
 local DEFAULTS = {
-    enabled   = true,
+    enabled   = false,  -- off until the player switches it on (see ModuleAPI:Register)
     primary   = true,   -- the stat your spec scales with, and stamina
     speed     = true,   -- movement speed, live
     hidden    = true,   -- leech, avoidance, speed rating
@@ -554,6 +554,10 @@ local function BuildTab()
     tab = CreateTabButton()
     if not tab then return end
     tab:SetText(STAT_CATEGORY_ATTRIBUTES or "Attributes")
+    -- The tab is built as soon as the character window exists, which can be
+    -- before settings are read. It starts hidden and OnEnable shows it, so a
+    -- module that is off never puts a tab on the window.
+    if not (settings and settings.enabled == true) then tab:Hide() end
     -- Blizzard's own tabs overlap by about 16px, which is what their artwork is
     -- cut for. Ours is a separate tab rather than one more of the same strip, so
     -- it stands clear instead of sitting on top of Currency.
@@ -673,7 +677,7 @@ loginFrame:SetScript("OnEvent", function(self)
         version  = "1.1.0",
         author   = "Oxed",
         category = "character",
-        desc     = "An Attributes tab on your character window: live movement speed and the stats the sheet leaves out -- leech, avoidance, stagger, armour reduction.",
+        desc     = "A character window tab with live move speed and hidden stats like leech and stagger.",
         icon     = "Interface\\Icons\\Spell_Holy_WordFortitude",
 
         defaults = DEFAULTS,

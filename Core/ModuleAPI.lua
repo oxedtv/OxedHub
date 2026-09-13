@@ -69,6 +69,26 @@ function ModuleAPI:Register(moduleInfo)
         if config[key] == nil then config[key] = value end
     end
 
+    -- ⚠ Modules are off until the player switches them on. They used to start
+    -- on, and players found things selling, depositing and typing for them that
+    -- they had never asked for. Every built-in module's DEFAULTS now says
+    -- enabled = false, which covers new installs.
+    --
+    -- A saved table from before the change still says enabled = true, and
+    -- nothing records whether the player chose that or simply never touched the
+    -- card. So once per module, a table the player has not switched through
+    -- SetModuleEnabled since (playerSet) is turned off, and the names are
+    -- announced at login so nobody is left wondering where a module went.
+    -- defaultOffSeen makes it happen exactly once: a module the player turns
+    -- back on afterwards stays on.
+    if not config.defaultOffSeen then
+        config.defaultOffSeen = true
+        if not config.playerSet and config.enabled ~= false then
+            config.enabled = false
+            self:NoteTurnedOff(moduleInfo.name or moduleInfo.id)
+        end
+    end
+
     -- Create API object for the module
     local api = {
         sounds = OxedHub.Sounds,
@@ -87,6 +107,20 @@ function ModuleAPI:Register(moduleInfo)
             print("|cffff0000OxedHub Module Error (" .. moduleInfo.name .. "):|r " .. tostring(err))
         end
     end
+end
+
+-- Collects the modules the switch-off in Register turned off during this login
+-- and names them in one chat line once every module has registered, instead
+-- of one line per module scattered through the login messages.
+local turnedOff = {}
+function ModuleAPI:NoteTurnedOff(name)
+    turnedOff[#turnedOff + 1] = name
+    if #turnedOff > 1 then return end
+    C_Timer.After(6, function()
+        print("|cff00ff00OxedHub:|r modules are now |cffffd100off until you switch them on|r. "
+            .. "Turned off: " .. table.concat(turnedOff, ", ")
+            .. ". Open |cffffd100/ohub|r > Modules to turn back on the ones you use.")
+    end)
 end
 
 function ModuleAPI:GetModule(id)
@@ -117,6 +151,10 @@ function ModuleAPI:SetModuleEnabled(id, on)
         OxedHubDB.modules[id] = config
     end
     config.enabled = on and true or false
+    -- The player's own choice, which the one-time switch-off in Register leaves
+    -- alone.
+    config.playerSet = true
+    config.defaultOffSeen = true
 
     local handler = on and mod.OnEnable or mod.OnDisable
     if handler then
@@ -214,6 +252,105 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
 
     f:Hide()
     return f
+end
+
+-- ── Asking first ───────────────────────────────────────────────────────────
+-- One Yes / No popup for every module that acts on the player's behalf, so a
+-- player who wants to see what is about to happen can have that on any of them.
+-- A module describes what it is about to do; Yes runs it, No or Escape does not.
+--
+-- ModuleAPI:Confirm("Sell 5 items for 1g?", function() ... end)
+-- ModuleAPI:HideConfirm()   -- when the thing being asked about went away
+--
+-- The name starts with OXEDHUB_ so Auto Confirm, which watches every popup the
+-- game shows, knows it is ours and never tries to answer it.
+local CONFIRM_POPUP = "OXEDHUB_MODULE_CONFIRM"
+
+function ModuleAPI:Confirm(text, onAccept, onCancel)
+    if not (StaticPopupDialogs and StaticPopup_Show) then
+        -- No popup system to ask with: acting silently would defeat the point
+        -- of asking, so nothing happens.
+        return
+    end
+
+    if not StaticPopupDialogs[CONFIRM_POPUP] then
+        StaticPopupDialogs[CONFIRM_POPUP] = {
+            text = "%s",
+            button1 = YES or "Yes",
+            button2 = NO or "No",
+            -- The callbacks ride in the popup's data, so two questions in a row
+            -- each run their own answer rather than whichever was set last.
+            OnAccept = function(self, data)
+                data = data or (self and self.data)
+                if data and data.accept then data.accept() end
+            end,
+            OnCancel = function(self, data)
+                data = data or (self and self.data)
+                if data and data.cancel then data.cancel() end
+            end,
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+            preferredIndex = 3,
+        }
+    end
+
+    StaticPopup_Hide(CONFIRM_POPUP)
+    StaticPopup_Show(CONFIRM_POPUP, "|cff00ff00OxedHub|r\n\n" .. tostring(text), nil,
+        { accept = onAccept, cancel = onCancel })
+end
+
+function ModuleAPI:HideConfirm()
+    if StaticPopup_Hide then StaticPopup_Hide(CONFIRM_POPUP) end
+end
+
+-- Adds one bag slot to a list of items for a question, merging stacks of the
+-- same item so twelve slots of the same ore read as one line.
+--   list: the table being built, reused between calls
+--   info: a C_Container.GetContainerItemInfo result
+--   value: copper this slot is worth, or nil
+function ModuleAPI:AddItemToList(list, info, value)
+    if type(info) ~= "table" or not info.itemID then return end
+    list.byID = list.byID or {}
+    local entry = list.byID[info.itemID]
+    if not entry then
+        entry = { icon = info.iconFileID, link = info.hyperlink, itemID = info.itemID, count = 0, value = 0 }
+        list.byID[info.itemID] = entry
+        list[#list + 1] = entry
+    end
+    entry.count = entry.count + (info.stackCount or 1)
+    entry.value = entry.value + (value or 0)
+end
+
+-- The items as lines of text: icon, name in its quality colour, how many, and
+-- the value when a formatter is given. Most valuable first, then largest
+-- stacks, so the lines worth a second look are the ones at the top. Long lists
+-- stop at `limit` and say how many more there are, because a popup that runs
+-- off the screen hides its own Yes button.
+function ModuleAPI:FormatItemList(list, limit, formatValue)
+    limit = limit or 10
+    table.sort(list, function(a, b)
+        if a.value ~= b.value then return a.value > b.value end
+        return a.count > b.count
+    end)
+
+    local lines = {}
+    for index, entry in ipairs(list) do
+        if index > limit then
+            lines[#lines + 1] = ("|cff9d9d9d...and %d more|r"):format(#list - limit)
+            break
+        end
+        -- The link without its clickable wrapper: a popup cannot open it, and
+        -- the bare "[Name]" keeps its quality colour.
+        local name = entry.link and entry.link:gsub("|H.-|h(.-)|h", "%1") or ("item " .. entry.itemID)
+        local line = ("|T%s:14:14:0:0|t %s"):format(tostring(entry.icon or 134400), name)
+        if entry.count > 1 then line = line .. (" x%d"):format(entry.count) end
+        if formatValue and entry.value > 0 then
+            line = line .. "  |cffffffff" .. formatValue(entry.value) .. "|r"
+        end
+        lines[#lines + 1] = line
+    end
+    return table.concat(lines, "\n")
 end
 
 local function AutoDiscoverModules()

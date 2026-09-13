@@ -36,7 +36,7 @@ local INTERRUPT_SPELLS = {
 
 -- ── Default settings ────────────────────────────────────────────────────────
 local DEFAULTS = {
-    enabled     = true,
+    enabled     = false,  -- off until the player switches it on (see ModuleAPI:Register)
     scale       = 1.4,
     alpha       = 1.0,
     anchor      = "LEFT",   -- which side of the nameplate

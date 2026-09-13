@@ -1243,12 +1243,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.67)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.69)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.67")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.69")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1314,11 +1314,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  NEW Modules (Beta): extra tools built into OxedHub, switched on and off from one page.",
-        "•  KickBar: a kick alert on the enemy nameplate, grey while your interrupt is on cooldown.",
-        "•  Auto Vendor: sells your junk and repairs your gear at any vendor. Hold Shift to skip.",
-        "•  Auto Delete: types the confirmation word for you when you destroy an item.",
-        "•  ToyBoxes: sort toys by how often you use them, and a Wish List of toys you're missing.",
+        "•  Modules (Beta) are now OFF by default: switch on the ones you want on the Modules page.",
+        "•  NEW Chat Filter: an unlimited ignore list, word filters and spam blocking. /oxfilter",
+        "•  NEW Missing Gems: marks empty sockets and reminds you before a dungeon or raid.",
+        "•  Auto Vendor: your own sell list, and an optional Yes / No check before it sells.",
+        "•  Auto Confirm (was Auto Delete): choose which game confirmation popups to skip.",
         "•  Grab either pack from CurseForge:",
     }
 
