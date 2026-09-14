@@ -893,6 +893,24 @@ function Triggers:DumpLoops()
 end
 
 -- Process event and execute matching triggers
+-- Events about a spell being used, as opposed to an aura being on the player.
+-- ShouldTrigger never lets these match on "the spell's aura is up": that
+-- turned every cast made during a defensive buff into another fire of the rule.
+-- Mount, summon and trinket rules are left out on purpose: those can rely on
+-- the aura their spell leaves, and nothing reported them repeating.
+local SPELL_EVENT_TYPES = {
+    UNIT_SPELLCAST_SUCCEEDED = true,
+    UNIT_SPELLCAST_START     = true,
+    CD_READY                 = true,
+    SPELL_INTERRUPTED        = true,
+}
+
+-- One press is one fire. A single cast can reach a rule more than once: a spell
+-- that triggers a hidden spell of the same name, a reticle spell reported twice,
+-- the same cast seen through "player" and "target". Anything inside this window
+-- after a rule last fired from a cast is that same press again.
+local CAST_REFIRE = 0.5
+
 function Triggers:ProcessEvent(eventType, eventData)
     local profile = OxedHub.db.profile
     
@@ -956,9 +974,17 @@ function Triggers:ProcessEvent(eventType, eventData)
         end
     end
     
+    local isCast = SPELL_EVENT_TYPES[eventType]
+    local now = GetTime()
+    self._lastCastFire = self._lastCastFire or {}
+
     for id, trigger in pairs(profile.triggers) do
         if trigger.enabled and self:ShouldTrigger(trigger, eventType, eventData) then
-            self:ExecuteTrigger(trigger, eventData)
+            local last = isCast and self._lastCastFire[id]
+            if not (last and (now - last) < CAST_REFIRE) then
+                if isCast then self._lastCastFire[id] = now end
+                self:ExecuteTrigger(trigger, eventData)
+            end
         end
     end
 end
@@ -1038,7 +1064,17 @@ function Triggers:ShouldTrigger(trigger, eventType, eventData)
             end
 
             -- 3. Match by checking player aura via Blizzard C_UnitAuras APIs (for aura gain events)
-            if not matched and targetID and C_UnitAuras and not (eventData and eventData.isLost) then
+            --
+            -- ⚠ Aura events only. This used to run for every event type, so a
+            -- Spell Cast Success rule for a spell that also leaves a buff --
+            -- Icebound Fortitude, Anti-Magic Shell, any defensive -- matched on
+            -- EVERY cast the player made while that buff was up, and played its
+            -- sound on each one. A cast is matched by its id or name above, never
+            -- by what happens to be on the player at the time.
+            local auraFallbackAllowed = not SPELL_EVENT_TYPES[eventType]
+                and not eventType:find("INTERRUPT")
+            if not matched and targetID and C_UnitAuras and auraFallbackAllowed
+                and not (eventData and eventData.isLost) then
                 if C_UnitAuras.GetAuraDataBySpellID then
                     local ok, aura = pcall(C_UnitAuras.GetAuraDataBySpellID, "player", targetID)
                     if ok and aura then matched = true end
@@ -1078,7 +1114,8 @@ function Triggers:ShouldTrigger(trigger, eventType, eventData)
                             end
                         end
                     end
-                    if extraID and C_UnitAuras and not (eventData and eventData.isLost) then
+                    if extraID and C_UnitAuras and auraFallbackAllowed
+                        and not (eventData and eventData.isLost) then
                         if C_UnitAuras.GetAuraDataBySpellID then
                             local okEx, auraEx = pcall(C_UnitAuras.GetAuraDataBySpellID, "player", extraID)
                             if okEx and auraEx then matched = true; break end

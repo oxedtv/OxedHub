@@ -1243,12 +1243,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.70)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.71)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.70")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.71")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1314,11 +1314,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
+        "•  FIXED: Spell Cast Success rules no longer repeat their sound while a buff is up.",
         "•  NEW Auto Quest: accepts and hands in quests when you talk to NPCs. Set it in Options.",
         "•  NEW Auto Gossip: picks the option when an NPC's menu has only one choice.",
         "•  KickBar: no icon on casts that can't be interrupted, and warlock kicks now work.",
         "•  Copy Chat: move the copy button anywhere on your chat window from Options.",
-        "•  Hold Shift to skip a module is now a switch in its Options, off by default.",
         "•  Grab either pack from CurseForge:",
     }
 

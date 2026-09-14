@@ -25,6 +25,13 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.71",
+        important = true,
+        lines = {
+            { "FIXED", "Spell Cast Success rules for a spell that leaves a buff -- a defensive cooldown, for example -- no longer play their sound again on every other spell you cast while that buff is up." },
+        },
+    },
+    {
         version = "2.3.70",
         important = true,
         lines = {
