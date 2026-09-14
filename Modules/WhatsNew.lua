@@ -25,6 +25,14 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.70",
+        important = true,
+        lines = {
+            { "ADDED", "Auto Quest (accepts and hands in quests when you talk to NPCs) and Auto Gossip (picks an NPC's only menu option), both off until you switch them on. Copy Chat's button can now be moved." },
+            { "FIXED", "KickBar no longer shows on casts that cannot be interrupted, and finds warlock pet interrupts. Holding Shift to skip a module is now a switch in its Options, off by default." },
+        },
+    },
+    {
         version = "2.3.69",
         important = true,
         lines = {

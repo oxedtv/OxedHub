@@ -12,8 +12,8 @@
 -- Selling goes first and the repair waits behind it, so the gold the sale
 -- brought in is already there to pay for the repair.
 --
--- Hold Shift while opening the vendor to skip all of it, for the times you want
--- to look before anything is sold.
+-- An optional switch lets holding Shift while opening the vendor skip all of it,
+-- for the times you want to look before anything is sold. It is off by default.
 -- ============================================================================
 
 local addonName, OxedHub = ...
@@ -23,6 +23,7 @@ local addonName, OxedHub = ...
 -- EnsureData.
 local DEFAULTS = {
     enabled     = false,  -- off until the player switches it on (see ModuleAPI:Register)
+    shiftSkip   = false,   -- holding Shift skips the module for that moment (player's choice)
     repair      = true,
     guildFunds  = true,    -- try the guild bank before your own gold
     sellJunk    = true,
@@ -155,7 +156,7 @@ local function SellListed(done)
     local function Step()
         if index > #picks then return done(count, value) end
         if not (MerchantFrame and MerchantFrame:IsShown()) then return done(count, value) end
-        if IsShiftKeyDown() then return done(count, value) end
+        if settings.shiftSkip and IsShiftKeyDown() then return done(count, value) end
 
         local pick = picks[index]
         index = index + 1
@@ -272,7 +273,7 @@ local RunVisit   -- defined below; OnMerchantShow either asks first or runs it
 
 local function OnMerchantShow()
     if not settings or settings.enabled == false then return end
-    if IsShiftKeyDown() then return end
+    if settings.shiftSkip and IsShiftKeyDown() then return end
 
     if settings.confirm and OxedHub.ModuleAPI and OxedHub.ModuleAPI.Confirm then
         local question = DescribeVisit()
@@ -571,7 +572,8 @@ local function ShowOptions()
             "One line after each vendor visit: what was sold and what the repair cost.")
         optionsWindow:AddCheckbox(settings, "confirm", "Ask before doing it",
             "Shows what is about to be sold and what the repair costs, and waits for Yes. No leaves everything as it is.")
-        optionsWindow:AddNote("Hold Shift while opening a vendor to skip it for that visit.")
+        optionsWindow:AddCheckbox(settings, "shiftSkip", "Hold Shift to skip a visit",
+            "With this on, holding Shift while opening a vendor leaves everything as it is for that visit.")
         optionsWindow:AddNote("|cffffd100Sell list|r  -- click an icon to take it off.")
         BuildListSection(optionsWindow)
     end
@@ -599,7 +601,7 @@ loginFrame:SetScript("OnEvent", function(self)
         author   = "Oxed",
         category = "inventory",
         -- Clipped at about 90 characters on the card; the detail is in Options.
-        desc     = "Sells junk and your own sell list, and repairs, at any vendor. Hold Shift to skip.",
+        desc     = "Sells junk and your sell list, and repairs, at any vendor. Set it up in Options.",
         icon     = "Interface\\Icons\\INV_Misc_Coin_01",
 
         defaults = DEFAULTS,

@@ -8,14 +8,15 @@
 -- store before is what you want stored now, and everything else is left in
 -- your bags where you put it.
 --
--- Hold Shift while opening the bank to skip it, and let go of nothing else:
--- pressing a modifier part way through stops the run where it stands.
+-- An optional switch lets holding Shift while opening the bank skip it, and
+-- pressing Shift part way through stop the run where it stands. Off by default.
 -- ============================================================================
 
 local addonName, OxedHub = ...
 
 local DEFAULTS = {
     enabled   = false,  -- off until the player switches it on (see ModuleAPI:Register)
+    shiftSkip   = false,   -- holding Shift skips the module for that moment (player's choice)
     reagents  = true,   -- the game's own "deposit all reagents"
     matching  = true,   -- items you already keep in the bank
     tradeGoods = false, -- every trade good, stored or not
@@ -139,7 +140,8 @@ local function Send(picks, free, done)
     local function Step()
         if index > #picks or moved >= free then return done(moved) end
         if not (BankFrame and BankFrame:IsShown()) then return done(moved) end
-        if InCombatLockdown() or IsModifierKeyDown() then return done(moved) end
+        if InCombatLockdown() then return done(moved) end
+        if settings.shiftSkip and IsShiftKeyDown() then return done(moved) end
 
         local pick = picks[index]
         index = index + 1
@@ -241,7 +243,7 @@ local RunVisit   -- defined below; OnBankOpened either asks first or runs it
 
 local function OnBankOpened()
     if not settings or settings.enabled == false then return end
-    if IsShiftKeyDown() then return end
+    if settings.shiftSkip and IsShiftKeyDown() then return end
 
     if settings.confirm and OxedHub.ModuleAPI and OxedHub.ModuleAPI.Confirm then
         local question = DescribeVisit()
@@ -334,7 +336,8 @@ local function ShowOptions()
             "One line after each visit saying how much was put away.")
         optionsWindow:AddCheckbox(settings, "confirm", "Ask before doing it",
             "Shows what is about to be deposited and waits for Yes. No leaves your bags as they are.")
-        optionsWindow:AddNote("Hold Shift while opening the bank to skip it for that visit.")
+        optionsWindow:AddCheckbox(settings, "shiftSkip", "Hold Shift to skip a visit",
+            "With this on, holding Shift while opening the bank leaves your bags as they are for that visit.")
     end
     optionsWindow:Show()
 end
@@ -358,7 +361,7 @@ loginFrame:SetScript("OnEvent", function(self)
         version  = "1.0.0",
         author   = "Oxed",
         category = "inventory",
-        desc     = "Deposits reagents and restocks what you already store when the bank opens. Shift skips.",
+        desc     = "Deposits reagents and restocks what you already store when the bank opens.",
         icon     = "Interface\\Icons\\INV_Misc_Bag_10_Blue",
 
         defaults = DEFAULTS,

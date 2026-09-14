@@ -20,6 +20,12 @@ local DEFAULTS = {
     strip       = true,    -- remove colour codes and link markup from the copy
     timestamps  = true,    -- keep the timestamp at the start of a line
     chatLog     = false,   -- keep /chatlog on across sessions
+    -- Where the button sits, as an offset from the chat window's bottom right
+    -- corner. Numbers rather than a table: ModuleAPI copies defaults by
+    -- reference, and a table here would be shared with DEFAULTS itself.
+    buttonX     = -2,
+    buttonY     = 2,
+    buttonUnlocked = false, -- while on, the button can be dragged
 }
 
 local settings          -- OxedHubDB.modules.copychat, bound at login
@@ -255,12 +261,34 @@ end
 
 -- ── The button on a chat window ─────────────────────────────────────────────
 
+-- Puts a window's button where the player left it. One position for every
+-- chat window, measured from each window's own corner, so the button sits in
+-- the same place on all of them however big each window is.
+local function PlaceButton(button, frame)
+    button:ClearAllPoints()
+    button:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", settings.buttonX or -2, settings.buttonY or 2)
+    button:SetMovable(settings.buttonUnlocked == true)
+    if settings.buttonUnlocked then
+        button:RegisterForDrag("LeftButton")
+    else
+        button:RegisterForDrag()
+    end
+end
+
+local function PlaceAllButtons()
+    for index = 1, MAX_WINDOWS do
+        local frame = _G["ChatFrame" .. index]
+        if frame and frame.OxedCopyButton then PlaceButton(frame.OxedCopyButton, frame) end
+    end
+end
+
 local function AttachButton(index)
     local frame = _G["ChatFrame" .. index]
     if not (frame and frame.GetNumMessages) then return end
 
     if frame.OxedCopyButton then
         frame.OxedCopyButton:SetShown(settings.button ~= false)
+        PlaceButton(frame.OxedCopyButton, frame)
         return
     end
     if settings.button == false then return end
@@ -283,14 +311,41 @@ local function AttachButton(index)
     pcall(button.SetHighlightTexture, button, "Interface\\Buttons\\UI-Common-MouseHilight")
     button:SetAlpha(0.8)
 
-    -- The bottom right corner: the one part of a chat window that is never text.
-    button:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
+    -- The bottom right corner by default: the one part of a chat window that is
+    -- never text. The player can move it from Options.
+    button:SetClampedToScreen(true)
+    PlaceButton(button, frame)
+
+    button:SetScript("OnDragStart", function(self)
+        if settings.buttonUnlocked then
+            self.justDragged = true
+            self:StartMoving()
+        end
+    end)
+    -- Dropped anywhere, the spot is saved as an offset from the window's
+    -- corner and every window's button follows, so they never drift apart.
+    button:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        -- Released off the button there is no click to swallow, and the flag
+        -- would eat the next real one; it clears itself a moment later.
+        C_Timer.After(0.2, function() self.justDragged = nil end)
+        local right, bottom = self:GetRight(), self:GetBottom()
+        local frameRight, frameBottom = frame:GetRight(), frame:GetBottom()
+        if right and bottom and frameRight and frameBottom then
+            settings.buttonX = math.floor(right - frameRight + 0.5)
+            settings.buttonY = math.floor(bottom - frameBottom + 0.5)
+        end
+        PlaceAllButtons()
+    end)
 
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText(("Copy %s"):format(TabTitle(index)))
         GameTooltip:AddLine(("%d line(s) in this window."):format(frame:GetNumMessages() or 0),
             1, 1, 1)
+        if settings.buttonUnlocked then
+            GameTooltip:AddLine("Unlocked: drag to move. Lock it again in Options.", 1, 0.82, 0, true)
+        end
         GameTooltip:Show()
         self:SetAlpha(1)
     end)
@@ -298,7 +353,9 @@ local function AttachButton(index)
         GameTooltip:Hide()
         self:SetAlpha(0.65)
     end)
-    button:SetScript("OnClick", function()
+    button:SetScript("OnClick", function(self)
+        -- Letting go after a drag also counts as a click; that one only moved it.
+        if self.justDragged then self.justDragged = nil return end
         ShowText(frame, TabTitle(index))
     end)
 
@@ -395,10 +452,24 @@ local function ShowOptions()
     if not API or not settings then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("Copy Chat", 420, 240)
+        optionsWindow = API:CreateOptionsWindow("Copy Chat", 420, 360)
         optionsWindow:AddCheckbox(settings, "button", "Button on each chat window",
-            "A small button under the scroll arrow. Without it, use the right-click menu on a chat tab.",
+            "A small button in the corner of each chat window. Without it, use the right-click menu on a chat tab.",
             AttachAll)
+        optionsWindow:AddCheckbox(settings, "buttonUnlocked", "Unlock the button to move it",
+            "While ticked, drag the button with the mouse to anywhere on the chat window. Untick to lock it in place.",
+            PlaceAllButtons)
+
+        local reset = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
+        reset:SetSize(140, 22)
+        reset:SetPoint("TOPLEFT", optionsWindow, "TOPLEFT", 44, optionsWindow.cursorY + 2)
+        reset:SetText("Reset position")
+        reset:SetScript("OnClick", function()
+            settings.buttonX, settings.buttonY = DEFAULTS.buttonX, DEFAULTS.buttonY
+            PlaceAllButtons()
+        end)
+        optionsWindow.cursorY = optionsWindow.cursorY - 28
+
         optionsWindow:AddCheckbox(settings, "strip", "Plain text",
             "Remove colour codes and link markup from the copy, keeping the words inside a link.")
         optionsWindow:AddCheckbox(settings, "timestamps", "Keep timestamps",

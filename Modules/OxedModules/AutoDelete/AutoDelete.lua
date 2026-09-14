@@ -9,8 +9,8 @@
 -- be undone, so skipping one is a decision the player makes, never one made
 -- for them. The two that spend gold say so on their tick box.
 --
--- Hold Shift while doing the action and the popup is shown as normal, whatever
--- the settings say -- the way back for the one time you want to look first.
+-- With the optional Shift switch on, holding Shift while doing the action shows
+-- the popup as normal, whatever the other settings say. Off by default.
 --
 -- The id stays "autodelete": this began as Auto Delete, and renaming the id
 -- would drop the settings every existing player has saved.
@@ -20,6 +20,7 @@ local addonName, OxedHub = ...
 
 local DEFAULTS = {
     enabled        = false,  -- off until the player switches it on (see ModuleAPI:Register)
+    shiftSkip   = false,   -- holding Shift skips the module for that moment (player's choice)
 
     -- Deleting
     typeWord       = true,   -- type the confirmation word into the box
@@ -185,8 +186,8 @@ local function OnPopupShown(which, _, _, data)
     if settings[rule.setting] ~= true then return end
     if rule.needs and settings[rule.needs] ~= true then return end
 
-    -- Shift is the way to see a popup the settings would skip.
-    if IsShiftKeyDown() then return end
+    -- With the Shift switch on, Shift shows a popup the settings would skip.
+    if settings.shiftSkip and IsShiftKeyDown() then return end
 
     local dialog = FindDialog(which)
     if not dialog then return end
@@ -262,9 +263,11 @@ local function ShowOptions()
         w:AddCheckbox(settings, "housingDecor", "Also for housing decor",
             "Destroying decor from your housing storage.")
         w:AddCheckbox(settings, "pressDelete", "Press Accept too (no delete popup)",
-            "Deletes go through the moment you drop the item, with no chance to change your mind. Hold Shift to see the popup anyway.")
+            "Deletes go through the moment you drop the item, with no chance to change your mind.")
 
-        w:AddNote("|cffffd100Skip these confirmations|r  (hold Shift to see one anyway)")
+        w:AddCheckbox(settings, "shiftSkip", "Hold Shift to see a popup anyway",
+            "With this on, holding Shift while doing the action shows its popup, whatever is ticked below.")
+        w:AddNote("|cffffd100Skip these confirmations|r")
         w:AddCheckbox(settings, "sellTradeable", "Selling an item you could still trade",
             "Loot from a group that can be traded for two hours. Selling it ends that.")
         w:AddCheckbox(settings, "buyWithTokens", "Buying with currency or tokens",
@@ -319,7 +322,7 @@ loginFrame:SetScript("OnEvent", function(self)
         author   = "Oxed",
         category = "inventory",
         -- Clipped at about 100 characters on the card; the detail is in Options.
-        desc     = "Types DELETE for you and skips the confirm popups you pick. Hold Shift to see them.",
+        desc     = "Types DELETE for you and skips the confirm popups you pick in Options.",
         icon     = "Interface\\Icons\\INV_Misc_Bomb_01",
 
         defaults = DEFAULTS,

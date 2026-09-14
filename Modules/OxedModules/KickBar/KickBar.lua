@@ -30,7 +30,7 @@ local INTERRUPT_SPELLS = {
     PRIEST      = { 15487 },                -- Silence (Shadow only)
     ROGUE       = { 1766 },                 -- Kick
     SHAMAN      = { 57994 },                -- Wind Shear
-    WARLOCK     = { 19647, 89766 },         -- Spell Lock, Axe Toss
+    WARLOCK     = {},                       -- through Command Demon, see FindInterruptSpell
     WARRIOR     = { 6552 },                 -- Pummel
 }
 
@@ -60,6 +60,8 @@ local kickFrame
 local currentNameplate
 local isShowing = false
 local moduleAPI = nil
+local castNotInterruptible = false  -- the current cast's flag, possibly a secret
+local castShielded = false          -- a readable best guess, for the sound only
 
 -- ── API compatibility wrappers ──────────────────────────────────────────────
 
@@ -180,21 +182,76 @@ local function PaintCooldown(cdFrame)
     if not ok then cdFrame:Hide() end
 end
 
+-- A warlock does not kick with a spell of their own. Their pet does, and the
+-- player orders it through Command Demon, which turns into the pet's interrupt
+-- while that pet is out. The pet's own spell ids (19647, 89766) are never known
+-- to the player, which is why looking for them found no interrupt at all.
+local COMMAND_DEMON = 119898
+local COMMAND_DEMON_INTERRUPTS = {
+    [119910] = true,  -- Spell Lock (Felhunter)
+    [132409] = true,  -- Spell Lock (Fel Ravager)
+    [119914] = true,  -- Axe Toss (Felguard)
+}
+
+local function KnowsSpell(id)
+    if C_SpellBook and C_SpellBook.IsSpellInSpellBook then
+        local ok, known = pcall(C_SpellBook.IsSpellInSpellBook, id)
+        if ok and known then return true end
+    end
+    return (IsPlayerSpell and IsPlayerSpell(id)) or (IsSpellKnown and IsSpellKnown(id)) or false
+end
+
+-- The id actually on the player's bar: talents can replace a spell with a
+-- version of their own, and that is the one whose cooldown and range count.
+local function Resolved(id)
+    if C_Spell and C_Spell.GetOverrideSpell then
+        local ok, override = pcall(C_Spell.GetOverrideSpell, id)
+        if ok and override and override ~= 0 then return override end
+    end
+    return id
+end
+
 local function FindInterruptSpell()
     if not playerClass then
         local _, cls = UnitClass("player")
         playerClass = cls
     end
-    local list = INTERRUPT_SPELLS[playerClass]
-    if not list then return end
-    for _, id in ipairs(list) do
-        if IsPlayerSpell(id) or IsSpellKnown(id) then
-            interruptSpellID = id
-            local _, _, icon = GetSpellInfoCompat(id)
-            interruptIcon = icon
-            return
+
+    interruptSpellID, interruptIcon = nil, nil
+
+    local found
+    if playerClass == "WARLOCK" and KnowsSpell(COMMAND_DEMON) then
+        local override = Resolved(COMMAND_DEMON)
+        if COMMAND_DEMON_INTERRUPTS[override] then found = override end
+    end
+
+    if not found then
+        for _, id in ipairs(INTERRUPT_SPELLS[playerClass] or {}) do
+            if KnowsSpell(id) then
+                found = Resolved(id)
+                break
+            end
         end
     end
+
+    if found then
+        interruptSpellID = found
+        local _, _, icon = GetSpellInfoCompat(found)
+        interruptIcon = icon
+    end
+end
+
+-- Talents, a spec change and a new pet all settle over several events in a
+-- row, and the spellbook is not final at the first of them. One rescan a
+-- moment after the last one reads it once it has.
+local rescanPending = false
+local function QueueRescan(restart)
+    if rescanPending then return end
+    rescanPending = true
+    C_Timer.After(0.5, function()
+        rescanPending = false
+        restart()
+    end)
 end
 
 -- ── Build the kick icon frame ───────────────────────────────────────────────
@@ -305,7 +362,11 @@ local function ShowKick()
     if not isShowing then
         isShowing = true
         kickFrame:Show()
-        kickFrame.fadeIn:Play()
+        -- ⚠ No fade-in. An Alpha animation on the frame itself drives the
+        -- frame's alpha while it plays, which overrode SetAlphaFromBoolean and
+        -- flashed the icon on casts that cannot be interrupted. Animations on
+        -- child textures (the glow) are fine: a child's alpha multiplies the
+        -- frame's, so a hidden frame keeps them hidden.
     end
 end
 
@@ -346,13 +407,34 @@ local function OnUpdate(self, dt)
         isCasting = castName ~= nil
     end
 
+    if not isCasting then
+        HideKick()
+        return
+    end
+
+    -- ⚠ WHETHER THE CAST CAN BE INTERRUPTED. Do not go back to reading the
+    -- castbars for this.
+    --
+    -- In combat notInterruptible is a secret value: comparing it errors, so the
+    -- addon cannot know the answer. The old code guessed from the shield on a
+    -- visible castbar, and whenever no castbar was showing -- a different UI,
+    -- the castbar turned off -- it guessed "interruptible" and put KICK! on
+    -- casts that cannot be kicked.
+    --
+    -- The frame is handed the secret instead (SetAlphaFromBoolean, further
+    -- down), and the game itself hides the icon when the cast cannot be
+    -- interrupted. castShielded below is only a best guess, and only decides
+    -- whether to play the sound, which the game has no way to hide for us.
+    if notInterruptible == nil then notInterruptible = false end
+    castNotInterruptible = notInterruptible
+
     local safeNotInterruptible = false
-    if isCasting then
+    do
         local ok, val = pcall(function() return notInterruptible == true end)
         if ok then
             safeNotInterruptible = val
         else
-            -- It's a secret, safely try to read the UI castbars instead
+            -- A secret: read the castbars, for the sound only.
             local isShielded = false
 
             pcall(function()
@@ -390,11 +472,7 @@ local function OnUpdate(self, dt)
         end
     end
 
-    -- If not casting or cast is shielded (not interruptible), hide
-    if not isCasting or safeNotInterruptible then
-        HideKick()
-        return
-    end
+    castShielded = safeNotInterruptible
 
     -- ── Target IS casting an interruptible spell! ───────────────────────
 
@@ -438,7 +516,15 @@ local function OnUpdate(self, dt)
 
     -- ── Apply scale ─────────────────────────────────────────────────────
     kickFrame:SetScale(db.scale or 1.4)
-    kickFrame:SetAlpha(db.alpha or 1.0)
+    -- The game decides visibility from the secret: fully transparent when the
+    -- cast cannot be interrupted, the chosen alpha when it can. Plain booleans
+    -- are accepted too, so the same call serves out of combat. Clients without
+    -- the setter fall back to the readable answer, where there is one.
+    if kickFrame.SetAlphaFromBoolean then
+        kickFrame:SetAlphaFromBoolean(castNotInterruptible, 0, db.alpha or 1.0)
+    else
+        kickFrame:SetAlpha(castShielded and 0 or (db.alpha or 1.0))
+    end
 
     -- ── Update icon ─────────────────────────────────────────────────────
     if interruptIcon then
@@ -459,8 +545,11 @@ local function OnUpdate(self, dt)
             kickFrame.pulseAnim:Play()
             kickFrame.glowAnim:Play()
 
-            -- The sound and animation picked in the module's options.
-            if moduleAPI then
+            -- The sound and animation picked in the module's options. Skipped
+            -- when the castbars show a shield: the icon is already hidden for
+            -- such a cast, but a sound cannot be hidden, so this is the one
+            -- place the best guess is still used.
+            if moduleAPI and not castShielded then
                 if db.sound and db.sound ~= "" and moduleAPI.sounds then
                     moduleAPI.sounds:Play(db.sound)
                 end
@@ -671,7 +760,7 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "kickbar",
         name     = "KickBar",
-        version  = "1.1.0",
+        version  = "1.2.0",
         author   = "Oxed",
         category = "combat",
         desc     = "Shows a kick alert icon on enemy nameplates when your interrupt is ready.",
@@ -703,6 +792,11 @@ eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+-- The interrupt can change without a spec change: a talent that replaces it,
+-- or a warlock summoning a different pet.
+eventFrame:RegisterEvent("SPELLS_CHANGED")
+eventFrame:RegisterEvent("TRAIT_CONFIG_UPDATED")
+eventFrame:RegisterUnitEvent("UNIT_PET", "player")
 -- When the interrupt was last used, for telling its cooldown from the GCD.
 -- The pet as well: Spell Lock is the warlock's pet casting, not the warlock.
 eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "pet")
@@ -731,6 +825,9 @@ eventFrame:SetScript("OnEvent", function(self, event, unit, _, spellID)
         interruptSpellID = nil
         interruptIcon = nil
         if IsOn() then StartUpdates() else StopUpdates() end
+
+    elseif event == "SPELLS_CHANGED" or event == "TRAIT_CONFIG_UPDATED" or event == "UNIT_PET" then
+        if IsOn() then QueueRescan(StartUpdates) end
 
     elseif event == "PLAYER_TARGET_CHANGED" then
         currentNameplate = nil
