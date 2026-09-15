@@ -24,6 +24,9 @@ local DEFAULTS = {
     offense   = true,   -- crit, haste, mastery, versatility with ratings
     ratings   = true,   -- the rating next to each percentage
     vehicle   = true,   -- read the vehicle's speed while in one
+    gear      = true,   -- item level and the weakest slot
+    diminishing = true, -- how much of each secondary rating is lost to diminishing returns
+    deltas    = true,   -- show the change since the saved snapshot
 }
 
 local settings          -- OxedHubDB.modules.attributes, bound at login
@@ -32,6 +35,7 @@ local tab               -- the button that opens it
 local lines = {}        -- reusable line frames, header or value
 local hooked = false
 local optionsWindow
+local SetSpeedTicker    -- defined with the event watcher below; see there
 
 local UPDATE_INTERVAL = 0.1   -- the speed line only; the rest moves on events
 
@@ -41,20 +45,107 @@ local HEADER_COLOR = { 1, 0.82, 0 }
 local SUBFRAMES = { "PaperDollFrame", "ReputationFrame", "TokenFrame" }
 
 -- ── Reading the stats ───────────────────────────────────────────────────────
--- Every reader returns: value text, label, tooltip body.
+-- Every reader returns: value text, label, tooltip body, number.
 -- A reader returning nil means "this character has nothing to show here", and
 -- the line is skipped rather than printed as a zero.
+--
+-- The tooltip body may be a function, called only when the line is hovered:
+-- some of what it says (the next diminishing-returns threshold) takes a search
+-- that is not worth running on every stat change.
+--
+-- The number is what the snapshot compares against: the stat itself, in the
+-- same unit the line shows.
 
 local function Percent(value)
     return ("%.2f%%"):format(value or 0)
 end
 
+-- ── Diminishing returns, as the game itself reports them ───────────────────
+-- Past certain percentages each extra point of a secondary rating is worth
+-- less. The thresholds change between patches, so none are written down here:
+-- the game is asked what a given amount of rating is worth
+-- (GetCombatRatingBonusForCombatRatingValue, which applies the current rules),
+-- and the shape of the curve is read off the answers. A client without that
+-- call simply shows no diminishing-returns detail.
+local RatingBonusFor = GetCombatRatingBonusForCombatRatingValue
+local PROBE = 100          -- rating small enough to sit below every threshold
+
+local function BonusAt(ratingId, rating)
+    local ok, bonus = pcall(RatingBonusFor, ratingId, rating)
+    if ok and type(bonus) == "number" then return bonus end
+    return nil
+end
+
+-- What the next point of rating is worth, as a share of full value (1 while
+-- nothing is being lost), plus the bonus the rating gives now and the bonus
+-- per point before any reduction.
+local function RatingEfficiency(ratingId, rating)
+    if not (RatingBonusFor and ratingId and rating and rating > 0) then return nil end
+    local base = BonusAt(ratingId, PROBE)
+    local here = BonusAt(ratingId, rating)
+    local ahead = BonusAt(ratingId, rating + PROBE)
+    if not (base and here and ahead) or base <= 0 then return nil end
+    return (ahead - here) / base, here, base / PROBE
+end
+
+-- How much more rating until each point is worth noticeably less again, found
+-- by walking forward until the value of a step drops. Only run on hover.
+local function NextThreshold(ratingId, rating, efficiency, perPoint)
+    local STEP = 50
+    local previous = BonusAt(ratingId, rating)
+    if not previous then return nil end
+    for extra = STEP, 20000, STEP do
+        local bonus = BonusAt(ratingId, rating + extra)
+        if not bonus then return nil end
+        local stepEfficiency = (bonus - previous) / (STEP * perPoint)
+        if stepEfficiency < efficiency - 0.05 then return extra end
+        previous = bonus
+    end
+    return nil
+end
+
+local function DiminishingText(ratingId)
+    if not (settings.diminishing and RatingBonusFor and GetCombatRating) then return nil end
+    local rating = GetCombatRating(ratingId)
+    local efficiency, here, perPoint = RatingEfficiency(ratingId, rating)
+    if not efficiency then return nil end
+
+    local lines = { ("Each extra point of rating is worth %d%% of full value."):format(efficiency * 100 + 0.5) }
+    local lost = perPoint * rating - here
+    if lost >= 0.01 then
+        lines[#lines + 1] = ("Lost to diminishing returns: %.2f%%"):format(lost)
+    end
+    local nextAt = NextThreshold(ratingId, rating, efficiency, perPoint)
+    if nextAt then
+        lines[#lines + 1] = ("Worth less again after about %d more rating."):format(nextAt)
+    end
+    return table.concat(lines, "\n")
+end
+
+-- Adds the diminishing-returns detail to a line's tooltip, worked out only when
+-- the line is hovered.
+local function WithDiminishing(body, ratingId)
+    if not (settings.diminishing and RatingBonusFor and ratingId) then return body end
+    return function()
+        local detail = DiminishingText(ratingId)
+        if body and detail then return body .. "\n\n" .. detail end
+        return detail or body
+    end
+end
+
 -- The rating in brackets, when the player asked for ratings and there is one.
+-- Orange once diminishing returns have started to bite, so a stat that is past
+-- its threshold stands out without reading every tooltip.
 local function WithRating(text, ratingId)
     if not settings.ratings or not ratingId or not GetCombatRating then return text end
     local rating = GetCombatRating(ratingId)
     if not rating or rating <= 0 then return text end
-    return ("%s |cff808080(%d)|r"):format(text, rating)
+    local colour = "|cff808080"
+    if settings.diminishing then
+        local efficiency = RatingEfficiency(ratingId, rating)
+        if efficiency and efficiency < 0.99 then colour = "|cffff9933" end
+    end
+    return ("%s %s(%d)|r"):format(text, colour, rating)
 end
 
 -- Which unit's speed matters right now. In a vehicle the player's own speed is
@@ -67,18 +158,48 @@ local function SpeedUnit()
     return "player", false
 end
 
+-- Skyriding speed. GetUnitSpeed does not describe it -- the flight is physics,
+-- not a movement rate -- so while gliding the forward speed comes from the
+-- gliding info instead.
+local function GlidingSpeed()
+    if not (C_PlayerInfo and C_PlayerInfo.GetGlidingInfo) then return nil end
+    local ok, isGliding, _, forward = pcall(C_PlayerInfo.GetGlidingInfo)
+    if ok and isGliding and type(forward) == "number" then return forward end
+    return nil
+end
+
 local function ReadSpeed()
     if not GetUnitSpeed then return nil end
     local unit, inVehicle = SpeedUnit()
     local current = GetUnitSpeed(unit) or 0
+    local gliding = GlidingSpeed()
+    if gliding then current = gliding end
     local base = BASE_MOVEMENT_SPEED or 7
     local percent = current / base * 100
 
     local text = ("%.0f%%"):format(percent)
-    if inVehicle then text = text .. " |cff808080(vehicle)|r" end
+    if gliding then
+        text = text .. " |cff808080(skyriding)|r"
+    elseif inVehicle then
+        text = text .. " |cff808080(vehicle)|r"
+    end
 
     return text, STAT_MOVEMENT_SPEED or "Movement Speed",
-        ("Current: %.1f yards per second.\nStanding still reads 0%%."):format(current)
+        ("Current: %.1f yards per second.\nStanding still reads 0%%."):format(current), percent
+end
+
+-- Run, swim and flight speed, each as a share of normal running speed: what
+-- you would move at right now in each, whatever you happen to be doing.
+local function ReadTravelSpeeds()
+    if not GetUnitSpeed then return nil end
+    local _, run, flight, swim = GetUnitSpeed("player")
+    if not run then return nil end
+    local base = BASE_MOVEMENT_SPEED or 7
+    local function pct(value) return ("%.0f%%"):format((value or 0) / base * 100) end
+    return ("%s / %s / %s"):format(pct(run), pct(swim), pct(flight)),
+        "Run / Swim / Fly",
+        "What you move at on foot, in water and on a flying mount, as a share of normal run speed. Skyriding shows live on the line above while you glide.",
+        (run or 0) / base * 100
 end
 
 local function ReadSpeedRating()
@@ -86,7 +207,8 @@ local function ReadSpeedRating()
     local bonus = GetSpeed()
     if not bonus or bonus <= 0 then return nil end
     return WithRating(Percent(bonus), CR_SPEED), STAT_SPEED or "Speed",
-        "Passive movement speed from the Speed secondary stat, on top of your normal run speed."
+        WithDiminishing("Passive movement speed from the Speed secondary stat, on top of your normal run speed.", CR_SPEED),
+        bonus
 end
 
 local function ReadLeech()
@@ -94,7 +216,8 @@ local function ReadLeech()
     local value = GetLifesteal()
     if not value or value <= 0 then return nil end
     return WithRating(Percent(value), CR_LIFESTEAL), STAT_LIFESTEAL or "Leech",
-        "Part of the damage and healing you do comes back to you as healing."
+        WithDiminishing("Part of the damage and healing you do comes back to you as healing.", CR_LIFESTEAL),
+        value
 end
 
 local function ReadAvoidance()
@@ -102,7 +225,8 @@ local function ReadAvoidance()
     local value = GetAvoidance()
     if not value or value <= 0 then return nil end
     return WithRating(Percent(value), CR_AVOIDANCE), STAT_AVOIDANCE or "Avoidance",
-        "Reduces the damage area effects do to you."
+        WithDiminishing("Reduces the damage area effects do to you.", CR_AVOIDANCE),
+        value
 end
 
 -- ── The primary attributes ──────────────────────────────────────────────────
@@ -146,7 +270,7 @@ local function ReadPrimaryStat()
         body = ("Base: %d\nFrom gear and effects: %+d"):format(
             effective - (positive or 0) - (negative or 0), (positive or 0) + (negative or 0))
     end
-    return tostring(effective), StatName(index), body
+    return tostring(effective), StatName(index), body, effective
 end
 
 local function ReadStamina()
@@ -154,7 +278,7 @@ local function ReadStamina()
     local effective = select(2, UnitStat("player", STAT_STAMINA))
     if not effective then return nil end
     return tostring(effective), StatName(STAT_STAMINA),
-        ("Health: %d"):format(UnitHealthMax and UnitHealthMax("player") or 0)
+        ("Health: %d"):format(UnitHealthMax and UnitHealthMax("player") or 0), effective
 end
 
 -- The lowest crit of the spell schools. A school left behind is the one that
@@ -189,19 +313,23 @@ local function ReadCrit()
 
     return WithRating(Percent(value), ratingId),
         STAT_CRITICAL_STRIKE or "Critical Strike",
-        ("Melee: %s\nRanged: %s\nSpell: %s"):format(Percent(melee), Percent(ranged), Percent(spell))
+        WithDiminishing(("Melee: %s\nRanged: %s\nSpell: %s"):format(Percent(melee), Percent(ranged), Percent(spell)), ratingId),
+        value
 end
 
 local function ReadHaste()
     if not GetHaste then return nil end
-    return WithRating(Percent(GetHaste()), CR_HASTE_MELEE), STAT_HASTE or "Haste", nil
+    local haste = GetHaste()
+    return WithRating(Percent(haste), CR_HASTE_MELEE), STAT_HASTE or "Haste",
+        WithDiminishing(nil, CR_HASTE_MELEE), haste
 end
 
 local function ReadMastery()
     if not GetMasteryEffect then return nil end
     local value = GetMasteryEffect()
     if not value or value <= 0 then return nil end
-    return WithRating(Percent(value), CR_MASTERY), STAT_MASTERY or "Mastery", nil
+    return WithRating(Percent(value), CR_MASTERY), STAT_MASTERY or "Mastery",
+        WithDiminishing("Diminishing returns below are in mastery points, before your spec turns them into this percentage.", CR_MASTERY), value
 end
 
 -- Versatility is two numbers wearing one name: what it adds to the damage you
@@ -217,12 +345,15 @@ local function ReadVersatility()
 
     return WithRating(Percent(done), CR_VERSATILITY_DAMAGE_DONE),
         STAT_VERSATILITY or "Versatility",
-        ("Damage done: %s\nDamage taken: %s"):format(Percent(done), Percent(taken))
+        WithDiminishing(("Damage done: %s\nDamage taken: %s"):format(Percent(done), Percent(taken)), CR_VERSATILITY_DAMAGE_DONE),
+        done
 end
 
 local function ReadDodge()
     if not GetDodgeChance then return nil end
-    return WithRating(Percent(GetDodgeChance()), CR_DODGE), DODGE_CHANCE or "Dodge", nil
+    local dodge = GetDodgeChance()
+    return WithRating(Percent(dodge), CR_DODGE), DODGE_CHANCE or "Dodge",
+        WithDiminishing(nil, CR_DODGE), dodge
 end
 
 local function ReadParry()
@@ -230,7 +361,8 @@ local function ReadParry()
     local value = GetParryChance()
     -- Classes that cannot parry read a flat zero; printing it says nothing.
     if not value or value <= 0 then return nil end
-    return WithRating(Percent(value), CR_PARRY), PARRY_CHANCE or "Parry", nil
+    return WithRating(Percent(value), CR_PARRY), PARRY_CHANCE or "Parry",
+        WithDiminishing(nil, CR_PARRY), value
 end
 
 local function ReadBlock()
@@ -245,7 +377,8 @@ local function ReadBlock()
             body = ("A blocked hit is reduced by %d."):format(amount)
         end
     end
-    return WithRating(Percent(value), CR_BLOCK), BLOCK_CHANCE or "Block", body
+    return WithRating(Percent(value), CR_BLOCK), BLOCK_CHANCE or "Block",
+        WithDiminishing(body, CR_BLOCK), value
 end
 
 -- Monks only: the share of a hit that is delayed instead of taken at once.
@@ -258,14 +391,14 @@ local function ReadStagger()
     if againstTarget and againstTarget ~= stagger then
         body = ("Against your current target: %s"):format(Percent(againstTarget))
     end
-    return Percent(stagger), STAT_STAGGER or "Stagger", body
+    return Percent(stagger), STAT_STAGGER or "Stagger", body, stagger
 end
 
 local function ReadArmor()
     if not UnitArmor then return nil end
     local effective = select(2, UnitArmor("player"))
     if not effective or effective <= 0 then return nil end
-    return tostring(effective), ARMOR or "Armor", nil
+    return tostring(effective), ARMOR or "Armor", nil, effective
 end
 
 -- What the armour is actually worth, which the sheet only shows on hover.
@@ -285,7 +418,128 @@ local function ReadArmorReduction()
             body = ("Against your current target: %s"):format(Percent(vsTarget))
         end
     end
-    return Percent(reduction), "Damage reduction", body
+    return Percent(reduction), "Damage reduction", body, reduction
+end
+
+-- ── Worked out from the stats ───────────────────────────────────────────────
+
+-- The global cooldown with haste applied: how fast the rotation really turns.
+-- A few kits run on a fixed one-second cooldown that haste does not shorten.
+local function FixedGlobalCooldown()
+    local _, class = UnitClass("player")
+    if class == "ROGUE" then return true end
+    if class == "MONK" then
+        local spec = GetSpecialization and GetSpecialization()
+        local specID = spec and GetSpecializationInfo and GetSpecializationInfo(spec)
+        return specID ~= 270   -- Mistweaver's is hasted
+    end
+    if class == "DRUID" and GetShapeshiftFormID and GetShapeshiftFormID() == 1 then
+        return true            -- Cat Form
+    end
+    return false
+end
+
+local function ReadGlobalCooldown()
+    if not GetHaste then return nil end
+    local haste = GetHaste() or 0
+    if FixedGlobalCooldown() then
+        return "1.00 s", "Global cooldown",
+            "Fixed at one second for your class or form: haste does not shorten it.", 1
+    end
+    local gcd = math.max(0.75, 1.5 / (1 + haste / 100))
+    return ("%.2f s"):format(gcd), "Global cooldown",
+        ("1.5 s reduced by %s haste, never below 0.75 s."):format(Percent(haste)), gcd
+end
+
+local function Abbreviate(value)
+    if value >= 1e6 then return ("%.2fM"):format(value / 1e6) end
+    if value >= 1e3 then return ("%.0fk"):format(value / 1e3) end
+    return tostring(math.floor(value + 0.5))
+end
+
+-- Effective health: how much damage it takes to kill you from full, once armour
+-- and versatility have taken their share. One number to compare defensive gear
+-- by. Physical damage meets both; magic meets versatility only.
+local function ReadEffectiveHealth()
+    if not (UnitHealthMax and UnitArmor and PaperDollFrame_GetArmorReduction) then return nil end
+    local ok, result = pcall(function()
+        local health = UnitHealthMax("player")
+        local effective = select(2, UnitArmor("player"))
+        local level = (UnitEffectiveLevel and UnitEffectiveLevel("player")) or UnitLevel("player")
+        local armour = (PaperDollFrame_GetArmorReduction(effective, level) or 0) / 100
+        local vers = 0
+        if GetCombatRatingBonus and GetVersatilityBonus and CR_VERSATILITY_DAMAGE_TAKEN then
+            vers = (GetCombatRatingBonus(CR_VERSATILITY_DAMAGE_TAKEN)
+                + GetVersatilityBonus(CR_VERSATILITY_DAMAGE_TAKEN)) / 100
+        end
+        local physical = health / math.max(0.01, (1 - armour) * (1 - vers))
+        local magic = health / math.max(0.01, 1 - vers)
+        return { health = health, physical = physical, magic = magic, armour = armour, vers = vers }
+    end)
+    -- Health can be a secret value in some content, and arithmetic on one errors:
+    -- the line is simply left out then.
+    if not ok or type(result) ~= "table" then return nil end
+
+    return ("%s / %s"):format(Abbreviate(result.physical), Abbreviate(result.magic)),
+        "Effective health",
+        ("Physical / magic. Your %s health, after armour (%s) and versatility (%s) take their share of each hit.")
+            :format(Abbreviate(result.health), Percent(result.armour * 100), Percent(result.vers * 100)),
+        result.physical
+end
+
+-- ── Gear ────────────────────────────────────────────────────────────────────
+
+local GEAR_SLOTS = {
+    { "HeadSlot", "Head" }, { "NeckSlot", "Neck" }, { "ShoulderSlot", "Shoulders" },
+    { "BackSlot", "Back" }, { "ChestSlot", "Chest" }, { "WristSlot", "Wrists" },
+    { "HandsSlot", "Hands" }, { "WaistSlot", "Waist" }, { "LegsSlot", "Legs" },
+    { "FeetSlot", "Feet" }, { "Finger0Slot", "Ring 1" }, { "Finger1Slot", "Ring 2" },
+    { "Trinket0Slot", "Trinket 1" }, { "Trinket1Slot", "Trinket 2" },
+    { "MainHandSlot", "Main hand" }, { "SecondaryHandSlot", "Off hand" },
+}
+
+local function SlotItemLevel(slotName)
+    local slotID = GetInventorySlotInfo(slotName)
+    if not (slotID and GetInventoryItemLink("player", slotID)) then return nil end
+    if C_Item and C_Item.GetCurrentItemLevel and ItemLocation and ItemLocation.CreateFromEquipmentSlot then
+        local ok, level = pcall(C_Item.GetCurrentItemLevel, ItemLocation:CreateFromEquipmentSlot(slotID))
+        if ok and type(level) == "number" and level > 0 then return level end
+    end
+    return nil
+end
+
+local function ReadItemLevel()
+    if not GetAverageItemLevel then return nil end
+    local overall, equipped = GetAverageItemLevel()
+    if not equipped or equipped <= 0 then return nil end
+    return ("%.1f"):format(equipped), "Item level",
+        ("Equipped %.1f. The best you own, bags included: %.1f."):format(equipped, overall or equipped),
+        equipped
+end
+
+-- The piece of gear furthest behind: the upgrade that moves item level most.
+local function ReadWeakestSlot()
+    local lowestName, lowestLevel
+    local list = {}
+    for _, slot in ipairs(GEAR_SLOTS) do
+        local level = SlotItemLevel(slot[1])
+        if level then
+            list[#list + 1] = { name = slot[2], level = level }
+            if not lowestLevel or level < lowestLevel then
+                lowestName, lowestLevel = slot[2], level
+            end
+        end
+    end
+    if not lowestName then return nil end
+
+    table.sort(list, function(a, b) return a.level < b.level end)
+    local body = {}
+    for i = 1, math.min(5, #list) do
+        body[#body + 1] = ("%s  %d"):format(list[i].name, list[i].level)
+    end
+    return ("%s  %d"):format(lowestName, lowestLevel), "Weakest slot",
+        "Lowest item level first -- the upgrades worth chasing:\n" .. table.concat(body, "\n"),
+        lowestLevel
 end
 
 -- What is printed, in order. A header only appears when a line under it does.
@@ -294,13 +548,19 @@ local ROWS = {
     { group = "primary", read = ReadPrimaryStat },
     { group = "primary", read = ReadStamina },
 
+    { group = "gear",    header = "Gear" },
+    { group = "gear",    read = ReadItemLevel },
+    { group = "gear",    read = ReadWeakestSlot },
+
     { group = "speed",   header = "Movement" },
     { group = "speed",   read = ReadSpeed, live = true },
+    { group = "speed",   read = ReadTravelSpeeds },
     { group = "speed",   read = ReadSpeedRating },
 
     { group = "offense", header = "Offense" },
     { group = "offense", read = ReadCrit },
     { group = "offense", read = ReadHaste },
+    { group = "offense", read = ReadGlobalCooldown },
     { group = "offense", read = ReadMastery },
     { group = "offense", read = ReadVersatility },
 
@@ -309,6 +569,7 @@ local ROWS = {
     { group = "hidden",  read = ReadAvoidance },
 
     { group = "defense", header = "Defense" },
+    { group = "defense", read = ReadEffectiveHealth },
     { group = "defense", read = ReadArmor },
     { group = "defense", read = ReadArmorReduction },
     { group = "defense", read = ReadDodge },
@@ -339,7 +600,13 @@ local function GetLine(index, parent)
         if not self.tipTitle then return end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(self.tipTitle)
-        if self.tipBody then GameTooltip:AddLine(self.tipBody, 1, 1, 1, true) end
+        -- A body can be a function, worked out now rather than on every redraw.
+        local body = self.tipBody
+        if type(body) == "function" then
+            local ok, text = pcall(body)
+            body = ok and text or nil
+        end
+        if body then GameTooltip:AddLine(body, 1, 1, 1, true) end
         GameTooltip:Show()
     end)
     line:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -364,6 +631,60 @@ local function SetValueLine(line, label, value, body)
     line.tipTitle, line.tipBody = label, body
 end
 
+-- ── Snapshot ────────────────────────────────────────────────────────────────
+-- Save what the stats are now, then every line shows how far it has moved
+-- since: put on a new piece, change a talent, and the gain and the cost are
+-- both on the page. One snapshot per character, kept across sessions.
+
+local LOWER_IS_BETTER = { ["Global cooldown"] = true }
+
+local function CharacterKey()
+    local realm = (GetNormalizedRealmName and GetNormalizedRealmName()) or ""
+    return (UnitName("player") or "?") .. "-" .. realm
+end
+
+local function CurrentSnapshot()
+    local all = settings and settings.snapshots
+    return type(all) == "table" and all[CharacterKey()] or nil
+end
+
+local function SaveSnapshot()
+    if type(settings.snapshots) ~= "table" then settings.snapshots = {} end
+    local values = {}
+    for _, row in ipairs(ROWS) do
+        if row.read then
+            local ok, value, label, _, number = pcall(row.read)
+            if ok and value and label and type(number) == "number" then
+                values[label] = number
+            end
+        end
+    end
+    settings.snapshots[CharacterKey()] = { at = time(), values = values }
+end
+
+local function ClearSnapshot()
+    if type(settings.snapshots) == "table" then
+        settings.snapshots[CharacterKey()] = nil
+    end
+end
+
+-- " +1.82" in green, or red when the stat went the wrong way.
+local function DeltaText(label, number)
+    if not (settings.deltas and type(number) == "number") then return "" end
+    local snapshot = CurrentSnapshot()
+    local old = snapshot and snapshot.values and snapshot.values[label]
+    if type(old) ~= "number" then return "" end
+
+    local diff = number - old
+    local precise = math.abs(old) < 100
+    if math.abs(diff) < (precise and 0.005 or 0.5) then return "" end
+
+    local better = diff > 0
+    if LOWER_IS_BETTER[label] then better = not better end
+    local text = precise and ("%+.2f"):format(diff) or ("%+d"):format(math.floor(diff + 0.5))
+    return (" %s%s|r"):format(better and "|cff40ff40" or "|cffff5555", text)
+end
+
 -- Redraws every line. Called when the tab opens and whenever the game says a
 -- stat changed -- not on the timer, which touches the speed line alone.
 local function Refresh()
@@ -371,6 +692,13 @@ local function Refresh()
 
     local content = panel.content
     local shown, y = 0, 0
+
+    if panel.snapshotLabel then
+        local snapshot = CurrentSnapshot()
+        panel.snapshotLabel:SetText(snapshot and snapshot.at
+            and ("Compared with %s"):format(date("%d %b %H:%M", snapshot.at))
+            or "No snapshot saved")
+    end
     local pendingHeader        -- drawn only once a value under it appears
 
     for _, row in ipairs(ROWS) do
@@ -378,8 +706,9 @@ local function Refresh()
             if row.header then
                 pendingHeader = row.header
             else
-                local value, label, body = row.read()
+                local value, label, body, number = row.read()
                 if value then
+                    value = value .. DeltaText(label, number)
                     if pendingHeader then
                         shown = shown + 1
                         local header = GetLine(shown, content)
@@ -456,7 +785,37 @@ local function BuildPanel()
 
     local scroll = CreateFrame("ScrollFrame", nil, panel)
     scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
-    scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", 0, 0)
+    -- Room at the bottom for the snapshot buttons.
+    scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", 0, 30)
+
+    local save = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    save:SetSize(120, 22)
+    save:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 6, 4)
+    save:SetText("Save snapshot")
+    save:SetScript("OnClick", function()
+        SaveSnapshot()
+        Refresh()
+    end)
+    save:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Save snapshot")
+        GameTooltip:AddLine("Remembers your stats as they are now. Change gear or talents afterwards and every line shows what went up in green and what went down in red.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    save:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    local clear = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    clear:SetSize(60, 22)
+    clear:SetPoint("LEFT", save, "RIGHT", 4, 0)
+    clear:SetText("Clear")
+    clear:SetScript("OnClick", function()
+        ClearSnapshot()
+        Refresh()
+    end)
+
+    local when = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    when:SetPoint("LEFT", clear, "RIGHT", 8, 0)
+    panel.snapshotLabel = when
 
     local content = CreateFrame("Frame", nil, scroll)
     content:SetSize(1, 1)
@@ -475,6 +834,10 @@ local function BuildPanel()
     panel:SetScript("OnShow", function()
         content:SetWidth(scroll:GetWidth())
         Refresh()
+        if SetSpeedTicker then SetSpeedTicker(true) end
+    end)
+    panel:SetScript("OnHide", function()
+        if SetSpeedTicker then SetSpeedTicker(false) end
     end)
 
     return panel
@@ -583,6 +946,7 @@ local watcher = CreateFrame("Frame")
 local STAT_EVENTS = {
     "UNIT_STATS", "UNIT_AURA", "COMBAT_RATING_UPDATE", "MASTERY_UPDATE",
     "SPEED_UPDATE", "PLAYER_EQUIPMENT_CHANGED", "PLAYER_TARGET_CHANGED",
+    "PLAYER_AVG_ITEM_LEVEL_UPDATE", "UNIT_MAXHEALTH", "PLAYER_SPECIALIZATION_CHANGED",
 }
 
 local function InstallHook()
@@ -592,18 +956,32 @@ local function InstallHook()
 
     BuildTab()
 
+    -- Unit events for the player, plain events for the rest. Registering every
+    -- one as a unit event, as this used to, fails quietly for the plain ones
+    -- (inside the pcall), so a gear or rating change never redrew the page.
     for _, event in ipairs(STAT_EVENTS) do
-        pcall(watcher.RegisterUnitEvent, watcher, event, "player")
+        if event:find("^UNIT_") then
+            pcall(watcher.RegisterUnitEvent, watcher, event, "player")
+        else
+            pcall(watcher.RegisterEvent, watcher, event)
+        end
     end
     watcher:SetScript("OnEvent", Refresh)
 
-    watcher.elapsed = 0
-    watcher:SetScript("OnUpdate", function(self, elapsed)
-        self.elapsed = self.elapsed + elapsed
+    -- The speed line's ticker runs only while the Attributes tab is open. It
+    -- used to run every frame from login on, with the character window shut,
+    -- doing nothing but checking that the tab was hidden.
+    local function SpeedTick(self, elapsed)
+        self.elapsed = (self.elapsed or 0) + elapsed
         if self.elapsed < UPDATE_INTERVAL then return end
         self.elapsed = 0
         RefreshSpeedOnly()
-    end)
+    end
+    SetSpeedTicker = function(on)
+        watcher.elapsed = 0
+        watcher:SetScript("OnUpdate", on and SpeedTick or nil)
+    end
+    if panel and panel:IsShown() then SetSpeedTicker(true) end
 end
 
 -- The character frame is loaded on demand, so the tab waits for it.
@@ -640,13 +1018,19 @@ local function ShowOptions()
     if not API or not settings then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("Attributes", 400, 280)
+        optionsWindow = API:CreateOptionsWindow("Attributes", 420, 420)
         optionsWindow:AddCheckbox(settings, "primary", "Attributes",
             "Your specialisation's main stat and stamina.", Refresh)
+        optionsWindow:AddCheckbox(settings, "gear", "Gear",
+            "Item level, and the equipped slot furthest behind.", Refresh)
+        optionsWindow:AddCheckbox(settings, "diminishing", "Diminishing returns",
+            "Colours a rating orange once each extra point is worth less, and says how much is lost and when the next drop comes. The game itself is asked, so it follows every patch.", Refresh)
+        optionsWindow:AddCheckbox(settings, "deltas", "Changes since snapshot",
+            "After Save snapshot on the tab, every line shows how far it has moved: green up, red down.", Refresh)
         optionsWindow:AddCheckbox(settings, "speed", "Movement",
             "A live reading of how fast you are moving, plus the Speed stat.", Refresh)
         optionsWindow:AddCheckbox(settings, "offense", "Offense",
-            "Crit, haste, mastery and versatility, each with its rating.", Refresh)
+            "Crit, haste, mastery and versatility, each with its rating, and your global cooldown.", Refresh)
         optionsWindow:AddCheckbox(settings, "hidden", "Hidden stats",
             "Leech and avoidance -- the ones the sheet never prints.", Refresh)
         optionsWindow:AddCheckbox(settings, "defense", "Defense",

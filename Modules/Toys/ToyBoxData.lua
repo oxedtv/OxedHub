@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local Toys = OxedHub.Toys or {}
 OxedHub.Toys = Toys
@@ -390,49 +391,113 @@ end
 -- and it catches every route -- our grid, our dock, the quick slots, a macro, a
 -- keybind, even Blizzard's own toy box.
 
-local spellToToy = nil
+-- ⚠ THE MAP IS NEVER BUILT INSIDE A CAST.
+-- Building it asks the game for the spell of every toy the player owns --
+-- hundreds -- and done in one go that took 18 ms, a visible hitch, found with
+-- /oxprofile. It used to happen on the first spell cast after login, and again
+-- after every TOYS_UPDATED, which the client fires constantly (over a thousand
+-- times in a six-minute session): each one threw the map away, so the next
+-- ordinary cast rebuilt it, twice. Now:
+--   * the map is built a few dozen toys per frame, so no single frame pays;
+--   * TOYS_UPDATED only marks it out of date, and it is rebuilt out of combat,
+--     at most once a minute;
+--   * a cast that arrives while it is being built waits in a short queue and is
+--     counted once the map is ready, instead of forcing a build.
+
+local spellToToy = nil      -- finished map, spell id -> toy item id
+local building = false
+local stale = true          -- true until the first build, and after TOYS_UPDATED
+local lastBuiltAt = -math.huge
+local pendingCasts = {}     -- spell ids cast while the map was not ready
+
+local CHUNK = 40            -- toys looked up per frame
+local REBUILD_EVERY = 60    -- seconds between rebuilds for a stale map
+local PENDING_LIMIT = 20
+
+local CountCast   -- defined below; the build finishes by handing it the queue
 
 local function BuildSpellMap()
-    spellToToy = {}
-    for _, itemID in ipairs(Toys:GetAllCollectedToyIDs()) do
-        local _, spellID = GetItemSpell(itemID)
-        if spellID then spellToToy[spellID] = itemID end
+    if building then return end
+    building = true
+
+    local ids = Toys:GetAllCollectedToyIDs()
+    local map, index = {}, 1
+
+    local function Step()
+        local last = math.min(#ids, index + CHUNK - 1)
+        for i = index, last do
+            local _, spellID = GetItemSpell(ids[i])
+            if spellID then map[spellID] = ids[i] end
+        end
+        index = last + 1
+        if index <= #ids then
+            C_Timer.After(0, Step)
+            return
+        end
+
+        spellToToy, building, stale, lastBuiltAt = map, false, false, GetTime()
+        local queued = pendingCasts
+        pendingCasts = {}
+        for _, spellID in ipairs(queued) do CountCast(spellID) end
     end
+
+    Step()
+end
+
+-- Rebuilds an out-of-date map when that is cheap to do: not in combat, not
+-- already building, and not more often than once a minute.
+local function MaybeRebuild()
+    if building or not stale or InCombatLockdown() then return end
+    if GetTime() - lastBuiltAt < REBUILD_EVERY then return end
+    BuildSpellMap()
 end
 
 function Toys:InvalidateToySpellMap()
-    spellToToy = nil
+    stale = true
+end
+
+CountCast = function(spellID)
+    local itemID = spellToToy and spellToToy[spellID]
+    if not itemID then return end
+    Toys:RecordToyUse(itemID)
+    Toys:RefreshAfterUsageChange()
 end
 
 function Toys:NoteToySpellCast(spellID)
     spellID = tonumber(spellID)
     if not spellID then return end
 
-    if not spellToToy then BuildSpellMap() end
-    local itemID = spellToToy[spellID]
-    -- A toy learned since the map was built would be missed, so a miss is worth
-    -- one rebuild before it is believed.
-    if not itemID and not self._spellMapFresh then
-        BuildSpellMap()
-        self._spellMapFresh = true
-        itemID = spellToToy[spellID]
+    if not spellToToy then
+        -- Not built yet: remember the cast and start building, rather than
+        -- building now inside the cast.
+        if #pendingCasts < PENDING_LIMIT then pendingCasts[#pendingCasts + 1] = spellID end
+        if not InCombatLockdown() then BuildSpellMap() end
+        return
     end
-    if not itemID then return end
 
-    self:RecordToyUse(itemID)
-    self:RefreshAfterUsageChange()
+    CountCast(spellID)
+    -- A toy learned since the map was built is missed until the next rebuild,
+    -- which the stale flag schedules; the count catches up from then on.
+    MaybeRebuild()
 end
 
 local usageWatcher = CreateFrame("Frame")
 usageWatcher:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
 usageWatcher:RegisterEvent("TOYS_UPDATED")
+usageWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+usageWatcher:RegisterEvent("PLAYER_REGEN_ENABLED")
 usageWatcher:SetScript("OnEvent", function(_, event, _, _, spellID)
     if event == "TOYS_UPDATED" then
         Toys:InvalidateToySpellMap()
-        Toys._spellMapFresh = nil
-        return
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        -- Built a little after the loading screen, spread over frames, so the
+        -- first toy of the session is already known when it is used.
+        C_Timer.After(5, MaybeRebuild)
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        MaybeRebuild()
+    else
+        Toys:NoteToySpellCast(spellID)
     end
-    Toys:NoteToySpellCast(spellID)
 end)
 
 -- Use a toy and count it, in that order, from one place.

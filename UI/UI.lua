@@ -1243,12 +1243,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.71)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.72)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.71")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.72")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1314,11 +1314,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  FIXED: Spell Cast Success rules no longer repeat their sound while a buff is up.",
-        "•  NEW Auto Quest: accepts and hands in quests when you talk to NPCs. Set it in Options.",
-        "•  NEW Auto Gossip: picks the option when an NPC's menu has only one choice.",
-        "•  KickBar: no icon on casts that can't be interrupted, and warlock kicks now work.",
-        "•  Copy Chat: move the copy button anywhere on your chat window from Options.",
+        "•  NEW Performance monitor: Ctrl+click the minimap button, or type /oxprofile.",
+        "•  Attributes: diminishing returns, stat snapshots, GCD, effective health, item level.",
+        "•  Attributes also shows live skyriding speed and your weakest gear slot.",
+        "•  FIXED: a short hitch when casting spells, caused by the toy usage counter.",
+        "•  KickBar and Attributes no longer run in the background with nothing to show.",
         "•  Grab either pack from CurseForge:",
     }
 
@@ -5136,6 +5136,25 @@ function UI:CreateSettingsTab()
         GameTooltip:Show()
     end)
     retryNativeBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    -- How long each part of OxedHub takes, and what ran during a lag spike.
+    -- The window lives in Modules\Performance.lua; /oxprofile opens it too.
+    local perfBtn = CreateFrame("Button", nil, debugPage, "UIPanelButtonTemplate")
+    ApplyRedButtonStyle(perfBtn)
+    perfBtn:SetSize(130, 24)
+    perfBtn:SetPoint("RIGHT", retryNativeBtn, "LEFT", -6, 0)
+    perfBtn:SetText("Performance")
+    perfBtn:SetNormalFontObject("GameFontNormalSmall")
+    perfBtn:SetScript("OnClick", function()
+        if OxedHub.Performance then OxedHub.Performance:Open() end
+    end)
+    perfBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Performance", 1, 0.82, 0)
+        GameTooltip:AddLine("How many milliseconds each part of OxedHub takes -- every trigger, sound, animation and timer -- and what was running during each lag spike. Press Start there, then play.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    perfBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     local debugScroll = CreateFrame("ScrollFrame", "OxedHubDebugScrollFrame", debugPage, "UIPanelScrollFrameTemplate")
     debugScroll:SetPoint("TOPLEFT", debugHint, "BOTTOMLEFT", 0, -10)

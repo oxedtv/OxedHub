@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local AntiAFK = OxedHub.AntiAFK or {}
 OxedHub.AntiAFK = AntiAFK

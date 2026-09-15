@@ -1017,8 +1017,13 @@ local function Install()
     if installed then return end
     installed = true
 
+    -- Named for /oxprofile. The filter is handed to the game rather than set as
+    -- a script, so the profiler cannot see it on its own; the wrapper is a
+    -- straight pass-through while nothing is being recorded.
+    local filter = OxedHub.Profiler and OxedHub.Profiler:Wrap("Chat Filter: message", ChatFilter)
+        or ChatFilter
     for _, event in ipairs(CHAT_EVENTS) do
-        AddFilter(event, ChatFilter)
+        AddFilter(event, filter)
     end
     InstallMenus()
 

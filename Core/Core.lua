@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 _G["OxedHub"] = OxedHub
 
 -- Core module - Main entry point and event handling

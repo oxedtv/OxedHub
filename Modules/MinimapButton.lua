@@ -62,11 +62,20 @@ function MinimapButton:Init()
         GameTooltip:AddLine(L["MINIMAP_TOOLTIP_TITLE"])
         GameTooltip:AddLine(L["MINIMAP_TOOLTIP_TOGGLE"], 1, 1, 1)
         GameTooltip:AddLine(L["MINIMAP_TOOLTIP_MENU"], 1, 1, 1)
+        if OxedHub.Performance then
+            GameTooltip:AddLine("Ctrl+click: Performance monitor", 1, 1, 1)
+        end
         GameTooltip:Show()
     end)
     button:SetScript("OnLeave", function(self) GameTooltip:Hide() end)
-    
+
     button:SetScript("OnClick", function(self, btn)
+        -- Ctrl+click shows or hides the small performance readout, so it can be
+        -- brought up mid-play without opening any window.
+        if IsControlKeyDown() and OxedHub.Performance then
+            OxedHub.Performance:ToggleMini()
+            return
+        end
         if btn == "LeftButton" then
             if OxedHub.UI then OxedHub.UI:ToggleMainWindow() end
         elseif btn == "RightButton" then
@@ -214,6 +223,17 @@ function MinimapButton:ShowDebugLog()
     closeBtn:SetScript("OnClick", function()
         frame:Hide()
     end)
+
+    -- Which part of OxedHub a lag spike came from: see Modules\Performance.lua.
+    if OxedHub.Performance then
+        local perfBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+        perfBtn:SetPoint("RIGHT", closeBtn, "LEFT", -10, 0)
+        perfBtn:SetSize(110, 25)
+        perfBtn:SetText("Performance")
+        perfBtn:SetScript("OnClick", function()
+            OxedHub.Performance:Open()
+        end)
+    end
     
     Log("Debug log window opened")
     frame:Show()

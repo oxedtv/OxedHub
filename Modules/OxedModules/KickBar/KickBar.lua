@@ -16,6 +16,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 -- ── Interrupt spell database (first known spell wins) ───────────────────────
 local INTERRUPT_SPELLS = {
@@ -380,6 +381,16 @@ local function HideKick()
     end
 end
 
+-- The update loop only runs while the target is casting. It used to run every
+-- frame for as long as the module was on -- flying round a city with no target
+-- at all -- which /oxprofile showed as one call per frame, all session. A cast
+-- starting on the target wakes it (see the events at the bottom of the file),
+-- and the first tick that finds nothing to watch puts it back to sleep.
+local function Sleep(frame)
+    HideKick()
+    frame:SetScript("OnUpdate", nil)
+end
+
 local function OnUpdate(self, dt)
     elapsed = elapsed + dt
     if elapsed < UPDATE_RATE then return end
@@ -389,13 +400,13 @@ local function OnUpdate(self, dt)
 
     -- Must be enabled and have an interrupt spell
     if not db.enabled or not interruptSpellID then
-        HideKick()
+        Sleep(self)
         return
     end
 
     -- Must have an attackable, alive target
     if not UnitExists("target") or not UnitCanAttack("player", "target") or UnitIsDead("target") then
-        HideKick()
+        Sleep(self)
         return
     end
 
@@ -408,7 +419,7 @@ local function OnUpdate(self, dt)
     end
 
     if not isCasting then
-        HideKick()
+        Sleep(self)
         return
     end
 
@@ -601,15 +612,31 @@ end
 -- Runs the check only while switched on and while the class actually has an
 -- interrupt. The old code started it on every login regardless, so turning the
 -- module off only hid the icon while the loop kept running underneath.
-local function StartUpdates()
-    FindInterruptSpell()
-    CreateKickFrame()
-    if IsOn() and interruptSpellID then
+-- Starts the update loop if there is a cast worth watching right now: an
+-- attackable target that is casting or channelling. Otherwise the loop stays
+-- off and the icon hidden; the next cast on the target calls this again.
+local function Wake()
+    if not (IsOn() and interruptSpellID and kickFrame) then
+        HideKick()
+        eventFrame:SetScript("OnUpdate", nil)
+        return
+    end
+    local attackable = UnitExists("target") and UnitCanAttack("player", "target")
+        and not UnitIsDead("target")
+    local casting = attackable
+        and (type(UnitCastingInfo("target")) ~= "nil" or type(UnitChannelInfo("target")) ~= "nil")
+    if casting then
         eventFrame:SetScript("OnUpdate", OnUpdate)
     else
         HideKick()
         eventFrame:SetScript("OnUpdate", nil)
     end
+end
+
+local function StartUpdates()
+    FindInterruptSpell()
+    CreateKickFrame()
+    Wake()
 end
 
 local function StopUpdates()
@@ -797,6 +824,11 @@ eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 eventFrame:RegisterEvent("SPELLS_CHANGED")
 eventFrame:RegisterEvent("TRAIT_CONFIG_UPDATED")
 eventFrame:RegisterUnitEvent("UNIT_PET", "player")
+-- A cast starting on the target is what wakes the update loop; nothing else
+-- needs it running.
+eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_START", "target")
+eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "target")
+pcall(eventFrame.RegisterUnitEvent, eventFrame, "UNIT_SPELLCAST_EMPOWER_START", "target")
 -- When the interrupt was last used, for telling its cooldown from the GCD.
 -- The pet as well: Spell Lock is the warlock's pet casting, not the warlock.
 eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "pet")
@@ -829,11 +861,14 @@ eventFrame:SetScript("OnEvent", function(self, event, unit, _, spellID)
     elseif event == "SPELLS_CHANGED" or event == "TRAIT_CONFIG_UPDATED" or event == "UNIT_PET" then
         if IsOn() then QueueRescan(StartUpdates) end
 
+    elseif event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START"
+        or event == "UNIT_SPELLCAST_EMPOWER_START" then
+        Wake()
+
     elseif event == "PLAYER_TARGET_CHANGED" then
         currentNameplate = nil
-        if not interruptSpellID then
-            HideKick()
-        end
+        -- The new target may already be half way through a cast.
+        Wake()
     end
 end)
 

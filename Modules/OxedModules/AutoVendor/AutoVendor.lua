@@ -17,6 +17,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 -- ⚠ No tables here: ModuleAPI copies defaults by reference, so a list default
 -- would have every edit written into DEFAULTS. The sell list is made in

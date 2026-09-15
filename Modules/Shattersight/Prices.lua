@@ -2,6 +2,7 @@
 -- Resolves Auction House prices for disenchant materials in Shattersight.
 
 local addonName, OxedHub = ...
+local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 OxedHub.Shattersight = OxedHub.Shattersight or {}
 local SS = OxedHub.Shattersight

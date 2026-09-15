@@ -25,6 +25,15 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.72",
+        important = true,
+        lines = {
+            { "ADDED", "Performance monitor: how long every part of OxedHub takes and what ran during each lag spike, with a small on-screen readout. Ctrl+click the minimap button, or type /oxprofile." },
+            { "ADDED", "Attributes: diminishing returns on each secondary stat (asked of the game, so it follows every patch), a snapshot to compare before and after a gear change, global cooldown, effective health, live skyriding speed and your weakest gear slot." },
+            { "FIXED", "A short hitch when casting spells, caused by the toy usage counter. KickBar and Attributes no longer run every frame when they have nothing to show." },
+        },
+    },
+    {
         version = "2.3.71",
         important = true,
         lines = {
