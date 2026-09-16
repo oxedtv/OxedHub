@@ -526,11 +526,18 @@ ourFrame:SetScript("OnEvent", function(_, event, loaded)
         if OxedHubDB.profiler.fromLogin then Profiler:Start() end
     elseif event == "PLAYER_ENTERING_WORLD" or event == "LOADING_SCREEN_DISABLED" then
         graceUntil = GetTime() + GRACE_SECS
+    elseif event == "PLAYER_LOGOUT" then
+        -- /reload and logging out both land here, and this is the last moment
+        -- anything can be written to saved variables. A recording kept only in
+        -- memory was lost the moment the player reloaded -- which is exactly
+        -- what someone chasing a lag does -- so it is kept now.
+        Profiler:SaveSessionToHistory()
     end
 end)
 ourFrame:RegisterEvent("ADDON_LOADED")
 ourFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 ourFrame:RegisterEvent("LOADING_SCREEN_DISABLED")
+ourFrame:RegisterEvent("PLAYER_LOGOUT")
 
 -- ── Methods worth naming ────────────────────────────────────────────────────
 -- Instrumented at login, once every module table exists. Names that come from
@@ -601,6 +608,7 @@ end)
 function Profiler:IsActive() return active end
 
 function Profiler:Start()
+    self.viewIndex = nil   -- recording is always shown live
     if active then return end
     active = true
     self.active = true
@@ -626,6 +634,7 @@ function Profiler:Stop()
 end
 
 function Profiler:Reset()
+    self.viewIndex = nil
     wipe(stats)
     wipe(spikes)
     session.startedAt = active and time() or nil
@@ -644,10 +653,32 @@ function Profiler:GetFromLogin()
     return OxedHubDB and OxedHubDB.profiler and OxedHubDB.profiler.fromLogin or false
 end
 
--- ── Reading the results ─────────────────────────────────────────────────────
+-- ── Saved sessions ──────────────────────────────────────────────────────────
+-- The last few recordings are kept in saved variables, written as the player
+-- reloads or logs out, so a lag can be looked at -- and a report copied -- after
+-- the fact. Players chasing a problem reload constantly, and a recording that
+-- vanished with every reload was a recording nobody could ever send.
+--
+-- Only what the report needs is kept: the heaviest totals and the latest spikes,
+-- each spike's call list trimmed. A saved session is a few kilobytes.
 
--- Totals as a list, sorted by "total", "max", "count" or "avg".
-function Profiler:GetTop(sortKey)
+local HISTORY_KEEP = 10   -- about 15-30 KB each in saved variables, rarely more than 80
+local SAVED_TOP = 40
+local SAVED_SPIKES = 30
+local SAVED_ENTRIES = 25
+
+local function History()
+    OxedHubDB = OxedHubDB or {}
+    OxedHubDB.profiler = OxedHubDB.profiler or {}
+    local history = OxedHubDB.profiler.history
+    if type(history) ~= "table" then
+        history = {}
+        OxedHubDB.profiler.history = history
+    end
+    return history
+end
+
+local function LiveTop()
     local list = {}
     for label, s in pairs(stats) do
         list[#list + 1] = {
@@ -655,15 +686,107 @@ function Profiler:GetTop(sortKey)
             avg = s.count > 0 and s.total / s.count or 0, maxAt = s.maxAt,
         }
     end
+    return list
+end
+
+function Profiler:SaveSessionToHistory()
+    if session.frames == 0 and next(stats) == nil then return end
+
+    local top = LiveTop()
+    table.sort(top, function(a, b) return a.total > b.total end)
+    local keptTop = {}
+    for i = 1, math.min(SAVED_TOP, #top) do keptTop[i] = top[i] end
+
+    local keptSpikes = {}
+    for i = math.max(1, #spikes - SAVED_SPIKES + 1), #spikes do
+        local s = spikes[i]
+        local entries = {}
+        for j = 1, math.min(SAVED_ENTRIES, #s.entries) do
+            local e = s.entries[j]
+            entries[j] = { label = e.label, ms = e.ms, depth = e.depth }
+        end
+        keptSpikes[#keptSpikes + 1] = {
+            at = s.at, frameMs = s.frameMs, oxedMs = s.oxedMs, addonMs = s.addonMs,
+            reason = s.reason, allocKB = s.allocKB, combat = s.combat, where = s.where,
+            overflow = s.overflow, entries = entries,
+        }
+    end
+
+    local realm = (GetNormalizedRealmName and GetNormalizedRealmName()) or ""
+    local history = History()
+    table.insert(history, 1, {
+        version = OxedHub.CONFIG and OxedHub.CONFIG.VERSION or "",
+        character = (UnitName("player") or "?") .. "-" .. realm,
+        startedAt = session.startedAt, endedAt = session.stoppedAt or time(),
+        frames = session.frames, hitches = session.hitches, baseline = baselineMs,
+        top = keptTop, spikes = keptSpikes,
+    })
+    while #history > HISTORY_KEEP do table.remove(history) end
+end
+
+function Profiler:GetHistory() return History() end
+
+function Profiler:DeleteSaved(index)
+    local history = History()
+    if history[index] then table.remove(history, index) end
+    if self.viewIndex and self.viewIndex > #history then self.viewIndex = nil end
+end
+
+-- Which recording the window is showing: nil for the live one, or the
+-- position of a saved one (1 is the most recent).
+function Profiler:SetView(index)
+    local history = History()
+    self.viewIndex = (index and history[index]) and index or nil
+end
+
+function Profiler:GetView()
+    return self.viewIndex and History()[self.viewIndex] or nil
+end
+
+-- ── Reading the results ─────────────────────────────────────────────────────
+-- Everything below answers for whichever recording is being viewed, so the
+-- window and the report work the same on a saved session as on the live one.
+
+-- Totals as a list, sorted by "total", "max", "count" or "avg".
+function Profiler:GetTop(sortKey)
+    local view = self:GetView()
+    local list
+    if view then
+        list = {}
+        for i, row in ipairs(view.top or {}) do
+            list[i] = {
+                label = row.label, count = row.count, total = row.total, max = row.max,
+                avg = (row.count or 0) > 0 and row.total / row.count or 0, maxAt = row.maxAt,
+            }
+        end
+    else
+        list = LiveTop()
+    end
     sortKey = sortKey or "total"
     table.sort(list, function(a, b) return (a[sortKey] or 0) > (b[sortKey] or 0) end)
     return list
 end
 
-function Profiler:GetSpikes() return spikes end
+function Profiler:GetSpikes()
+    local view = self:GetView()
+    return view and (view.spikes or {}) or spikes
+end
+
 function Profiler:GetLive() return live end
-function Profiler:GetSession() return session end
-function Profiler:GetBaseline() return baselineMs end
+
+function Profiler:GetSession()
+    local view = self:GetView()
+    if view then
+        return { startedAt = view.startedAt, stoppedAt = view.endedAt,
+            frames = view.frames or 0, hitches = view.hitches or 0 }
+    end
+    return session
+end
+
+function Profiler:GetBaseline()
+    local view = self:GetView()
+    return view and (view.baseline or 0) or baselineMs
+end
 
 -- The single slowest top-level call of a spike, for the one-line summary.
 function Profiler:SpikeCulprit(spike)
@@ -682,11 +805,21 @@ function Profiler:BuildReport()
     local out = {}
     local function add(line) out[#out + 1] = line end
 
-    local s = session
+    local view = self:GetView()
+    local s = self:GetSession()
+    local shownSpikes = self:GetSpikes()
     local length = s.startedAt and ((s.stoppedAt or time()) - s.startedAt) or 0
-    add(("OxedHub %s performance report"):format(OxedHub.CONFIG and OxedHub.CONFIG.VERSION or ""))
+
+    add(("OxedHub %s performance report%s"):format(
+        view and view.version or (OxedHub.CONFIG and OxedHub.CONFIG.VERSION or ""),
+        view and (" (saved session, %s)"):format(view.character or "") or ""))
     add(("Recorded %d s, %d frames, %d hitches, normal frame %.1f ms%s")
-        :format(length, s.frames, s.hitches, baselineMs, active and " (still recording)" or ""))
+        :format(length, s.frames, s.hitches, self:GetBaseline(),
+            (not view and active) and " (still recording)" or ""))
+    if s.startedAt then
+        add(("From %s to %s"):format(date("%Y-%m-%d %H:%M", s.startedAt),
+            date("%H:%M", s.stoppedAt or time())))
+    end
     add("")
 
     add("Heaviest in total")
@@ -705,15 +838,15 @@ function Profiler:BuildReport()
     add("")
 
     add("Latest spikes")
-    local first = math.max(1, #spikes - 14)
-    for i = #spikes, first, -1 do
-        local spike = spikes[i]
+    local first = math.max(1, #shownSpikes - 14)
+    for i = #shownSpikes, first, -1 do
+        local spike = shownSpikes[i]
         local share = spike.frameMs > 0 and (spike.oxedMs / spike.frameMs * 100) or 0
         add(("%s  frame %.0f ms  OxedHub %.1f ms (%.0f%%)%s  %s%s")
             :format(date("%H:%M:%S", spike.at), spike.frameMs, spike.oxedMs, share,
                 spike.addonMs and (" game says %.1f ms"):format(spike.addonMs) or "",
-                spike.where, spike.combat and ", in combat" or ""))
-        for _, entry in ipairs(spike.entries) do
+                spike.where or "", spike.combat and ", in combat" or ""))
+        for _, entry in ipairs(spike.entries or {}) do
             if entry.ms >= 0.1 then
                 add(("    %s%.2f ms  %s"):format(string.rep("  ", entry.depth), entry.ms, entry.label))
             end

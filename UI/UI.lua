@@ -1243,12 +1243,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.73)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.74)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.73")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.74")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1314,11 +1314,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  FIXED: two errors from 2.3.72, in KickBar and in the performance monitor.",
-        "•  NEW Performance monitor: Ctrl+click the minimap button, or type /oxprofile.",
+        "•  Performance: recordings are kept through /reload and logout, the last ten of them.",
+        "•  Performance: step through saved recordings and copy a report from any of them.",
+        "•  Performance: the small monitor no longer covers your bags or other windows.",
+        "•  Open it with Ctrl+click on the minimap button, or type /oxprofile.",
         "•  Attributes: diminishing returns, stat snapshots, GCD, effective health, item level.",
-        "•  FIXED: a short hitch when casting spells, caused by the toy usage counter.",
-        "•  KickBar and Attributes no longer run in the background with nothing to show.",
         "•  Grab either pack from CurseForge:",
     }
 

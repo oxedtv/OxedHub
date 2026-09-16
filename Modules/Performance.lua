@@ -220,9 +220,24 @@ local function Refresh()
     local s = P:GetSession()
     local length = s.startedAt and ((s.stoppedAt or time()) - s.startedAt) or 0
 
+    local view = P:GetView()
+    local state
+    if view then
+        state = ("|cffffd100Saved %s|r"):format(view.endedAt and date("%d %b %H:%M", view.endedAt) or "")
+    else
+        state = P:IsActive() and "|cff40ff40Recording|r" or "|cffff5555Stopped|r"
+    end
     window.status:SetText(("%s   %d s   %d frames   %d hitches   normal frame %.1f ms")
-        :format(P:IsActive() and "|cff40ff40Recording|r" or "|cffff5555Stopped|r",
-            length, s.frames, s.hitches, P:GetBaseline()))
+        :format(state, length, s.frames, s.hitches, P:GetBaseline()))
+
+    -- Which recording is on screen: the live one, or one saved at a reload.
+    local history = P:GetHistory()
+    if view then
+        window.session:SetText(("Saved %d of %d"):format(P.viewIndex, #history))
+    else
+        window.session:SetText(#history > 0 and ("Live  (%d saved)"):format(#history) or "Live")
+    end
+    window.deleteSaved:SetShown(view ~= nil)
     window.startStop:SetText(P:IsActive() and "Stop" or "Start")
     window.fromLogin:SetChecked(P:GetFromLogin())
 
@@ -386,6 +401,33 @@ local function Build()
     window.status = window:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     window.status:SetPoint("TOPLEFT", window.startStop, "BOTTOMLEFT", 2, -8)
 
+    -- Switches between the live recording and the ones saved when the player
+    -- reloaded or logged out. Each click moves one along and wraps back to live.
+    window.session = Button(window, "Live", 130, function()
+        local count = #P:GetHistory()
+        local nextIndex = (P.viewIndex or 0) + 1
+        if nextIndex > count then nextIndex = nil end
+        P:SetView(nextIndex)
+        window.scroll:SetVerticalScroll(0)
+        Refresh()
+    end)
+    window.session:SetPoint("TOPRIGHT", window, "TOPRIGHT", -14, -56)
+    window.session:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Recordings")
+        GameTooltip:AddLine("Each reload or logout keeps the recording, so nothing is lost when you reload to test something. The last ten are kept. Click to step through them; Copy report works on whichever is shown.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    window.session:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    window.deleteSaved = Button(window, "Delete", 70, function()
+        if P.viewIndex then
+            P:DeleteSaved(P.viewIndex)
+            Refresh()
+        end
+    end)
+    window.deleteSaved:SetPoint("RIGHT", window.session, "LEFT", -4, 0)
+
     window.tabs = {}
     local previous
     for _, tabInfo in ipairs({ { key = "top", label = "Top" }, { key = "spikes", label = "Spikes" } }) do
@@ -509,6 +551,10 @@ end
 local function UpdateMini()
     if not (mini and mini:IsShown()) then return end
     local P = Profiler()
+    -- The readout is always about now, even while the big window is showing a
+    -- saved recording.
+    local viewing = P.viewIndex
+    P.viewIndex = nil
     local live = P:GetLive()
     local s = P:GetSession()
     local fps = GetFramerate and GetFramerate() or 0
@@ -524,6 +570,7 @@ local function UpdateMini()
     end
 
     local spikes = P:GetSpikes()
+    P.viewIndex = viewing   -- hand the big window its saved recording back
     local last = spikes[#spikes]
     if last then
         local share = last.frameMs > 0 and last.oxedMs / last.frameMs * 100 or 0
@@ -547,7 +594,10 @@ local function BuildMini()
 
     mini = CreateFrame("Frame", "OxedHubPerformanceMini", UIParent)
     mini:SetSize(320, 40)
-    mini:SetFrameStrata("HIGH")
+    -- LOW: above the world and the action bars' backdrop, below every window the
+    -- game opens. It sat in HIGH and covered the bags, which open in MEDIUM; a
+    -- readout left on screen while playing must never be in the way of them.
+    mini:SetFrameStrata("LOW")
     mini:SetClampedToScreen(true)
     mini:SetMovable(true)
     mini:EnableMouse(true)
@@ -601,10 +651,19 @@ local function BuildMini()
     ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
 
     -- Recording light: green while recording, red when stopped.
+    -- A plain round dot, set on the icon's lower right edge so it sits inside
+    -- the ring. The indicator texture used before was not a clean circle, and
+    -- pinned to the button's corner it landed on the ring itself, crooked: the
+    -- ring art is drawn smaller than the button it belongs to.
     mini.dot = button:CreateTexture(nil, "OVERLAY", nil, 2)
-    mini.dot:SetSize(8, 8)
-    mini.dot:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
-    mini.dot:SetTexture("Interface\\COMMON\\Indicator-Gray")
+    mini.dot:SetSize(7, 7)
+    mini.dot:SetPoint("CENTER", icon, "BOTTOMRIGHT", -2, 2)
+    mini.dot:SetColorTexture(1, 1, 1, 1)
+    local dotMask = button:CreateMaskTexture()
+    dotMask:SetAllPoints(mini.dot)
+    dotMask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask",
+        "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mini.dot:AddMaskTexture(dotMask)
 
     button:SetScript("OnClick", function(_, mouse)
         local P = Profiler()
