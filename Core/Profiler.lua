@@ -138,8 +138,16 @@ end
 -- "Animations.lua:2618" for the first OxedHub line on the stack that is not
 -- this file. Only ever asked while recording, and only when a handler or timer
 -- is created, never when it runs.
-local function CallerLabel(startLevel)
-    local stack = debugstack(startLevel or 3, 8, 0) or ""
+-- ⚠ debugstack can hand back a SECRET string once execution has been tainted,
+-- and reading one is an error ("attempt to index local 'stack' (a secret string
+-- value)"). It is also not worth breaking a timer or a handler over a name, so
+-- the whole read is done inside pcall: no name simply means the call is listed
+-- without one.
+local function ReadStack(startLevel)
+    local stack = debugstack(startLevel or 3, 8, 0)
+    if type(stack) ~= "string" then return nil end
+    if issecretvalue and issecretvalue(stack) then return nil end
+
     for line in stack:gmatch("[^\n]+") do
         if not line:find("Profiler%.lua") and not line:find("%[C%]") and not line:find("tail call") then
             if not line:find("AddOns[/\\]OxedHub[/\\]") then return nil end
@@ -148,6 +156,11 @@ local function CallerLabel(startLevel)
         end
     end
     return nil
+end
+
+local function CallerLabel(startLevel)
+    local ok, label = pcall(ReadStack, startLevel)
+    return ok and label or nil
 end
 
 -- ── Plain names ─────────────────────────────────────────────────────────────

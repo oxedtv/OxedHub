@@ -1243,12 +1243,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.72)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.73)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.72")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.73")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1314,9 +1314,9 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
+        "•  FIXED: two errors from 2.3.72, in KickBar and in the performance monitor.",
         "•  NEW Performance monitor: Ctrl+click the minimap button, or type /oxprofile.",
         "•  Attributes: diminishing returns, stat snapshots, GCD, effective health, item level.",
-        "•  Attributes also shows live skyriding speed and your weakest gear slot.",
         "•  FIXED: a short hitch when casting spells, caused by the toy usage counter.",
         "•  KickBar and Attributes no longer run in the background with nothing to show.",
         "•  Grab either pack from CurseForge:",

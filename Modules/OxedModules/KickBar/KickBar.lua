@@ -623,8 +623,17 @@ local function Wake()
     end
     local attackable = UnitExists("target") and UnitCanAttack("player", "target")
         and not UnitIsDead("target")
-    local casting = attackable
-        and (type(UnitCastingInfo("target")) ~= "nil" or type(UnitChannelInfo("target")) ~= "nil")
+    -- ⚠ Take the answer into a local first. With nothing being cast these
+    -- return NO VALUES at all, not nil, and type() with no argument is an
+    -- error: "bad argument #1 to '?' (value expected)". Passing the call
+    -- straight into type() threw every time the player took a target that was
+    -- not casting.
+    local castName, channelName
+    if attackable then
+        castName = UnitCastingInfo("target")
+        channelName = UnitChannelInfo("target")
+    end
+    local casting = attackable and (castName ~= nil or channelName ~= nil)
     if casting then
         eventFrame:SetScript("OnUpdate", OnUpdate)
     else

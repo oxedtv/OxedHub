@@ -25,6 +25,12 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.73",
+        lines = {
+            { "FIXED", "Two errors from 2.3.72: KickBar threw one every time you took a target that was not casting, and the performance monitor threw one while naming a timer during combat." },
+        },
+    },
+    {
         version = "2.3.72",
         important = true,
         lines = {
