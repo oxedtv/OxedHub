@@ -1243,12 +1243,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.74)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.75)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.74")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.75")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1314,11 +1314,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  Performance: recordings are kept through /reload and logout, the last ten of them.",
-        "•  Performance: step through saved recordings and copy a report from any of them.",
-        "•  Performance: the small monitor no longer covers your bags or other windows.",
-        "•  Open it with Ctrl+click on the minimap button, or type /oxprofile.",
-        "•  Attributes: diminishing returns, stat snapshots, GCD, effective health, item level.",
+        "•  New module: Buff Reminder -- icons for missing buffs, pets and consumables.",
+        "•  Click an icon to cast the buff or use the flask, rune or food.",
+        "•  Counts group members missing your buff and warns before buffs run out.",
+        "•  Hides in combat; Shift+drag to move. Turn it on under Modules, Combat.",
+        "•  Performance: recordings are kept through /reload and logout.",
         "•  Grab either pack from CurseForge:",
     }
 

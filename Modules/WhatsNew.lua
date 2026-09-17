@@ -25,6 +25,15 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.75",
+        important = true,
+        lines = {
+            { "ADDED", "Buff Reminder module (Modules, Combat): a row of icons for what is missing -- the group buff your class gives, your own poisons, shields, imbues, forms and runeforge, your pet, and food, flask, rune and weapon oil in instances. Click an icon to cast it or use the item." },
+            { "ADDED", "Buff Reminder counts nearby group members missing your buff (names in the tooltip), warns about buffs with under five minutes left, finds flasks and runes in your bags on its own, and shows everything for 30 seconds on a ready check." },
+            { "ADDED", "The bar hides in combat and never guesses from hidden combat data. Shift+drag an icon to move it." },
+        },
+    },
+    {
         version = "2.3.74",
         lines = {
             { "ADDED", "Performance recordings are kept through /reload and logout -- the last ten -- so a lag can be looked at, and a report copied, later. Step through them with the button at the top right of the Performance window." },
