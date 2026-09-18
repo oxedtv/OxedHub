@@ -503,7 +503,7 @@ function UI:CreateMainFrame()
     end
     if frame.CloseButton then
         frame.CloseButton:ClearAllPoints()
-        frame.CloseButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -1, -30) -- Moved 35px down and 5px left from default
+        frame.CloseButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -1, -32) -- below the title art; the "?" and What's New buttons follow it
         frame.CloseButton:SetScript("OnClick", function()
             UI:HideMainWindow()
         end)
@@ -538,6 +538,37 @@ function UI:CreateMainFrame()
         end)
         helpBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
         frame.HelpButton = helpBtn
+
+        -- What's New, left of the "?": the release notes, all of them, any
+        -- time -- not only the popup after an update. Same square frame as
+        -- the "?" with a scroll icon inset, so the three read as one row.
+        local newsBtn = CreateFrame("Button", nil, frame)
+        newsBtn:SetSize(cw or 24, ch or 24)
+        newsBtn:SetPoint("RIGHT", helpBtn, "LEFT", -2, 0)
+        newsBtn:SetFrameLevel(frame.CloseButton:GetFrameLevel())
+        newsBtn:SetNormalTexture("Interface\\Buttons\\UI-SquareButton-Up")
+        newsBtn:SetPushedTexture("Interface\\Buttons\\UI-SquareButton-Down")
+        newsBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+
+        local scroll = newsBtn:CreateTexture(nil, "OVERLAY")
+        scroll:SetPoint("TOPLEFT", newsBtn, "TOPLEFT", 6, -6)
+        scroll:SetPoint("BOTTOMRIGHT", newsBtn, "BOTTOMRIGHT", -6, 6)
+        scroll:SetTexture("Interface\\Icons\\INV_Scroll_03")
+        scroll:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        newsBtn:SetScript("OnMouseDown", function() scroll:SetPoint("TOPLEFT", newsBtn, "TOPLEFT", 7, -7) end)
+        newsBtn:SetScript("OnMouseUp", function() scroll:SetPoint("TOPLEFT", newsBtn, "TOPLEFT", 6, -6) end)
+
+        newsBtn:SetScript("OnClick", function()
+            if OxedHub.WhatsNew then OxedHub.WhatsNew:Show(true) end
+        end)
+        newsBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText("What's New")
+            GameTooltip:AddLine("Release notes for every version.", 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        newsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        frame.WhatsNewButton = newsBtn
     end
     tinsert(UISpecialFrames, frame:GetName())
 
@@ -1243,12 +1274,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.75)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.76)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.75")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.76")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1314,11 +1345,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  New module: Buff Reminder -- icons for missing buffs, pets and consumables.",
-        "•  Click an icon to cast the buff or use the flask, rune or food.",
-        "•  Counts group members missing your buff and warns before buffs run out.",
-        "•  Hides in combat; Shift+drag to move. Turn it on under Modules, Combat.",
-        "•  Performance: recordings are kept through /reload and logout.",
+        "•  Buff Reminder: every flask, food, rune and oil in your bags, one click away.",
+        "•  Buff Reminder: pick your pet, icon size slider, names under icons.",
+        "•  Auto Quest: marks the reward worth most gold and item level upgrades.",
+        "•  Auto Vendor: add items with a key; never sells a better copy.",
+        "•  Copy Chat works with Chattynator. New What's New button, top right.",
         "•  Grab either pack from CurseForge:",
     }
 

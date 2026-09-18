@@ -25,6 +25,21 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.76",
+        important = true,
+        lines = {
+            { "ADDED", "Buff Reminder 1.2: a missing food, flask, rune or weapon oil shows every matching item in your bags as its own icon, with its count and stat -- click one to use it. Oil is offered per hand. Missing pets show each pet you can call plus Revive Pet; healthstones, low durability and, on a ready check, Soulwell and Refreshment Table are covered too." },
+            { "ADDED", "Buff Reminder: choose the icon size with a slider, and show names under the icons." },
+            { "ADDED", "Auto Quest: when a quest offers a choice, the reward worth the most gold gets a coin, and rewards above your item level get a green +N ilvl arrow." },
+            { "ADDED", "Auto Vendor: bind a key (Key Bindings, Oxed Hub) and press it over any item to add it to the sell list, or take it off." },
+            { "ADDED", "A What's New button at the top right of the Oxed Hub window opens these notes for every version." },
+            { "CHANGED", "Copy Chat works with Chattynator: the button sits on its windows and opens its copy window." },
+            { "FIXED", "Auto Vendor sold a better copy of an item on your list (an epic when you added the blue). The list now sells only at the quality you added, or lower." },
+            { "FIXED", "Buff Reminder showed food as missing with Well Fed up, and a runeforge as missing on some weapons." },
+            { "FIXED", "The \"protected function AddAuraSound\" error after each update. OxedHub no longer tries a call the game refuses." },
+        },
+    },
+    {
         version = "2.3.75",
         important = true,
         lines = {
@@ -389,7 +404,9 @@ local function BuildWindow()
     local f = CreateFrame("Frame", "OxedHubWhatsNewFrame", UIParent, "BasicFrameTemplateWithInset")
     f:SetSize(640, 600)
     f:SetPoint("CENTER")
-    f:SetFrameStrata("DIALOG")
+    -- Above the main window, whose parts reach level 500 in DIALOG: it now
+    -- opens from the main window's What's New button and must not sit behind it.
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:SetFrameLevel(300)
     f:SetToplevel(true)
     f:SetMovable(true)
