@@ -276,25 +276,66 @@ local function PlaceButton(button, frame)
     end
 end
 
-local function PlaceAllButtons()
-    for index = 1, MAX_WINDOWS do
-        local frame = _G["ChatFrame" .. index]
-        if frame and frame.OxedCopyButton then PlaceButton(frame.OxedCopyButton, frame) end
-    end
+-- ── Chattynator ─────────────────────────────────────────────────────────────
+-- Chattynator hides the game's chat windows and draws its own, so a button on
+-- ChatFrame1..10 is never seen. While it is loaded, the button goes on each of
+-- its windows instead, and a click opens Chattynator's own copy window for
+-- that window: its messages live in its own store, not in the game's chat
+-- frames, so reading those would give an empty copy.
+
+local chattyWindows = {}
+
+local function ChattynatorActive()
+    local isLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
+    return isLoaded and isLoaded("Chattynator") and type(Chattynator) == "table" or false
 end
 
-local function AttachButton(index)
-    local frame = _G["ChatFrame" .. index]
-    if not (frame and frame.GetNumMessages) then return end
-
-    if frame.OxedCopyButton then
-        frame.OxedCopyButton:SetShown(settings.button ~= false)
-        PlaceButton(frame.OxedCopyButton, frame)
-        return
+-- Its windows have no global names; they are the frames carrying a
+-- ScrollingMessages display. Looked for once after login and whenever a
+-- button is asked for, never every frame.
+local function FindChattynatorWindows()
+    wipe(chattyWindows)
+    if not (ChattynatorActive() and EnumerateFrames) then return chattyWindows end
+    local frame = EnumerateFrames()
+    while frame do
+        local ok, isWindow = pcall(function()
+            return not frame:IsForbidden() and type(frame.ScrollingMessages) == "table"
+                and frame.ScrollingMessages.filterFunc ~= nil and frame.GetID ~= nil
+        end)
+        if ok and isWindow then chattyWindows[#chattyWindows + 1] = frame end
+        frame = EnumerateFrames(frame)
     end
-    if settings.button == false then return end
+    table.sort(chattyWindows, function(a, b) return (a:GetID() or 0) < (b:GetID() or 0) end)
+    return chattyWindows
+end
 
-    local button = CreateFrame("Button", "OxedHubCopyChatButton" .. index, frame)
+local function ChattynatorCopy(frame)
+    local dialog = _G.ChattynatorCopyChatDialog
+    local messages = frame and frame.ScrollingMessages
+    if dialog and dialog.LoadMessages and messages then
+        if dialog:IsShown() then dialog:Hide() end
+        if pcall(dialog.LoadMessages, dialog, messages.filterFunc, messages.startingIndex) then return true end
+    end
+    -- Its slash command copies the first window; better than nothing.
+    if SlashCmdList and SlashCmdList.ChattynatorCopy then
+        SlashCmdList.ChattynatorCopy()
+        return true
+    end
+    return false
+end
+
+-- ── The button itself ───────────────────────────────────────────────────────
+
+local allButtons = {}   -- button -> the window it sits on
+
+local function PlaceAllButtons()
+    for button, frame in pairs(allButtons) do PlaceButton(button, frame) end
+end
+
+-- One button on `frame`. `describe(tooltip)` fills the tooltip, `copy()` runs
+-- on click. Used for the game's chat windows and for Chattynator's alike.
+local function MakeButton(frame, name, describe, copy)
+    local button = CreateFrame("Button", name, frame)
     button:SetSize(18, 18)
     button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     button:EnableMouse(true)
@@ -315,6 +356,7 @@ local function AttachButton(index)
     -- The bottom right corner by default: the one part of a chat window that is
     -- never text. The player can move it from Options.
     button:SetClampedToScreen(true)
+    allButtons[button] = frame
     PlaceButton(button, frame)
 
     button:SetScript("OnDragStart", function(self)
@@ -341,9 +383,7 @@ local function AttachButton(index)
 
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText(("Copy %s"):format(TabTitle(index)))
-        GameTooltip:AddLine(("%d line(s) in this window."):format(frame:GetNumMessages() or 0),
-            1, 1, 1)
+        describe(GameTooltip)
         if settings.buttonUnlocked then
             GameTooltip:AddLine("Unlocked: drag to move. Lock it again in Options.", 1, 0.82, 0, true)
         end
@@ -357,16 +397,70 @@ local function AttachButton(index)
     button:SetScript("OnClick", function(self)
         -- Letting go after a drag also counts as a click; that one only moved it.
         if self.justDragged then self.justDragged = nil return end
-        ShowText(frame, TabTitle(index))
+        copy()
     end)
+    return button
+end
 
-    frame.OxedCopyButton = button
+local function AttachButton(index)
+    local frame = _G["ChatFrame" .. index]
+    if not (frame and frame.GetNumMessages) then return end
+
+    if frame.OxedCopyButton then
+        frame.OxedCopyButton:SetShown(settings.button ~= false)
+        PlaceButton(frame.OxedCopyButton, frame)
+        return
+    end
+    if settings.button == false then return end
+
+    frame.OxedCopyButton = MakeButton(frame, "OxedHubCopyChatButton" .. index,
+        function(tooltip)
+            tooltip:SetText(("Copy %s"):format(TabTitle(index)))
+            tooltip:AddLine(("%d line(s) in this window."):format(frame:GetNumMessages() or 0), 1, 1, 1)
+        end,
+        function() ShowText(frame, TabTitle(index)) end)
+end
+
+local function AttachChattynatorButtons()
+    for index, frame in ipairs(FindChattynatorWindows()) do
+        if frame.OxedCopyButton then
+            frame.OxedCopyButton:SetShown(settings.button ~= false)
+            PlaceButton(frame.OxedCopyButton, frame)
+        elseif settings.button ~= false then
+            frame.OxedCopyButton = MakeButton(frame, "OxedHubCopyChattynatorButton" .. index,
+                function(tooltip)
+                    tooltip:SetText("Copy this chat window")
+                    tooltip:AddLine("Opens Chattynator's copy window for it.", 1, 1, 1, true)
+                end,
+                function() ChattynatorCopy(frame) end)
+        end
+    end
 end
 
 local function AttachAll()
     for index = 1, MAX_WINDOWS do
         AttachButton(index)
     end
+    if ChattynatorActive() then AttachChattynatorButtons() end
+end
+
+local function HideAllButtons()
+    for button in pairs(allButtons) do button:Hide() end
+end
+
+-- Copy the chat the player is looking at: Chattynator's first window while it
+-- runs, else the selected game chat window. `index` picks a window.
+local function CopyCurrent(index)
+    if ChattynatorActive() then
+        local windows = #chattyWindows > 0 and chattyWindows or FindChattynatorWindows()
+        if ChattynatorCopy(windows[index or 1] or windows[1]) then return end
+    end
+    local frame = (index and _G["ChatFrame" .. index]) or SELECTED_CHAT_FRAME or DEFAULT_CHAT_FRAME
+    if not frame then
+        print("|cffff5555OxedHub:|r no chat window found.")
+        return
+    end
+    ShowText(frame, TabTitle(frame:GetID() or 1))
 end
 
 -- ── Wiring ──────────────────────────────────────────────────────────────────
@@ -378,27 +472,24 @@ local function InstallHooks()
     AttachAll()
 
     function OxedHub_CopyChat()
-        local frame = SELECTED_CHAT_FRAME or DEFAULT_CHAT_FRAME
-        if frame then ShowText(frame, TabTitle(frame:GetID() or 1)) end
+        CopyCurrent()
     end
+
+    -- Chattynator builds its windows after login; look again once it has,
+    -- and after each loading screen in case windows were added.
+    C_Timer.After(2, AttachAll)
+    local rescan = CreateFrame("Frame")
+    rescan:RegisterEvent("PLAYER_ENTERING_WORLD")
+    rescan:SetScript("OnEvent", function()
+        if settings and settings.enabled ~= false then C_Timer.After(1, AttachAll) end
+    end)
 
     -- A way in that does not depend on finding a small button: /copychat for
     -- the window you are looking at, /copychat 3 for a particular one.
     SLASH_OXEDCOPYCHAT1 = "/copychat"
     SLASH_OXEDCOPYCHAT2 = "/oxedcopy"
     SlashCmdList["OXEDCOPYCHAT"] = function(argument)
-        local index = tonumber(argument and argument:match("%d+") or "")
-        -- The window the player is reading. FCF_GetCurrentChatFrame answers
-        -- for the tab menu, not for the chat, and away from a menu it names
-        -- whichever window was touched last -- often an empty one.
-        local frame = (index and _G["ChatFrame" .. index])
-            or SELECTED_CHAT_FRAME
-            or DEFAULT_CHAT_FRAME
-        if not frame then
-            print("|cffff5555OxedHub:|r no chat window found.")
-            return
-        end
-        ShowText(frame, TabTitle(frame:GetID() or 1))
+        CopyCurrent(tonumber(argument and argument:match("%d+") or ""))
     end
 
     -- A window opened later gets its button too.
@@ -500,7 +591,7 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "copychat",
         name     = "Copy Chat",
-        version  = "1.0.0",
+        version  = "1.1.0",
         author   = "Oxed",
         category = "chat",
         -- Short enough to be read in full on the card, which clips what does
@@ -521,10 +612,7 @@ loginFrame:SetScript("OnEvent", function(self)
 
         OnDisable = function()
             if window then window:Hide() end
-            for index = 1, MAX_WINDOWS do
-                local frame = _G["ChatFrame" .. index]
-                if frame and frame.OxedCopyButton then frame.OxedCopyButton:Hide() end
-            end
+            HideAllButtons()
         end,
     })
 end)
