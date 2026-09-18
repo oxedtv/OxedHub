@@ -26,6 +26,8 @@ local currentSignature = nil
 
 local function IsAddAuraSoundAvailable()
     return C_UnitAuras ~= nil and C_UnitAuras.AddAuraSound ~= nil and Enum and Enum.UnitAuraSoundTrigger
+        -- The client refuses this call for addons; see SelfAura.lua.
+        and not (Triggers and Triggers.IsSelfAuraNativeBlocked and Triggers:IsSelfAuraNativeBlocked())
 end
 
 local function AddOne(unitToken, spellID, soundFile, channel)

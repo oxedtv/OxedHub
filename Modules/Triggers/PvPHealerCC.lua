@@ -44,6 +44,8 @@ local function IsAddAuraSoundAvailable()
         and Enum ~= nil
         and Enum.UnitAuraSoundTrigger ~= nil
         and Enum.UnitAuraSoundTrigger.Added ~= nil
+        -- The client refuses this call for addons; see SelfAura.lua.
+        and not (Triggers and Triggers.IsSelfAuraNativeBlocked and Triggers:IsSelfAuraNativeBlocked())
 end
 
 --- Register a single AddAuraSound entry.

@@ -292,7 +292,12 @@ local nativeSoundHandles = {}
 -- Presence of the function therefore proves nothing; only trying it does. One
 -- probe is enough to learn the answer, after which the aura monitor above
 -- handles these triggers on its own -- it needs no protected call.
-local nativeSoundUnavailable = false
+-- Starts out refused, and is never probed on its own any more. Every probe so
+-- far has been refused, and the version stamp below meant each OxedHub update
+-- probed again -- one blocked-action error per release, for every player.
+-- Only the "Retry aura sound" button on the Debug page asks the client now;
+-- a yes from it is remembered for this game build.
+local nativeSoundUnavailable = true
 
 -- Hard ceiling on registration attempts for the whole session, independent of
 -- how the refusal is detected. The blocked-action count is the accurate signal,
@@ -330,13 +335,19 @@ local function LoadNativeBlockedState()
     local stored = settings and settings.selfAuraNativeBlocked
     if type(stored) ~= "table" then return end
 
-    local version, build = CurrentNativeStamp()
-    if stored.version == version and stored.build == build then
-        nativeSoundUnavailable = true
-        if OxedHub.debug then
-            print("|cff00ffff[OxedHub-Debug]|r SELF_AURA native: refused before on this build, not probing again")
-        end
+    local _, build = CurrentNativeStamp()
+    if stored.allowed == true and stored.build == build then
+        nativeSoundUnavailable = false
     end
+end
+
+local function SaveNativeAllowedState()
+    if type(OxedHubDB) ~= "table" then return end
+    OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+    local version, build = CurrentNativeStamp()
+    OxedHubDB.globalSettings.selfAuraNativeBlocked = {
+        allowed = true, version = version, build = build, time = time(),
+    }
 end
 
 local function SaveNativeBlockedState()
@@ -514,6 +525,7 @@ function Triggers:RefreshSelfAuraNativeEffects()
 
                     if handle and not wasBlocked then
                         table.insert(nativeSoundHandles, { type = "normal", handle = handle })
+                        SaveNativeAllowedState()
                     else
                         -- The first refusal is decisive. Carrying on would just
                         -- repeat the same blocked call for every remaining spell
