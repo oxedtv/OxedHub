@@ -11,4 +11,7 @@
     <Binding name="OXEDHUB_COPY_CHAT" category="OXEDHUB_CATEGORY">
         OxedHub_CopyChat()
     </Binding>
+    <Binding name="OXEDHUB_VENDOR_TOGGLE_HOVERED" category="OXEDHUB_CATEGORY">
+        OxedHub_AutoVendorToggleHovered()
+    </Binding>
 </Bindings>

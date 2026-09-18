@@ -68,6 +68,24 @@ end
 -- ── Junk ────────────────────────────────────────────────────────────────────
 
 local POOR = (Enum and Enum.ItemQuality and Enum.ItemQuality.Poor) or 0
+local RARE = 3
+
+-- The list remembers the quality of the copy that was added, and sells only
+-- copies at that quality or below. The same item ID drops as green, blue and
+-- purple (upgrade tracks, bonus IDs): putting the blue one on the list must
+-- never sell the purple one. Entries saved before this was added hold
+-- `true`; they count as blue, so nothing epic or better goes without asking.
+local function QualityCap(entry)
+    if type(entry) == "number" then return entry end
+    return RARE
+end
+
+local function QualityText(quality)
+    local name = _G["ITEM_QUALITY" .. tostring(quality) .. "_DESC"] or ("quality " .. tostring(quality))
+    local color = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+    if color and color.hex then return color.hex .. name .. "|r" end
+    return name
+end
 
 -- What the grey items in the bags are worth, and how many there are. Worked out
 -- before they are sold, because afterwards there is nothing left to count.
@@ -132,7 +150,8 @@ local function CollectListed()
     for bag = 0, (NUM_BAG_SLOTS or 4) do
         for slot = 1, C_Container.GetContainerNumSlots(bag) do
             local info = C_Container.GetContainerItemInfo(bag, slot)
-            if info and info.itemID and settings.items[info.itemID]
+            local listed = info and info.itemID and settings.items[info.itemID]
+            if listed and (info.quality or 0) <= QualityCap(listed)
                 and not info.hasNoValue and not info.isLocked
                 and not (settings.sellJunk and info.quality == POOR) then
                 local price = SellPrice(info.itemID) or 0
@@ -377,25 +396,62 @@ local function ParseItemID(text)
     return id and tonumber(id)
 end
 
-local function AddItem(itemID)
+local function AddItem(itemID, link)
     if not itemID or itemID <= 0 then return end
-    local name, _, _, _, _, _, _, _, _, _, price = GetInfo(itemID)
+    local name, _, quality, _, _, _, _, _, _, _, price = GetInfo(link or itemID)
     if price == 0 then
         print(PREFIX .. ("%s cannot be sold to a vendor."):format(name or ("item " .. itemID)))
         return
     end
-    settings.items[itemID] = true
-    print(PREFIX .. ("%s will be sold at vendors."):format(name or ("item " .. itemID)))
+    -- Adding a better copy of an item already listed raises the cap; a worse
+    -- one never lowers it.
+    local cap = tonumber(quality) or RARE
+    local current = settings.items[itemID]
+    if type(current) == "number" and current > cap then cap = current end
+    settings.items[itemID] = cap
+    print(PREFIX .. ("%s will be sold at vendors, up to %s quality."):format(name or ("item " .. itemID), QualityText(cap)))
     RefreshList()
 end
 
 -- An item held on the cursor, dropped onto the box. The cursor is emptied only
 -- after the item is read, so a drop that is not an item leaves it in hand.
 local function TakeCursorItem()
-    local kind, itemID = GetCursorInfo()
+    local kind, itemID, link = GetCursorInfo()
     if kind ~= "item" then return end
     ClearCursor()
-    AddItem(itemID)
+    AddItem(itemID, link)
+end
+
+-- Key binding (Key Bindings, Oxed Hub): the item under the mouse -- in the
+-- bags, on the character, in a loot window or a chat link -- goes on the list
+-- at its own quality, or comes off if it is already there at that quality.
+BINDING_NAME_OXEDHUB_VENDOR_TOGGLE_HOVERED = "Auto Vendor: add or remove the item under the mouse"
+
+function OxedHub_AutoVendorToggleHovered()
+    if not settings then return end
+    if settings.enabled ~= true then
+        print(PREFIX .. "Auto Vendor is switched off (Modules, Inventory).")
+        return
+    end
+    local link
+    if GameTooltip:IsShown() then
+        local ok, _, hovered = pcall(GameTooltip.GetItem, GameTooltip)
+        if ok and not (issecretvalue and issecretvalue(hovered)) then link = hovered end
+    end
+    local itemID = ParseItemID(link)
+    if not itemID then
+        print(PREFIX .. "point at an item first, then press the key.")
+        return
+    end
+    local _, _, quality = GetInfo(link)
+    local current = settings.items[itemID]
+    if current and quality and quality <= QualityCap(current) then
+        settings.items[itemID] = nil
+        print(PREFIX .. ("%s is off the sell list."):format(link))
+        RefreshList()
+        return
+    end
+    AddItem(itemID, link)
 end
 
 local function GetIcon(index, parent)
@@ -406,6 +462,10 @@ local function GetIcon(index, parent)
     icon:SetSize(ICON_SIZE, ICON_SIZE)
     icon.texture = icon:CreateTexture(nil, "ARTWORK")
     icon.texture:SetAllPoints()
+    -- Coloured edge: the highest quality of this item that gets sold.
+    icon.edge = icon:CreateTexture(nil, "BACKGROUND")
+    icon.edge:SetPoint("TOPLEFT", -1, 1)
+    icon.edge:SetPoint("BOTTOMRIGHT", 1, -1)
     icon:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
 
     icon:SetScript("OnEnter", function(self)
@@ -416,6 +476,10 @@ local function GetIcon(index, parent)
             GameTooltip:SetText("Item " .. tostring(self.itemID))
         end
         GameTooltip:AddLine(" ")
+        local cap = settings.items[self.itemID] and QualityCap(settings.items[self.itemID])
+        if cap then
+            GameTooltip:AddLine(("Sold up to %s quality; better copies are kept."):format(QualityText(cap)), 1, 1, 1, true)
+        end
         GameTooltip:AddLine("Click to take it off the sell list.", 1, 0.4, 0.4)
         GameTooltip:Show()
     end)
@@ -448,6 +512,17 @@ function RefreshList()
         icon:SetPoint("TOPLEFT", window.listArea, "TOPLEFT",
             column * (ICON_SIZE + ICON_GAP), -row * (ICON_SIZE + ICON_GAP))
         icon.itemID = itemID
+        -- Common (white) and poor items get a dark edge: a white frame round
+        -- them read as a glitch, not as a quality.
+        local cap = QualityCap(settings.items[itemID])
+        local color = cap >= 2 and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[cap]
+        if color then
+            icon.edge:SetColorTexture(color.r, color.g, color.b, 0.9)
+        elseif cap < 2 then
+            icon.edge:SetColorTexture(0, 0, 0, 0.8)
+        else
+            icon.edge:SetColorTexture(0, 0, 0, 0)
+        end
         -- An item the client has not seen this session has no icon yet; the
         -- question mark stands in and is replaced when the data arrives.
         local texture = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(itemID))
@@ -511,7 +586,8 @@ local function BuildListSection(window)
     local function AddFromInput()
         local itemID = ParseItemID(input:GetText())
         if itemID then
-            AddItem(itemID)
+            local text = input:GetText()
+            AddItem(itemID, text:find("|Hitem:", 1, true) and text or nil)
             input:SetText("")
         else
             print(PREFIX .. "that is not an item ID or item link.")
@@ -560,11 +636,11 @@ local function ShowOptions()
     if not API or not settings then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("Auto Vendor", 420, 560)
+        optionsWindow = API:CreateOptionsWindow("Auto Vendor", 420, 600)
         optionsWindow:AddCheckbox(settings, "sellJunk", "Sell junk (grey items)",
             "Everything grey in your bags is sold when a vendor opens.")
         optionsWindow:AddCheckbox(settings, "sellList", "Sell the items on my list",
-            "Also sells every item on the list below, whatever its quality.")
+            "Also sells the items on the list below -- only at the quality you added them or lower, so a better copy of the same item is kept.")
         optionsWindow:AddCheckbox(settings, "repair", "Repair gear",
             "Repairs everything when the vendor can repair.")
         optionsWindow:AddCheckbox(settings, "guildFunds", "Use guild funds first",
@@ -575,7 +651,7 @@ local function ShowOptions()
             "Shows what is about to be sold and what the repair costs, and waits for Yes. No leaves everything as it is.")
         optionsWindow:AddCheckbox(settings, "shiftSkip", "Hold Shift to skip a visit",
             "With this on, holding Shift while opening a vendor leaves everything as it is for that visit.")
-        optionsWindow:AddNote("|cffffd100Sell list|r  -- click an icon to take it off.")
+        optionsWindow:AddNote("|cffffd100Sell list|r  -- click an icon to take it off. The edge colour is the best quality sold; better copies are kept. Faster: bind a key in Key Bindings, Oxed Hub, and press it over any item.")
         BuildListSection(optionsWindow)
     end
     optionsWindow:Show()
@@ -598,7 +674,7 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "autovendor",
         name     = "Auto Vendor",
-        version  = "1.1.0",
+        version  = "1.2.1",
         author   = "Oxed",
         category = "inventory",
         -- Clipped at about 90 characters on the card; the detail is in Options.
