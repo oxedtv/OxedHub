@@ -548,6 +548,166 @@ itemDataWatcher:SetScript("OnEvent", function(_, _, itemID)
     end
 end)
 
+-- ── Sharing the sell list ───────────────────────────────────────────────────
+-- Export turns the list into one line of text -- "OXV1:" and then
+-- itemID:quality pairs -- to paste to a friend or into an alt's Import.
+-- Import reads the same line and also plain item IDs or item links, one or
+-- many, so a list typed out by hand works too. It adds to the list; nothing
+-- already on it is removed, and a higher quality limit wins over a lower one.
+
+local SHARE_PREFIX = "OXV1:"
+local shareWindow
+
+local function ExportString()
+    local ids = {}
+    for itemID in pairs(settings.items) do ids[#ids + 1] = itemID end
+    table.sort(ids)
+    local parts = {}
+    for _, itemID in ipairs(ids) do
+        parts[#parts + 1] = ("%d:%d"):format(itemID, QualityCap(settings.items[itemID]))
+    end
+    return SHARE_PREFIX .. table.concat(parts, ",")
+end
+
+-- Returns how many items were added and how many had their limit raised.
+local function ImportString(text)
+    if type(text) ~= "string" then return 0, 0 end
+    local added, raised = 0, 0
+    local function Take(itemID, quality)
+        itemID = tonumber(itemID)
+        if not itemID or itemID <= 0 then return end
+        quality = tonumber(quality) or RARE
+        if quality < 0 or quality > 8 then quality = RARE end
+        local current = settings.items[itemID]
+        if not current then
+            settings.items[itemID] = quality
+            added = added + 1
+        elseif quality > QualityCap(current) then
+            settings.items[itemID] = quality
+            raised = raised + 1
+        end
+    end
+
+    local body = text:match(SHARE_PREFIX .. "([%d:,%s]*)")
+    if body then
+        for itemID, quality in body:gmatch("(%d+):?(%d*)") do Take(itemID, quality) end
+    else
+        -- Item links keep their own quality; bare numbers count as blue.
+        for link in text:gmatch("|Hitem:[^|]+|h") do
+            local itemID = link:match("item:(%d+)")
+            local _, _, quality = GetInfo(link)
+            Take(itemID, quality)
+        end
+        if added + raised == 0 then
+            for itemID in text:gmatch("%d+") do Take(itemID) end
+        end
+    end
+    return added, raised
+end
+
+local function BuildShareWindow()
+    local f = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
+    f:SetSize(440, 260)
+    f:SetPoint("CENTER")
+    -- Above the options window it is opened from.
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
+    f:SetClampedToScreen(true)
+    f:EnableMouse(true)
+    f:SetMovable(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+
+    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    f.title:SetPoint("CENTER", f.TitleBg, "CENTER", 0, 0)
+
+    f.hint = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.hint:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -32)
+    f.hint:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -32)
+    f.hint:SetJustifyH("LEFT")
+    f.hint:SetTextColor(0.8, 0.8, 0.8)
+
+    local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -62)
+    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -34, 42)
+
+    local bg = f:CreateTexture(nil, "BACKGROUND", nil, 1)
+    bg:SetPoint("TOPLEFT", scroll, "TOPLEFT", -4, 4)
+    bg:SetPoint("BOTTOMRIGHT", scroll, "BOTTOMRIGHT", 4, -4)
+    bg:SetColorTexture(0, 0, 0, 0.5)
+
+    -- Never focused on its own: a box that grabs the keyboard stops the
+    -- player moving (see CLAUDE.md).
+    local box = CreateFrame("EditBox", nil, scroll)
+    box:SetMultiLine(true)
+    box:SetMaxLetters(0)
+    box:SetAutoFocus(false)
+    box:SetFontObject("ChatFontNormal")
+    box:SetWidth(380)
+    box:SetHeight(150)
+    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    scroll:SetScrollChild(box)
+    f.box = box
+
+    f.action = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    f.action:SetSize(110, 22)
+    f.action:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
+
+    f.status = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.status:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 18)
+    f.status:SetPoint("RIGHT", f.action, "LEFT", -8, 0)
+    f.status:SetJustifyH("LEFT")
+
+    f:SetScript("OnHide", function(self) self.box:ClearFocus() end)
+    f:Hide()
+    return f
+end
+
+local function ShowShare(mode)
+    shareWindow = shareWindow or BuildShareWindow()
+    local f = shareWindow
+    f.status:SetText("")
+    f.box:SetScript("OnTextChanged", nil)
+    f.box:SetScript("OnMouseUp", nil)
+
+    if mode == "export" then
+        local text = ExportString()
+        f.title:SetText("Export sell list")
+        f.hint:SetText("Press Ctrl+C to copy, then paste it to a friend or into Import on another character.")
+        f.box:SetText(text)
+        -- The text stays what was exported: typing into it puts it back.
+        f.box:SetScript("OnTextChanged", function(self, userInput)
+            if userInput then self:SetText(text) self:HighlightText() end
+        end)
+        f.box:SetScript("OnMouseUp", function(self) self:SetFocus() self:HighlightText() end)
+        f.action:SetText("Select all")
+        f.action:SetScript("OnClick", function() f.box:SetFocus() f.box:HighlightText() end)
+        f:Show()
+        f.box:SetFocus()
+        f.box:HighlightText()
+        local count = 0
+        for _ in pairs(settings.items) do count = count + 1 end
+        f.status:SetText(("%d item(s)"):format(count))
+    else
+        f.title:SetText("Import sell list")
+        f.hint:SetText("Paste an exported list (Ctrl+V), or item IDs / item links. Items are added; nothing is removed.")
+        f.box:SetText("")
+        f.action:SetText("Import")
+        f.action:SetScript("OnClick", function()
+            local added, raised = ImportString(f.box:GetText())
+            if added + raised == 0 then
+                f.status:SetText("|cffff6060Nothing new found in that text.|r")
+                return
+            end
+            print(PREFIX .. ("sell list import: %d added, %d with a higher quality limit."):format(added, raised))
+            RefreshList()
+            f:Hide()
+        end)
+        f:Show()
+        f.box:SetFocus()
+    end
+end
+
 local function BuildListSection(window)
     local top = window.cursorY - 4
 
@@ -628,6 +788,19 @@ local function BuildListSection(window)
     window.listEmpty:SetPoint("TOPLEFT", area, "TOPLEFT", 2, -4)
     window.listEmpty:SetText("Nothing on the list yet.")
 
+    -- Export / Import sit above the grid's right edge.
+    local import = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
+    import:SetSize(70, 20)
+    import:SetPoint("BOTTOMRIGHT", area, "TOPRIGHT", 0, 3)
+    import:SetText("Import")
+    import:SetScript("OnClick", function() ShowShare("import") end)
+
+    local export = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
+    export:SetSize(70, 20)
+    export:SetPoint("RIGHT", import, "LEFT", -4, 0)
+    export:SetText("Export")
+    export:SetScript("OnClick", function() ShowShare("export") end)
+
     window:HookScript("OnShow", RefreshList)
 end
 
@@ -674,7 +847,7 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "autovendor",
         name     = "Auto Vendor",
-        version  = "1.2.1",
+        version  = "1.3.0",
         author   = "Oxed",
         category = "inventory",
         -- Clipped at about 90 characters on the card; the detail is in Options.
