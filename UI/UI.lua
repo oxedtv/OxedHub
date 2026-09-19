@@ -1274,12 +1274,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.76)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.77)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.76")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.77")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1345,11 +1345,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  Buff Reminder: every flask, food, rune and oil in your bags, one click away.",
-        "•  Buff Reminder: pick your pet, icon size slider, names under icons.",
-        "•  Auto Quest: marks the reward worth most gold and item level upgrades.",
-        "•  Auto Vendor: add items with a key; never sells a better copy.",
-        "•  Copy Chat works with Chattynator. New What's New button, top right.",
+        "•  New module: Auto Queue -- accepts role checks and ready checks for you.",
+        "•  Auto Queue: confirms Group Finder sign-ups; double-click a listing to apply.",
+        "•  Auto Queue: pick your queue roles above the Group Finder, per character.",
+        "•  Auto Queue: groups that declined you turn red; your note is kept.",
+        "•  Auto Vendor: Export and Import your sell list, for friends or alts.",
         "•  Grab either pack from CurseForge:",
     }
 

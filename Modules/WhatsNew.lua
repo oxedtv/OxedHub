@@ -25,6 +25,15 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.77",
+        important = true,
+        lines = {
+            { "ADDED", "Auto Queue module (Modules, General): answers Dungeon Finder role checks and accepts \"Your group is ready\" for you, confirms Group Finder sign-ups with your roles, and signs you up when you double-click a listing. Hold Shift while signing up to write a note." },
+            { "ADDED", "Auto Queue: a role picker above the Group Finder to queue as several roles or one your spec is not, saved per character. Groups that declined you show red, delisted or full ones orange, and you may apply again. Listing tooltips show how old a group is, and your sign-up note is kept. Type /aq for the status." },
+            { "ADDED", "Auto Vendor: Export and Import buttons for the sell list -- share it with a friend or copy it to another account. Import adds to your list and keeps the higher quality limit." },
+        },
+    },
+    {
         version = "2.3.76",
         important = true,
         lines = {
