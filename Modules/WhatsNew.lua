@@ -25,6 +25,17 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.78",
+        important = true,
+        lines = {
+            { "ADDED", "Teleports module (Modules, Travel & Tools): a button your teleports fly out of -- hearthstones, your class's own teleports, the portals you open for the group, teleport toys, what is in your bags and the cloak or ring you are wearing. It finds them itself: a spell only when you know it, a toy only when you own it, an item only while you carry it." },
+            { "ADDED", "Teleports: each group flies out its own way -- right, left, up or down -- and groups sent the same way stack behind each other. Left-click an icon to travel, right-click to put it away. Type /tp." },
+            { "ADDED", "Attributes: stat targets. Set a target per secondary for the specialisation you are playing, and the bar shows how far along you are and how much more rating it would take, with diminishing returns already counted. Without a target the bars compare your secondaries with each other." },
+            { "ADDED", "The window now dresses up for the holiday running in the game, with a line at the foot naming it and its dates -- click it for the calendar, or the scroll beside it for the Wowhead guide. Switch it off in Settings, Ring and Display." },
+            { "FIXED", "Attributes: the new bars sat on the line underneath them." },
+        },
+    },
+    {
         version = "2.3.77",
         important = true,
         lines = {

@@ -27,6 +27,10 @@ local DEFAULTS = {
     gear      = true,   -- item level and the weakest slot
     diminishing = true, -- how much of each secondary rating is lost to diminishing returns
     deltas    = true,   -- show the change since the saved snapshot
+    targets   = true,   -- bars showing each secondary against a target you set
+    -- "statTargets" is a table and is built in BindSettings: defaults are
+    -- copied by reference, so one table here would be shared by every
+    -- character on the account.
 }
 
 local settings          -- OxedHubDB.modules.attributes, bound at login
@@ -236,6 +240,145 @@ local STAT_STRENGTH, STAT_AGILITY, STAT_STAMINA, STAT_INTELLECT = 1, 2, 3, 4
 -- Which of the four the specialisation actually scales with. Asked of the
 -- specialisation rather than guessed from the class: a druid's answer changes
 -- with the spec, not with the class.
+-- ── Stat targets ────────────────────────────────────────────────────────────
+-- A target you set yourself, per specialisation, with a bar showing how far
+-- along you are and -- the part that actually helps -- how much more rating it
+-- would take to get there.
+--
+-- The missing rating is not estimated from "rating per percent", because that
+-- figure stops being true the moment diminishing returns start. The game is
+-- asked instead: what is this much rating worth? The answer is searched for the
+-- amount that reaches the target, so the number holds at any gear level and
+-- survives whatever Blizzard changes next patch.
+
+local SECONDARIES = {
+    { key = "crit",    ratingId = CR_CRIT_MELEE,
+      label = STAT_CRITICAL_STRIKE or "Critical Strike",
+      read = function() return GetCritChance and GetCritChance() end },
+    { key = "haste",   ratingId = CR_HASTE_MELEE,
+      label = STAT_HASTE or "Haste",
+      read = function() return GetHaste and GetHaste() end },
+    { key = "mastery", ratingId = CR_MASTERY,
+      label = STAT_MASTERY or "Mastery",
+      read = function() return GetMasteryEffect and GetMasteryEffect() end },
+    -- Versatility through the rating bonus, not GetVersatilityBonus: that one
+    -- already includes what the rating gives, and adding the two together
+    -- counts the same points twice.
+    { key = "versatility", ratingId = CR_VERSATILITY_DAMAGE_DONE,
+      label = STAT_VERSATILITY or "Versatility",
+      read = function()
+          return GetCombatRatingBonus and CR_VERSATILITY_DAMAGE_DONE
+              and GetCombatRatingBonus(CR_VERSATILITY_DAMAGE_DONE)
+      end },
+}
+
+local function CurrentSpecID()
+    if not (GetSpecialization and GetSpecializationInfo) then return nil end
+    local index = GetSpecialization()
+    if not index then return nil end
+    local id = GetSpecializationInfo(index)
+    return id
+end
+
+local function TargetKey(statKey)
+    return ("%s:%s"):format(tostring(CurrentSpecID() or "none"), statKey)
+end
+
+local function GetTarget(statKey)
+    local store = settings and settings.statTargets
+    if type(store) ~= "table" then return nil end
+    local value = tonumber(store[TargetKey(statKey)])
+    if value and value > 0 then return value end
+    return nil
+end
+
+local function SetTarget(statKey, value)
+    settings.statTargets = settings.statTargets or {}
+    value = tonumber(value)
+    settings.statTargets[TargetKey(statKey)] = (value and value > 0) and value or nil
+end
+
+-- The rating that would buy this percentage, found by asking the game what a
+-- given rating is worth and closing in on the answer. Returns nil when the
+-- client cannot answer or the target is out of reach.
+local function RatingForBonus(ratingId, wanted)
+    if not (RatingBonusFor and ratingId and wanted) then return nil end
+
+    local low, high = 0, 1000
+    local ceiling = 2000000
+    while (BonusAt(ratingId, high) or 0) < wanted do
+        high = high * 2
+        if high > ceiling then return nil end
+    end
+
+    -- Twenty halvings take the range below a single point of rating.
+    for _ = 1, 20 do
+        local middle = math.floor((low + high) / 2)
+        if (BonusAt(ratingId, middle) or 0) < wanted then
+            low = middle
+        else
+            high = middle
+        end
+    end
+    return high
+end
+
+-- Everything the bar needs for one secondary.
+local function ReadTarget(entry)
+    local current = entry.read and entry.read()
+    if type(current) ~= "number" then return nil end
+
+    local target = GetTarget(entry.key)
+    local rating = GetCombatRating and GetCombatRating(entry.ratingId) or 0
+
+    local info = {
+        key = entry.key,
+        label = entry.label,
+        current = current,
+        target = target,
+        rating = rating,
+    }
+
+    -- No target set: the bars compare the four secondaries with each other
+    -- instead, scaled to the biggest of them. That makes the section worth
+    -- looking at before anything is configured -- the lopsided stat is obvious
+    -- at a glance -- where a row of empty bars saying "no target" was not.
+    if not target then
+        local highest = 0
+        for _, other in ipairs(SECONDARIES) do
+            local value = other.read and other.read()
+            if type(value) == "number" and value > highest then highest = value end
+        end
+        info.progress = highest > 0 and (current / highest) or 0
+        info.relative = true
+        info.text = ("%s  |cff808080%d|r"):format(Percent(current), rating or 0)
+        info.tip = "Set a target for this stat in the module's Options and this bar fills toward it, with the rating you still need.\n\nUntil then the bars are drawn against your highest secondary, so you can see which is behind."
+        return info
+    end
+
+    info.progress = target > 0 and (current / target) or 0
+    local gap = target - current
+
+    if gap <= 0.01 then
+        info.text = ("%s  |cff40ff40of %s|r"):format(Percent(current), Percent(target))
+        info.state = "at"
+        info.tip = ("You are %.2f%% over the target you set (%s)."):format(-gap, Percent(target))
+    else
+        local needed = RatingForBonus(entry.ratingId, target)
+        if needed and rating and needed > rating then
+            info.text = ("%s  |cffff9933+%d rating|r"):format(Percent(current), needed - rating)
+            info.tip = ("%.2f%% short of your %s target.\nThat is about %d more rating, worked out from what the game says each amount is worth, so diminishing returns are already counted.")
+                :format(gap, Percent(target), needed - rating)
+        else
+            info.text = ("%s  |cffff9933of %s|r"):format(Percent(current), Percent(target))
+            info.tip = ("%.2f%% short of your %s target."):format(gap, Percent(target))
+        end
+        info.state = "below"
+    end
+
+    return info
+end
+
 local function PrimaryStatIndex()
     local spec = GetSpecialization and GetSpecialization()
     if spec and spec > 0 and C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo then
@@ -564,6 +707,13 @@ local ROWS = {
     { group = "offense", read = ReadMastery },
     { group = "offense", read = ReadVersatility },
 
+    -- One bar per secondary, against the target set for this specialisation.
+    { group = "targets", header = "Stat targets" },
+    { group = "targets", bar = SECONDARIES[1] },
+    { group = "targets", bar = SECONDARIES[2] },
+    { group = "targets", bar = SECONDARIES[3] },
+    { group = "targets", bar = SECONDARIES[4] },
+
     { group = "hidden",  header = "Hidden stats" },
     { group = "hidden",  read = ReadLeech },
     { group = "hidden",  read = ReadAvoidance },
@@ -595,6 +745,47 @@ local function GetLine(index, parent)
     line.value:SetPoint("RIGHT", line, "RIGHT", -14, 0)
     line.value:SetJustifyH("RIGHT")
 
+    -- The target bar. Built once on every line and simply left hidden on the
+    -- ones that do not use it: lines are pooled and reused in any order, so a
+    -- bar that only some of them own would have to be moved between them.
+    local bar = CreateFrame("Frame", nil, line)
+    bar:SetHeight(8)
+    -- Pulled in from both sides so it never sits against the page border.
+    bar:SetPoint("BOTTOMLEFT", line, "BOTTOMLEFT", 12, 2)
+    bar:SetPoint("BOTTOMRIGHT", line, "BOTTOMRIGHT", -20, 2)
+    bar:Hide()
+
+    bar.track = bar:CreateTexture(nil, "BACKGROUND")
+    bar.track:SetAllPoints()
+    bar.track:SetColorTexture(0.12, 0.12, 0.13, 0.9)
+
+    bar.fill = bar:CreateTexture(nil, "ARTWORK")
+    bar.fill:SetPoint("TOPLEFT")
+    bar.fill:SetPoint("BOTTOMLEFT")
+    bar.fill:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    bar.fill:SetWidth(1)
+
+    -- A lit top edge over the fill. Costs one texture and makes a flat colour
+    -- read as a bar rather than as a painted rectangle.
+    bar.gloss = bar:CreateTexture(nil, "OVERLAY")
+    bar.gloss:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    bar.gloss:SetVertexColor(1, 1, 1, 0.25)
+    bar.gloss:SetBlendMode("ADD")
+    bar.gloss:SetPoint("TOPLEFT", bar.fill, "TOPLEFT", 0, 0)
+    bar.gloss:SetPoint("TOPRIGHT", bar.fill, "TOPRIGHT", 0, 0)
+    bar.gloss:SetHeight(3)
+
+    -- Where the target sits. Drawn over the fill so it stays visible once the
+    -- bar runs past it.
+    bar.tick = bar:CreateTexture(nil, "OVERLAY")
+    bar.tick:SetColorTexture(0.95, 0.86, 0.55, 0.95)
+    bar.tick:SetWidth(2)
+    bar.tick:SetPoint("TOP", bar, "TOP", 0, 1)
+    bar.tick:SetPoint("BOTTOM", bar, "BOTTOM", 0, -1)
+    bar.tick:Hide()
+
+    line.bar = bar
+
     line:EnableMouse(true)
     line:SetScript("OnEnter", function(self)
         if not self.tipTitle then return end
@@ -615,7 +806,20 @@ local function GetLine(index, parent)
     return line
 end
 
+-- Lines are pooled, so one that carried a bar can be handed back as a plain
+-- row. Both setters put the text back where a plain row wants it -- centred --
+-- and the bar version lifts it to the top to make room underneath.
+local function PlainText(line)
+    line.label:ClearAllPoints()
+    line.label:SetPoint("LEFT", line, "LEFT", 10, 0)
+    line.value:ClearAllPoints()
+    line.value:SetPoint("RIGHT", line, "RIGHT", -14, 0)
+    line:SetHeight(18)
+    line.bar:Hide()
+end
+
 local function SetHeaderLine(line, text)
+    PlainText(line)
     line.label:SetFontObject("GameFontNormal")
     line.label:SetTextColor(unpack(HEADER_COLOR))
     line.label:SetText(text)
@@ -624,11 +828,77 @@ local function SetHeaderLine(line, text)
 end
 
 local function SetValueLine(line, label, value, body)
+    PlainText(line)
     line.label:SetFontObject("GameFontHighlight")
     line.label:SetTextColor(0.8, 0.8, 0.8)
     line.label:SetText(label)
     line.value:SetText(value)
     line.tipTitle, line.tipBody = label, body
+end
+
+-- Each secondary keeps its own colour across the section, so a glance at the
+-- bars is enough to tell which is which without reading the labels.
+local STAT_COLOURS = {
+    crit        = { 1.00, 0.62, 0.20 },
+    haste       = { 0.45, 0.90, 0.55 },
+    mastery     = { 0.70, 0.45, 1.00 },
+    versatility = { 0.40, 0.72, 1.00 },
+}
+
+local function SetBarLine(line, info)
+    -- Text at the top, bar underneath, and the line tall enough for both. Left
+    -- at the plain height the bar landed on the next row's text.
+    line:SetHeight(26)
+    line.label:ClearAllPoints()
+    line.label:SetPoint("TOPLEFT", line, "TOPLEFT", 10, -1)
+    line.value:ClearAllPoints()
+    line.value:SetPoint("TOPRIGHT", line, "TOPRIGHT", -14, -1)
+
+    local colour = STAT_COLOURS[info.key] or { 0.8, 0.8, 0.8 }
+    line.label:SetFontObject("GameFontHighlight")
+    line.label:SetTextColor(colour[1], colour[2], colour[3])
+    line.label:SetText(info.label)
+    line.value:SetText(info.text)
+    line.tipTitle, line.tipBody = info.label, info.tip
+
+    local bar = line.bar
+    bar:Show()
+
+    -- The stat's own colour while it is short, green once the target is met:
+    -- the colour says which stat, the change says you are there.
+    if info.state == "at" then
+        bar.fill:SetVertexColor(0.40, 1.00, 0.45, 0.95)
+    elseif info.target then
+        bar.fill:SetVertexColor(colour[1], colour[2], colour[3], 0.95)
+    else
+        bar.fill:SetVertexColor(colour[1] * 0.6, colour[2] * 0.6, colour[3] * 0.6, 0.7)
+    end
+
+    -- Sized on the next frame as well as now: the line is anchored to both
+    -- sides of the page, so its width is not known until the layout has run.
+    local function Resize()
+        local width = bar:GetWidth()
+        if not width or width <= 0 then return end
+
+        -- With a target, the bar leaves room past the tick so being over reads
+        -- as more than a full bar rather than as exactly full. Comparing the
+        -- secondaries with each other has no such mark, so it uses the lot.
+        local scale = info.relative and 1 or 1.15
+        local ratio = math.max(0, math.min(1, (info.progress or 0) / scale))
+        bar.fill:SetWidth(math.max(1, width * ratio))
+
+        if info.target then
+            local tickX = width / scale
+            bar.tick:ClearAllPoints()
+            bar.tick:SetPoint("TOP", bar, "TOPLEFT", tickX, 1)
+            bar.tick:SetPoint("BOTTOM", bar, "BOTTOMLEFT", tickX, -1)
+            bar.tick:Show()
+        else
+            bar.tick:Hide()
+        end
+    end
+    Resize()
+    C_Timer.After(0, Resize)
 end
 
 -- ── Snapshot ────────────────────────────────────────────────────────────────
@@ -705,6 +975,32 @@ local function Refresh()
         if settings[row.group] ~= false then
             if row.header then
                 pendingHeader = row.header
+            elseif row.bar then
+                local info = ReadTarget(row.bar)
+                if info then
+                    if pendingHeader then
+                        shown = shown + 1
+                        local header = GetLine(shown, content)
+                        SetHeaderLine(header, pendingHeader)
+                        header:ClearAllPoints()
+                        header:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y - 6)
+                        header:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -y - 6)
+                        header:Show()
+                        y = y + 24
+                        pendingHeader = nil
+                    end
+
+                    shown = shown + 1
+                    local line = GetLine(shown, content)
+                    SetBarLine(line, info)
+                    line:ClearAllPoints()
+                    line:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
+                    line:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -y)
+                    line:Show()
+                    -- Taller than a plain line: the bar sits under the text,
+                    -- plus a couple of pixels so two bars do not touch.
+                    y = y + 28
+                end
             else
                 local value, label, body, number = row.read()
                 if value then
@@ -1010,7 +1306,53 @@ local function BindSettings()
     for key, value in pairs(DEFAULTS) do
         if config[key] == nil then config[key] = value end
     end
+    -- Built here rather than in DEFAULTS: a table there is copied by reference,
+    -- and every character would end up sharing one set of targets.
+    if type(config.statTargets) ~= "table" then config.statTargets = {} end
     settings = config
+end
+
+-- One slider per secondary, writing the target for the specialisation being
+-- played right now. Zero means no target, which is how a bar is turned off
+-- again without a second control for it.
+local function AddTargetSlider(w, entry)
+    local label = w:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    label:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 4)
+
+    local slider = CreateFrame("Slider", nil, w, "OptionsSliderTemplate")
+    slider:SetOrientation("HORIZONTAL")
+    slider:SetSize(230, 16)
+    slider:SetPoint("TOPLEFT", w, "TOPLEFT", 200, w.cursorY - 6)
+    slider:SetMinMaxValues(0, 60)
+    slider:SetValueStep(1)
+    slider:SetObeyStepOnDrag(true)
+
+    local function ShowValue(value)
+        if value <= 0 then
+            label:SetText(("%s: |cff808080none|r"):format(entry.label))
+        else
+            label:SetText(("%s: %d%%"):format(entry.label, value))
+        end
+    end
+
+    slider:SetScript("OnValueChanged", function(_, value)
+        value = math.floor(value + 0.5)
+        ShowValue(value)
+        if value ~= (GetTarget(entry.key) or 0) then
+            SetTarget(entry.key, value)
+            Refresh()
+        end
+    end)
+
+    -- Read again every time the window opens: targets belong to the
+    -- specialisation, and the player may have changed it meanwhile.
+    w:HookScript("OnShow", function()
+        local value = GetTarget(entry.key) or 0
+        slider:SetValue(value)
+        ShowValue(value)
+    end)
+
+    w.cursorY = w.cursorY - 30
 end
 
 local function ShowOptions()
@@ -1018,7 +1360,7 @@ local function ShowOptions()
     if not API or not settings then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("Attributes", 420, 420)
+        optionsWindow = API:CreateOptionsWindow("Attributes", 460, 600)
         optionsWindow:AddCheckbox(settings, "primary", "Attributes",
             "Your specialisation's main stat and stamina.", Refresh)
         optionsWindow:AddCheckbox(settings, "gear", "Gear",
@@ -1039,6 +1381,14 @@ local function ShowOptions()
             "Print the rating in grey next to each percentage.", Refresh)
         optionsWindow:AddCheckbox(settings, "vehicle", "Read vehicle speed",
             "While you are driving something, show its speed instead of your own.", Refresh)
+        optionsWindow:AddCheckbox(settings, "targets", "Stat targets",
+            "A bar per secondary stat showing how far you are from a target you set, and how much more rating it would take.", Refresh)
+
+        optionsWindow:AddNote("Targets for the specialisation you are playing now. Zero means no target. The missing rating is worked out from what the game says each amount is worth, so diminishing returns are already counted.")
+        for _, entry in ipairs(SECONDARIES) do
+            AddTargetSlider(optionsWindow, entry)
+        end
+
         optionsWindow:AddNote("Everything appears on the Attributes tab of your character window.")
     end
     optionsWindow:Show()

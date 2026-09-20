@@ -1274,12 +1274,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.77)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.78)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.77")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.78")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1345,11 +1345,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  New module: Auto Queue -- accepts role checks and ready checks for you.",
-        "•  Auto Queue: confirms Group Finder sign-ups; double-click a listing to apply.",
-        "•  Auto Queue: pick your queue roles above the Group Finder, per character.",
-        "•  Auto Queue: groups that declined you turn red; your note is kept.",
-        "•  Auto Vendor: Export and Import your sell list, for friends or alts.",
+        "•  New module: Teleports -- a button every teleport you own flies out of. Type /tp.",
+        "•  Teleports: each group flies out its own way; right-click an icon to put it away.",
+        "•  Attributes: set a stat target per spec and see the rating you still need.",
+        "•  The window dresses up for the holiday running in the game, dates at the foot.",
+        "•  Auto Queue: role checks, ready checks and Group Finder sign-ups, handled for you.",
         "•  Grab either pack from CurseForge:",
     }
 
@@ -3745,7 +3745,32 @@ function UI:CreateSettingsTab()
     minimapLabel:SetText(L["SETTINGS_RING_MINIMAP"])
     minimapLabel:SetTextColor(1, 1, 1, 1)
 
-    local accessibilitySection = CreateSettingsSectionHeader(scrollChild, minimapToggle, "BOTTOMLEFT", -14, -28, L["SETTINGS_SECTION_ACCESSIBILITY"])
+    -- Holiday decoration, hung by Modules\CalendarEvents.lua. Account-wide, so
+    -- it is read and written through that module rather than kept in a profile:
+    -- the same window is being dressed whichever character opened it.
+    local decorToggle = CreateFrame("CheckButton", nil, scrollChild, "UICheckButtonTemplate")
+    decorToggle:SetPoint("TOPLEFT", minimapToggle, "BOTTOMLEFT", 0, -12)
+    decorToggle:SetSize(26, 26)
+    decorToggle:SetChecked(not OxedHub.CalendarEvents or OxedHub.CalendarEvents:IsEnabled())
+    decorToggle:SetScript("OnClick", function(self)
+        if OxedHub.CalendarEvents then
+            OxedHub.CalendarEvents:SetEnabled(self:GetChecked() and true or false)
+        end
+    end)
+
+    local decorLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    decorLabel:SetPoint("LEFT", decorToggle, "RIGHT", 4, 0)
+    decorLabel:SetText(L["SETTINGS_RING_HOLIDAY"] or "Holiday decoration")
+    decorLabel:SetTextColor(1, 1, 1, 1)
+
+    local decorDesc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    decorDesc:SetPoint("TOPLEFT", decorToggle, "BOTTOMLEFT", 26, -2)
+    decorDesc:SetWidth(540)
+    decorDesc:SetJustifyH("LEFT")
+    decorDesc:SetText(L["SETTINGS_RING_HOLIDAY_DESC"]
+        or "Dresses the window for the holiday running in the game.")
+
+    local accessibilitySection = CreateSettingsSectionHeader(scrollChild, decorDesc, "BOTTOMLEFT", -40, -22, L["SETTINGS_SECTION_ACCESSIBILITY"])
 
     -- Text Size Offset
     local textSizeLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -6103,6 +6128,12 @@ end
 -- Get main frame
 function UI:GetMainFrame()
     return mainFrame
+end
+
+-- The left column. Seasonal decoration hangs art on it; it is a file local
+-- otherwise, and nothing outside could reach it.
+function UI:GetSidebar()
+    return sidebar
 end
 
 -- Get content area
