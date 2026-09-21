@@ -1274,12 +1274,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.78)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.79)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.78")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.79")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1349,7 +1349,7 @@ function UI:CreateDashboardTab()
         "•  Teleports: each group flies out its own way; right-click an icon to put it away.",
         "•  Attributes: set a stat target per spec and see the rating you still need.",
         "•  The window dresses up for the holiday running in the game, dates at the foot.",
-        "•  Auto Queue: role checks, ready checks and Group Finder sign-ups, handled for you.",
+        "•  Modules: search the page, and star your favourites to keep them on top.",
         "•  Grab either pack from CurseForge:",
     }
 
@@ -5760,8 +5760,18 @@ function UI:ShowTab(tabName)
         searchBox.customSearchHandler = nil
         searchBox:SetText("")
         searchBox:ClearFocus()
-        if tabName == "Settings" or tabName == "About" or tabName == "Toys" or tabName == "ActionHub" or tabName == "Experimental" or tabName == "OxedRing" or tabName == "Dashboard" or tabName == "Modules" then
+        if tabName == "Settings" or tabName == "About" or tabName == "Toys" or tabName == "ActionHub" or tabName == "Experimental" or tabName == "OxedRing" or tabName == "Dashboard" then
             searchBox:GetParent():Hide()
+        elseif tabName == "Modules" then
+            -- The box filters the module cards. Set after the text was cleared
+            -- above, so leaving and coming back starts from every module.
+            if OxedHub.ModuleAPI then OxedHub.ModuleAPI.searchQuery = nil end
+            searchBox.customSearchHandler = function(_, text)
+                if OxedHub.ModuleAPI and OxedHub.ModuleAPI.SetSearch then
+                    OxedHub.ModuleAPI:SetSearch(text)
+                end
+            end
+            searchBox:GetParent():Show()
         elseif tabName == "Reactions" then
             local subTab = (contentArea.Reactions and contentArea.Reactions.currentSubTab) or "Sounds"
             if subTab == "Advanced" then

@@ -136,6 +136,7 @@ loginFrame:SetScript("OnEvent", function(self)
         version  = "1.0.0",
         author   = "Oxed",
         category = "general",
+        keywords = { "gossip", "npc", "dialog", "talk", "option" },
         -- Clipped at about 90 characters on the card; the detail is in Options.
         desc     = "Picks the option when an NPC's menu has only one. Choose where in Options.",
         icon     = "Interface\\GossipFrame\\GossipGossipIcon",

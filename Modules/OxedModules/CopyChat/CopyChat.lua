@@ -594,6 +594,7 @@ loginFrame:SetScript("OnEvent", function(self)
         version  = "1.1.0",
         author   = "Oxed",
         category = "chat",
+        keywords = { "copy", "chat", "text", "clipboard", "chattynator" },
         -- Short enough to be read in full on the card, which clips what does
         -- not fit. The key comes first because without one the module does
         -- nothing at all.

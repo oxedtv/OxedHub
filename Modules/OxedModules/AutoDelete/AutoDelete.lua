@@ -322,6 +322,7 @@ loginFrame:SetScript("OnEvent", function(self)
         version  = "1.1.0",
         author   = "Oxed",
         category = "inventory",
+        keywords = { "delete", "destroy", "confirm", "popup", "bind", "enchant", "abandon", "loot" },
         -- Clipped at about 100 characters on the card; the detail is in Options.
         desc     = "Types DELETE for you and skips the confirm popups you pick in Options.",
         icon     = "Interface\\Icons\\INV_Misc_Bomb_01",

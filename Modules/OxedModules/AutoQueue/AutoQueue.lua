@@ -679,6 +679,7 @@ loginFrame:SetScript("OnEvent", function(self)
         version  = "1.0.0",
         author   = "Oxed",
         category = "general",
+        keywords = { "queue", "lfg", "group finder", "role check", "ready check", "dungeon", "apply", "sign up" },
         -- Clipped at about 90 characters on the card; the detail is in Options.
         desc     = "Accepts role checks and queues, signs up in Group Finder, pick your roles.",
         icon     = "Interface\\Icons\\INV_Misc_GroupNeedMore",

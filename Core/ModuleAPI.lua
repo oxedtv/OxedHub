@@ -17,6 +17,9 @@ OxedHub.ModuleAPI = ModuleAPI
 -- Anything missing or misspelled lands in General rather than vanishing.
 ModuleAPI.CATEGORIES = {
     { key = "all",       label = "All" },
+    -- Not a category a module can belong to: the player's own starred ones,
+    -- shown second so they are one click from opening the page.
+    { key = "favorites", label = "Favorites" },
     { key = "general",   label = "General" },
     { key = "combat",    label = "Combat" },
     { key = "pvp",       label = "PvP" },
@@ -29,7 +32,36 @@ ModuleAPI.CATEGORIES = {
 
 local VALID_CATEGORY = {}
 for _, category in ipairs(ModuleAPI.CATEGORIES) do
-    if category.key ~= "all" then VALID_CATEGORY[category.key] = true end
+    if category.key ~= "all" and category.key ~= "favorites" then
+        VALID_CATEGORY[category.key] = true
+    end
+end
+
+-- ── Favourites ──────────────────────────────────────────────────────────────
+-- Starred on the card, kept account-wide by module id: a favourite is a habit of
+-- the player's, not a setting of one character. The table is made the first
+-- time a star is clicked, never earlier.
+
+local function FavoriteKey(mod)
+    return tostring(mod and mod.id or ""):lower()
+end
+
+function ModuleAPI:IsFavorite(mod)
+    local store = OxedHubDB and OxedHubDB.globalSettings and OxedHubDB.globalSettings.moduleFavorites
+    return type(store) == "table" and store[FavoriteKey(mod)] == true
+end
+
+function ModuleAPI:ToggleFavorite(mod)
+    if type(OxedHubDB) ~= "table" or not mod then return end
+    OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+    local store = OxedHubDB.globalSettings.moduleFavorites
+    if type(store) ~= "table" then
+        store = {}
+        OxedHubDB.globalSettings.moduleFavorites = store
+    end
+    local key = FavoriteKey(mod)
+    store[key] = (not store[key]) or nil
+    self:RefreshModulesTab()
 end
 
 -- Modules published before categories existed, filed where they belong so they
@@ -376,6 +408,7 @@ local function AutoDiscoverModules()
                 desc = getAddOnMetadata(i, "Notes") or "",
                 icon = getAddOnMetadata(i, "IconTexture") or "Interface\\Icons\\inv_misc_questionmark",
                 category = NormalizeCategory(getAddOnMetadata(i, "X-OxedHub-Category"), name),
+                keywords = getAddOnMetadata(i, "X-OxedHub-Keywords"),
                 isLoaded = isAddOnLoaded(i)
             }
             end
@@ -390,7 +423,7 @@ end
 function ModuleAPI:GetSelectedCategory()
     local settings = OxedHubDB and OxedHubDB.globalSettings
     local saved = settings and settings.modulesCategory
-    if saved == "all" or VALID_CATEGORY[saved] then return saved end
+    if saved == "all" or saved == "favorites" or VALID_CATEGORY[saved] then return saved end
     return "all"
 end
 
@@ -429,6 +462,7 @@ function ModuleAPI:RebuildCategoryTabs(tab, allModules, selected)
     local counts, total = {}, 0
     for _, mod in pairs(allModules) do
         counts[mod.category] = (counts[mod.category] or 0) + 1
+        if self:IsFavorite(mod) then counts.favorites = (counts.favorites or 0) + 1 end
         total = total + 1
     end
     counts.all = total
@@ -482,6 +516,59 @@ function ModuleAPI:RebuildCategoryTabs(tab, allModules, selected)
     end
 end
 
+-- ── Search ──────────────────────────────────────────────────────────────────
+-- The box at the top of the window filters the cards while the Modules page is
+-- open. A card matches when every word typed appears somewhere in its name,
+-- its description, its category or the keywords the module declares -- so
+-- "repair" finds Auto Vendor although its name never says so, and "auto sell"
+-- does not also bring back Auto Quest.
+--
+-- Keywords come from the registration (keywords = { "repair", "junk" }) or,
+-- for an addon that was only discovered, from its .toc:
+--   ## X-OxedHub-Keywords: repair, junk, sell
+
+ModuleAPI.searchQuery = nil
+
+local function SearchWords(query)
+    if type(query) ~= "string" then return nil end
+    local words = {}
+    for word in query:lower():gmatch("%S+") do words[#words + 1] = word end
+    return #words > 0 and words or nil
+end
+
+local function CategoryLabel(key)
+    for _, category in ipairs(ModuleAPI.CATEGORIES) do
+        if category.key == key then return category.label end
+    end
+    return ""
+end
+
+local function Haystack(mod)
+    local parts = { mod.name or "", mod.desc or "", CategoryLabel(mod.category) }
+    local keywords = mod.keywords
+    if type(keywords) == "table" then
+        for _, word in ipairs(keywords) do parts[#parts + 1] = tostring(word) end
+    elseif type(keywords) == "string" then
+        parts[#parts + 1] = keywords
+    end
+    return table.concat(parts, " "):lower()
+end
+
+local function Matches(mod, words)
+    local haystack = Haystack(mod)
+    for _, word in ipairs(words) do
+        -- Plain find: a word such as "+" or "." is text to look for here, not a
+        -- pattern character.
+        if not haystack:find(word, 1, true) then return false end
+    end
+    return true
+end
+
+function ModuleAPI:SetSearch(query)
+    self.searchQuery = query
+    self:RefreshModulesTab()
+end
+
 function ModuleAPI:RefreshModulesTab()
     local tab = OxedHub.UI.contentArea and OxedHub.UI.contentArea.Modules
     if not tab then return end
@@ -513,6 +600,7 @@ function ModuleAPI:RefreshModulesTab()
             -- The registration wins: it is the module's own code speaking,
             -- where the .toc may be older than it.
             if mod.category then allModules[lowerId].category = mod.category end
+            if mod.keywords then allModules[lowerId].keywords = mod.keywords end
 
             -- Registered means it is running inside OxedHub, whatever the
             -- addon list says. A module that moved in from its own folder can
@@ -529,10 +617,49 @@ function ModuleAPI:RefreshModulesTab()
         mod.category = NormalizeCategory(mod.category, mod.id or id)
     end
 
+    -- Narrow to what the search box asks for, before anything is counted: the
+    -- category tabs then show how many matches each holds, and the ones with
+    -- none drop out of the strip the same way empty categories always have.
+    local words = SearchWords(self.searchQuery)
+    local shownModules = allModules
+    if words then
+        shownModules = {}
+        for id, mod in pairs(allModules) do
+            if Matches(mod, words) then shownModules[id] = mod end
+        end
+    end
+
     local selected = self:GetSelectedCategory()
-    self:RebuildCategoryTabs(tab, allModules, selected)
+
+    -- While searching, a tab with no matches is looked past for the moment
+    -- rather than switched away from for good: typing must not quietly change
+    -- which tab the page opens on next time.
+    if words and selected ~= "all" then
+        local any = false
+        for _, mod in pairs(shownModules) do
+            if mod.category == selected or (selected == "favorites" and self:IsFavorite(mod)) then
+                any = true
+                break
+            end
+        end
+        if not any then selected = "all" end
+    end
+
+    self:RebuildCategoryTabs(tab, shownModules, selected)
     -- The tab builder may have fallen back to All when the saved one is empty.
-    selected = self:GetSelectedCategory()
+    if not words then selected = self:GetSelectedCategory() end
+
+    -- Said out loud when nothing matches, instead of an empty page.
+    if not tab.noMatches then
+        tab.noMatches = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+        tab.noMatches:SetPoint("TOP", scrollChild, "TOP", 0, -140)
+        tab.noMatches:SetWidth(700)
+    end
+    local noneFound = words and next(shownModules) == nil
+    if noneFound then
+        tab.noMatches:SetText(("No module matches \"%s\"."):format(self.searchQuery or ""))
+    end
+    tab.noMatches:SetShown(noneFound and true or false)
 
     local cardIndex = 1
     local columns = 3
@@ -546,12 +673,18 @@ function ModuleAPI:RefreshModulesTab()
     
     -- Convert to sorted array for consistent display
     local sortedModules = {}
-    for id, mod in pairs(allModules) do
-        if selected == "all" or mod.category == selected then
+    for id, mod in pairs(shownModules) do
+        if selected == "all" or mod.category == selected
+            or (selected == "favorites" and self:IsFavorite(mod)) then
             table.insert(sortedModules, mod)
         end
     end
-    table.sort(sortedModules, function(a, b) return (a.name or "") < (b.name or "") end)
+    -- Starred ones first on every tab, then by name.
+    table.sort(sortedModules, function(a, b)
+        local fa, fb = self:IsFavorite(a), self:IsFavorite(b)
+        if fa ~= fb then return fa end
+        return (a.name or "") < (b.name or "")
+    end)
     
     for i, mod in ipairs(sortedModules) do
         local card = tab.cards[cardIndex]
@@ -573,6 +706,28 @@ function ModuleAPI:RefreshModulesTab()
             icon:SetPoint("TOPLEFT", card, "TOPLEFT", 15, -15)
             icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             card.icon = icon
+
+            -- The star, on the icon's corner. Same star the sound list uses for
+            -- its favourites, so it reads the same wherever it appears: bright
+            -- when starred, a faint outline of itself when not.
+            local star = CreateFrame("Button", nil, card)
+            star:SetSize(18, 18)
+            star:SetPoint("CENTER", icon, "TOPLEFT", 2, -2)
+            star:SetFrameLevel(card:GetFrameLevel() + 5)
+            star.tex = star:CreateTexture(nil, "OVERLAY")
+            star.tex:SetAllPoints()
+            star.tex:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_1")
+            star:SetScript("OnClick", function()
+                if card.mod then ModuleAPI:ToggleFavorite(card.mod) end
+            end)
+            star:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText(card.mod and ModuleAPI:IsFavorite(card.mod)
+                    and "Remove from favourites" or "Add to favourites")
+                GameTooltip:Show()
+            end)
+            star:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            card.star = star
             
             local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
             title:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, 0)
@@ -623,6 +778,14 @@ function ModuleAPI:RefreshModulesTab()
         end
         
         card.mod = mod
+
+        if self:IsFavorite(mod) then
+            card.star.tex:SetVertexColor(1, 1, 1, 1)
+            card.star.tex:SetDesaturated(false)
+        else
+            card.star.tex:SetVertexColor(0.6, 0.6, 0.6, 0.45)
+            card.star.tex:SetDesaturated(true)
+        end
         
         card.icon:SetTexture(mod.icon or "Interface\\Icons\\inv_misc_questionmark")
         card.title:SetText(mod.name or mod.id)

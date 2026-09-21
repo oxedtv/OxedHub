@@ -362,6 +362,7 @@ loginFrame:SetScript("OnEvent", function(self)
         version  = "1.0.0",
         author   = "Oxed",
         category = "inventory",
+        keywords = { "bank", "reagents", "deposit", "restock", "warband" },
         desc     = "Deposits reagents and restocks what you already store when the bank opens.",
         icon     = "Interface\\Icons\\INV_Misc_Bag_10_Blue",
 

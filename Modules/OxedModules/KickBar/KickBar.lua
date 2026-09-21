@@ -799,6 +799,7 @@ local function RegisterModule()
         version  = "1.2.0",
         author   = "Oxed",
         category = "combat",
+        keywords = { "kick", "interrupt", "nameplate", "cast", "pummel", "counterspell" },
         desc     = "Shows a kick alert icon on enemy nameplates when your interrupt is ready.",
         icon     = "Interface\\Icons\\ability_kick",
 

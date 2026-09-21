@@ -943,6 +943,7 @@ loginFrame:SetScript("OnEvent", function(self)
         version  = "1.2.0",
         author   = "Oxed",
         category = "combat",
+        keywords = { "buff", "missing", "food", "flask", "rune", "oil", "pet", "poison", "consumables", "healthstone", "ready check" },
         -- Clipped at about 90 characters on the card; the detail is in Options.
         desc     = "Icons for missing buffs, pets and consumables. Click one to cast it.",
         icon     = "Interface\\Icons\\Spell_Holy_MagicalSentry",

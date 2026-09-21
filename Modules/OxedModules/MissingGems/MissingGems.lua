@@ -336,6 +336,7 @@ loginFrame:SetScript("OnEvent", function(self)
         version  = "1.0.0",
         author   = "Oxed",
         category = "character",
+        keywords = { "gem", "gems", "socket", "jewel", "enchant", "gear" },
         -- Clipped at about 90 characters on the card; the detail is in Options.
         desc     = "Marks gear with empty gem sockets and reminds you before a dungeon or raid.",
         icon     = "Interface\\Icons\\INV_Misc_Gem_01",

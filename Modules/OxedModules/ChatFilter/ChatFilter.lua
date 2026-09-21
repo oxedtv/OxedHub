@@ -1121,6 +1121,7 @@ loginFrame:SetScript("OnEvent", function(self)
         version  = "1.0.0",
         author   = "Oxed",
         category = "chat",
+        keywords = { "chat", "spam", "ignore", "filter", "block", "mute", "words" },
         -- Card text is clipped at about 100 characters; the rest lives in Options.
         desc     = "Unlimited ignore list, word filters and spam blocking. Type /oxfilter to manage.",
         icon     = "Interface\\Icons\\INV_Misc_Book_09",

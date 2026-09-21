@@ -25,6 +25,13 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.79",
+        lines = {
+            { "ADDED", "Search on the Modules page: type in the box at the top and the cards narrow as you go. It looks at names, descriptions and hidden keywords, so \"repair\" finds Auto Vendor and \"interrupt\" finds KickBar." },
+            { "ADDED", "Favourite modules: click the star on a card. Favourites come first on every tab, and get a Favorites tab of their own." },
+        },
+    },
+    {
         version = "2.3.78",
         important = true,
         lines = {

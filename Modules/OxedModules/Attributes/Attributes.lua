@@ -1411,6 +1411,7 @@ loginFrame:SetScript("OnEvent", function(self)
         version  = "1.1.0",
         author   = "Oxed",
         category = "character",
+        keywords = { "stats", "haste", "crit", "mastery", "versatility", "speed", "item level", "ilvl", "diminishing returns", "targets", "leech", "avoidance" },
         desc     = "A character window tab with live move speed and hidden stats like leech and stagger.",
         icon     = "Interface\\Icons\\Spell_Holy_WordFortitude",
 

@@ -449,6 +449,7 @@ loginFrame:SetScript("OnEvent", function(self)
         version  = "1.1.0",
         author   = "Oxed",
         category = "general",
+        keywords = { "quest", "accept", "turn in", "hand in", "reward", "npc" },
         -- Clipped at about 90 characters on the card; the detail is in Options.
         desc     = "Accepts and hands in quests when you talk to NPCs. Choose what it does in Options.",
         icon     = "Interface\\GossipFrame\\AvailableQuestIcon",
