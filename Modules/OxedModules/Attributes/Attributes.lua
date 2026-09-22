@@ -692,7 +692,7 @@ local function ReadWeakestSlot()
         body[#body + 1] = ("%s  %d"):format(list[i].name, list[i].level)
     end
     return ("%s  %d"):format(lowestName, lowestLevel), "Weakest slot",
-        "Lowest item level first -- the upgrades worth chasing:\n" .. table.concat(body, "\n"),
+        "Lowest item level first, the upgrades worth chasing:\n" .. table.concat(body, "\n"),
         lowestLevel
 end
 
@@ -1788,7 +1788,7 @@ local function ShowOptions()
         optionsWindow:AddCheckbox(settings, "offense", "Offense",
             "Crit, haste, mastery and versatility, each with its rating, and your global cooldown.", Refresh)
         optionsWindow:AddCheckbox(settings, "hidden", "Hidden stats",
-            "Leech and avoidance -- the ones the sheet never prints.", Refresh)
+            "Leech and avoidance, the ones the sheet never prints.", Refresh)
         optionsWindow:AddCheckbox(settings, "defense", "Defense",
             "Armour and what it actually takes off a hit, dodge, parry, block, stagger.", Refresh)
         optionsWindow:AddCheckbox(settings, "ratings", "Show ratings",

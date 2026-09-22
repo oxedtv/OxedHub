@@ -904,7 +904,7 @@ local function ShowOptions()
         AddSlider(w, "haloSize", "Glow size", 20, 120, 2, "%s: %d", RestyleAll)
         AddSlider(w, "haloAlpha", "Glow strength", 0.1, 1, 0.05, "%s: %.2f")
         w:AddCheckbox(settings, "haloOwnColour", "Own colour for the glow",
-            "Off, the glow takes the theme's colour -- orange for Fire, white-hot for Meteor, your class colour in Custom.")
+            "Off, the glow takes the theme's colour: orange for Fire, white-hot for Meteor, your class colour in Custom.")
 
         local glowPick = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         glowPick:SetSize(150, 22)

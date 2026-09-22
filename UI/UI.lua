@@ -1345,7 +1345,7 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  New module: Cursor -- a glow around your hand and a trail of sparks.",
+        "•  New module: Cursor: a glow around your hand and a trail of sparks.",
         "•  Cursor themes: Fire, Frost, Arcane, Lightning, Nature, Shadow, Holy and Meteor.",
         "•  Cursor: rest the mouse and the sparks circle it; shake it and the glow flares.",
         "•  Attributes: show your stats on screen and right-click the box to pick them.",
@@ -1380,6 +1380,25 @@ function UI:CreateDashboardTab()
             gamingLinkBtn:SetText("Gaming Pack Link")
             gamingLinkBtn:SetNormalFontObject("GameFontNormalSmall")
             gamingLinkBtn:SetScript("OnClick", function() ShowPackLink("gaming") end)
+
+            -- Straight to the module this release is about: the Modules page
+            -- with its own name already typed into the search box.
+            local cursorBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
+            cursorBtn:SetSize(120, 22)
+            cursorBtn:SetPoint("LEFT", gamingLinkBtn, "RIGHT", 8, 0)
+            cursorBtn:SetText("Cursor Module")
+            cursorBtn:SetNormalFontObject("GameFontNormalSmall")
+            cursorBtn:SetScript("OnClick", function()
+                UI:ShowTab("Modules")
+                if UI.searchBox then UI.searchBox:SetText("cursor") end
+            end)
+            cursorBtn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:AddLine("Cursor", 1, 0.82, 0)
+                GameTooltip:AddLine("Opens the Modules page on the new Cursor module.", 1, 1, 1, true)
+                GameTooltip:Show()
+            end)
+            cursorBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
         end
     end
 
