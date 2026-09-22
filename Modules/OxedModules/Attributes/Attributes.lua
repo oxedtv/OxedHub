@@ -28,6 +28,17 @@ local DEFAULTS = {
     diminishing = true, -- how much of each secondary rating is lost to diminishing returns
     deltas    = true,   -- show the change since the saved snapshot
     targets   = true,   -- bars showing each secondary against a target you set
+
+    -- The on-screen display. Which stats it shows ("hudStats") is a table and
+    -- is built in BindSettings, for the same reason as statTargets below.
+    hud       = false,  -- shown on screen
+    hudLocked = false,  -- no dragging
+    hudCombat = false,  -- only while in combat
+    hudScale  = 1,
+    hudAlpha  = 0.75,   -- background opacity
+    hudPoint  = "CENTER",
+    hudX      = 320,
+    hudY      = 0,
     -- "statTargets" is a table and is built in BindSettings: defaults are
     -- copied by reference, so one table here would be shared by every
     -- character on the account.
@@ -688,50 +699,51 @@ end
 -- What is printed, in order. A header only appears when a line under it does.
 local ROWS = {
     { group = "primary", header = STAT_CATEGORY_ATTRIBUTES or "Attributes" },
-    { group = "primary", read = ReadPrimaryStat },
-    { group = "primary", read = ReadStamina },
+    { group = "primary", id = "primary", name = "Main stat", read = ReadPrimaryStat },
+    { group = "primary", id = "stamina", name = "Stamina", read = ReadStamina },
 
     { group = "gear",    header = "Gear" },
-    { group = "gear",    read = ReadItemLevel },
-    { group = "gear",    read = ReadWeakestSlot },
+    { group = "gear",    id = "ilvl", name = "Item level", read = ReadItemLevel },
+    { group = "gear",    id = "weakest", name = "Weakest slot", read = ReadWeakestSlot },
 
     { group = "speed",   header = "Movement" },
-    { group = "speed",   read = ReadSpeed, live = true },
-    { group = "speed",   read = ReadTravelSpeeds },
-    { group = "speed",   read = ReadSpeedRating },
+    { group = "speed",   id = "speed", name = "Movement speed", read = ReadSpeed, live = true },
+    { group = "speed",   id = "travel", name = "Travel speeds", read = ReadTravelSpeeds },
+    { group = "speed",   id = "speedrating", name = "Speed rating", read = ReadSpeedRating },
 
     { group = "offense", header = "Offense" },
-    { group = "offense", read = ReadCrit },
-    { group = "offense", read = ReadHaste },
-    { group = "offense", read = ReadGlobalCooldown },
-    { group = "offense", read = ReadMastery },
-    { group = "offense", read = ReadVersatility },
+    { group = "offense", id = "crit", name = "Critical strike", read = ReadCrit },
+    { group = "offense", id = "haste", name = "Haste", read = ReadHaste },
+    { group = "offense", id = "gcd", name = "Global cooldown", read = ReadGlobalCooldown },
+    { group = "offense", id = "mastery", name = "Mastery", read = ReadMastery },
+    { group = "offense", id = "versatility", name = "Versatility", read = ReadVersatility },
 
     -- One bar per secondary, against the target set for this specialisation.
     { group = "targets", header = "Stat targets" },
-    { group = "targets", bar = SECONDARIES[1] },
-    { group = "targets", bar = SECONDARIES[2] },
-    { group = "targets", bar = SECONDARIES[3] },
-    { group = "targets", bar = SECONDARIES[4] },
+    { group = "targets", id = "bar_crit", name = "Crit", bar = SECONDARIES[1] },
+    { group = "targets", id = "bar_haste", name = "Haste", bar = SECONDARIES[2] },
+    { group = "targets", id = "bar_mastery", name = "Mastery", bar = SECONDARIES[3] },
+    { group = "targets", id = "bar_versatility", name = "Versatility", bar = SECONDARIES[4] },
 
     { group = "hidden",  header = "Hidden stats" },
-    { group = "hidden",  read = ReadLeech },
-    { group = "hidden",  read = ReadAvoidance },
+    { group = "hidden",  id = "leech", name = "Leech", read = ReadLeech },
+    { group = "hidden",  id = "avoidance", name = "Avoidance", read = ReadAvoidance },
 
     { group = "defense", header = "Defense" },
-    { group = "defense", read = ReadEffectiveHealth },
-    { group = "defense", read = ReadArmor },
-    { group = "defense", read = ReadArmorReduction },
-    { group = "defense", read = ReadDodge },
-    { group = "defense", read = ReadParry },
-    { group = "defense", read = ReadBlock },
-    { group = "defense", read = ReadStagger },
+    { group = "defense", id = "ehp", name = "Effective health", read = ReadEffectiveHealth },
+    { group = "defense", id = "armor", name = "Armour", read = ReadArmor },
+    { group = "defense", id = "armorcut", name = "Armour reduction", read = ReadArmorReduction },
+    { group = "defense", id = "dodge", name = "Dodge", read = ReadDodge },
+    { group = "defense", id = "parry", name = "Parry", read = ReadParry },
+    { group = "defense", id = "block", name = "Block", read = ReadBlock },
+    { group = "defense", id = "stagger", name = "Stagger", read = ReadStagger },
 }
 
 -- ── The lines ───────────────────────────────────────────────────────────────
 
-local function GetLine(index, parent)
-    local line = lines[index]
+local function GetLine(index, parent, pool)
+    pool = pool or lines
+    local line = pool[index]
     if line then return line end
 
     line = CreateFrame("Frame", nil, parent)
@@ -802,7 +814,7 @@ local function GetLine(index, parent)
     end)
     line:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    lines[index] = line
+    pool[index] = line
     return line
 end
 
@@ -1293,6 +1305,401 @@ loader:SetScript("OnEvent", function(self, _, loadedAddon)
     end
 end)
 
+-- ── On-screen display ───────────────────────────────────────────────────────
+-- The same lines as the tab, in a small box anywhere on screen. Left button
+-- drags it, right button opens a picker: tick the stats to show and set the
+-- targets right there, while watching the numbers move.
+
+local hud, picker
+local hudLines = {}          -- its own pool: the tab's lines live in the tab
+local hudWatcher = CreateFrame("Frame")
+local hudQueued = false
+local hudInCombat = false
+local RefreshHUD, QueueHUD, ShowPicker, ApplyHudVisibility, SaveHudPosition
+
+local HUD_PAD = 6
+local HUD_WIDTH = 230
+
+local function HudMouseDown(_, button)
+    if button == "LeftButton" and hud and not settings.hudLocked then hud:StartMoving() end
+end
+
+local function HudMouseUp(_, button)
+    if not hud then return end
+    hud:StopMovingOrSizing()
+    SaveHudPosition()
+    if button == "RightButton" then ShowPicker() end
+end
+
+-- Lines take the mouse for their tooltips, which would swallow the drag and
+-- the right click. They hand both to the box.
+local function WireHudLine(line)
+    if line.hudWired then return end
+    line.hudWired = true
+    line:SetScript("OnMouseDown", HudMouseDown)
+    line:SetScript("OnMouseUp", HudMouseUp)
+end
+
+SaveHudPosition = function()
+    if not hud then return end
+    local point, _, _, x, y = hud:GetPoint(1)
+    if point then
+        settings.hudPoint, settings.hudX, settings.hudY = point, x, y
+    end
+end
+
+local function PlaceHud()
+    hud:ClearAllPoints()
+    hud:SetPoint(settings.hudPoint or "CENTER", UIParent, settings.hudPoint or "CENTER",
+        tonumber(settings.hudX) or 0, tonumber(settings.hudY) or 0)
+end
+
+local function StyleHud()
+    if not hud then return end
+    hud:SetScale(math.max(0.5, math.min(2, tonumber(settings.hudScale) or 1)))
+    local alpha = tonumber(settings.hudAlpha) or 0.75
+    hud:SetBackdropColor(0.04, 0.04, 0.06, alpha)
+    hud:SetBackdropBorderColor(0.35, 0.35, 0.4, math.min(1, alpha + 0.15))
+end
+
+local function BuildHud()
+    if hud then return end
+    hud = CreateFrame("Frame", "OxedHubAttributesHUD", UIParent, "BackdropTemplate")
+    hud:SetSize(HUD_WIDTH, 40)
+    hud:SetFrameStrata("MEDIUM")
+    hud:SetClampedToScreen(true)
+    hud:SetMovable(true)
+    hud:EnableMouse(true)
+    hud:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+    hud:SetScript("OnMouseDown", HudMouseDown)
+    hud:SetScript("OnMouseUp", HudMouseUp)
+
+    hud.empty = hud:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+    hud.empty:SetPoint("CENTER")
+    hud.empty:SetText("Right-click to pick stats")
+
+    -- Only the speed line moves between events; it is read a few times a
+    -- second here and nothing else is.
+    hud.elapsed = 0
+    hud:SetScript("OnUpdate", function(self, elapsed)
+        if not self.speedLine then return end
+        self.elapsed = self.elapsed + elapsed
+        if self.elapsed < 0.2 then return end
+        self.elapsed = 0
+        local value, _, body = ReadSpeed()
+        if value then
+            self.speedLine.value:SetText(value)
+            self.speedLine.tipBody = body
+        end
+    end)
+
+    hud:Hide()
+    PlaceHud()
+    StyleHud()
+end
+
+RefreshHUD = function()
+    hudQueued = false
+    if not (hud and hud:IsShown()) then return end
+
+    local chosen = settings.hudStats or {}
+    local shown, y = 0, HUD_PAD
+    hud.speedLine = nil
+
+    for _, row in ipairs(ROWS) do
+        if row.id and chosen[row.id] then
+            local line
+            if row.bar then
+                local info = ReadTarget(row.bar)
+                if info then
+                    shown = shown + 1
+                    line = GetLine(shown, hud, hudLines)
+                    SetBarLine(line, info)
+                end
+            else
+                local value, label, body = row.read()
+                if value then
+                    shown = shown + 1
+                    line = GetLine(shown, hud, hudLines)
+                    SetValueLine(line, label, value, body)
+                    if row.live then hud.speedLine = line end
+                end
+            end
+            if line then
+                WireHudLine(line)
+                line:ClearAllPoints()
+                line:SetPoint("TOPLEFT", hud, "TOPLEFT", 0, -y)
+                line:SetPoint("TOPRIGHT", hud, "TOPRIGHT", 0, -y)
+                line:Show()
+                y = y + (row.bar and 28 or 18)
+            end
+        end
+    end
+
+    for index = shown + 1, #hudLines do hudLines[index]:Hide() end
+    hud.empty:SetShown(shown == 0)
+    if shown == 0 then y = y + 20 end
+    hud:SetHeight(y + HUD_PAD)
+end
+
+-- UNIT_AURA alone can arrive dozens of times a second in a fight; one redraw
+-- a tenth of a second after the first of a burst covers all of them.
+QueueHUD = function()
+    if hudQueued then return end
+    hudQueued = true
+    C_Timer.After(0.1, RefreshHUD)
+end
+
+ApplyHudVisibility = function()
+    local show = settings and settings.enabled ~= false and settings.hud
+        and (not settings.hudCombat or hudInCombat)
+    if show then
+        BuildHud()
+        StyleHud()
+        hud:Show()
+        RefreshHUD()
+    else
+        if hud then hud:Hide() end
+    end
+end
+
+hudWatcher:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+        hudInCombat = true
+        ApplyHudVisibility()
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        hudInCombat = false
+        ApplyHudVisibility()
+    else
+        QueueHUD()
+    end
+end)
+
+local function StartHUD()
+    if type(settings.hudStats) ~= "table" then settings.hudStats = {} end
+    hudInCombat = UnitAffectingCombat and UnitAffectingCombat("player") or false
+    for _, event in ipairs(STAT_EVENTS) do
+        if event:find("^UNIT_") then
+            pcall(hudWatcher.RegisterUnitEvent, hudWatcher, event, "player")
+        else
+            pcall(hudWatcher.RegisterEvent, hudWatcher, event)
+        end
+    end
+    hudWatcher:RegisterEvent("PLAYER_REGEN_DISABLED")
+    hudWatcher:RegisterEvent("PLAYER_REGEN_ENABLED")
+    ApplyHudVisibility()
+end
+
+local function StopHUD()
+    hudWatcher:UnregisterAllEvents()
+    if hud then hud:Hide() end
+    if picker then picker:Hide() end
+end
+
+-- ── The picker ──
+
+local function PickerCheck(parent, x, y, text, get, set)
+    local box = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    box:SetSize(22, 22)
+    box:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    box.text:SetFontObject("GameFontHighlightSmall")
+    box.text:SetText(text)
+    box:SetScript("OnClick", function(self) set(self:GetChecked() and true or false) end)
+    box.Refresh = function() box:SetChecked(get() and true or false) end
+    table.insert(parent.checks, box)
+    return box
+end
+
+local function PickerSlider(parent, x, y, width, minValue, maxValue, step, caption, get, set)
+    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    label:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+
+    local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
+    slider:SetOrientation("HORIZONTAL")
+    slider:SetSize(width, 14)
+    slider:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y - 14)
+    slider:SetMinMaxValues(minValue, maxValue)
+    slider:SetValueStep(step)
+    slider:SetObeyStepOnDrag(true)
+    -- The template's own min / max captions only crowd a small window.
+    for _, key in ipairs({ "Low", "High", "Text" }) do
+        local region = slider[key] or (slider:GetName() and _G[slider:GetName() .. key])
+        if region then region:SetText("") end
+    end
+
+    local refreshing = false
+    slider:SetScript("OnValueChanged", function(_, value)
+        value = math.floor(value / step + 0.5) * step
+        label:SetText(caption(value))
+        if not refreshing then set(value) end
+    end)
+    slider.Refresh = function()
+        refreshing = true
+        local value = get()
+        slider:SetValue(value)
+        label:SetText(caption(value))
+        refreshing = false
+    end
+    table.insert(parent.checks, slider)
+    return slider
+end
+
+local function BuildPicker()
+    picker = CreateFrame("Frame", "OxedHubAttributesPicker", UIParent, "BackdropTemplate")
+    picker:SetFrameStrata("DIALOG")
+    picker:SetClampedToScreen(true)
+    picker:SetMovable(true)
+    picker:EnableMouse(true)
+    picker:RegisterForDrag("LeftButton")
+    picker:SetScript("OnDragStart", picker.StartMoving)
+    picker:SetScript("OnDragStop", picker.StopMovingOrSizing)
+    picker:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+    picker:SetBackdropColor(0.05, 0.05, 0.07, 0.96)
+    picker:SetBackdropBorderColor(0.45, 0.4, 0.2, 1)
+    picker.checks = {}
+    tinsert(UISpecialFrames, "OxedHubAttributesPicker")   -- Escape closes it
+
+    local title = picker:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", 12, -10)
+    title:SetText("Stats on screen")
+
+    local close = CreateFrame("Button", nil, picker, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", 2, 2)
+
+    local function Toggle(id)
+        return function() return settings.hudStats[id] end,
+            function(on)
+                settings.hudStats[id] = on or nil
+                RefreshHUD()
+            end
+    end
+
+    -- Left column: every plain stat, in the tab's order.
+    local y = -32
+    for _, row in ipairs(ROWS) do
+        if row.id and not row.bar then
+            PickerCheck(picker, 10, y, row.name, Toggle(row.id))
+            y = y - 20
+        end
+    end
+    local leftBottom = y
+
+    -- Right column: the target bars, each with its target under it, then the
+    -- box's own look.
+    local x = 200
+    y = -32
+    local head = picker:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    head:SetPoint("TOPLEFT", picker, "TOPLEFT", x, y)
+    head:SetText("Target bars (this spec)")
+    y = y - 16
+    for _, row in ipairs(ROWS) do
+        if row.bar then
+            PickerCheck(picker, x, y, row.name .. " bar", Toggle(row.id))
+            y = y - 22
+            local entry = row.bar
+            PickerSlider(picker, x + 8, y, 190, 0, 60, 1,
+                function(value)
+                    return value <= 0 and "Target: |cff808080none|r" or ("Target: %d%%"):format(value)
+                end,
+                function() return GetTarget(entry.key) or 0 end,
+                function(value)
+                    SetTarget(entry.key, value)
+                    Refresh()
+                    RefreshHUD()
+                end)
+            y = y - 36
+        end
+    end
+
+    y = y - 4
+    local look = picker:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    look:SetPoint("TOPLEFT", picker, "TOPLEFT", x, y)
+    look:SetText("Display")
+    y = y - 16
+    PickerCheck(picker, x, y, "Lock position",
+        function() return settings.hudLocked end,
+        function(on) settings.hudLocked = on end)
+    y = y - 20
+    PickerCheck(picker, x, y, "Only in combat",
+        function() return settings.hudCombat end,
+        function(on) settings.hudCombat = on; ApplyHudVisibility() end)
+    y = y - 24
+    PickerSlider(picker, x + 8, y, 190, 0.6, 1.6, 0.05,
+        function(value) return ("Scale: %.2f"):format(value) end,
+        function() return tonumber(settings.hudScale) or 1 end,
+        function(value) settings.hudScale = value; StyleHud() end)
+    y = y - 36
+    PickerSlider(picker, x + 8, y, 190, 0, 1, 0.05,
+        function(value) return ("Background: %d%%"):format(value * 100 + 0.5) end,
+        function() return tonumber(settings.hudAlpha) or 0.75 end,
+        function(value) settings.hudAlpha = value; StyleHud() end)
+    y = y - 38
+
+    local hide = CreateFrame("Button", nil, picker, "UIPanelButtonTemplate")
+    hide:SetSize(120, 22)
+    hide:SetPoint("TOPLEFT", picker, "TOPLEFT", x + 8, y)
+    hide:SetText("Hide display")
+    hide:SetScript("OnClick", function()
+        settings.hud = false
+        ApplyHudVisibility()
+        picker:Hide()
+        print("|cff00ccffOxedHub|r Stats display hidden. Bring it back with /oxstats.")
+    end)
+    y = y - 30
+
+    picker:SetSize(410, math.max(-leftBottom, -y) + 10)
+    picker:SetScript("OnShow", function(self)
+        for _, control in ipairs(self.checks) do control.Refresh() end
+    end)
+    picker:Hide()
+end
+
+ShowPicker = function()
+    if not settings then return end
+    if not picker then BuildPicker() end
+    -- Beside the box, on whichever side has room.
+    picker:ClearAllPoints()
+    if hud and hud:IsShown() then
+        local centre = hud:GetCenter() * hud:GetEffectiveScale() / UIParent:GetEffectiveScale()
+        if centre < UIParent:GetWidth() / 2 then
+            picker:SetPoint("TOPLEFT", hud, "TOPRIGHT", 6, 0)
+        else
+            picker:SetPoint("TOPRIGHT", hud, "TOPLEFT", -6, 0)
+        end
+    else
+        picker:SetPoint("CENTER")
+    end
+    picker:Show()
+
+    -- Placed beside the box once, then let go of it: left anchored, the
+    -- picker slid about every time the Scale slider resized the box.
+    local left, top = picker:GetLeft(), picker:GetTop()
+    if left and top then
+        picker:ClearAllPoints()
+        picker:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+    end
+end
+
+SLASH_OXEDHUBSTATS1 = "/oxstats"
+SlashCmdList.OXEDHUBSTATS = function(msg)
+    if not settings then return end
+    if settings.enabled == false then
+        print("|cff00ccffOxedHub|r Switch the Attributes module on first (Modules page).")
+        return
+    end
+    msg = (msg or ""):lower()
+    if msg == "pick" or msg == "config" then
+        settings.hud = true
+        ApplyHudVisibility()
+        ShowPicker()
+        return
+    end
+    settings.hud = not settings.hud
+    ApplyHudVisibility()
+end
+
 -- ── Settings ────────────────────────────────────────────────────────────────
 
 local function BindSettings()
@@ -1309,6 +1716,9 @@ local function BindSettings()
     -- Built here rather than in DEFAULTS: a table there is copied by reference,
     -- and every character would end up sharing one set of targets.
     if type(config.statTargets) ~= "table" then config.statTargets = {} end
+    if type(config.hudStats) ~= "table" then
+        config.hudStats = { crit = true, haste = true, mastery = true, versatility = true, speed = true }
+    end
     settings = config
 end
 
@@ -1360,7 +1770,11 @@ local function ShowOptions()
     if not API or not settings then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("Attributes", 460, 600)
+        optionsWindow = API:CreateOptionsWindow("Attributes", 460, 680)
+        optionsWindow:AddCheckbox(settings, "hud", "Show stats on screen",
+            "A small box you can put anywhere. Drag it with the left button, right-click it to choose the stats and set your targets.",
+            function() ApplyHudVisibility() end)
+        optionsWindow:AddNote("Right-click the box to pick what it shows. /oxstats toggles it.")
         optionsWindow:AddCheckbox(settings, "primary", "Attributes",
             "Your specialisation's main stat and stamina.", Refresh)
         optionsWindow:AddCheckbox(settings, "gear", "Gear",
@@ -1423,9 +1837,11 @@ loginFrame:SetScript("OnEvent", function(self)
             settings = config
             InstallHook()
             if tab then tab:Show() end
+            StartHUD()
         end,
 
         OnDisable = function()
+            StopHUD()
             StandDown()
             if tab then tab:Hide() end
         end,

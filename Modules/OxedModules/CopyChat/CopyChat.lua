@@ -293,18 +293,31 @@ end
 -- Its windows have no global names; they are the frames carrying a
 -- ScrollingMessages display. Looked for once after login and whenever a
 -- button is asked for, never every frame.
+-- One check, defined once. The old search built a fresh closure and a pcall for
+-- every frame it looked at.
+local function IsChattynatorWindow(frame)
+    return not frame:IsForbidden() and type(frame.ScrollingMessages) == "table"
+        and frame.ScrollingMessages.filterFunc ~= nil and frame.GetID ~= nil
+end
+
+-- Chattynator's windows are top-level: they hang off UIParent. The search used
+-- to walk every frame in the game with EnumerateFrames instead -- hundreds of
+-- thousands of them in a UI with a few large addons -- and it ran after every
+-- loading screen. The performance recorder caught it at sixteen seconds a time.
+-- UIParent's own children are a few hundred frames and hold every chat window.
+--
+-- A window that ever turned up somewhere deeper would lose its button, not its
+-- copy: /copychat falls back to Chattynator's own copy command.
 local function FindChattynatorWindows()
     wipe(chattyWindows)
-    if not (ChattynatorActive() and EnumerateFrames) then return chattyWindows end
-    local frame = EnumerateFrames()
-    while frame do
-        local ok, isWindow = pcall(function()
-            return not frame:IsForbidden() and type(frame.ScrollingMessages) == "table"
-                and frame.ScrollingMessages.filterFunc ~= nil and frame.GetID ~= nil
-        end)
+    if not (ChattynatorActive() and UIParent and UIParent.GetChildren) then return chattyWindows end
+
+    local children = { UIParent:GetChildren() }
+    for _, frame in ipairs(children) do
+        local ok, isWindow = pcall(IsChattynatorWindow, frame)
         if ok and isWindow then chattyWindows[#chattyWindows + 1] = frame end
-        frame = EnumerateFrames(frame)
     end
+
     table.sort(chattyWindows, function(a, b) return (a:GetID() or 0) < (b:GetID() or 0) end)
     return chattyWindows
 end

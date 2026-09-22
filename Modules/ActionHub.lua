@@ -1598,19 +1598,35 @@ usabilityFrame:RegisterEvent("ZONE_CHANGED")
 usabilityFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 usabilityFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 usabilityFrame:RegisterEvent("PLAYER_MOUNT_DISPLAY_CHANGED")
+-- One pass per frame at most. SPELL_UPDATE_USABLE arrives in bursts during a
+-- fight -- several for a single button press -- and each used to walk every node
+-- on every hub. The recorder counted forty thousand of those passes in an hour.
+local usabilityQueued = false
+local function QueueUsability()
+    if usabilityQueued then return end
+    usabilityQueued = true
+    C_Timer.After(0, function()
+        usabilityQueued = false
+        if OxedHub.ActionHub and OxedHub.db then OxedHub.ActionHub:UpdateUsability() end
+    end)
+end
+
 usabilityFrame:SetScript("OnEvent", function(_, event)
     if not OxedHub.ActionHub then return end
     if not OxedHub.db then return end
-    
+
     if event == "PLAYER_ENTERING_WORLD" then
         OxedHub.ActionHub:RefreshAllWidgets()
     end
-    
-    OxedHub.ActionHub:UpdateUsability()
-    -- Zone transitions can report the old state for a moment, so check again.
-    C_Timer.After(0.3, function()
-        if OxedHub.ActionHub and OxedHub.db then OxedHub.ActionHub:UpdateUsability() end
-    end)
+
+    QueueUsability()
+
+    -- Zone transitions can report the old state for a moment, so check again --
+    -- but only for those. It used to follow every usability event too, doubling
+    -- the work of the busiest event on the list for no reason.
+    if event ~= "SPELL_UPDATE_USABLE" then
+        C_Timer.After(0.3, QueueUsability)
+    end
 end)
 
 -- Refresh only the proc highlights (cheap: no cooldown maths).
@@ -1661,10 +1677,22 @@ local cooldownEventFrame = CreateFrame("Frame")
 cooldownEventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 cooldownEventFrame:RegisterEvent("SPELL_UPDATE_CHARGES")
 cooldownEventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
+-- Coalesced to one pass per frame. These three fire together and repeatedly:
+-- one ability press can raise SPELL_UPDATE_COOLDOWN several times plus the
+-- charges and bag variants, and every one of them used to redo every node.
+-- The first event of a frame schedules the pass; the rest of that frame's
+-- events find it already queued. Nothing shows later than before -- the pass
+-- still lands on the very next frame.
+local cooldownQueued = false
 cooldownEventFrame:SetScript("OnEvent", function()
-    if OxedHub.ActionHub and OxedHub.ActionHub.UpdateWidgetCooldowns then
-        OxedHub.ActionHub:UpdateWidgetCooldowns()
-    end
+    if cooldownQueued then return end
+    cooldownQueued = true
+    C_Timer.After(0, function()
+        cooldownQueued = false
+        if OxedHub.ActionHub and OxedHub.ActionHub.UpdateWidgetCooldowns then
+            OxedHub.ActionHub:UpdateWidgetCooldowns()
+        end
+    end)
 end)
 
 function ActionHub:QueueCooldownRefresh()

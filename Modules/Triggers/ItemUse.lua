@@ -147,6 +147,25 @@ function Triggers:GetItemActionPrefix(itemID)
 end
 
 -- Shared matcher. eventData carries the spell that was cast.
+-- The potions in the bags, remembered until the bags change.
+--
+-- Every spell the player casts is offered to the potion rule, and each offer
+-- used to walk every bag slot, asking the item database about each one. The
+-- performance recorder put that at two milliseconds a cast and twelve at worst
+-- -- for a list that only changes when something is looted, used or moved.
+local potionCache
+local potionCacheWatcher = CreateFrame("Frame")
+potionCacheWatcher:RegisterEvent("BAG_UPDATE_DELAYED")
+potionCacheWatcher:SetScript("OnEvent", function() potionCache = nil end)
+
+local function CachedPotions()
+    if not potionCache then potionCache = CarriedPotions() end
+    return potionCache
+end
+
+-- candidates is a function, called only when it is needed: a rule with items
+-- picked never looks at the full list at all, and used to build it anyway on
+-- every cast only to throw it away.
 local function MatchesConfiguredItem(trigger, eventData, candidates)
     local procItem = tonumber(eventData and eventData.itemID)
     local castSpell = tonumber(eventData and eventData.spellID)
@@ -162,7 +181,8 @@ local function MatchesConfiguredItem(trigger, eventData, candidates)
     if procItem then return true end
 
     -- Nothing chosen: any of this kind counts.
-    for _, entry in ipairs(candidates) do
+    local list = type(candidates) == "function" and candidates() or candidates or {}
+    for _, entry in ipairs(list) do
         local spellID = tonumber(ItemSpellID(entry.itemID))
         if spellID and spellID == castSpell then return true end
     end
@@ -715,7 +735,7 @@ end
 Triggers:RegisterEventType("ITEM_TRINKET", {
     name = "Trinket Used (on-use)",
     CheckCondition = function(trigger, eventData)
-        return MatchesConfiguredItem(trigger, eventData, EquippedTrinkets())
+        return MatchesConfiguredItem(trigger, eventData, EquippedTrinkets)
     end,
     CreateConditionUI = function(frame, trigger, yOffset)
         -- Anything that is not a potion is treated as a trinket here: an item
@@ -736,7 +756,7 @@ Triggers:RegisterEventType("ITEM_TRINKET", {
 Triggers:RegisterEventType("ITEM_POTION", {
     name = "Potion Used",
     CheckCondition = function(trigger, eventData)
-        return MatchesConfiguredItem(trigger, eventData, CarriedPotions())
+        return MatchesConfiguredItem(trigger, eventData, CachedPotions)
     end,
     CreateConditionUI = function(frame, trigger, yOffset)
         return BuildItemPicker(frame, trigger, yOffset, CarriedPotions(),
