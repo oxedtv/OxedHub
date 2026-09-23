@@ -89,6 +89,14 @@ value**. Any string operation or comparison on one errors, so check
 `issecretvalue` first and pass the line through untouched. A filter that throws
 must return false: breaking chat is worse than letting spam through.
 
+### Character stats are secret in combat too
+
+`UnitStat`, crit, haste and the rest can come back as secret numbers in
+combat, and comparing one is an error. Attributes' on-screen box updates in
+combat, so it reads every stat inside `pcall` first and, if any read fails,
+keeps the figures it already shows. Anything new that reads stats in combat
+needs the same guard.
+
 ### Show or hide on a secret with SetAlphaFromBoolean, not an if
 
 Whether an enemy cast can be interrupted (`notInterruptible` from

@@ -94,6 +94,16 @@ local MAX_SPARKS = 220  -- shared by every layer of a theme
 local MAX_SPARK_SPEED = 320   -- pixels a second; see DropSpark
 local MAX_TRAVEL = 150        -- how far from its birthplace a spark may get
 
+-- The screen's height in real pixels. Called directly, never as
+-- "GetPhysicalScreenSize and GetPhysicalScreenSize()": an "and" keeps only
+-- the first value, the width, and the height came back nil. The pointer was
+-- then sized for a 768 pixel screen and drawn far too big.
+local function ScreenHeightPx()
+    if not GetPhysicalScreenSize then return nil end
+    local _, height = GetPhysicalScreenSize()
+    return height
+end
+
 -- ── Textures ────────────────────────────────────────────────────────────────
 
 -- Our own art, so nothing depends on a Blizzard path surviving a patch.
@@ -504,7 +514,7 @@ local function ReadPointerPx()
         pointerPx = SIZE_PX[value]
     else
         -- Automatic: the game grows the pointer with the screen's height.
-        local _, height = GetPhysicalScreenSize and GetPhysicalScreenSize()
+        local height = ScreenHeightPx()
         local steps = height and math.floor(height / 1080 + 0.25) or 1
         pointerPx = SIZE_PX[math.max(0, math.min(4, steps - 1))] or 32
     end
@@ -549,12 +559,31 @@ local function RestoreGamePointer()
     ReadPointerPx()
 end
 
+-- The game's pointer is drawn in real screen pixels, and the UI is not: one
+-- UI unit is 768ths of the screen's height, then scaled by the UI scale. A
+-- copy drawn "32 wide" in UI units is therefore bigger or smaller than the
+-- real 32 pixel pointer on most screens, and the hand seemed to change size
+-- the moment the copy took over. This turns real pixels into UI units.
+local function PixelsToUI(px)
+    local height = ScreenHeightPx()
+    if not height or height <= 0 then height = 768 end
+    return px * 768 / height / UIParent:GetEffectiveScale()
+end
+
+-- The same for the cursor position's own units, which are the UI's at scale 1.
+local function PixelsToCursor(px)
+    local height = ScreenHeightPx()
+    if not height or height <= 0 then height = 768 end
+    return px * 768 / height
+end
+
 local function Anchor(cx, cy, scale)
     local x, y = cx / scale, cy / scale
     if settings.anchor == "hand" then
         -- The hand grows with the pointer, so its middle does too.
         local grow = pointerPx / 32
-        x, y = x + HAND_X * grow / scale, y + HAND_Y * grow / scale
+        x = x + PixelsToCursor(HAND_X * grow) / scale
+        y = y + PixelsToCursor(HAND_Y * grow) / scale
     end
     return x + (tonumber(settings.offsetX) or 0), y + (tonumber(settings.offsetY) or 0)
 end
@@ -965,7 +994,7 @@ local function UpdateEchoes(echo, tipX, tipY, now)
     PushHistory(tipX, tipY, now)
     -- Trail density picks how many arrows: 14, the default, gives seven.
     local count = math.max(2, math.min(MAX_ECHOES, math.floor((tonumber(settings.trailLength) or 14) / 2)))
-    local size = pointerPx * (tonumber(settings.steerScale) or 1)
+    local size = PixelsToUI(pointerPx) * (tonumber(settings.steerScale) or 1)
     for index = 1, MAX_ECHOES do
         local texture = echoes[index]
         local x, y
@@ -1019,6 +1048,10 @@ local function OnUpdate(_, elapsed)
         local start = tonumber(settings.idleSeconds) or 3
         if idle > start then alpha = math.max(0, 1 - (idle - start) / 0.6) end
     end
+    -- While the right button turns the camera the game hides its pointer. With
+    -- "Show the pointer while turning the camera" off, everything here hides
+    -- with it, the way it is without the module: no arrow, no glow, no trail.
+    if not settings.steering and IsMouselooking and IsMouselooking() then alpha = 0 end
     root:SetAlpha(alpha)
 
     -- Halo, flaring up after a shake, flickering for themes that do.
@@ -1051,7 +1084,7 @@ local function OnUpdate(_, elapsed)
     local steering = settings.steering and IsMouselooking and IsMouselooking()
     if steering then
         -- Sized like the real pointer, then by the player's own scale.
-        local size = pointerPx * (tonumber(settings.steerScale) or 1)
+        local size = PixelsToUI(pointerPx) * (tonumber(settings.steerScale) or 1)
         local style = settings.steerStyle
         local strength = tonumber(settings.steerAlpha) or 1
 
@@ -1603,8 +1636,8 @@ local function ShowOptions()
         Slider(right, "offsetY", "Nudge up / down", -40, 40, 1, "%s: %d")
         right.y = right.y - 6
 
-        Check(right, "steering", "Keep the pointer while steering",
-            "Holding the right button hides the pointer. This draws it where it froze, so you always know where it will come back.")
+        Check(right, "steering", "Show the pointer while turning the camera",
+            "Holding the right button to turn the camera hides the game's pointer. On, the module draws it where it froze. Off, the pointer and all its effects disappear, as they do without the module.")
         Choice(right, "steerStyle", "Steering pointer", {
             { key = "arrow", name = "Arrow" },
             { key = "ghost", name = "Ghost" },
@@ -1645,6 +1678,19 @@ local function ShowOptions()
         end)
     end
     optionsWindow:Show()
+end
+
+-- ── /oxcursor ───────────────────────────────────────────────────────────────
+-- Prints the numbers the steering arrow is sized from, so a pointer that
+-- comes out the wrong size can be measured instead of guessed at.
+SLASH_OXEDHUBCURSOR1 = "/oxcursor"
+SlashCmdList.OXEDHUBCURSOR = function()
+    local height = ScreenHeightPx()
+    ReadPointerPx()
+    print(("|cff00ccffOxedHub Cursor|r cursorSizePreferred=%s  pointer=%d px  screen height=%s  UI scale=%.3f  arrow=%.1f UI units (x%.2f)")
+        :format(tostring(GetCVar and GetCVar("cursorSizePreferred")), pointerPx, tostring(height),
+            UIParent:GetEffectiveScale(), PixelsToUI(pointerPx),
+            settings and tonumber(settings.steerScale) or 1))
 end
 
 -- ── Registration ────────────────────────────────────────────────────────────

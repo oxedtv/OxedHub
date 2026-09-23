@@ -969,8 +969,7 @@ end
 
 -- Redraws every line. Called when the tab opens and whenever the game says a
 -- stat changed -- not on the timer, which touches the speed line alone.
-local function Refresh()
-    if not (panel and panel:IsShown()) then return end
+local function DrawPanel()
 
     local content = panel.content
     local shown, y = 0, 0
@@ -1056,6 +1055,14 @@ local function Refresh()
     end
 end
 
+-- The page, redrawn. Inside pcall: in combat a stat can come back as a secret
+-- number the game will not let us compare, and then the page simply keeps
+-- what it shows until the next change instead of raising an error.
+local function Refresh()
+    if not (panel and panel:IsShown()) then return end
+    pcall(DrawPanel)
+end
+
 -- Only the speed line changes between events, so the timer redraws that one
 -- alone. Reading every stat ten times a second would cost far more than the
 -- one number that actually moves.
@@ -1063,8 +1070,8 @@ local function RefreshSpeedOnly()
     if not (settings and settings.speed and panel and panel:IsShown()) then return end
     for _, line in ipairs(lines) do
         if line:IsShown() and line.tipTitle == (STAT_MOVEMENT_SPEED or "Movement Speed") then
-            local value, _, body = ReadSpeed()
-            if value then
+            local ok, value, _, body = pcall(ReadSpeed)
+            if ok and value then
                 line.value:SetText(value)
                 line.tipBody = body
             end
@@ -1387,8 +1394,8 @@ local function BuildHud()
         self.elapsed = self.elapsed + elapsed
         if self.elapsed < 0.2 then return end
         self.elapsed = 0
-        local value, _, body = ReadSpeed()
-        if value then
+        local ok, value, _, body = pcall(ReadSpeed)
+        if ok and value then
             self.speedLine.value:SetText(value)
             self.speedLine.tipBody = body
         end
@@ -1404,21 +1411,42 @@ RefreshHUD = function()
     if not (hud and hud:IsShown()) then return end
 
     local chosen = settings.hudStats or {}
+
+    -- ⚠ In combat the game hides stat values from addons (secret numbers),
+    -- and comparing or doing sums on one is an error. So every stat is read
+    -- first, inside pcall; if any of them cannot be read, the box keeps the
+    -- figures it already shows and waits for the next change. A frozen
+    -- number mid-fight is fine, an error every tenth of a second is not.
+    local reads = {}
+    for index, row in ipairs(ROWS) do
+        if row.id and chosen[row.id] then
+            local ok, a, b, c
+            if row.bar then
+                ok, a = pcall(ReadTarget, row.bar)
+            else
+                ok, a, b, c = pcall(row.read)
+            end
+            if not ok then return end
+            reads[index] = { a, b, c }
+        end
+    end
+
     local shown, y = 0, HUD_PAD
     hud.speedLine = nil
 
-    for _, row in ipairs(ROWS) do
-        if row.id and chosen[row.id] then
+    for index, row in ipairs(ROWS) do
+        local got = reads[index]
+        if got then
             local line
             if row.bar then
-                local info = ReadTarget(row.bar)
+                local info = got[1]
                 if info then
                     shown = shown + 1
                     line = GetLine(shown, hud, hudLines)
                     SetBarLine(line, info)
                 end
             else
-                local value, label, body = row.read()
+                local value, label, body = got[1], got[2], got[3]
                 if value then
                     shown = shown + 1
                     line = GetLine(shown, hud, hudLines)

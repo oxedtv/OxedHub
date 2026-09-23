@@ -25,6 +25,14 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.82",
+        lines = {
+            { "FIXED", "Attributes: the stats box on screen no longer raises an error in combat, where the game hides stat values. It keeps the last figures until they can be read again." },
+            { "FIXED", "Cursor: the pointer drawn while the right button turns the camera is the size of the game's own pointer again, instead of a much bigger hand." },
+            { "ADDED", "Cursor: untick Show the pointer while turning the camera and everything hides while you turn it, as it does without the module. /oxcursor prints the pointer's size figures." },
+        },
+    },
+    {
         version = "2.3.81",
         important = true,
         lines = {
