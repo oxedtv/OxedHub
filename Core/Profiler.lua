@@ -50,7 +50,7 @@ local depth = 0
 local SPIKE_LOG = 100
 local spikes = {}
 
-local session = { startedAt = nil, stoppedAt = nil, frames = 0, hitches = 0 }
+local session = { startedAt = nil, stoppedAt = nil, frames = 0, hitches = 0, causes = {} }
 
 -- Rolling one-second figures for the mini window.
 local live = {
@@ -60,14 +60,19 @@ local live = {
 
 -- ── Recording ───────────────────────────────────────────────────────────────
 
-local function Record(label, ms)
+local function Record(label, ms, kb)
     local s = stats[label]
     if not s then
-        s = { count = 0, total = 0, max = 0 }
+        s = { count = 0, total = 0, max = 0, alloc = 0 }
         stats[label] = s
     end
     s.count = s.count + 1
     s.total = s.total + ms
+    -- Lua memory the call created. Garbage is what the collector has to clear
+    -- later, and a collection is one of the classic causes of a hitch, so the
+    -- functions that make the most of it are worth naming. Negative means a
+    -- collection ran during the call; that call made nothing we can count.
+    if kb and kb > 0 then s.alloc = (s.alloc or 0) + kb end
     if ms > s.max then
         s.max = ms
         s.maxAt = time()
@@ -76,11 +81,11 @@ end
 
 -- Closes a timed call. Takes the call's own return values through untouched,
 -- so a wrapped function returns exactly what it always did.
-local function Finish(label, bucket, slot, start, ...)
+local function Finish(label, bucket, slot, start, mem, ...)
     local ms = debugprofilestop() - start
     depth = depth - 1
     if depth < 0 then depth = 0 end
-    Record(label, ms)
+    Record(label, ms, collectgarbage("count") - mem)
     if slot then bucket.ms[slot] = ms end
     return ...
 end
@@ -116,8 +121,9 @@ function Profiler:Wrap(label, fn, statOnly)
         end
 
         depth = depth + 1
+        local mem = collectgarbage("count")
         local start = debugprofilestop()
-        return Finish(name, bucket, slot, start, fn(...))
+        return Finish(name, bucket, slot, start, mem, fn(...))
     end
 end
 
@@ -397,6 +403,158 @@ local function AddonMs()
     return nil
 end
 
+-- ── Who else was busy ───────────────────────────────────────────────────────
+-- The game keeps its own clock on every addon (C_AddOnProfiler). OxedHub's
+-- timers only see OxedHub, so a long frame where OxedHub took nothing used to
+-- be reported as "OxedHub 0.0 ms" and left there. Asking the game on that
+-- frame names whoever did take the time -- another addon, all of them
+-- together, or none, which points at the game itself.
+--
+-- Read on long frames only. Asking for every loaded addon every frame would
+-- cost more than most of what it measures.
+
+local addonNames          -- loaded addons, gathered once; reset when one loads
+local function LoadedAddons()
+    if addonNames then return addonNames end
+    addonNames = {}
+    if C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetAddOnInfo and C_AddOns.IsAddOnLoaded then
+        for i = 1, C_AddOns.GetNumAddOns() do
+            local name = C_AddOns.GetAddOnInfo(i)
+            if name and C_AddOns.IsAddOnLoaded(i) then addonNames[#addonNames + 1] = name end
+        end
+    end
+    return addonNames
+end
+
+local function Metric(name, key)
+    local enum = Enum and Enum.AddOnProfilerMetric
+    if not (enum and enum[key] and C_AddOnProfiler and C_AddOnProfiler.GetAddOnMetric) then return nil end
+    local ok, value = pcall(C_AddOnProfiler.GetAddOnMetric, name, enum[key])
+    if ok and type(value) == "number" then return value end
+    return nil
+end
+
+-- Every addon's time on the last frame, added up by the game.
+local function AllAddonsMs()
+    local enum = Enum and Enum.AddOnProfilerMetric
+    if not (enum and enum.LastTime and C_AddOnProfiler and C_AddOnProfiler.GetOverallMetric) then return nil end
+    local ok, value = pcall(C_AddOnProfiler.GetOverallMetric, enum.LastTime)
+    if ok and type(value) == "number" then return value end
+    return nil
+end
+
+-- The busiest addons on the last frame, most first, OxedHub included.
+local function BusiestAddons(limit)
+    local top = {}
+    for _, name in ipairs(LoadedAddons()) do
+        local ms = Metric(name, "LastTime")
+        if ms and ms >= 0.5 then
+            local pos = #top + 1
+            for i = 1, #top do
+                if ms > top[i].ms then pos = i break end
+            end
+            if pos <= limit then
+                table.insert(top, pos, { name = name, ms = ms })
+                top[limit + 1] = nil
+            end
+        end
+    end
+    return top
+end
+
+-- What each addon costs on an ordinary frame, averaged by the game over the
+-- whole session: the slow, always-on cost rather than the spikes.
+function Profiler:AddonAverages(limit)
+    local rows = {}
+    for _, name in ipairs(LoadedAddons()) do
+        local ms = Metric(name, "SessionAverageTime")
+        if ms and ms > 0.01 then rows[#rows + 1] = { name = name, ms = ms } end
+    end
+    table.sort(rows, function(a, b) return a.ms > b.ms end)
+    for i = #rows, (limit or 8) + 1, -1 do rows[i] = nil end
+    return rows
+end
+
+-- ── Which events came in ────────────────────────────────────────────────────
+-- A frame that hears every event, while recording only. It writes each name
+-- into a flat list and does nothing else; counting happens on a long frame,
+-- which is rare. Two lists, swapped each frame, for the same reason as the
+-- call buckets: the long frame's events are split across the tick edge.
+-- A long frame with no events at all is a finding too -- the work then came
+-- from something running every frame or from a timer.
+
+local EVENT_CAP = 256
+local evCur, evPrev = { n = 0, over = 0 }, { n = 0, over = 0 }
+local eventSpy = CreateFrame("Frame")
+
+local function OnAnyEvent(_, event)
+    local list = evCur
+    local n = list.n + 1
+    if n > EVENT_CAP then
+        list.over = list.over + 1
+        return
+    end
+    list.n = n
+    list[n] = event
+end
+-- Set with the SetScript hook held off: the profiler never times itself.
+hooking = true
+eventSpy:SetScript("OnEvent", OnAnyEvent)
+hooking = false
+
+local function TopEvents(limit)
+    local counts, order = {}, {}
+    for _, list in ipairs({ evPrev, evCur }) do
+        for i = 1, list.n do
+            local event = list[i]
+            if counts[event] then
+                counts[event] = counts[event] + 1
+            else
+                counts[event] = 1
+                order[#order + 1] = event
+            end
+        end
+    end
+    local top = {}
+    for _, event in ipairs(order) do top[#top + 1] = { name = event, n = counts[event] } end
+    table.sort(top, function(a, b)
+        if a.n ~= b.n then return a.n > b.n end
+        return a.name < b.name
+    end)
+    for i = #top, limit + 1, -1 do top[i] = nil end
+    return top, evPrev.over + evCur.over
+end
+
+-- ── Why a frame was long ────────────────────────────────────────────────────
+-- One word per hitch, so a whole session can be summed up: "900 hitches, 820
+-- of them the game, 60 memory cleanup, 20 WeakAuras".
+
+local SHARE = 0.4          -- this much of the frame is enough to take the blame
+local BUSY_SCENE = 15      -- nameplates around the player
+local AFTER_LOADING = 10   -- seconds after the loading grace ends
+local inEncounter = false
+
+local function Nameplates()
+    if not (C_NamePlate and C_NamePlate.GetNamePlates) then return nil end
+    local ok, plates = pcall(C_NamePlate.GetNamePlates)
+    return ok and type(plates) == "table" and #plates or nil
+end
+
+local function CauseOf(spike, collected, now)
+    local frame = spike.frameMs
+    if spike.oxedMs >= frame * SHARE then return "OxedHub" end
+    local top = spike.others and spike.others[1]
+    if top and top.name ~= addonName and top.ms >= frame * SHARE then
+        return "addon: " .. top.name
+    end
+    if spike.allAddonsMs and spike.allAddonsMs >= frame * SHARE then return "several addons together" end
+    if now < graceUntil + AFTER_LOADING then return "after a loading screen" end
+    if collected then return "Lua memory cleanup" end
+    if spike.units and spike.units >= BUSY_SCENE then return "busy scene" end
+    if spike.combat then return "game, in combat" end
+    return "game"
+end
+
 local function TopLevelMs(bucket)
     local sum = 0
     for i = 1, bucket.n do
@@ -419,7 +577,7 @@ local function CopyEntries(target, bucket, limit)
     end
 end
 
-local function RecordSpike(frameMs, reason, alloc)
+local function RecordSpike(frameMs, reason, alloc, collected)
     -- One piece of work, one record. Heavy OxedHub work is recorded the tick it
     -- happens, and the long frame it causes is measured a tick later -- which
     -- used to write the same calls down twice, once as "22 ms, 102%" and again
@@ -436,6 +594,21 @@ local function RecordSpike(frameMs, reason, alloc)
             earlier.overflow = earlier.overflow + cur.over
         end
         earlier.addonMs = AddonMs() or earlier.addonMs
+        -- The long frame is the one the game's per-addon clock describes now.
+        if reason == "hitch" then
+            earlier.others = BusiestAddons(4)
+            earlier.allAddonsMs = AllAddonsMs()
+            earlier.events, earlier.eventsOver = TopEvents(5)
+            earlier.collected = earlier.collected or collected
+            local cause = CauseOf(earlier, earlier.collected, GetTime())
+            if earlier.cause ~= cause then
+                if earlier.counted then
+                    session.causes[earlier.cause] = math.max(0, (session.causes[earlier.cause] or 1) - 1)
+                end
+                session.causes[cause] = (session.causes[cause] or 0) + 1
+                earlier.cause, earlier.counted = cause, true
+            end
+        end
         cur.spike = earlier
         return
     end
@@ -457,7 +630,21 @@ local function RecordSpike(frameMs, reason, alloc)
         where = inInstance and instanceType or "world",
         overflow = prev.over + cur.over,
         entries = entries,
+        collected = collected,
+        encounter = inEncounter or nil,
     }
+
+    -- Who else was busy, what came in, and so why the frame was long.
+    spike.others = BusiestAddons(4)
+    spike.allAddonsMs = AllAddonsMs()
+    spike.events, spike.eventsOver = TopEvents(5)
+    spike.units = Nameplates()
+    spike.cause = CauseOf(spike, collected, GetTime())
+    if reason == "hitch" then
+        session.causes[spike.cause] = (session.causes[spike.cause] or 0) + 1
+        spike.counted = true
+    end
+
     spikes[#spikes + 1] = spike
     cur.spike = spike
     if #spikes > SPIKE_LOG then table.remove(spikes, 1) end
@@ -470,6 +657,8 @@ local function OnFrame(_, elapsed)
 
     local mem = collectgarbage("count")
     local alloc = mem - lastMem
+    -- Lua memory going down means the collector ran during this frame.
+    local collected = mem < lastMem - 64
     lastMem = mem
 
     -- An error inside a timed call skips its Finish; the frame boundary is
@@ -497,7 +686,7 @@ local function OnFrame(_, elapsed)
 
     if hitch or heavy then
         if hitch then session.hitches = session.hitches + 1 end
-        RecordSpike(frameMs, hitch and "hitch" or "oxedhub", alloc)
+        RecordSpike(frameMs, hitch and "hitch" or "oxedhub", alloc, collected)
     end
 
     -- "Normal" is learnt from ordinary frames only, so one spike or a loading
@@ -513,10 +702,15 @@ local function OnFrame(_, elapsed)
 
     prev, cur = cur, prev
     cur.n, cur.over, cur.spike = 0, 0, nil
+    evPrev, evCur = evCur, evPrev
+    evCur.n, evCur.over = 0, 0
 end
 
 ourFrame = CreateFrame("Frame")
 ourFrame:SetScript("OnEvent", function(_, event, loaded)
+    if event == "ADDON_LOADED" then addonNames = nil end
+    if event == "ENCOUNTER_START" then inEncounter = true return end
+    if event == "ENCOUNTER_END" then inEncounter = false return end
     if event == "ADDON_LOADED" and loaded == addonName then
         -- Every OxedHub file has run: handlers set from here on belong to
         -- whoever sets them, so the hook only names them while recording.
@@ -538,6 +732,8 @@ ourFrame:RegisterEvent("ADDON_LOADED")
 ourFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 ourFrame:RegisterEvent("LOADING_SCREEN_DISABLED")
 ourFrame:RegisterEvent("PLAYER_LOGOUT")
+ourFrame:RegisterEvent("ENCOUNTER_START")
+ourFrame:RegisterEvent("ENCOUNTER_END")
 
 -- ── Methods worth naming ────────────────────────────────────────────────────
 -- Instrumented at login, once every module table exists. Names that come from
@@ -623,6 +819,8 @@ function Profiler:Start()
     cur.n, cur.over, prev.n, prev.over = 0, 0, 0, 0
     cur.spike, prev.spike = nil, nil
     ourFrame:SetScript("OnUpdate", OnFrame)
+    evCur.n, evCur.over, evPrev.n, evPrev.over = 0, 0, 0, 0
+    eventSpy:RegisterAllEvents()
 end
 
 function Profiler:Stop()
@@ -631,6 +829,7 @@ function Profiler:Stop()
     self.active = false
     session.stoppedAt = time()
     ourFrame:SetScript("OnUpdate", nil)
+    eventSpy:UnregisterAllEvents()
 end
 
 function Profiler:Reset()
@@ -640,6 +839,7 @@ function Profiler:Reset()
     session.startedAt = active and time() or nil
     session.stoppedAt = nil
     session.frames, session.hitches = 0, 0
+    wipe(session.causes)
     baselineMs = 0
 end
 
@@ -684,6 +884,7 @@ local function LiveTop()
         list[#list + 1] = {
             label = label, count = s.count, total = s.total, max = s.max,
             avg = s.count > 0 and s.total / s.count or 0, maxAt = s.maxAt,
+            alloc = s.alloc or 0,
         }
     end
     return list
@@ -709,6 +910,9 @@ function Profiler:SaveSessionToHistory()
             at = s.at, frameMs = s.frameMs, oxedMs = s.oxedMs, addonMs = s.addonMs,
             reason = s.reason, allocKB = s.allocKB, combat = s.combat, where = s.where,
             overflow = s.overflow, entries = entries,
+            cause = s.cause, others = s.others, allAddonsMs = s.allAddonsMs,
+            events = s.events, eventsOver = s.eventsOver, units = s.units,
+            collected = s.collected, encounter = s.encounter,
         }
     end
 
@@ -720,6 +924,8 @@ function Profiler:SaveSessionToHistory()
         startedAt = session.startedAt, endedAt = session.stoppedAt or time(),
         frames = session.frames, hitches = session.hitches, baseline = baselineMs,
         top = keptTop, spikes = keptSpikes,
+        causes = CopyTable and CopyTable(session.causes) or session.causes,
+        addonAverages = Profiler:AddonAverages(8),
     })
     while #history > HISTORY_KEEP do table.remove(history) end
 end
@@ -757,6 +963,7 @@ function Profiler:GetTop(sortKey)
             list[i] = {
                 label = row.label, count = row.count, total = row.total, max = row.max,
                 avg = (row.count or 0) > 0 and row.total / row.count or 0, maxAt = row.maxAt,
+                alloc = row.alloc or 0,
             }
         end
     else
@@ -778,7 +985,7 @@ function Profiler:GetSession()
     local view = self:GetView()
     if view then
         return { startedAt = view.startedAt, stoppedAt = view.endedAt,
-            frames = view.frames or 0, hitches = view.hitches or 0 }
+            frames = view.frames or 0, hitches = view.hitches or 0, causes = view.causes or {} }
     end
     return session
 end
@@ -822,6 +1029,31 @@ function Profiler:BuildReport()
     end
     add("")
 
+    -- Why the frames were long, summed over the session: the first thing to
+    -- read, since it says whether OxedHub, another addon or the game did it.
+    local causes = {}
+    for cause, n in pairs(s.causes or {}) do
+        if n > 0 then causes[#causes + 1] = { cause = cause, n = n } end
+    end
+    if #causes > 0 then
+        table.sort(causes, function(a, b) return a.n > b.n end)
+        add("Hitches by cause")
+        for _, row in ipairs(causes) do
+            add(("  %5d  %s"):format(row.n, row.cause))
+        end
+        add("")
+    end
+
+    -- Every addon's ordinary cost per frame, averaged by the game itself.
+    local averages = view and view.addonAverages or (not view and self:AddonAverages(8)) or nil
+    if averages and #averages > 0 then
+        add("Addons, average per frame this session (the game's own figures)")
+        for _, row in ipairs(averages) do
+            add(("  %6.2f ms  %s"):format(row.ms, row.name))
+        end
+        add("")
+    end
+
     add("Heaviest in total")
     for i, row in ipairs(self:GetTop("total")) do
         if i > 25 then break end
@@ -829,6 +1061,18 @@ function Profiler:BuildReport()
             :format(row.total, row.count, row.avg, row.max, row.label))
     end
     add("")
+
+    -- Garbage: what the collector must clear later, in one pause.
+    local garbage = self:GetTop("alloc")
+    if garbage[1] and (garbage[1].alloc or 0) >= 1 then
+        add("Most Lua memory made (feeds the garbage collector)")
+        for i, row in ipairs(garbage) do
+            if i > 10 or (row.alloc or 0) < 1 then break end
+            add(("  %9.0f KB  %6d calls  %6.2f KB each  %s")
+                :format(row.alloc, row.count, row.count > 0 and row.alloc / row.count or 0, row.label))
+        end
+        add("")
+    end
 
     add("Slowest single calls")
     for i, row in ipairs(self:GetTop("max")) do
@@ -846,6 +1090,34 @@ function Profiler:BuildReport()
             :format(date("%H:%M:%S", spike.at), spike.frameMs, spike.oxedMs, share,
                 spike.addonMs and (" game says %.1f ms"):format(spike.addonMs) or "",
                 spike.where or "", spike.combat and ", in combat" or ""))
+        if spike.cause then
+            local extras = {}
+            if spike.collected then extras[#extras + 1] = "memory cleanup ran" end
+            if spike.units then extras[#extras + 1] = spike.units .. " nameplates" end
+            if spike.encounter then extras[#extras + 1] = "boss fight" end
+            add(("    cause: %s%s"):format(spike.cause,
+                #extras > 0 and ("  (" .. table.concat(extras, ", ") .. ")") or ""))
+        end
+        if spike.others and #spike.others > 0 then
+            local parts = {}
+            for _, other in ipairs(spike.others) do
+                parts[#parts + 1] = ("%s %.1f"):format(other.name, other.ms)
+            end
+            add(("    addons: %s ms%s"):format(table.concat(parts, ", "),
+                spike.allAddonsMs and ("  (all addons %.1f ms)"):format(spike.allAddonsMs) or ""))
+        end
+        if spike.events then
+            if #spike.events == 0 then
+                add("    events: none (the work came from a timer or an every-frame script)")
+            else
+                local parts = {}
+                for _, event in ipairs(spike.events) do
+                    parts[#parts + 1] = event.n > 1 and ("%s x%d"):format(event.name, event.n) or event.name
+                end
+                add(("    events: %s%s"):format(table.concat(parts, ", "),
+                    (spike.eventsOver or 0) > 0 and (" and %d more"):format(spike.eventsOver) or ""))
+            end
+        end
         for _, entry in ipairs(spike.entries or {}) do
             if entry.ms >= 0.1 then
                 add(("    %s%.2f ms  %s"):format(string.rep("  ", entry.depth), entry.ms, entry.label))

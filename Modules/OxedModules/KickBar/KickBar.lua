@@ -687,7 +687,7 @@ local optionsFrame
 
 local function ShowOptions()
     if not optionsFrame then
-        local f = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
+        local f = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplate")
         f:SetSize(400, 300)
         f:SetPoint("CENTER")
         f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")

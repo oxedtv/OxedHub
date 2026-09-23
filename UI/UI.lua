@@ -1274,12 +1274,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.80)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.81)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.80")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.81")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1345,11 +1345,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  New module: Cursor: a glow around your hand and a trail of sparks.",
-        "•  Cursor themes: Fire, Frost, Arcane, Lightning, Nature, Shadow, Holy and Meteor.",
-        "•  Cursor: rest the mouse and the sparks circle it; shake it and the glow flares.",
-        "•  Attributes: show your stats on screen and right-click the box to pick them.",
-        "•  Attributes: set each target from that box while you watch the numbers move.",
+        "•  Cursor: every theme redrawn, with real lightning bolts, snowflakes and leaves.",
+        "•  Cursor: new Fel, Blood, Bubbles, Fairy and Windows 95 themes.",
+        "•  Cursor: a tab per theme, and each theme keeps its own settings.",
+        "•  Cursor: pick the steering pointer's look and the game pointer's size.",
+        "•  Performance report: names the addon or cause behind every lag spike.",
         "•  Grab either pack from CurseForge:",
     }
 

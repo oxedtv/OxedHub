@@ -123,7 +123,7 @@ local function BuildWindow()
     if window then return window end
 
     window = CreateFrame("Frame", "OxedHubCopyChatWindow", UIParent,
-        "BasicFrameTemplateWithInset")
+        "BasicFrameTemplate")
     window:SetSize(620, 440)
     window:SetPoint("CENTER")
     -- FULLSCREEN_DIALOG, like OxedHub's own popups: the main window lives in DIALOG

@@ -415,12 +415,24 @@ function ActionHub:GetHubDB(idx)
 end
 
 local function StyleCooldownText(cdFrame, offsetY)
-    local regions = { cdFrame:GetRegions() }
     local activeDB = ActionHub:GetActiveHubDB()
     local fontSize = (activeDB and activeDB.cooldownTextSize) or 11
+    local font = OxedHub:GetFont("Fonts\\FRIZQT__.ttf")
+
+    -- Styled once and left alone until something changes. This ran on every
+    -- cooldown of every node on every pass, and SetFont is not cheap: it was
+    -- a large part of what the performance report charged to the hub.
+    if cdFrame._ohFont == font and cdFrame._ohSize == fontSize and cdFrame._ohOffset == (offsetY or 0) then
+        return
+    end
+
+    local regions = { cdFrame:GetRegions() }
     for _, region in ipairs(regions) do
         if region:GetObjectType() == "FontString" then
-            region:SetFont(OxedHub:GetFont("Fonts\\FRIZQT__.ttf"), fontSize, "OUTLINE")
+            -- Remembered only once there was a text to style: the countdown
+            -- text may not exist yet on a cooldown that has never run.
+            cdFrame._ohFont, cdFrame._ohSize, cdFrame._ohOffset = font, fontSize, offsetY or 0
+            region:SetFont(font, fontSize, "OUTLINE")
             region:ClearAllPoints()
             region:SetPoint("CENTER", cdFrame, "CENTER", 0, offsetY or 0)
         end
@@ -658,8 +670,16 @@ local function UpdateChargeCount(btn, spellID, style)
 
     if shown == nil then
         if btn.chargeText then btn.chargeText:Hide() end
+        btn._ohCharge = nil
         return
     end
+
+    -- Nothing to redo when the count and the node's shape are what they were.
+    if btn._ohCharge == shown and btn._ohChargeStyle == style
+        and btn.chargeText and btn.chargeText:IsShown() then
+        return
+    end
+    btn._ohCharge, btn._ohChargeStyle = shown, style
 
     if not btn.chargeText then
         btn.chargeText = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
@@ -860,8 +880,9 @@ end
 -- Is this slot currently usable? Mirrors Blizzard action bar behaviour: a mount
 -- in a no-fly/no-mount zone, an unusable spell, etc. Returns true when we can't
 -- tell, so anything we don't understand keeps its normal look.
-local function IsSlotUsable(slot)
-    local ok, usable = pcall(function()
+-- The body runs inside pcall, but as a named function: an anonymous one
+-- here was a fresh closure on every call, for every node, twice a second.
+local function SlotUsableRaw(slot)
         if not slot then return true end
         local id = slot.id
         if not id then return true end
@@ -916,7 +937,10 @@ local function IsSlotUsable(slot)
         end
 
         return true
-    end)
+end
+
+local function IsSlotUsable(slot)
+    local ok, usable = pcall(SlotUsableRaw, slot)
     if ok then return usable end
     return true
 end
@@ -1016,9 +1040,9 @@ end
 local activeProcSpells = {}
 
 -- Which spell (if any) does this slot ultimately cast?
-function GetSlotSpellID(slot)
-    if not slot or not slot.id then return nil end
-    local ok, spellID = pcall(function()
+-- The body runs inside pcall, but as a named function: an anonymous one
+-- here was a fresh closure on every call, for every node, twice a second.
+local function SlotSpellIDRaw(slot)
         if slot.type == "spell" then
             return slot.id
         end
@@ -1072,7 +1096,11 @@ function GetSlotSpellID(slot)
             end
         end
         return nil
-    end)
+end
+
+function GetSlotSpellID(slot)
+    if not slot or not slot.id then return nil end
+    local ok, spellID = pcall(SlotSpellIDRaw, slot)
     return ok and spellID or nil
 end
 
@@ -1097,20 +1125,37 @@ local function QueryOverlayed(spellID)
     return overlayed == true
 end
 
-local function IsSpellProcced(spellID)
-    if not spellID then return false end
-
-    -- Direct query first, then the ids we captured from the glow events, then
-    -- the spell's base / override forms for both.
-    local ids = { spellID }
+-- A spell's base and override forms, worked out once. They only change with
+-- talents or specialisation, and asking three times per node per pass was most
+-- of what a proc check cost.
+local spellVariants = {}
+local function SpellVariants(spellID)
+    local ids = spellVariants[spellID]
+    if ids then return ids end
+    ids = { spellID }
     local base = Variant(FindBaseSpellByID, spellID)
     if base and base ~= spellID then table.insert(ids, base) end
     local override = Variant(FindSpellOverrideByID, spellID)
     if override and override ~= spellID then table.insert(ids, override) end
     local override2 = Variant(C_Spell and C_Spell.GetOverrideSpell, spellID)
     if override2 and override2 ~= spellID then table.insert(ids, override2) end
+    spellVariants[spellID] = ids
+    return ids
+end
 
-    for _, id in ipairs(ids) do
+local variantReset = CreateFrame("Frame")
+for _, event in ipairs({ "SPELLS_CHANGED", "PLAYER_TALENT_UPDATE", "TRAIT_CONFIG_UPDATED",
+        "PLAYER_SPECIALIZATION_CHANGED" }) do
+    pcall(variantReset.RegisterEvent, variantReset, event)
+end
+variantReset:SetScript("OnEvent", function() wipe(spellVariants) end)
+
+local function IsSpellProcced(spellID)
+    if not spellID then return false end
+
+    -- Direct query first, then the ids we captured from the glow events, then
+    -- the spell's base / override forms for both.
+    for _, id in ipairs(SpellVariants(spellID)) do
         if activeProcSpells[id] or QueryOverlayed(id) then
             return true
         end
@@ -1285,6 +1330,12 @@ local function ApplyProcGlow(btn, isProcced)
     end
 
     local g = EnsureProcGlow(btn)
+    -- Already lit at this size and shape: leave it be.
+    if g:IsShown() and g._ohWidth == w and g._ohStyle == btn.nodeStyle
+        and (not g.anim or g.anim:IsPlaying()) then
+        return
+    end
+    g._ohWidth, g._ohStyle = w, btn.nodeStyle
     SetProcGlowShape(btn, btn.nodeStyle)
     LayoutProcGlow(btn, w, btn.nodeStyle)
     g:Show()
@@ -1388,8 +1439,16 @@ local function ApplyReadyGlow(btn, isReady)
     end
 
     EnsureReadyGlow(btn)
+
+    -- Glowing already, with the same look: nothing to redo. Parsing the colour
+    -- and resizing three textures used to happen on every pass.
+    local key = ("%s|%s|%s|%s|%s"):format(w, tostring(btn.nodeStyle), tostring(slot.readyGlowHex),
+        tostring(slot.readyGlowAlpha), tostring(slot.readyGlowSize))
+    if btn._ohReadyKey == key and btn.readyGlowAnim:IsPlaying() then return end
+    btn._ohReadyKey = key
+
     LayoutReadyGlow(btn, w, btn.nodeStyle)
-    
+
     local hex = slot.readyGlowHex or "FFFF00"
     local r, gCol, b = 1, 1, 0
     if #hex == 6 then
@@ -1436,6 +1495,12 @@ end
 
 -- Apply / clear the "can't use this right now" dimming on a button's icon(s).
 local function ApplyUsabilityShading(btn, usable)
+    usable = usable and true or false
+    -- Only when it changes. The icon keeps its shading between passes, so
+    -- repainting the same state every half second was pure cost.
+    if btn._ohUsable == usable and btn._ohUsableSplit == btn.splitIcon then return end
+    btn._ohUsable, btn._ohUsableSplit = usable, btn.splitIcon
+
     local textures = {}
     if btn.icon then table.insert(textures, btn.icon) end
     if btn.splitIcon then
@@ -1494,82 +1559,79 @@ local function GetActionHubToyMacroText(slot)
     return ""
 end
 
+-- One node's cooldown, charges, dimming and glows. A named function run
+-- through pcall, so one bad slot cannot stop the rest of the pass, and so the
+-- pass does not build a new closure for every node it touches.
+local function UpdateNodeCooldown(btn)
+    local slot = btn.slotData
+    if not slot then return end
+
+    -- Asked once per node. It used to be looked up four times over.
+    local spellID = GetSlotSpellID(slot)
+
+    -- Dim icons that can't be used right now (e.g. a mount while
+    -- indoors / in a no-mount zone), like the default action bars.
+    ApplyUsabilityShading(btn, IsSlotUsable(slot))
+    ApplyProcGlow(btn, IsSpellProcced(spellID))
+
+    if not (btn.cooldown1 and btn.cooldown2) then return end
+
+    local mixData
+    local toyMode = slot.type == "toy" and GetToyAssignmentMode(slot)
+    if toyMode == "mix" then
+        mixData = OxedHub.db.profile.toyMixes and OxedHub.db.profile.toyMixes[slot.id]
+    elseif slot.type == "emote" then
+        local mapping = OxedHub.db.profile.emotionMappings and OxedHub.db.profile.emotionMappings[slot.id]
+        if mapping and mapping.toyMacro then
+            mixData = OxedHub.db.profile.toyMixes and OxedHub.db.profile.toyMixes[mapping.toyMacro]
+        end
+    end
+
+    -- Per-hub: keep the global cooldown off the nodes.
+    local hub = (btn.slotHubIndex and ActionHub:GetHubDB(btn.slotHubIndex))
+        or ActionHub:GetActiveHubDB()
+    local hideGCD = not (hub and hub.showGlobalCooldown == true)
+
+    local isReady = true
+    if type(mixData) == "table" and mixData.slots and toyMode ~= "direct" then
+        local mixReady = false
+        for i = 1, 2 do
+            local cdFrame = i == 1 and btn.cooldown1 or btn.cooldown2
+            if PaintSlotCooldown(cdFrame, GetSlotSpellID(mixData.slots[i]), hideGCD) then
+                StyleCooldownText(cdFrame, i == 1 and 7 or -7)
+            else
+                mixReady = true
+            end
+        end
+        isReady = mixReady
+    else
+        -- A direct toy, a spell, a trigger: one cooldown.
+        btn.cooldown2:Hide()
+        if PaintSlotCooldown(btn.cooldown1, spellID, hideGCD) then
+            StyleCooldownText(btn.cooldown1, 0)
+            isReady = false
+        end
+    end
+
+    -- Charge counter sits outside the branches above: a spell
+    -- can bank charges whether or not a cooldown is running.
+    UpdateChargeCount(btn, spellID, hub and hub.style)
+
+    ApplyReadyGlow(btn, isReady)
+end
+
 function ActionHub:UpdateWidgetCooldowns()
-    local widgets = self.widgets or {}
-    for _, w in ipairs(widgets) do
+    for _, w in ipairs(self.widgets or {}) do
         if w and w.buttons then
             for _, btn in ipairs(w.buttons) do
-                -- Each node is updated in isolation.  This pass runs from a
-                -- 0.5s ticker over every node, and an error on one of them used
-                -- to abort the whole loop -- so a single bad slot could leave
-                -- every node after it without a cooldown until the next pass
-                -- that happened to avoid it.
-                local okBtn, btnErr = pcall(function()
-                -- Dim icons that can't be used right now (e.g. a mount while
-                -- indoors / in a no-mount zone), like the default action bars.
-                if btn and btn:IsShown() and btn.slotData then
-                    ApplyUsabilityShading(btn, IsSlotUsable(btn.slotData))
-                    ApplyProcGlow(btn, IsSpellProcced(GetSlotSpellID(btn.slotData)))
-                end
-
-                if btn and btn.cooldown1 and btn.cooldown2 and btn:IsShown() then
-                    local slot = btn.slotData
-                    local mixData
-                    if slot and slot.type == "toy" and GetToyAssignmentMode(slot) == "mix" then
-                        mixData = OxedHub.db.profile.toyMixes and OxedHub.db.profile.toyMixes[slot.id]
-                    elseif slot and slot.type == "emote" then
-                        local mapping = OxedHub.db.profile.emotionMappings and OxedHub.db.profile.emotionMappings[slot.id]
-                        if mapping and mapping.toyMacro then
-                            mixData = OxedHub.db.profile.toyMixes and OxedHub.db.profile.toyMixes[mapping.toyMacro]
-                        end
+                -- IsVisible rather than IsShown: a node on a hub that is
+                -- hidden -- out of combat, closed, moved off -- still says it
+                -- is shown, and every one of them was being worked out.
+                if btn and btn.slotData and btn:IsVisible() then
+                    local okBtn, btnErr = pcall(UpdateNodeCooldown, btn)
+                    if not okBtn then
+                        CDDebug("node update failed: " .. tostring(btnErr))
                     end
-
-                    -- Per-hub: keep the global cooldown off the nodes.
-                    local hubForGCD = (btn.slotHubIndex and ActionHub:GetHubDB(btn.slotHubIndex))
-                        or ActionHub:GetActiveHubDB()
-                    local hideGCD = not (hubForGCD and hubForGCD.showGlobalCooldown == true)
-
-                    local isReady = true
-                    if slot and slot.type == "toy" and GetToyAssignmentMode(slot) == "direct" then
-                        btn.cooldown2:Hide()
-                        if PaintSlotCooldown(btn.cooldown1, GetSlotSpellID(slot), hideGCD) then
-                            StyleCooldownText(btn.cooldown1, 0)
-                            isReady = false
-                        end
-                    elseif type(mixData) == "table" and mixData.slots then
-                        local cdFrames = { btn.cooldown1, btn.cooldown2 }
-                        local mixReady = false
-                        for i = 1, 2 do
-                            local mixSlot = mixData.slots[i]
-                            local cdFrame = cdFrames[i]
-                            if PaintSlotCooldown(cdFrame, GetSlotSpellID(mixSlot), hideGCD) then
-                                StyleCooldownText(cdFrame, i == 1 and 7 or -7)
-                            else
-                                mixReady = true
-                            end
-                        end
-                        isReady = mixReady
-                    else
-                        -- Handle single cooldown (for triggers/etc)
-                        btn.cooldown2:Hide()
-                        if PaintSlotCooldown(btn.cooldown1, GetSlotSpellID(slot), hideGCD) then
-                            StyleCooldownText(btn.cooldown1, 0)
-                            isReady = false
-                        end
-                    end
-
-                    -- Charge counter sits outside the branches above: a spell
-                    -- can bank charges whether or not a cooldown is running.
-                    local hubForStyle = (btn.slotHubIndex and ActionHub:GetHubDB(btn.slotHubIndex))
-                        or ActionHub:GetActiveHubDB()
-                    UpdateChargeCount(btn, GetSlotSpellID(slot), hubForStyle and hubForStyle.style)
-
-                    ApplyReadyGlow(btn, isReady)
-                end
-                end)
-
-                if not okBtn then
-                    CDDebug("node update failed: " .. tostring(btnErr))
                 end
             end
         end
@@ -1580,7 +1642,7 @@ end
 function ActionHub:UpdateUsability()
     for _, w in ipairs(self.widgets or {}) do
         for _, btn in ipairs((w and w.buttons) or {}) do
-            if btn and btn:IsShown() and btn.slotData then
+            if btn and btn.slotData and btn:IsVisible() then
                 ApplyUsabilityShading(btn, IsSlotUsable(btn.slotData))
             end
         end

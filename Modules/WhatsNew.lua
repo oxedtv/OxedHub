@@ -25,6 +25,20 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.81",
+        important = true,
+        lines = {
+            { "ADDED", "Cursor: every theme is drawn in layers now. Frost drops turning snowflakes, Arcane opens runic rings, Lightning cracks real forked bolts, Nature sheds leaves that turn to autumn, Void hangs dark smoke and Holy lifts golden light." },
+            { "ADDED", "Cursor: five new themes. Fel burns green, Blood falls in heavy drops, Bubbles rise and pop, Fairy leaves a glittering dust, and Windows 95 brings back the old pointer trails." },
+            { "ADDED", "Cursor: a wider options window with a tab for every theme. Each theme keeps its own glow, shadow and trail, and Reset this theme puts one back as it was." },
+            { "ADDED", "Cursor: choose how the pointer looks while the right button steers (arrow, ghost or glow), set the game's own pointer size, and how far the mouse moves before the camera turns. Both game settings go back as they were when you pick Game or switch the module off." },
+            { "CHANGED", "Module windows use the modern frame of the Pick Sound window, and the Modules page has a soft gold line under its tabs." },
+            { "ADDED", "Performance report (/oxprofile): every lag spike now says why it happened: OxedHub, another addon by name, a memory cleanup, a busy scene or the game itself. It lists the busiest addons, the events of that frame, each addon's average cost, and which parts of OxedHub make the most garbage." },
+            { "FIXED", "Action Hub does far less work on every pass: nothing is redrawn that did not change, and hidden hubs are skipped." },
+            { "FIXED", "Cursor: sparks no longer shoot across the screen as long streaks after a fast flick of the mouse." },
+        },
+    },
+    {
         version = "2.3.80",
         important = true,
         lines = {

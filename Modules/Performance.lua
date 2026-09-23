@@ -147,6 +147,23 @@ local function SpikeTooltip(spike)
         if share < 25 and spike.reason == "hitch" then
             GameTooltip:AddLine("Most of this frame was not OxedHub.", 0.4, 1, 0.4, true)
         end
+        if spike.cause then
+            GameTooltip:AddLine("Cause: " .. spike.cause, 1, 0.82, 0, true)
+        end
+        if spike.others and #spike.others > 0 then
+            local parts = {}
+            for _, other in ipairs(spike.others) do
+                parts[#parts + 1] = ("%s %.1f ms"):format(other.name, other.ms)
+            end
+            GameTooltip:AddLine("Busiest addons: " .. table.concat(parts, ", "), 0.9, 0.9, 0.9, true)
+        end
+        if spike.events and #spike.events > 0 then
+            local parts = {}
+            for _, event in ipairs(spike.events) do
+                parts[#parts + 1] = event.n > 1 and ("%s x%d"):format(event.name, event.n) or event.name
+            end
+            GameTooltip:AddLine("Events: " .. table.concat(parts, ", "), 0.7, 0.7, 0.7, true)
+        end
         GameTooltip:AddLine(("%s%s, %.0f KB allocated%s"):format(spike.where,
             spike.combat and ", in combat" or "", spike.allocKB or 0,
             spike.overflow > 0 and (", %d more calls not listed"):format(spike.overflow) or ""),

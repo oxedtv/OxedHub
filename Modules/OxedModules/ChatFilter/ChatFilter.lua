@@ -936,7 +936,7 @@ end
 local function BuildManager()
     if manager then return manager end
 
-    manager = CreateFrame("Frame", "OxedHubChatFilterWindow", UIParent, "BasicFrameTemplateWithInset")
+    manager = CreateFrame("Frame", "OxedHubChatFilterWindow", UIParent, "BasicFrameTemplate")
     manager:SetSize(640, 470)
     manager:SetPoint("CENTER")
     -- FULLSCREEN_DIALOG, like OxedHub's own popups: the main window lives in DIALOG

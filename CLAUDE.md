@@ -134,6 +134,13 @@ there. It names OxedHub's work three ways:
   Never replace the global `C_Timer`: every addon and Blizzard's own code would
   run through OxedHub and get tainted.
 
+On a long frame it also asks the game's own `C_AddOnProfiler` which addons
+were busy, lists the events that arrived (a frame with `RegisterAllEvents`,
+registered only while recording), notes whether the garbage collector ran, and
+files the hitch under one cause. Each wrapped call also counts the Lua memory
+it made. Keep all of that on long frames or inside `active`: reading every
+addon's metric every frame would cost more than it measures.
+
 **Never create an EditBox without `SetAutoFocus(false)`**, and never one "just to
 reach its methods". A new EditBox grabs keyboard focus immediately; an invisible
 one locked the player's keyboard — no moving, no casting — until OxedHub was

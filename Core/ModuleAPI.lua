@@ -217,7 +217,13 @@ end
 -- and below the sound and animation pickers at 220, so a picker opened from
 -- one of these is never hidden behind it.
 function ModuleAPI:CreateOptionsWindow(title, width, height)
-    local f = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
+    -- BasicFrameTemplate, the same frame as the Pick Sound window: the modern
+    -- stone panel. The "WithInset" one used to be here, and its dark inset
+    -- read as a window from an older expansion next to everything else.
+    local ok, f = pcall(CreateFrame, "Frame", nil, UIParent, "BasicFrameTemplate")
+    if not ok or not f then
+        f = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
+    end
     f:SetSize(width or 380, height or 220)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
@@ -229,8 +235,13 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
 
-    local titleText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    titleText:SetPoint("CENTER", f.TitleBg, "CENTER", 0, 0)
+    -- The template's own title where it has one, so it sits where the Pick
+    -- Sound title does; a string of our own otherwise.
+    local titleText = f.TitleText
+    if not titleText then
+        titleText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        titleText:SetPoint("CENTER", f.TitleBg or f, f.TitleBg and "CENTER" or "TOP", 0, f.TitleBg and 0 or -12)
+    end
     titleText:SetText(title or "Settings")
 
     f.cursorY = -36
@@ -285,6 +296,39 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
 
     f:Hide()
     return f
+end
+
+-- ── The line under a row of tabs ────────────────────────────────────────────
+-- A soft gold line that fades out toward both ends, with a faint glow under
+-- it, like the one under the Toys page's tabs. Two halves each, since a
+-- gradient only runs between two colours: bright in the middle, gone at the
+-- edges. Anchored under whatever frame holds the tabs.
+function ModuleAPI:AddTabLine(parent, under, leftInset, rightInset)
+    local function Half(layer, height, alpha, left)
+        local tex = parent:CreateTexture(nil, layer)
+        tex:SetColorTexture(1, 1, 1, 1)
+        tex:SetHeight(height)
+        if left then
+            tex:SetPoint("TOPLEFT", under, "BOTTOMLEFT", -(leftInset or 0), 0)
+            tex:SetPoint("TOPRIGHT", under, "BOTTOM", 0, 0)
+        else
+            tex:SetPoint("TOPLEFT", under, "BOTTOM", 0, 0)
+            tex:SetPoint("TOPRIGHT", under, "BOTTOMRIGHT", rightInset or 0, 0)
+        end
+        local clear, gold = CreateColor(1, 0.82, 0, 0), CreateColor(1, 0.82, 0, alpha)
+        if tex.SetGradient then
+            if left then tex:SetGradient("HORIZONTAL", clear, gold)
+            else tex:SetGradient("HORIZONTAL", gold, clear) end
+        else
+            tex:SetColorTexture(1, 0.82, 0, alpha * 0.5)
+        end
+        return tex
+    end
+    -- The glow first, wider and fainter, then the line on top of it.
+    Half("BACKGROUND", 6, 0.08, true)
+    Half("BACKGROUND", 6, 0.08, false)
+    Half("ARTWORK", 1, 0.55, true)
+    Half("ARTWORK", 1, 0.55, false)
 end
 
 -- ── Asking first ───────────────────────────────────────────────────────────
@@ -451,6 +495,12 @@ function ModuleAPI:RebuildCategoryTabs(tab, allModules, selected)
         strip:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 16, -62)
         strip:SetSize(960, 30)
         tab.categoryStrip = strip
+        -- Across the whole page, not just the strip: the tabs can run wider.
+        local under = CreateFrame("Frame", nil, scrollChild)
+        under:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
+        under:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -16, -62)
+        under:SetHeight(30)
+        ModuleAPI:AddTabLine(scrollChild, under, 0, 0)
     end
 
     for _, button in ipairs(tab.categoryTabs or {}) do

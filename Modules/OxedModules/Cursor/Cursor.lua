@@ -16,7 +16,8 @@
 -- is always behind the hand.
 --
 -- The sparks are drawn with our own art in Media\Textures\Cursor: a round
--- glow, an ember and a ring. The game's own glow atlases were tried first and
+-- glow, an ember, a ring, a twinkle, a snowflake and a leaf. Lightning is
+-- drawn with lines. The game's own glow atlases were tried first and
 -- one of them is a white square, which stacked into a solid block of light.
 -- ============================================================================
 
@@ -57,6 +58,15 @@ local DEFAULTS = {
     colourB      = 1.00,
 
     steering     = true,    -- draw the arrow while the right button steers
+    steerStyle   = "arrow", -- arrow, ghost or glow
+    steerScale   = 1,
+    steerAlpha   = 1,
+    steerGlow    = true,    -- the theme's glow behind the steering arrow
+
+    -- The game's own pointer. "game" leaves the game's setting alone; any
+    -- other choice sets it, and switching the module off puts it back.
+    pointerSize  = "game",  -- game, auto, 32, 48, 64, 96, 128
+    lookDelta    = "game",  -- game, instant, normal, late
     ripple       = true,
     shake        = true,
 
@@ -73,6 +83,11 @@ local root              -- everything hangs off this; hidden means no OnUpdate
 local halo, shadow, arrow
 local sparks = {}       -- trail pool, used round-robin
 local ripples = {}      -- click ring pool
+local bolts = {}        -- lightning bolts; drawn further down
+local echoes = {}       -- Windows 95 pointer trails
+local MAX_ECHOES = 12
+local WIN95_ARROW = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Cursor\\win95"
+local HideBolt          -- defined with the bolts, used earlier by RestyleAll
 local nextSpark = 1
 local watcher = CreateFrame("Frame")
 local MAX_SPARKS = 220  -- shared by every layer of a theme
@@ -93,6 +108,9 @@ local STAR   = "Interface\\Cooldown\\star4"
 local ARROW  = "Interface\\CURSOR\\Point"
 
 local SHAPES = {
+    twinkle = { { file = MEDIA .. "twinkle" } },
+    flake = { { file = MEDIA .. "flake" } },
+    leaf  = { { file = MEDIA .. "leaf" } },
     glow  = { { file = GLOW } },
     soft  = { { file = GLOW } },
     ring  = { { file = RING } },
@@ -137,6 +155,7 @@ end
 --   spin     turns per second
 --   flicker  how much the halo and sparks flicker
 --   perDrop  sparks dropped at once
+--   bolt     not a spark: a forked lightning bolt drawn with lines
 
 local THEMES = {
     { key = "custom",    name = "Custom" },
@@ -160,24 +179,158 @@ local THEMES = {
             rise = 55, lift = 30, spread = 10, sway = 22, startAt = 0.12,
             size0 = 0.9, size1 = 2.4, alpha = 0.16, puff = true },
       } },
+    -- Frost: snowflakes that turn as they drift down, glints of ice that
+    -- flash and vanish, and a pale mist that hangs behind the pointer.
     { key = "frost",     name = "Frost",
-      halo = "star", spark = "star", head = { 0.9, 1, 1 }, tail = { 0.2, 0.5, 1 },
-      rise = -22, spread = 10, spin = 1.2, life = 0.8 },
+      halo = "glow", haloColour = { 0.55, 0.85, 1 },
+      layers = {
+          { shape = "flake", spacing = 16, rate = 2, life = 1.6, lifeVar = 0.3, blend = "ADD",
+            stops = { { 1, 1, 1 }, { 0.7, 0.9, 1 }, { 0.35, 0.6, 1 } },
+            rise = -28, spread = 14, sway = 30, spin = 0.35, drag = 0.6,
+            size0 = 1.0, size1 = 0.7, alpha = 0.9, alphaPow = 1.4 },
+          { shape = "twinkle", spacing = 9, life = 0.45, lifeVar = 0.3,
+            stops = { { 1, 1, 1 }, { 0.6, 0.85, 1 } },
+            spread = 18, size0 = 0.55, size1 = 0.1, alpha = 0.95, flicker = 0.5 },
+          { shape = "soft", spacing = 7, life = 0.9, lifeVar = 0.2,
+            stops = { { 0.6, 0.85, 1 }, { 0.25, 0.45, 0.9 } },
+            rise = -8, spread = 6, size0 = 1.2, size1 = 2.2, alpha = 0.1, puff = true },
+      } },
+    -- Arcane: violet sparkles flung out and slowed as if by thick air,
+    -- runic rings that open and fade, and a soft glow along the path.
     { key = "arcane",    name = "Arcane",
-      halo = "glow", spark = "star", head = { 1, 0.65, 1 }, tail = { 0.4, 0.2, 1 },
-      spread = 28, spin = 2.5, flicker = 0.25, life = 0.6 },
+      halo = "ring", haloColour = { 0.8, 0.45, 1 }, spin = 0.6,
+      layers = {
+          { shape = "twinkle", spacing = 7, rate = 6, life = 0.9, lifeVar = 0.3,
+            stops = { { 1, 0.85, 1 }, { 0.85, 0.4, 1 }, { 0.35, 0.15, 0.9 } },
+            spread = 70, drag = 3.5, spin = 0.5,
+            size0 = 0.6, size1 = 0.15, alpha = 0.95, flicker = 0.3 },
+          { shape = "ring", spacing = 55, life = 0.7,
+            stops = { { 0.95, 0.6, 1 }, { 0.4, 0.2, 1 } },
+            size0 = 0.8, size1 = 3.4, alpha = 0.45, alphaPow = 1.3 },
+          { shape = "soft", spacing = 5, life = 0.5, lifeVar = 0.2,
+            stops = { { 0.8, 0.4, 1 }, { 0.3, 0.1, 0.8 } },
+            size0 = 1.4, size1 = 0.6, alpha = 0.12 },
+      } },
+    -- Lightning: real forked bolts that crackle out from the pointer, bright
+    -- sparks, and a cold blue glow left in the air.
     { key = "lightning", name = "Lightning",
-      halo = "glow", spark = "dot", head = { 1, 1, 1 }, tail = { 0.3, 0.6, 1 },
-      jitter = 6, flicker = 0.7, size = 0.6, life = 0.25, perDrop = 2 },
+      halo = "glow", haloColour = { 0.5, 0.75, 1 }, flicker = 0.7,
+      layers = {
+          { bolt = true, spacing = 70, rate = 3, life = 0.16, reach = 55, segments = 7,
+            thickness = 2, stops = { { 1, 1, 1 }, { 0.55, 0.8, 1 } } },
+          { shape = "dot", spacing = 10, life = 0.3, lifeVar = 0.4,
+            stops = { { 1, 1, 1 }, { 0.5, 0.75, 1 } },
+            spread = 120, drag = 5, jitter = 2,
+            size0 = 0.3, size1 = 0.1, alpha = 1, flicker = 0.7 },
+          { shape = "soft", spacing = 6, life = 0.35,
+            stops = { { 0.6, 0.8, 1 }, { 0.2, 0.35, 1 } },
+            size0 = 1.3, size1 = 0.5, alpha = 0.14, flicker = 0.5 },
+      } },
+    -- Nature: leaves that tumble down and turn from green to autumn, pollen
+    -- that floats up, and a fresh green glow.
     { key = "nature",    name = "Nature",
-      halo = "glow", spark = "star", head = { 0.8, 1, 0.4 }, tail = { 0.1, 0.55, 0.15 },
-      rise = -18, sway = 40, spin = 1.5, life = 0.9 },
-    { key = "shadow",    name = "Shadow",
-      halo = "glow", spark = "soft", head = { 0.65, 0.25, 0.95 }, tail = { 0.08, 0, 0.12 },
-      rise = 14, spread = 6, grow = 1.6, life = 0.8, blend = "BLEND" },
+      halo = "glow", haloColour = { 0.45, 0.9, 0.35 },
+      layers = {
+          { shape = "leaf", spacing = 22, rate = 1.5, life = 1.8, lifeVar = 0.3, blend = "BLEND",
+            stops = { { 0.45, 0.85, 0.25 }, { 0.75, 0.8, 0.2 }, { 0.8, 0.45, 0.12 } },
+            rise = -30, spread = 16, sway = 55, spin = 0.5, drag = 0.8,
+            size0 = 1.1, size1 = 0.9, alpha = 0.95, alphaPow = 2 },
+          { shape = "dot", spacing = 12, rate = 4, life = 1.6, lifeVar = 0.4,
+            stops = { { 1, 1, 0.6 }, { 0.8, 1, 0.4 } },
+            rise = 18, spread = 12, sway = 25,
+            size0 = 0.18, size1 = 0.1, alpha = 0.9, flicker = 0.3 },
+          { shape = "soft", spacing = 6, life = 0.5,
+            stops = { { 0.5, 1, 0.4 }, { 0.15, 0.5, 0.15 } },
+            size0 = 1.2, size1 = 0.5, alpha = 0.1 },
+      } },
+    -- Void: dark smoke that swells and hangs, violet wisps curling up
+    -- through it, and a faint glow at its heart. Saved as "shadow", the name
+    -- it had first, so a player's choice survives the rename.
+    { key = "shadow",    name = "Void",
+      halo = "glow", haloColour = { 0.5, 0.15, 0.8 },
+      layers = {
+          { shape = "soft", spacing = 6, rate = 12, life = 1.2, lifeVar = 0.3, blend = "BLEND",
+            stops = { { 0.12, 0.02, 0.18 }, { 0.05, 0, 0.08 } },
+            rise = 22, spread = 8, sway = 20,
+            size0 = 1.0, size1 = 3.0, alpha = 0.45, puff = true },
+          { shape = "soft", spacing = 12, rate = 5, life = 1.0, lifeVar = 0.3,
+            stops = { { 0.85, 0.45, 1 }, { 0.5, 0.15, 0.85 }, { 0.2, 0, 0.4 } },
+            rise = 35, lift = 25, spread = 10, sway = 45,
+            size0 = 0.45, size1 = 0.15, alpha = 0.55 },
+          { shape = "twinkle", spacing = 30, life = 0.5,
+            stops = { { 0.9, 0.6, 1 }, { 0.4, 0.1, 0.7 } },
+            spread = 20, size0 = 0.4, size1 = 0.1, alpha = 0.8, flicker = 0.5 },
+      } },
+    -- Holy: golden light that rises gently, sparkling motes, and bright
+    -- rings of light that open where the pointer passes.
     { key = "holy",      name = "Holy",
-      halo = "burst", spark = "burst", head = { 1, 1, 0.85 }, tail = { 1, 0.7, 0.15 },
-      rise = 22, spread = 8, spin = 0.8, life = 0.7 },
+      halo = "glow", haloColour = { 1, 0.85, 0.45 },
+      layers = {
+          { shape = "twinkle", spacing = 10, rate = 5, life = 1.2, lifeVar = 0.3,
+            stops = { { 1, 1, 0.9 }, { 1, 0.85, 0.4 }, { 1, 0.6, 0.15 } },
+            rise = 30, lift = 20, spread = 14, sway = 20, spin = 0.15,
+            size0 = 0.55, size1 = 0.15, alpha = 0.95, flicker = 0.25 },
+          { shape = "ring", spacing = 70, life = 0.8,
+            stops = { { 1, 0.95, 0.7 }, { 1, 0.7, 0.2 } },
+            size0 = 0.6, size1 = 3.0, alpha = 0.4, alphaPow = 1.4 },
+          { shape = "soft", spacing = 5, life = 0.6,
+            stops = { { 1, 0.9, 0.55 }, { 1, 0.6, 0.15 } },
+            rise = 10, size0 = 1.3, size1 = 0.6, alpha = 0.12 },
+      } },
+    -- Fel: the green fire of the Burning Legion, with sickly embers and a
+    -- black smoke.
+    { key = "fel",       name = "Fel",
+      halo = "glow", haloColour = { 0.35, 1, 0.15 }, flicker = 0.35,
+      layers = {
+          { shape = "soft", rate = 34, spacing = 6, life = 0.55, lifeVar = 0.25,
+            stops = { { 0.85, 1, 0.6 }, { 0.45, 1, 0.15 }, { 0.15, 0.7, 0.05 }, { 0.03, 0.25, 0.02 } },
+            rise = 25, lift = 150, spread = 10, sway = 18,
+            size0 = 1.1, size1 = 0.2, alpha = 0.22, alphaPow = 0.9, flicker = 0.25 },
+          { shape = "dot", rate = 7, spacing = 40, life = 1.3, lifeVar = 0.5,
+            stops = { { 0.9, 1, 0.5 }, { 0.4, 1, 0.1 }, { 0.1, 0.5, 0 } },
+            rise = 40, lift = 40, spread = 28, sway = 30, drag = 0.4,
+            size0 = 0.2, size1 = 0.07, alpha = 0.85, flicker = 0.6 },
+          { shape = "soft", rate = 5, spacing = 45, life = 1.4, lifeVar = 0.4, blend = "BLEND",
+            stops = { { 0.06, 0.1, 0.04 }, { 0.03, 0.03, 0.03 } },
+            rise = 55, lift = 30, spread = 10, sway = 22, startAt = 0.12,
+            size0 = 0.9, size1 = 2.4, alpha = 0.22, puff = true },
+      } },
+    -- Blood: heavy drops that fall and darken, with a thin red mist.
+    { key = "blood",     name = "Blood",
+      halo = "glow", haloColour = { 0.85, 0.05, 0.05 },
+      layers = {
+          { shape = "dot", spacing = 11, rate = 2, life = 1.1, lifeVar = 0.3, blend = "BLEND",
+            stops = { { 0.8, 0.05, 0.05 }, { 0.55, 0.02, 0.02 }, { 0.3, 0, 0 } },
+            spread = 22, gravity = -420, drag = 0.5,
+            size0 = 0.45, size1 = 0.3, alpha = 0.95, alphaPow = 2 },
+          { shape = "soft", spacing = 7, life = 0.8,
+            stops = { { 0.7, 0.05, 0.05 }, { 0.3, 0, 0 } },
+            spread = 6, size0 = 1.0, size1 = 1.8, alpha = 0.12, puff = true },
+      } },
+    -- Bubbles: rising bubbles that wobble on the way up and pop with a glint.
+    { key = "bubbles",   name = "Bubbles",
+      halo = "ring", haloColour = { 0.6, 0.9, 1 },
+      layers = {
+          { shape = "ring", spacing = 18, rate = 3, life = 1.6, lifeVar = 0.4,
+            stops = { { 0.85, 1, 1 }, { 0.5, 0.85, 1 } },
+            rise = 45, lift = 20, spread = 10, sway = 45,
+            size0 = 0.6, size1 = 1.1, alpha = 0.7, alphaPow = 0.5 },
+          { shape = "twinkle", spacing = 30, life = 0.35,
+            stops = { { 1, 1, 1 }, { 0.6, 0.9, 1 } },
+            spread = 10, rise = 30, size0 = 0.4, size1 = 0.1, alpha = 0.9 },
+      } },
+    -- Fairy: a glittering dust in every colour, drifting and twinkling.
+    { key = "fairy",     name = "Fairy",
+      halo = "glow", haloColour = { 1, 0.7, 0.95 },
+      layers = {
+          { shape = "twinkle", spacing = 6, rate = 8, life = 1.2, lifeVar = 0.4,
+            stops = { { 1, 0.5, 0.8 }, { 1, 0.9, 0.4 }, { 0.5, 1, 0.6 }, { 0.5, 0.7, 1 }, { 0.8, 0.5, 1 } },
+            rise = -10, spread = 25, sway = 30, drag = 1.5, spin = 0.3,
+            size0 = 0.45, size1 = 0.15, alpha = 1, flicker = 0.45 },
+          { shape = "soft", spacing = 6, life = 0.6,
+            stops = { { 1, 0.7, 0.95 }, { 0.6, 0.5, 1 } },
+            size0 = 1.2, size1 = 0.5, alpha = 0.1 },
+      } },
     -- A meteor: a white-hot head, an unbroken burning tail laid along the
     -- exact path (filled in between frames, so a fast flick is a streak and
     -- not a row of dots), a wide glow around the tail, debris thrown off that
@@ -199,6 +352,16 @@ local THEMES = {
             stops = { { 0.22, 0.18, 0.16 }, { 0.12, 0.12, 0.12 } },
             spread = 6, rise = 12, startAt = 0.1,
             size0 = 0.9, size1 = 2.8, alpha = 0.15, puff = true },
+      } },
+    -- Windows 95: the old "pointer trails" option. A line of arrows, each a
+    -- moment behind the one before, that catches up when the mouse stops.
+    -- No glow, no shadow, no sparks: just the arrows, as it was. The one
+    -- layer is there only to lend the circles a colour; it drops nothing.
+    { key = "win95",     name = "Windows 95",
+      noHalo = true, noShadow = true, noSwirl = true,
+      echo = { gap = 0.035 },
+      layers = {
+          { shape = "dot", stops = { { 1, 1, 1 }, { 0.75, 0.75, 0.75 } } },
       } },
 }
 local THEME_BY_KEY = {}
@@ -318,12 +481,80 @@ end
 -- it; this is roughly its middle at the default pointer size, and the offset
 -- sliders take care of the rest.
 
-local HAND_X, HAND_Y = 11, -13   -- in screen pixels
+local HAND_X, HAND_Y = 11, -13   -- in screen pixels, for a 32 pixel pointer
+
+-- ── The game's own pointer ──────────────────────────────────────────────────
+-- Two game settings the pointer depends on:
+--   cursorSizePreferred       -1 picks a size from the resolution, 0-4 fix it
+--   CursorFreelookStartDelta  how far the mouse must move with a button held
+--                             before the camera starts turning; 0 turns at once
+-- Only touched when the player picks something other than "Game". The value
+-- the game had is kept first, and put back when "Game" is picked again or
+-- the module is switched off.
+
+local SIZE_CVAR = { auto = -1, ["32"] = 0, ["48"] = 1, ["64"] = 2, ["96"] = 3, ["128"] = 4 }
+local SIZE_PX = { [0] = 32, [1] = 48, [2] = 64, [3] = 96, [4] = 128 }
+local DELTA_CVAR = { instant = 0, normal = 0.001, late = 0.005 }
+
+local pointerPx = 32   -- the pointer's size now, read when it may have changed
+
+local function ReadPointerPx()
+    local value = tonumber(GetCVar and GetCVar("cursorSizePreferred"))
+    if value and SIZE_PX[value] then
+        pointerPx = SIZE_PX[value]
+    else
+        -- Automatic: the game grows the pointer with the screen's height.
+        local _, height = GetPhysicalScreenSize and GetPhysicalScreenSize()
+        local steps = height and math.floor(height / 1080 + 0.25) or 1
+        pointerPx = SIZE_PX[math.max(0, math.min(4, steps - 1))] or 32
+    end
+end
+
+local function SetGameValue(cvar, value, backupKey)
+    if not (GetCVar and SetCVar) then return end
+    local current = GetCVar(cvar)
+    if current == nil then return end
+    if settings[backupKey] == nil then settings[backupKey] = current end
+    if tonumber(current) ~= value then pcall(SetCVar, cvar, value) end
+end
+
+local function RestoreGameValue(cvar, backupKey)
+    local saved = settings[backupKey]
+    if saved == nil then return end
+    if SetCVar then pcall(SetCVar, cvar, saved) end
+    settings[backupKey] = nil
+end
+
+local function ApplyGamePointer()
+    if not settings or settings.enabled == false then return end
+    local size = SIZE_CVAR[tostring(settings.pointerSize)]
+    if size then
+        SetGameValue("cursorSizePreferred", size, "savedPointerSize")
+    else
+        RestoreGameValue("cursorSizePreferred", "savedPointerSize")
+    end
+    local delta = DELTA_CVAR[tostring(settings.lookDelta)]
+    if delta then
+        SetGameValue("CursorFreelookStartDelta", delta, "savedLookDelta")
+    else
+        RestoreGameValue("CursorFreelookStartDelta", "savedLookDelta")
+    end
+    ReadPointerPx()
+end
+
+local function RestoreGamePointer()
+    if not settings then return end
+    RestoreGameValue("cursorSizePreferred", "savedPointerSize")
+    RestoreGameValue("CursorFreelookStartDelta", "savedLookDelta")
+    ReadPointerPx()
+end
 
 local function Anchor(cx, cy, scale)
     local x, y = cx / scale, cy / scale
     if settings.anchor == "hand" then
-        x, y = x + HAND_X / scale, y + HAND_Y / scale
+        -- The hand grows with the pointer, so its middle does too.
+        local grow = pointerPx / 32
+        x, y = x + HAND_X * grow / scale, y + HAND_Y * grow / scale
     end
     return x + (tonumber(settings.offsetX) or 0), y + (tonumber(settings.offsetY) or 0)
 end
@@ -337,7 +568,8 @@ local function RestyleAll()
     local theme = CurrentTheme()
 
     halo:SetSize(settings.haloSize, settings.haloSize)
-    haloAlphaScale = ApplyShape(halo, theme.halo or settings.haloShape)
+    -- The player's pick for this theme; each theme starts on its own shape.
+    haloAlphaScale = ApplyShape(halo, settings.haloShape or theme.halo or "glow")
     halo:SetBlendMode(theme.blend or "ADD")
     halo:SetShown(settings.halo)
 
@@ -357,6 +589,10 @@ local function RestyleAll()
         spark:Hide()
     end
     for _, layer in ipairs(LayersOf(theme)) do layer.acc, layer.timer = 0, 0 end
+    for _, bolt in ipairs(bolts) do HideBolt(bolt) end
+    for index = 1, MAX_ECHOES do
+        if echoes[index] then echoes[index]:Hide() end
+    end
 end
 
 local function EnsureRoot()
@@ -382,6 +618,20 @@ local function EnsureRoot()
     arrow:SetTexture(ARROW)
     arrow:SetSize(32, 32)
     arrow:Hide()
+
+    -- The theme's glow behind the steering arrow.
+    arrow.glow = root:CreateTexture(nil, "ARTWORK", nil, 5)
+    arrow.glow:SetTexture(GLOW)
+    arrow.glow:SetBlendMode("ADD")
+    arrow.glow:Hide()
+
+    -- Windows 95 pointer trails. Nearest filtering keeps the pixel art sharp.
+    for index = 1, MAX_ECHOES do
+        local echo = root:CreateTexture(nil, "ARTWORK", nil, 6)
+        echo:SetTexture(WIN95_ARROW, nil, nil, "NEAREST")
+        echo:Hide()
+        echoes[index] = echo
+    end
 
     RestyleAll()
 end
@@ -446,7 +696,106 @@ local flareUntil = 0
 
 -- Drops one spark of a layer at x, y. vx, vy is the mouse's own speed, for
 -- layers thrown back along the path.
+-- ── Bolts ───────────────────────────────────────────────────────────────────
+-- Lightning is drawn as lines, not sparks: a jagged path from the pointer out
+-- to a random point, each bend pushed sideways, with a wider faint line under
+-- it for the glow. A bolt lives a fraction of a second and stays where it
+-- struck, which is what makes it read as a crack of electricity.
+
+local MAX_BOLTS, MAX_SEGMENTS = 8, 10
+
+local function NewBolt()
+    local bolt = { lines = {}, glows = {} }
+    for i = 1, MAX_SEGMENTS do
+        local glow = root:CreateLine(nil, "ARTWORK", nil, 1)
+        glow:SetColorTexture(1, 1, 1, 1)
+        glow:SetBlendMode("ADD")
+        glow:Hide()
+        bolt.glows[i] = glow
+
+        local line = root:CreateLine(nil, "ARTWORK", nil, 4)
+        line:SetColorTexture(1, 1, 1, 1)
+        line:SetBlendMode("ADD")
+        line:Hide()
+        bolt.lines[i] = line
+    end
+    bolts[#bolts + 1] = bolt
+    return bolt
+end
+
+HideBolt = function(bolt)
+    bolt.active = false
+    for i = 1, MAX_SEGMENTS do
+        bolt.lines[i]:Hide()
+        bolt.glows[i]:Hide()
+    end
+end
+
+local function DropBolt(layer, x, y, now)
+    if layer.chance and random() > layer.chance then return end
+    local bolt
+    for _, candidate in ipairs(bolts) do
+        if not candidate.active then bolt = candidate break end
+    end
+    if not bolt then
+        if #bolts >= MAX_BOLTS then return end
+        bolt = NewBolt()
+    end
+
+    local segments = math.min(MAX_SEGMENTS, layer.segments or 6)
+    local angle = random() * 6.2832
+    local reach = (layer.reach or 50) * (0.6 + 0.4 * random())
+    local ex, ey = x + math.cos(angle) * reach, y + math.sin(angle) * reach
+    local px, py = -math.sin(angle), math.cos(angle)
+    local thickness = layer.thickness or 2
+
+    local fromX, fromY = x, y
+    for i = 1, MAX_SEGMENTS do
+        local line, glow = bolt.lines[i], bolt.glows[i]
+        if i <= segments then
+            local t = i / segments
+            local offset = (i < segments) and (random() * 2 - 1) * reach * 0.2 or 0
+            local toX = x + (ex - x) * t + px * offset
+            local toY = y + (ey - y) * t + py * offset
+            for _, piece in ipairs({ line, glow }) do
+                piece:SetStartPoint("BOTTOMLEFT", UIParent, fromX, fromY)
+                piece:SetEndPoint("BOTTOMLEFT", UIParent, toX, toY)
+                piece:Show()
+            end
+            -- Thinner toward the tip, like a real discharge.
+            line:SetThickness(math.max(1, thickness * (1.2 - t * 0.6)))
+            glow:SetThickness(thickness * 5)
+            fromX, fromY = toX, toY
+        else
+            line:Hide()
+            glow:Hide()
+        end
+    end
+
+    bolt.layer, bolt.born, bolt.life, bolt.active = layer, now, layer.life or 0.15, true
+end
+
+local function UpdateBolts(now)
+    for _, bolt in ipairs(bolts) do
+        if bolt.active then
+            local age = (now - bolt.born) / bolt.life
+            if age >= 1 then
+                HideBolt(bolt)
+            else
+                -- Flickers as it dies, the way a spark does.
+                local alpha = (1 - age) * (0.6 + 0.4 * random())
+                local r, g, b = StopsColour(bolt.layer.stops, age)
+                for i = 1, MAX_SEGMENTS do
+                    bolt.lines[i]:SetVertexColor(r, g, b, alpha)
+                    bolt.glows[i]:SetVertexColor(r, g, b, alpha * 0.18)
+                end
+            end
+        end
+    end
+end
+
 local function DropSpark(layer, x, y, mvx, mvy, now)
+    if layer.bolt then return DropBolt(layer, x, y, now) end
     if layer.chance and random() > layer.chance then return end
     local spark = sparks[nextSpark]
     nextSpark = nextSpark % MAX_SPARKS + 1
@@ -529,6 +878,7 @@ local function UpdateSpark(spark, elapsed, now, baseSize, index)
     if layer.drag then
         local keep = math.max(0, 1 - layer.drag * elapsed)
         spark.vx = spark.vx * keep
+        spark.vy = spark.vy * keep
     end
     spark.x = spark.x + spark.vx * elapsed
     spark.y = spark.y + spark.vy * elapsed
@@ -577,6 +927,61 @@ local function UpdateSpark(spark, elapsed, now, baseSize, index)
     local s0, s1 = layer.size0 or 1, layer.size1 or 0.4
     local size = baseSize * spark.sizeVar * (s0 + (s1 - s0) * age)
     spark:SetSize(size, size)
+end
+
+-- ── Pointer trails ──────────────────────────────────────────────────────────
+-- Where the tip has been, newest last, in a ring. Each copy of the arrow is
+-- drawn where the tip was a fixed moment ago; when the mouse stops, the
+-- older places are all the same place and the copies fold into the pointer.
+
+local HISTORY = 120
+local histX, histY, histT = {}, {}, {}
+local histHead, histCount = 0, 0
+
+local function PushHistory(x, y, now)
+    histHead = histHead % HISTORY + 1
+    histX[histHead], histY[histHead], histT[histHead] = x, y, now
+    if histCount < HISTORY then histCount = histCount + 1 end
+end
+
+-- Where the tip was at time t: the newest entry at or before it.
+local function PlaceAt(t)
+    local index = histHead
+    for _ = 1, histCount do
+        if histT[index] <= t then return histX[index], histY[index] end
+        index = index - 1
+        if index < 1 then index = HISTORY end
+    end
+    return nil
+end
+
+local function HideEchoes()
+    for index = 1, MAX_ECHOES do
+        if echoes[index] then echoes[index]:Hide() end
+    end
+end
+
+local function UpdateEchoes(echo, tipX, tipY, now)
+    PushHistory(tipX, tipY, now)
+    -- Trail density picks how many arrows: 14, the default, gives seven.
+    local count = math.max(2, math.min(MAX_ECHOES, math.floor((tonumber(settings.trailLength) or 14) / 2)))
+    local size = pointerPx * (tonumber(settings.steerScale) or 1)
+    for index = 1, MAX_ECHOES do
+        local texture = echoes[index]
+        local x, y
+        if index <= count then x, y = PlaceAt(now - index * (echo.gap or 0.035)) end
+        -- A copy sitting on the pointer adds nothing; it is left hidden, so
+        -- a resting mouse shows one arrow, the real one.
+        if x and ((x - tipX) ^ 2 + (y - tipY) ^ 2) > 4 then
+            texture:ClearAllPoints()
+            texture:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
+            texture:SetSize(size, size)
+            texture:SetAlpha(0.95 - index * (0.6 / count))
+            texture:Show()
+        else
+            texture:Hide()
+        end
+    end
 end
 
 local function OnUpdate(_, elapsed)
@@ -645,12 +1050,49 @@ local function OnUpdate(_, elapsed)
     -- Steering: the game hides the pointer, so show its arrow where it froze.
     local steering = settings.steering and IsMouselooking and IsMouselooking()
     if steering then
+        -- Sized like the real pointer, then by the player's own scale.
+        local size = pointerPx * (tonumber(settings.steerScale) or 1)
+        local style = settings.steerStyle
+        local strength = tonumber(settings.steerAlpha) or 1
+
         arrow:ClearAllPoints()
         -- The arrow's tip is its top-left corner, same as the real pointer.
         arrow:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", tipX, tipY)
-        arrow:Show()
-    elseif arrow:IsShown() then
+        arrow:SetSize(size, size)
+        if style == "glow" then
+            arrow:Hide()
+        else
+            -- Ghost: a pale, see-through copy, so it reads as "the pointer
+            -- will come back here" rather than as a live pointer.
+            arrow:SetDesaturated(style == "ghost")
+            if style == "ghost" then
+                arrow:SetVertexColor(0.8, 0.9, 1, strength * 0.55)
+            else
+                arrow:SetVertexColor(1, 1, 1, strength)
+            end
+            arrow:Show()
+        end
+
+        if settings.steerGlow or style == "glow" then
+            local r, g, b = HaloColour(theme)
+            arrow.glow:ClearAllPoints()
+            arrow.glow:SetPoint("CENTER", UIParent, "BOTTOMLEFT", tipX + size * 0.3, tipY - size * 0.35)
+            arrow.glow:SetSize(size * 2.2, size * 2.2)
+            arrow.glow:SetVertexColor(r, g, b, strength * (style == "glow" and 0.9 or 0.5))
+            arrow.glow:Show()
+        else
+            arrow.glow:Hide()
+        end
+    elseif arrow:IsShown() or arrow.glow:IsShown() then
         arrow:Hide()
+        arrow.glow:Hide()
+    end
+
+    -- Windows 95 pointer trails, following the tip itself.
+    if theme.echo and settings.trail and not steering then
+        UpdateEchoes(theme.echo, tipX, tipY, now)
+    elseif echoes[1] and echoes[1]:IsShown() then
+        HideEchoes()
     end
 
     -- Trail: drop sparks along the path, spaced so a still mouse leaves no
@@ -723,6 +1165,8 @@ local function OnUpdate(_, elapsed)
             swirlTimer = 0
         end
 
+        UpdateBolts(now)
+
         local baseSize = tonumber(settings.trailSize) or 14
         for index = 1, MAX_SPARKS do
             local spark = sparks[index]
@@ -747,11 +1191,17 @@ local function ApplyVisibility()
     root:SetShown(show)
     if not show then
         for _, spark in ipairs(sparks) do spark:Hide() end
-        if arrow then arrow:Hide() end
+        for _, bolt in ipairs(bolts) do HideBolt(bolt) end
+        if arrow then arrow:Hide() arrow.glow:Hide() end
+        HideEchoes()
     end
 end
 
-watcher:SetScript("OnEvent", function(_, event)
+watcher:SetScript("OnEvent", function(_, event, cvar)
+    if event == "CVAR_UPDATE" then
+        if cvar == "cursorSizePreferred" or cvar == "CURSOR_SIZE_PREFERRED" then ReadPointerPx() end
+        return
+    end
     if event == "GLOBAL_MOUSE_DOWN" then
         local scale = UIParent:GetEffectiveScale()
         local cx, cy = GetCursorPosition()
@@ -763,7 +1213,9 @@ end)
 
 local function Start()
     EnsureRoot()
+    ApplyGamePointer()
     RestyleAll()
+    pcall(watcher.RegisterEvent, watcher, "CVAR_UPDATE")
     root:SetScript("OnUpdate", OnUpdate)
     watcher:RegisterEvent("PLAYER_REGEN_DISABLED")
     watcher:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -775,6 +1227,7 @@ end
 
 local function Stop()
     watcher:UnregisterAllEvents()
+    RestoreGamePointer()
     if root then
         root:SetScript("OnUpdate", nil)
         root:Hide()
@@ -782,6 +1235,67 @@ local function Stop()
 end
 
 -- ── Settings ────────────────────────────────────────────────────────────────
+
+-- ── Settings per theme ──────────────────────────────────────────────────────
+-- Each theme keeps its own look: a big soft glow for Fire, a small ring for
+-- Arcane, a long trail for Meteor. The keys below are saved per theme; the
+-- rest (where the glow sits, clicks, steering, combat) are shared by every
+-- theme.
+--
+-- The live values stay where the drawing code reads them, at the top of the
+-- settings table. Switching theme files the old theme's values away and brings
+-- the new theme's back, so nothing else in this file needs to know.
+
+local PER_THEME = {
+    "halo", "haloShape", "haloSize", "haloAlpha", "haloOwnColour", "haloR", "haloG", "haloB",
+    "shadow", "shadowSize", "shadowAlpha",
+    "trail", "trailLength", "trailSize", "trailLife",
+    "idleSwirl", "swirlDelay",
+    "classColour", "rainbow", "colourR", "colourG", "colourB",
+}
+
+local function StoreTheme()
+    local store = settings.themeSettings
+    local saved = store[settings.theme]
+    if type(saved) ~= "table" then
+        saved = {}
+        store[settings.theme] = saved
+    end
+    for _, key in ipairs(PER_THEME) do saved[key] = settings[key] end
+end
+
+local function LoadTheme(key)
+    local saved = settings.themeSettings[key]
+    for _, name in ipairs(PER_THEME) do
+        local value
+        if type(saved) == "table" then value = saved[name] end
+        if value == nil then value = DEFAULTS[name] end
+        -- A theme seen for the first time starts on its own glow shape.
+        local fresh = not (type(saved) == "table" and saved[name] ~= nil)
+        local theme = THEME_BY_KEY[key]
+        if fresh and theme then
+            if name == "haloShape" then value = theme.halo or value end
+            if name == "halo" and theme.noHalo then value = false end
+            if name == "shadow" and theme.noShadow then value = false end
+            if name == "idleSwirl" and theme.noSwirl then value = false end
+        end
+        settings[name] = value
+    end
+end
+
+local function SwitchTheme(key)
+    if settings.theme == key then return end
+    StoreTheme()
+    settings.theme = key
+    LoadTheme(key)
+    RestyleAll()
+end
+
+local function ResetTheme()
+    settings.themeSettings[settings.theme] = nil
+    LoadTheme(settings.theme)
+    RestyleAll()
+end
 
 local function BindSettings()
     OxedHubDB = OxedHubDB or {}
@@ -794,67 +1308,9 @@ local function BindSettings()
     for key, value in pairs(DEFAULTS) do
         if config[key] == nil then config[key] = value end
     end
+    -- Built here, not in DEFAULTS: a table there is shared by reference.
+    if type(config.themeSettings) ~= "table" then config.themeSettings = {} end
     settings = config
-end
-
--- A labelled slider bound to one numeric setting.
-local function AddSlider(w, key, caption, minValue, maxValue, step, format, apply)
-    local label = w:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    label:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 4)
-
-    local slider = CreateFrame("Slider", nil, w, "OptionsSliderTemplate")
-    slider:SetOrientation("HORIZONTAL")
-    slider:SetSize(200, 16)
-    slider:SetPoint("TOPLEFT", w, "TOPLEFT", 230, w.cursorY - 6)
-    slider:SetMinMaxValues(minValue, maxValue)
-    slider:SetValueStep(step)
-    slider:SetObeyStepOnDrag(true)
-
-    local function Show(value) label:SetText((format):format(caption, value)) end
-    slider:SetScript("OnValueChanged", function(_, value)
-        value = math.floor(value / step + 0.5) * step
-        Show(value)
-        settings[key] = value
-        if apply then apply() end
-    end)
-    w:HookScript("OnShow", function()
-        local value = tonumber(settings[key]) or minValue
-        slider:SetValue(value)
-        Show(value)
-    end)
-    w.cursorY = w.cursorY - 30
-end
-
--- A row of small buttons, one per choice, the picked one lit.
-local function AddChoiceRow(w, key, caption, choices, perRow, apply)
-    local label = w:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    label:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 4)
-    label:SetText(caption)
-
-    local buttons = {}
-    local function Repaint()
-        for _, entry in ipairs(buttons) do
-            entry.button:SetNormalFontObject(settings[key] == entry.key
-                and "GameFontNormal" or "GameFontDisableSmall")
-        end
-    end
-    local width = perRow > 3 and 70 or 80
-    for index, choice in ipairs(choices) do
-        local column = (index - 1) % perRow
-        local rowIndex = math.floor((index - 1) / perRow)
-        local button = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
-        button:SetSize(width, 22)
-        button:SetPoint("TOPLEFT", w, "TOPLEFT", 120 + column * (width + 4), w.cursorY - 2 - rowIndex * 24)
-        button:SetText(choice.name)
-        button:SetScript("OnClick", function()
-            settings[key] = choice.key
-            Repaint()
-            if apply then apply() end
-        end)
-        buttons[#buttons + 1] = { key = choice.key, button = button }
-    end
-    w:HookScript("OnShow", Repaint)
-    w.cursorY = w.cursorY - 6 - math.ceil(#choices / perRow) * 24
 end
 
 -- Opens the game's colour picker on the chosen colour.
@@ -878,69 +1334,315 @@ local function PickColour(keys)
     end
 end
 
+-- ── The options window ──────────────────────────────────────────────────────
+-- Wide, with a tab per theme across the top in the Modules page's own tab
+-- style. Picking a tab switches to that theme, and the left column shows its
+-- own settings; the right column is shared by all of them.
+--
+-- The controls are placed by column rather than through AddCheckbox, which
+-- only knows one column. Each has a Refresh in the window's checks list, so
+-- opening the window or changing tab puts every control back in step.
+
+local WINDOW_W, WINDOW_H = 1120, 700
+local COLUMN_W = 420
+
+local function RefreshWindow(w)
+    for _, control in ipairs(w.checks) do control.Refresh() end
+end
+
+-- A column: where it starts and how far down it has got.
+local function Column(w, x, y, title)
+    local col = { w = w, x = x, y = y }
+    if title then
+        local head = w:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        head:SetPoint("TOPLEFT", w, "TOPLEFT", x, y)
+        head:SetText(title)
+        col.y = y - 22
+    end
+    return col
+end
+
+local function Check(col, key, label, tooltip, onChange)
+    local w = col.w
+    local box = CreateFrame("CheckButton", nil, w, "UICheckButtonTemplate")
+    box:SetSize(24, 24)
+    box:SetPoint("TOPLEFT", w, "TOPLEFT", col.x - 4, col.y)
+    box.text:SetFontObject("GameFontHighlight")
+    box.text:SetText(label)
+    box:SetScript("OnClick", function(self)
+        settings[key] = self:GetChecked() and true or false
+        if onChange then onChange() end
+    end)
+    if tooltip then
+        box:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(label)
+            GameTooltip:AddLine(tooltip, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        box:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    box.Refresh = function() box:SetChecked(settings[key] == true) end
+    table.insert(w.checks, box)
+    col.y = col.y - 26
+    return box
+end
+
+local function Slider(col, key, caption, minValue, maxValue, step, format, apply)
+    local w = col.w
+    local label = w:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    label:SetPoint("TOPLEFT", w, "TOPLEFT", col.x, col.y - 4)
+
+    local slider = CreateFrame("Slider", nil, w, "OptionsSliderTemplate")
+    slider:SetOrientation("HORIZONTAL")
+    slider:SetSize(190, 16)
+    slider:SetPoint("TOPLEFT", w, "TOPLEFT", col.x + COLUMN_W - 200, col.y - 5)
+    slider:SetMinMaxValues(minValue, maxValue)
+    slider:SetValueStep(step)
+    slider:SetObeyStepOnDrag(true)
+    -- The template's Low / High captions say nothing the label does not.
+    for _, part in ipairs({ "Low", "High", "Text" }) do
+        local region = slider[part] or (slider:GetName() and _G[slider:GetName() .. part])
+        if region then region:SetText("") end
+    end
+
+    local refreshing = false
+    local function Show(value) label:SetText((format):format(caption, value)) end
+    slider:SetScript("OnValueChanged", function(_, value)
+        value = math.floor(value / step + 0.5) * step
+        Show(value)
+        if refreshing then return end
+        settings[key] = value
+        if apply then apply() end
+    end)
+    slider.Refresh = function()
+        refreshing = true
+        local value = tonumber(settings[key]) or minValue
+        slider:SetValue(value)
+        Show(value)
+        refreshing = false
+    end
+    table.insert(w.checks, slider)
+    col.y = col.y - 28
+    return slider
+end
+
+-- A row of small buttons, one per choice, the picked one lit.
+local function Choice(col, key, caption, choices, apply)
+    local w = col.w
+    local label = w:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    label:SetPoint("TOPLEFT", w, "TOPLEFT", col.x, col.y - 4)
+    label:SetText(caption)
+
+    local holder = {}
+    local buttons = {}
+    holder.Refresh = function()
+        for _, entry in ipairs(buttons) do
+            entry.button:SetNormalFontObject(settings[key] == entry.key
+                and "GameFontNormal" or "GameFontDisableSmall")
+        end
+    end
+    -- Up to four choices sit beside the label; more get a row of their own
+    -- under it.
+    local below = #choices > 4
+    local width = below and 56 or 60
+    local startX = below and col.x or (col.x + COLUMN_W - (#choices * (width + 4)))
+    local rowY = below and (col.y - 22) or (col.y - 1)
+    for index, choice in ipairs(choices) do
+        local button = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+        button:SetSize(width, 22)
+        button:SetPoint("TOPLEFT", w, "TOPLEFT", startX + (index - 1) * (width + 4), rowY)
+        button:SetText(choice.name)
+        button:SetScript("OnClick", function()
+            settings[key] = choice.key
+            holder.Refresh()
+            if apply then apply() end
+        end)
+        buttons[#buttons + 1] = { key = choice.key, button = button }
+    end
+    table.insert(w.checks, holder)
+    col.y = col.y - (below and 50 or 28)
+end
+
+local function Button(col, text, width, onClick, xOffset)
+    local button = CreateFrame("Button", nil, col.w, "UIPanelButtonTemplate")
+    button:SetSize(width, 22)
+    button:SetPoint("TOPLEFT", col.w, "TOPLEFT", col.x + (xOffset or 0), col.y - 1)
+    button:SetText(text)
+    button:SetScript("OnClick", onClick)
+    return button
+end
+
+-- The template's name has moved between builds; asking for a missing one is
+-- an error, so each is tried in turn and a plain button is the last resort.
+local TAB_TEMPLATES = { "PanelTopTabButtonTemplate", "TabButtonTemplate" }
+local function NewTab(parent)
+    for _, template in ipairs(TAB_TEMPLATES) do
+        local ok, button = pcall(CreateFrame, "Button", nil, parent, template)
+        if ok and button then return button, true end
+    end
+    return CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"), false
+end
+
+local function BuildThemeTabs(w)
+    local strip = CreateFrame("Frame", nil, w)
+    strip:SetPoint("TOPLEFT", w, "TOPLEFT", 16, -34)
+    strip:SetPoint("TOPRIGHT", w, "TOPRIGHT", -16, -34)
+    strip:SetHeight(32)
+
+    -- One row, each tab as wide as its name, side by side like the Modules
+    -- page's category tabs.
+    local tabs = {}
+    local previous
+    for _, theme in ipairs(THEMES) do
+        local button, isTab = NewTab(strip)
+        button:SetText(theme.name)
+        if isTab and PanelTemplates_TabResize then
+            pcall(PanelTemplates_TabResize, button, 10, nil, 60)
+        else
+            button:SetSize(72, 24)
+        end
+        if previous then
+            button:SetPoint("LEFT", previous, "RIGHT", 2, 0)
+        else
+            button:SetPoint("BOTTOMLEFT", strip, "BOTTOMLEFT", 0, 0)
+        end
+        previous = button
+        button:SetScript("OnClick", function()
+            SwitchTheme(theme.key)
+            RefreshWindow(w)
+        end)
+        button.themeKey = theme.key
+        button.isTab = isTab
+        tabs[#tabs + 1] = button
+    end
+
+    local holder = {}
+    holder.Refresh = function()
+        local base = strip:GetFrameLevel() + 5
+        for _, button in ipairs(tabs) do
+            local selected = button.themeKey == settings.theme
+            if button.isTab then
+                if selected then
+                    pcall(PanelTemplates_SelectTab, button)
+                    button:SetFrameLevel(base + 5)
+                else
+                    pcall(PanelTemplates_DeselectTab, button)
+                    button:SetFrameLevel(base)
+                end
+            else
+                button:SetNormalFontObject(selected and "GameFontNormal" or "GameFontDisableSmall")
+            end
+        end
+    end
+    table.insert(w.checks, holder)
+end
+
 local function ShowOptions()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("Cursor", 470, 900)
+        optionsWindow = API:CreateOptionsWindow("Cursor", WINDOW_W, WINDOW_H)
         local w = optionsWindow
 
-        AddChoiceRow(w, "theme", "Theme", THEMES, 4, RestyleAll)
-        AddChoiceRow(w, "anchor", "Sits on", {
-            { key = "hand", name = "Hand" },
-            { key = "tip",  name = "Tip" },
-        }, 3)
-        AddSlider(w, "offsetX", "Nudge sideways", -40, 40, 1, "%s: %d")
-        AddSlider(w, "offsetY", "Nudge up / down", -40, 40, 1, "%s: %d")
+        BuildThemeTabs(w)
 
-        w:AddCheckbox(settings, "halo", "Glow around the hand", nil, RestyleAll)
-        AddChoiceRow(w, "haloShape", "Glow shape", {
+        -- The same soft gold line as under the Modules page's tabs.
+        local under = CreateFrame("Frame", nil, w)
+        under:SetPoint("TOPLEFT", w, "TOPLEFT", 16, -34)
+        under:SetPoint("TOPRIGHT", w, "TOPRIGHT", -16, -34)
+        under:SetHeight(32)
+        API:AddTabLine(w, under, 0, 0)
+
+        -- ── Left: this theme ──
+        local left = Column(w, 24, -82, "This theme (saved for it alone)")
+
+        Check(left, "halo", "Glow around the hand", nil, RestyleAll)
+        Choice(left, "haloShape", "Glow shape", {
             { key = "glow", name = "Glow" },
             { key = "ring", name = "Ring" },
             { key = "dot",  name = "Dot" },
             { key = "star", name = "Star" },
-        }, 4, RestyleAll)
-        AddSlider(w, "haloSize", "Glow size", 20, 120, 2, "%s: %d", RestyleAll)
-        AddSlider(w, "haloAlpha", "Glow strength", 0.1, 1, 0.05, "%s: %.2f")
-        w:AddCheckbox(settings, "haloOwnColour", "Own colour for the glow",
+        }, RestyleAll)
+        Slider(left, "haloSize", "Glow size", 20, 120, 2, "%s: %d", RestyleAll)
+        Slider(left, "haloAlpha", "Glow strength", 0.1, 1, 0.05, "%s: %.2f")
+        Button(left, "Pick glow colour", 140, function() PickColour({ "haloR", "haloG", "haloB" }) end, COLUMN_W - 140)
+        Check(left, "haloOwnColour", "Own colour for the glow",
             "Off, the glow takes the theme's colour: orange for Fire, white-hot for Meteor, your class colour in Custom.")
 
-        local glowPick = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
-        glowPick:SetSize(150, 22)
-        glowPick:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        glowPick:SetText("Pick glow colour")
-        glowPick:SetScript("OnClick", function() PickColour({ "haloR", "haloG", "haloB" }) end)
-        w.cursorY = w.cursorY - 30
+        Check(left, "shadow", "Shadow behind it",
+            "A soft dark disc that keeps the pointer readable over bright spell effects.", RestyleAll)
+        Slider(left, "shadowAlpha", "Shadow strength", 0.05, 0.8, 0.05, "%s: %.2f")
 
-        w:AddCheckbox(settings, "shadow", "Shadow behind it", "A soft dark disc that keeps the pointer readable over bright spell effects.", RestyleAll)
-        AddSlider(w, "shadowAlpha", "Shadow strength", 0.05, 0.8, 0.05, "%s: %.2f")
+        Check(left, "trail", "Trail of sparks")
+        Slider(left, "trailLength", "Trail density", 4, 60, 1, "%s: %d")
+        Slider(left, "trailSize", "Spark size", 6, 40, 1, "%s: %d")
 
-        w:AddCheckbox(settings, "trail", "Trail of sparks")
-        AddSlider(w, "trailLength", "Trail length", 4, 60, 1, "%s: %d")
-        AddSlider(w, "trailSize", "Spark size", 6, 40, 1, "%s: %d")
-
-        w:AddNote("Colours below are for the Custom theme; the others bring their own.")
-        w:AddCheckbox(settings, "classColour", "Class colour", "Untick to use your own colour.")
-        w:AddCheckbox(settings, "rainbow", "Rainbow", "Cycles through every colour; the trail runs through them too.")
-
-        local pick = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
-        pick:SetSize(130, 22)
-        pick:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        pick:SetText("Pick trail colour")
-        pick:SetScript("OnClick", function() PickColour({ "colourR", "colourG", "colourB" }) end)
-        w.cursorY = w.cursorY - 30
-
-        w:AddCheckbox(settings, "steering", "Keep the pointer while steering",
-            "Holding the right button hides the pointer. This draws it where it froze, so you always know where it will come back.")
-        w:AddCheckbox(settings, "ripple", "Ripple on every click")
-        w:AddCheckbox(settings, "shake", "Shake to find it", "Wiggle the mouse quickly left and right and the halo flares up.")
-        w:AddCheckbox(settings, "onlyCombat", "Only in combat", nil, ApplyVisibility)
-        w:AddCheckbox(settings, "idleSwirl", "Magic circles when the mouse rests",
+        Check(left, "idleSwirl", "Magic circles when the mouse rests",
             "Let go of the mouse and the sparks spiral around the pointer in the theme's colours instead of trailing behind it.")
-        AddSlider(w, "swirlDelay", "Circles start after", 0, 3, 0.1, "%s: %.1f s")
-        w:AddCheckbox(settings, "fadeIdle", "Fade out when the mouse is still",
+        Slider(left, "swirlDelay", "Circles start after", 0, 3, 0.1, "%s: %.1f s")
+
+        local customNote = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        customNote:SetPoint("TOPLEFT", w, "TOPLEFT", left.x, left.y - 6)
+        customNote:SetTextColor(0.75, 0.75, 0.75)
+        customNote:SetText("Trail colour, for the Custom theme:")
+        Button(left, "Pick trail colour", 140, function() PickColour({ "colourR", "colourG", "colourB" }) end, COLUMN_W - 140)
+        left.y = left.y - 30
+        Check(left, "classColour", "Class colour", "Untick to use your own colour.")
+        Check(left, "rainbow", "Rainbow", "Cycles through every colour; the trail runs through them too.")
+
+        -- ── Right: every theme ──
+        local right = Column(w, 540, -82, "Every theme")
+
+        Choice(right, "anchor", "The glow sits on", {
+            { key = "hand", name = "Hand" },
+            { key = "tip",  name = "Tip" },
+        })
+        Slider(right, "offsetX", "Nudge sideways", -40, 40, 1, "%s: %d")
+        Slider(right, "offsetY", "Nudge up / down", -40, 40, 1, "%s: %d")
+        right.y = right.y - 6
+
+        Check(right, "steering", "Keep the pointer while steering",
+            "Holding the right button hides the pointer. This draws it where it froze, so you always know where it will come back.")
+        Choice(right, "steerStyle", "Steering pointer", {
+            { key = "arrow", name = "Arrow" },
+            { key = "ghost", name = "Ghost" },
+            { key = "glow",  name = "Glow" },
+        })
+        Slider(right, "steerScale", "Steering pointer size", 0.5, 2.5, 0.05, "%s: %.2f")
+        Slider(right, "steerAlpha", "Steering pointer strength", 0.2, 1, 0.05, "%s: %.2f")
+        Check(right, "steerGlow", "Theme glow behind it")
+        right.y = right.y - 6
+
+        -- The game's own pointer.
+        Choice(right, "pointerSize", "Game pointer size", {
+            { key = "game", name = "Game" },
+            { key = "auto", name = "Auto" },
+            { key = "32",   name = "32" },
+            { key = "48",   name = "48" },
+            { key = "64",   name = "64" },
+            { key = "96",   name = "96" },
+            { key = "128",  name = "128" },
+        }, ApplyGamePointer)
+        Choice(right, "lookDelta", "Camera turns after", {
+            { key = "game",    name = "Game" },
+            { key = "instant", name = "At once" },
+            { key = "normal",  name = "Normal" },
+            { key = "late",    name = "Later" },
+        }, ApplyGamePointer)
+        right.y = right.y - 6
+        Check(right, "ripple", "Ripple on every click")
+        Check(right, "shake", "Shake to find it", "Wiggle the mouse quickly left and right and the glow flares up.")
+        Check(right, "onlyCombat", "Only in combat", nil, ApplyVisibility)
+        Check(right, "fadeIdle", "Fade out when the mouse is still",
             "Hides everything while the mouse is untouched. It turns the circles off too, since there is nothing left to see.")
+
+        right.y = right.y - 14
+        Button(right, "Reset this theme", 150, function()
+            ResetTheme()
+            RefreshWindow(w)
+        end)
     end
     optionsWindow:Show()
 end
@@ -964,7 +1666,7 @@ loginFrame:SetScript("OnEvent", function(self)
         version  = "1.1.0",
         author   = "Oxed",
         category = "interface",
-        keywords = { "cursor", "mouse", "pointer", "trail", "glow", "halo", "steering", "mouselook", "find", "fire", "frost", "meteor", "lightning" },
+        keywords = { "cursor", "mouse", "pointer", "trail", "windows 95", "retro", "glow", "halo", "steering", "mouselook", "find", "fire", "frost", "meteor", "lightning", "void", "fel", "blood", "bubbles", "fairy" },
         -- Clipped at about 100 characters on the card; detail goes in Options.
         desc     = "Fire, frost, meteor and more on your pointer: halo, trail, click ripples.",
         icon     = "Interface\\Icons\\Spell_Arcane_Arcane04",
