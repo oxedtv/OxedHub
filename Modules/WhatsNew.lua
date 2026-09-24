@@ -25,6 +25,18 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.83",
+        important = true,
+        lines = {
+            { "FIXED", "The one lag spike OxedHub was still causing itself: on a raid pull the game sends twenty and more proc glow events in a single frame, and Action Hub redrew every node for each one. Frames of 29 ms, three quarters of them OxedHub, are now one redraw a frame." },
+            { "CHANGED", "Action Hub asks the game far less: a cooldown change no longer re-checks every node's proc glow, and the greying of unusable icons happens at most ten times a second instead of on every event." },
+            { "CHANGED", "Rules remember each spell's name instead of asking the game for it again on every cast, for every rule. That alone was 17 KB of memory per spell you cast." },
+            { "CHANGED", "Buff Reminder finds your food buff by name in one read rather than walking all forty buffs, and the aura scan reuses its table instead of making a new one on every aura change." },
+            { "CHANGED", "Shattersight only copies your bags when you actually have Enchanting; without it there is nothing to disenchant, and the copy cost 150 KB every time your bags changed." },
+            { "FIXED", "Auto Gossip raised an error when the game kept an NPC's identity secret." },
+        },
+    },
+    {
         version = "2.3.82",
         lines = {
             { "FIXED", "Attributes: the stats box on screen no longer raises an error in combat, where the game hides stat values. It keeps the last figures until they can be read again." },

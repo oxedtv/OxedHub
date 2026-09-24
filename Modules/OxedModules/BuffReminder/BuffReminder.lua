@@ -145,8 +145,22 @@ local function IsFoodAura(aura)
     end
     return false
 end
+local function FoodResult(aura)
+    local expires = aura.expirationTime
+    if IsSecret(expires) or not expires or expires == 0 then return true, nil end
+    return true, expires - GetTime()
+end
+
 local function FindFood()
     if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return nil end
+    -- By name first: one aura read instead of up to forty. Walking every buff
+    -- made a fresh table for each one, on every refresh, and that was most of
+    -- the garbage this module made. The walk below stays for food buffs
+    -- named otherwise ("Hearty Well Fed").
+    if C_UnitAuras.GetAuraDataBySpellName then
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataBySpellName, "player", WellFedName(), "HELPFUL")
+        if ok and aura and not IsSecret(aura) then return FoodResult(aura) end
+    end
     for i = 1, 40 do
         local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
         if not ok or IsSecret(aura) then return nil end
@@ -289,7 +303,11 @@ local function Applies(entry, class, specID)
         end
         if not any then return false end
     end
-    if entry.notAura and FindAura("player", { entry.notAura }) then return false end
+    if entry.notAura then
+        -- The one-id list is made once per entry, not on every check.
+        entry._notAuraList = entry._notAuraList or { entry.notAura }
+        if FindAura("player", entry._notAuraList) then return false end
+    end
     return true
 end
 

@@ -1751,7 +1751,12 @@ function Core:OnUnitAura(unit)
     -- Taint-free spell ID presence set: {[spellID_number] = true}
     -- SelfAura.lua queries this to detect buffs even when WoW secret-taints
     -- all aura data in combat.
-    local activeSpellIDsBuild = {}
+    -- Two sets used in turn rather than a new table per scan: this runs on
+    -- every aura change. Readers look Core.activeSpellIDs up each time, so
+    -- the set being refilled is never the one they are reading.
+    local activeSpellIDsBuild = Core._spareSpellIDs or {}
+    Core._spareSpellIDs = nil
+    wipe(activeSpellIDsBuild)
     
     -- Clear current state buffers
     for k in pairs(auraBuffer_Current) do auraBuffer_Current[k] = nil end
@@ -1933,6 +1938,7 @@ function Core:OnUnitAura(unit)
     end
     
     -- Publish taint-free spell ID presence set
+    Core._spareSpellIDs = Core.activeSpellIDs
     Core.activeSpellIDs = activeSpellIDsBuild
 
     -- Fire Food Start/Stop/Buff events

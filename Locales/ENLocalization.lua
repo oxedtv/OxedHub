@@ -819,7 +819,7 @@ L["ANIM_PLAY"] = "Play"
 L["ANIM_STOP"] = "Stop"
 L["ANIM_SAVE"] = "Save Animation"
 
-L["RELEASE_TITLE"] = "Release 2.3.82"
+L["RELEASE_TITLE"] = "Release 2.3.83"
 L["RELEASE_SUBTITLE"] = "What's New in this Update"
 L["ANIM_CUSTOM_TITLE"] = "Custom Animations"
 L["ANIM_CUSTOM_DESC"] = "Manage your animation library here. Use Add Animations for custom sprite-sheet setup."

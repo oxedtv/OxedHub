@@ -72,7 +72,11 @@ local function OnGossipShow()
     if not option or not option.gossipOptionID then return end
     if option.icon == ICON_BINDER then return end
 
+    -- ⚠ The NPC's GUID can be a secret string (12.0), and comparing one is an
+    -- error. Then the loop check goes by the option alone: the same option
+    -- twice within a few seconds is still a loop, whoever offers it.
     local npc = UnitGUID and UnitGUID("npc")
+    if issecretvalue and issecretvalue(npc) then npc = nil end
     if IsLoop(npc, option.gossipOptionID) then return end
 
     if settings.report and option.name then

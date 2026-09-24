@@ -1442,10 +1442,19 @@ local function ApplyReadyGlow(btn, isReady)
 
     -- Glowing already, with the same look: nothing to redo. Parsing the colour
     -- and resizing three textures used to happen on every pass.
-    local key = ("%s|%s|%s|%s|%s"):format(w, tostring(btn.nodeStyle), tostring(slot.readyGlowHex),
-        tostring(slot.readyGlowAlpha), tostring(slot.readyGlowSize))
-    if btn._ohReadyKey == key and btn.readyGlowAnim:IsPlaying() then return end
-    btn._ohReadyKey = key
+    -- Field by field: a string key built each pass was garbage every time.
+    local look = btn._ohReadyLook
+    if not look then
+        look = {}
+        btn._ohReadyLook = look
+    end
+    if look.w == w and look.style == btn.nodeStyle and look.hex == slot.readyGlowHex
+        and look.alpha == slot.readyGlowAlpha and look.size == slot.readyGlowSize
+        and btn.readyGlowAnim:IsPlaying() then
+        return
+    end
+    look.w, look.style, look.hex = w, btn.nodeStyle, slot.readyGlowHex
+    look.alpha, look.size = slot.readyGlowAlpha, slot.readyGlowSize
 
     LayoutReadyGlow(btn, w, btn.nodeStyle)
 
@@ -1572,7 +1581,9 @@ local function UpdateNodeCooldown(btn)
     -- Dim icons that can't be used right now (e.g. a mount while
     -- indoors / in a no-mount zone), like the default action bars.
     ApplyUsabilityShading(btn, IsSlotUsable(slot))
-    ApplyProcGlow(btn, IsSpellProcced(spellID))
+    -- Proc glows are left to their own events, coalesced above, and to the
+    -- ticker's once-a-second check. Asking here too meant up to eight
+    -- protected calls per node on every cooldown change.
 
     if not (btn.cooldown1 and btn.cooldown2) then return end
 
@@ -1667,7 +1678,11 @@ local usabilityQueued = false
 local function QueueUsability()
     if usabilityQueued then return end
     usabilityQueued = true
-    C_Timer.After(0, function()
+    -- A tenth of a second rather than the next frame: SPELL_UPDATE_USABLE
+    -- arrives several times a second in a fight, and greying an icon a
+    -- moment later is invisible. Eleven thousand passes in half an hour
+    -- became a few thousand.
+    C_Timer.After(0.1, function()
         usabilityQueued = false
         if OxedHub.ActionHub and OxedHub.db then OxedHub.ActionHub:UpdateUsability() end
     end)
@@ -1709,6 +1724,7 @@ end
 --   *_OVERLAY_SHOW/HIDE       → the large screen-edge artwork
 -- Register both so a node lights up regardless of which one the spell uses.
 local procGlowFrame = CreateFrame("Frame")
+local procQueued = false
 procGlowFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_SHOW")
 procGlowFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_HIDE")
 procGlowFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_SHOW")
@@ -1727,8 +1743,15 @@ procGlowFrame:SetScript("OnEvent", function(_, event, spellID)
             event, spellID, info and info.name or "?"))
     end
 
-    if OxedHub.ActionHub then
-        OxedHub.ActionHub:UpdateProcGlows()
+    -- One pass per frame. A raid pull or a proc refresh sends these in bursts
+    -- of twenty and more in a single frame, each of which used to walk every
+    -- node: the recorder caught frames of 29 ms, three quarters of them this.
+    if OxedHub.ActionHub and not procQueued then
+        procQueued = true
+        C_Timer.After(0, function()
+            procQueued = false
+            if OxedHub.ActionHub then OxedHub.ActionHub:UpdateProcGlows() end
+        end)
     end
 end)
 
@@ -4790,8 +4813,12 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
     self:UpdateWidgetCooldowns()
 
     if totalSlots > 0 and db.onScreen then
+        local tick = 0
         ActionHub.cooldownTicker = C_Timer.NewTicker(0.5, function()
             ActionHub:UpdateWidgetCooldowns()
+            -- A proc whose event named a different spell id is still caught.
+            tick = tick + 1
+            if tick % 2 == 0 then ActionHub:UpdateProcGlows() end
         end)
     end
 

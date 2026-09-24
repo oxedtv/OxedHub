@@ -912,6 +912,26 @@ local SPELL_EVENT_TYPES = {
 -- after a rule last fired from a cast is that same press again.
 local CAST_REFIRE = 0.5
 
+-- A spell's name, looked up once. Every rule that did not match a cast by id
+-- asked the game for its spell's full info to try the name instead: a fresh
+-- table per rule per cast, which was most of the 17 KB each cast left behind.
+-- Names do not change during a session.
+local spellNames = {}
+local function SpellNameOf(spellID)
+    local name = spellNames[spellID]
+    if name == nil then
+        local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
+        local raw = info and info.name
+        -- A secret name is not remembered: it may read fine out of combat.
+        if issecretvalue and issecretvalue(raw) then return nil end
+        -- Nor is a missing one: spell data can still be loading.
+        if type(raw) ~= "string" then return nil end
+        name = raw
+        spellNames[spellID] = name
+    end
+    return name
+end
+
 function Triggers:ProcessEvent(eventType, eventData)
     local profile = OxedHub.db.profile
     
@@ -1048,14 +1068,14 @@ function Triggers:ShouldTrigger(trigger, eventType, eventData)
             
             -- 2. Match by spell name via C_Spell.GetSpellInfo(targetID) (safe against secret strings)
             if not matched and targetID and eventData.spellName then
-                local expectedInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(targetID)
-                if expectedInfo and expectedInfo.name then
-                    local okEq, resEq = pcall(function() return expectedInfo.name == eventData.spellName end)
+                local expectedName = SpellNameOf(targetID)
+                if expectedName then
+                    local okEq, resEq = pcall(function() return expectedName == eventData.spellName end)
                     if okEq and resEq then
                         matched = true
                     else
                         local okLower, resLower = pcall(function() 
-                            return string.lower(tostring(expectedInfo.name)) == string.lower(tostring(eventData.spellName)) 
+                            return string.lower(expectedName) == string.lower(tostring(eventData.spellName)) 
                         end)
                         if okLower and resLower then
                             matched = true
@@ -1098,15 +1118,15 @@ function Triggers:ShouldTrigger(trigger, eventType, eventData)
                         end
                     end
                     if extraID and eventData.spellName then
-                        local extraInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(extraID)
-                        if extraInfo and extraInfo.name then
-                            local okEq, resEq = pcall(function() return extraInfo.name == eventData.spellName end)
+                        local extraName = SpellNameOf(extraID)
+                        if extraName then
+                            local okEq, resEq = pcall(function() return extraName == eventData.spellName end)
                             if okEq and resEq then
                                 matched = true
                                 break
                             else
                                 local okLower, resLower = pcall(function() 
-                                    return string.lower(tostring(extraInfo.name)) == string.lower(tostring(eventData.spellName)) 
+                                    return string.lower(extraName) == string.lower(tostring(eventData.spellName)) 
                                 end)
                                 if okLower and resLower then
                                     matched = true

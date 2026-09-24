@@ -1274,12 +1274,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.82)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.83)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.82")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.83")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1345,11 +1345,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  Cursor: every theme redrawn, with real lightning bolts, snowflakes and leaves.",
-        "•  Cursor: new Fel, Blood, Bubbles, Fairy and Windows 95 themes.",
-        "•  Cursor: a tab per theme, and each theme keeps its own settings.",
-        "•  Cursor: pick the steering pointer's look and the game pointer's size.",
-        "•  Performance report: names the addon or cause behind every lag spike.",
+        "•  A raid pull no longer costs a frame: proc glows redraw once, not once per event.",
+        "•  Action Hub, buff checks and rules all do far less work in a fight.",
+        "•  Much less memory made every second, so the game pauses to clean up less often.",
+        "•  Auto Gossip no longer errors on an NPC the game keeps secret.",
+        "•  Use /oxprofile to see it: every lag spike now names its own cause.",
         "•  Grab either pack from CurseForge:",
     }
 

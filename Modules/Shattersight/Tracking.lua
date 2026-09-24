@@ -368,7 +368,37 @@ local function ClearPendingSource()
     pendingSourceTimer = nil
 end
 
+-- Disenchanting takes Enchanting. Everyone else's bags were copied, slot by
+-- slot, on every change (150 KB of tables each time) to watch for something
+-- they cannot do. Checked once and again when professions change.
+local ENCHANTING_SKILL_LINE = 333
+local canDisenchant
+
+local function CanDisenchant()
+    -- Only a yes is remembered. Early in a login the professions may not be
+    -- known yet, and a remembered no would switch tracking off for good; the
+    -- check itself is two cheap calls.
+    if canDisenchant then return true end
+    canDisenchant = false
+    if GetProfessions and GetProfessionInfo then
+        local first, second = GetProfessions()
+        for _, index in ipairs({ first or 0, second or 0 }) do
+            if index > 0 then
+                local skillLine = select(7, GetProfessionInfo(index))
+                if skillLine == ENCHANTING_SKILL_LINE then canDisenchant = true end
+            end
+        end
+    else
+        canDisenchant = true
+    end
+    return canDisenchant
+end
+
 local function OnBagUpdateDelayed()
+    if not CanDisenchant() then
+        lastSnapshot = nil
+        return
+    end
     local current = SnapshotBags()
 
     if not lastSnapshot then
@@ -750,6 +780,7 @@ function SS:HandleTrackingEvent(event)
         OnBagUpdateDelayed()
     elseif event == "PLAYER_ENTERING_WORLD" then
     elseif event == "SKILL_LINES_CHANGED" then
+        canDisenchant = nil
         C_Timer.After(0, function()
             if IsEnchantingTradeSkillOpen() then UpdateSkillCache() end
         end)
