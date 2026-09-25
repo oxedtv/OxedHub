@@ -79,8 +79,16 @@ end
 
 -- ── Registry ───────────────────────────────────────────────────────────────
 
+local registerCount = 0
+
 function ModuleAPI:Register(moduleInfo)
     if not moduleInfo or not moduleInfo.id then return end
+
+    -- The order they arrive in is the order of the TOC, so the newest module
+    -- is the one registered last. That is what "Newest first" sorts by; there
+    -- is no date on a module to sort by instead.
+    registerCount = registerCount + 1
+    moduleInfo._order = registerCount
 
     self.modules[moduleInfo.id] = moduleInfo
 
@@ -489,18 +497,19 @@ function ModuleAPI:RebuildCategoryTabs(tab, allModules, selected)
     local scrollChild = tab.scrollChild
     if not scrollChild then return end
 
+    local host = tab.header or scrollChild
     local strip = tab.categoryStrip
     if not strip then
-        strip = CreateFrame("Frame", nil, scrollChild)
-        strip:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 16, -62)
+        strip = CreateFrame("Frame", nil, host)
+        strip:SetPoint("TOPLEFT", host, "TOPLEFT", 16, -62)
         strip:SetSize(960, 30)
         tab.categoryStrip = strip
         -- Across the whole page, not just the strip: the tabs can run wider.
-        local under = CreateFrame("Frame", nil, scrollChild)
+        local under = CreateFrame("Frame", nil, host)
         under:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
-        under:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -16, -62)
+        under:SetPoint("TOPRIGHT", host, "TOPRIGHT", -16, -62)
         under:SetHeight(30)
-        ModuleAPI:AddTabLine(scrollChild, under, 0, 0)
+        ModuleAPI:AddTabLine(host, under, 0, 0)
     end
 
     for _, button in ipairs(tab.categoryTabs or {}) do
@@ -564,6 +573,44 @@ function ModuleAPI:RebuildCategoryTabs(tab, allModules, selected)
             table.insert(tab.categoryTabs, button)
         end
     end
+end
+
+-- ── Sorting ─────────────────────────────────────────────────────────────────
+-- How the cards are ordered. A viewing preference, kept account-wide next to
+-- the open tab rather than in a profile.
+
+-- "favorites" is the one that pins the starred modules above everything; the
+-- rest are pure orders. Pinning them under every sort made "Newest first"
+-- look broken: the newest module sat below seven favourites.
+ModuleAPI.SORTS = {
+    { key = "favorites", label = "Favourites first" },
+    { key = "name",      label = "Name A to Z" },
+    { key = "nameDesc",  label = "Name Z to A" },
+    { key = "newest",    label = "Newest first" },
+    { key = "enabled",   label = "Switched on first" },
+}
+
+function ModuleAPI:GetSort()
+    local saved = OxedHubDB and OxedHubDB.globalSettings and OxedHubDB.globalSettings.moduleSort
+    for _, entry in ipairs(self.SORTS) do
+        if entry.key == saved then return saved end
+    end
+    return "favorites"
+end
+
+function ModuleAPI:GetSortLabel()
+    local key = self:GetSort()
+    for _, entry in ipairs(self.SORTS) do
+        if entry.key == key then return entry.label end
+    end
+    return self.SORTS[1].label
+end
+
+function ModuleAPI:SetSort(key)
+    if type(OxedHubDB) ~= "table" then return end
+    OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+    OxedHubDB.globalSettings.moduleSort = key
+    self:RefreshModulesTab()
 end
 
 -- ── Search ──────────────────────────────────────────────────────────────────
@@ -702,7 +749,7 @@ function ModuleAPI:RefreshModulesTab()
     -- Said out loud when nothing matches, instead of an empty page.
     if not tab.noMatches then
         tab.noMatches = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-        tab.noMatches:SetPoint("TOP", scrollChild, "TOP", 0, -140)
+        tab.noMatches:SetPoint("TOP", scrollChild, "TOP", 0, -40)
         tab.noMatches:SetWidth(700)
     end
     local noneFound = words and next(shownModules) == nil
@@ -719,7 +766,9 @@ function ModuleAPI:RefreshModulesTab()
     local paddingY = 16
     local startX = 16
     -- Below the title, the description and the category tabs.
-    local startY = -104
+    -- The head is its own frame above the scrolling part now, so the cards
+    -- begin at the top of it rather than below a title that scrolled with them.
+    local startY = -8
     
     -- Convert to sorted array for consistent display
     local sortedModules = {}
@@ -729,10 +778,24 @@ function ModuleAPI:RefreshModulesTab()
             table.insert(sortedModules, mod)
         end
     end
-    -- Starred ones first on every tab, then by name.
+    local sortKey = self:GetSort()
     table.sort(sortedModules, function(a, b)
-        local fa, fb = self:IsFavorite(a), self:IsFavorite(b)
-        if fa ~= fb then return fa end
+        -- Only the favourites order pins them; the others are what they say.
+        if sortKey == "favorites" then
+            local fa, fb = self:IsFavorite(a), self:IsFavorite(b)
+            if fa ~= fb then return fa end
+        elseif sortKey == "nameDesc" then
+            return (a.name or "") > (b.name or "")
+        elseif sortKey == "newest" then
+            -- A module OxedHub only found, and never registered, has no place
+            -- in that order and goes last.
+            local oa, ob = a._order or 0, b._order or 0
+            if oa ~= ob then return oa > ob end
+        elseif sortKey == "enabled" then
+            local ea = self:IsModuleEnabled(a.id) and a._registered
+            local eb = self:IsModuleEnabled(b.id) and b._registered
+            if (ea and true or false) ~= (eb and true or false) then return ea and true or false end
+        end
         return (a.name or "") < (b.name or "")
     end)
     
@@ -892,7 +955,15 @@ function ModuleAPI:RefreshModulesTab()
 
     -- Tall enough to scroll to the last row once a category has more modules
     -- than fit on the page.
+    local scroll = tab.scrollFrame
     local rows = math.ceil(#sortedModules / columns)
     local needed = -startY + rows * (cardHeight + paddingY) + 16
-    scrollChild:SetHeight(math.max(586, needed))
+    scrollChild:SetHeight(math.max(scroll and scroll:GetHeight() or 480, needed))
+
+    -- A category with fewer modules than the last one is shorter, and a page
+    -- left scrolled past its own end shows nothing at all.
+    if scroll then
+        local limit = math.max(0, scrollChild:GetHeight() - scroll:GetHeight())
+        if scroll:GetVerticalScroll() > limit then scroll:SetVerticalScroll(limit) end
+    end
 end

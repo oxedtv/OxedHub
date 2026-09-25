@@ -4,7 +4,8 @@
 --
 --   * Role checks are answered at once, with the roles you picked or, with
 --     none picked, the role of your current specialisation.
---   * "Your group is ready" is accepted for you.
+--   * "Your group is ready" is called out with a sound; pressing Enter is
+--     yours to do, since the game refuses it to addons.
 --   * The Group Finder's sign-up dialog confirms itself with those roles;
 --     double-click a listing to sign up to it.
 --   * Groups that declined you show red in the list for 15 minutes, groups
@@ -17,8 +18,10 @@
 -- Everything is a switch in Options. Slash command: /aq on | off | status.
 --
 -- Taint notes -- read before changing anything here:
---   * The ready-check accept goes through a SecureActionButton that clicks
---     Blizzard's own Enter button, never AcceptProposal() directly.
+--   * ⚠ Entering the dungeon when the group is ready CANNOT be done for the
+--     player: every route ends in AcceptProposal, which is protected, and each
+--     attempt fills their error window with ADDON_ACTION_BLOCKED. The module
+--     only calls the window out with a sound. Never add a press back.
 --   * "Apply again" removes the group from LFGListFrame.declines, a Blizzard
 --     table. It leaves that key tainted; nothing else in the list reads it.
 --   * "Keep my note" replaces LFGListApplicationDialog_Show with the same code
@@ -33,7 +36,7 @@ local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -
 local DEFAULTS = {
     enabled        = false,  -- off until the player switches it on (see ModuleAPI:Register)
     roleCheck      = true,   -- answer Dungeon Finder role checks
-    acceptProposal = true,   -- accept "your group is ready"
+    acceptProposal = true,   -- call out "your group is ready"
     autoSignUp     = true,   -- confirm the Group Finder sign-up dialog
     shiftNote      = true,   -- holding Shift opens the dialog to write a note instead
     doubleClick    = true,   -- double-click a listing to sign up
@@ -168,9 +171,51 @@ local function StopRoleCheckWatch()
     if roleCheckTicker then roleCheckTicker:Cancel() roleCheckTicker = nil end
 end
 
-local proposalButton = CreateFrame("Button", "OxedHubAutoQueueProposalButton", UIParent, "SecureActionButtonTemplate")
-proposalButton:Hide()
-proposalButton:SetAttribute("type", "click")
+-- ── "Your group is ready" ───────────────────────────────────────────────────
+-- ⚠ Entering cannot be done for the player. Whatever route is taken -- our own
+-- secure button, a click on Blizzard's Enter button, AcceptProposal itself --
+-- it ends in AcceptProposal, which is protected, and every attempt raises
+-- ADDON_ACTION_BLOCKED in the player's error window. The click has to come
+-- from their hand. Never put an automatic press back.
+--
+-- What is left is not missing the window: a sound, and the queue's name in
+-- chat, so a proposal is noticed while tabbed out or mid-pull.
+
+-- Said once per window, not once per check: the watcher runs several times a
+-- second, and a line every few seconds while the window sits there is worse
+-- than no line at all.
+local announced = false
+local proposalTicker
+
+local function ReadyDialogShown()
+    local dialog = _G.LFGDungeonReadyDialog or _G.LFGDungeonReadyPopup
+    return dialog and dialog:IsShown() and dialog
+end
+
+local function AcceptReady()
+    if not ReadyDialogShown() then
+        -- Gone: the next window is a new one and may speak again.
+        announced = false
+        return
+    end
+    if announced or not Active("acceptProposal") then return end
+    announced = true
+
+    if PlaySound and SOUNDKIT and SOUNDKIT.READY_CHECK then
+        pcall(PlaySound, SOUNDKIT.READY_CHECK, "Master")
+    end
+    print(PREFIX .. "your group is ready. |cffffd100Press Enter yourself|r: the game does not let an addon do it.")
+end
+
+local function StartProposalWatch()
+    if proposalTicker then return end
+    proposalTicker = C_Timer.NewTicker(0.3, AcceptReady)
+end
+
+local function StopProposalWatch()
+    if proposalTicker then proposalTicker:Cancel() proposalTicker = nil end
+    announced = false
+end
 
 -- ── Group Finder ────────────────────────────────────────────────────────────
 
@@ -305,12 +350,8 @@ local hooked = {}
 local function HookFinderFrames()
     if not hooked.proposal and LFGDungeonReadyDialogEnterDungeonButton and LFGDungeonReadyPopup_Update then
         hooked.proposal = true
-        proposalButton:SetAttribute("clickbutton", LFGDungeonReadyDialogEnterDungeonButton)
         hooksecurefunc("LFGDungeonReadyPopup_Update", function()
-            if not Active("acceptProposal") or not LFGDungeonReadyDialog:IsShown() then return end
-            C_Timer.After(0.2, function()
-                if Active("acceptProposal") and not InCombatLockdown() then proposalButton:Click() end
-            end)
+            C_Timer.After(0.2, AcceptReady)
         end)
     end
     if not hooked.roleCheck and LFDRoleCheckPopup then
@@ -542,6 +583,11 @@ watcher:SetScript("OnEvent", function(_, event, arg1, arg2)
         Setup()
     elseif event == "LFG_ROLE_CHECK_SHOW" then
         HandleRoleCheck()
+    elseif event == "LFG_PROPOSAL_SHOW" then
+        announced = false
+        C_Timer.After(0.2, AcceptReady)
+    elseif event == "LFG_PROPOSAL_SUCCEEDED" or event == "LFG_PROPOSAL_FAILED" then
+        announced = false
     elseif event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" then
         Setup()
         if Active("doubleClick") then C_Timer.After(0.1, HookListingButtons) end
@@ -554,6 +600,7 @@ end)
 
 local EVENTS = {
     "ADDON_LOADED", "PLAYER_ENTERING_WORLD", "LFG_ROLE_CHECK_SHOW",
+    "LFG_PROPOSAL_SHOW", "LFG_PROPOSAL_SUCCEEDED", "LFG_PROPOSAL_FAILED",
     "LFG_LIST_SEARCH_RESULTS_RECEIVED", "LFG_LIST_APPLICATION_STATUS_UPDATED",
     "PLAYER_SPECIALIZATION_CHANGED",
 }
@@ -571,12 +618,14 @@ local function Start()
     end
     for _, event in ipairs(EVENTS) do watcher:RegisterEvent(event) end
     StartRoleCheckWatch()
+    StartProposalWatch()
     Setup()
 end
 
 local function Stop()
     watcher:UnregisterAllEvents()
     StopRoleCheckWatch()
+    StopProposalWatch()
     ShowRoleBar()
     if tutorial then tutorial:Hide() end
 end
@@ -638,8 +687,8 @@ local function ShowOptions()
         local w = optionsWindow
         w:AddCheckbox(settings, "roleCheck", "Answer role checks",
             "Dungeon Finder role checks are accepted at once with your queue roles.")
-        w:AddCheckbox(settings, "acceptProposal", "Accept when the group is ready",
-            "Enters the dungeon when the \"Your group is ready\" window appears.")
+        w:AddCheckbox(settings, "acceptProposal", "Call out when the group is ready",
+            "Plays a sound and says so in chat when the \"Your group is ready\" window appears. The game will not let an addon press Enter: that click has to be yours.")
         w:AddCheckbox(settings, "autoSignUp", "Confirm Group Finder sign-ups",
             "The sign-up window confirms itself with your queue roles.")
         w:AddCheckbox(settings, "shiftNote", "Hold Shift to write a note",

@@ -97,6 +97,16 @@ combat, so it reads every stat inside `pcall` first and, if any read fails,
 keeps the figures it already shows. Anything new that reads stats in combat
 needs the same guard.
 
+### Plain unit questions answer with secrets in combat too
+
+`UnitExists`, `UnitIsUnit`, `UnitAffectingCombat`, `UnitCanAttack`, `UnitName`
+and `UnitClass` can all hand back a **secret** in combat, and `if value then`
+on one is the error — testing it is what throws, not printing it. Ask through
+a helper that returns true, false or nil ("cannot tell"), the way `Known` does
+in `Modules\OxedModules\ThreatBar\ThreatBar.lua`, and decide what nil should
+mean for that feature. Same for `UnitDetailedThreatSituation`: the tanking
+flag, the status and the percentage are each secret in a fight.
+
 ### Show or hide on a secret with SetAlphaFromBoolean, not an if
 
 Whether an enemy cast can be interrupted (`notInterruptible` from
@@ -187,6 +197,16 @@ Deposits, sales and other per-slot actions must go out **spaced** (see
 `AutoBanker`'s `STEP`), not in one burst — a burst is partly dropped and the
 dropped items give no error. Re-check each slot's `itemID` immediately before
 acting on it: bags shift underneath a run as things stack and sort.
+
+### Entering a dungeon when the group is ready is refused for addons
+
+`AcceptProposal` is protected. Every route to it raises ADDON_ACTION_BLOCKED:
+our own SecureActionButton, a `:Click()` on Blizzard's Enter button, or the
+call itself — the stack ends in `AcceptProposal` either way and the player
+gets the error. `Modules\OxedModules\AutoQueue\AutoQueue.lua` now only plays a
+sound and says so in chat. Never add an automatic press back.
+
+Role checks are different: `CompleteLFGRoleCheck(true)` is allowed and works.
 
 ### C_UnitAuras.AddAuraSound is refused for addons
 

@@ -909,6 +909,33 @@ function UI:CreateSearchBar()
             end
         end)
     end)
+    -- Under the box, for the Modules page: how the cards are ordered.
+    -- Hidden with the search box everywhere else.
+    local okSort, sortDropdown = pcall(CreateFrame, "DropdownButton", nil, searchContainer, "WowStyle1DropdownTemplate")
+    if okSort and sortDropdown then
+        sortDropdown:SetSize(170, 22)
+        sortDropdown:SetPoint("TOPRIGHT", searchBox, "BOTTOMRIGHT", 0, -4)
+        sortDropdown:Hide()
+        self.sortDropdown = sortDropdown
+
+        sortDropdown.Rebuild = function()
+            local API = OxedHub.ModuleAPI
+            if not API or not API.SORTS then return end
+            sortDropdown:OverrideText(API:GetSortLabel())
+            sortDropdown:SetupMenu(function(_, rootDescription)
+                for _, entry in ipairs(API.SORTS) do
+                    rootDescription:CreateRadio(entry.label,
+                        function() return API:GetSort() == entry.key end,
+                        function()
+                            API:SetSort(entry.key)
+                            sortDropdown:OverrideText(entry.label)
+                        end,
+                        entry.key)
+                end
+            end)
+        end
+    end
+
     ApplySearchFrameStyle(searchBox)
     UpdateSearchPlaceholderVisibility(searchBox)
 end
@@ -1274,12 +1301,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.83)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.86)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.83")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.86")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1345,11 +1372,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  A raid pull no longer costs a frame: proc glows redraw once, not once per event.",
-        "•  Action Hub, buff checks and rules all do far less work in a fight.",
-        "•  Much less memory made every second, so the game pauses to clean up less often.",
-        "•  Auto Gossip no longer errors on an NPC the game keeps secret.",
-        "•  Use /oxprofile to see it: every lag spike now names its own cause.",
+        "•  New module: Mail: collect it all, return, forward, an address book.",
+        "•  New module: Markers: raid marks, world flares, ready check, pull timer.",
+        "•  New module: Threat Bar: how close you are to pulling, under every nameplate.",
+        "•  Modules page: it scrolls now, the tabs stay put, and you can sort the cards.",
+        "•  Auto Queue calls out when your group is ready, with a sound.",
         "•  Grab either pack from CurseForge:",
     }
 
@@ -3418,20 +3445,43 @@ function UI:CreateModulesTab()
     tab:SetID(99)
     ApplyToysBackground(tab)
     
+    -- The page's head sits on the tab itself, not inside the scrolling part:
+    -- the title, the line under it and the category tabs stay where they are
+    -- while the cards move, the way the Toys page behaves.
+    local header = CreateFrame("Frame", nil, tab)
+    header:SetPoint("TOPLEFT", tab, "TOPLEFT", THEMED_FRAME_INSETS.left, -THEMED_FRAME_INSETS.top)
+    header:SetPoint("TOPRIGHT", tab, "TOPRIGHT", -THEMED_FRAME_INSETS.right, -THEMED_FRAME_INSETS.top)
+    header:SetHeight(100)
+    tab.header = header
+
     local scrollFrame = CreateFrame("ScrollFrame", nil, tab)
-    scrollFrame:SetPoint("TOPLEFT", tab, "TOPLEFT", THEMED_FRAME_INSETS.left, -THEMED_FRAME_INSETS.top)
+    scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -2)
     scrollFrame:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", -THEMED_FRAME_INSETS.right, THEMED_FRAME_INSETS.bottom)
-    
+
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollChild:SetSize(992, 586)
     scrollFrame:SetScrollChild(scrollChild)
-    
-    local title = scrollChild:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
-    title:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 16, -16)
+
+    -- The page grew past one screen once there were more than a dozen modules,
+    -- and it had no way of moving: no bar, no wheel. The wheel is handled here
+    -- rather than by the template, since the frame has no scroll bar of its own
+    -- to drive; the bar comes from the addon's own styling below.
+    scrollFrame:EnableMouseWheel(true)
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local limit = math.max(0, (scrollChild:GetHeight() or 0) - (self:GetHeight() or 0))
+        local target = self:GetVerticalScroll() - delta * 60
+        self:SetVerticalScroll(math.max(0, math.min(limit, target)))
+    end)
+    if OxedHub.UIComponents and OxedHub.UIComponents.Scroll then
+        OxedHub.UIComponents.Scroll.StyleFrame(scrollFrame)
+    end
+
+    local title = header:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
+    title:SetPoint("TOPLEFT", header, "TOPLEFT", 16, -16)
     title:SetTextColor(1, 0.82, 0, 1)
     title:SetText(L["TAB_MODULES"] or "Modules")
     
-    local desc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local desc = header:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
     desc:SetText(L["MODULES_DESC"] or "Modules are a new feature of OxedHub, and we're currently testing them live.")
     
@@ -5779,6 +5829,7 @@ function UI:ShowTab(tabName)
         searchBox.customSearchHandler = nil
         searchBox:SetText("")
         searchBox:ClearFocus()
+        if self.sortDropdown then self.sortDropdown:Hide() end
         if tabName == "Settings" or tabName == "About" or tabName == "Toys" or tabName == "ActionHub" or tabName == "Experimental" or tabName == "OxedRing" or tabName == "Dashboard" then
             searchBox:GetParent():Hide()
         elseif tabName == "Modules" then
@@ -5791,6 +5842,10 @@ function UI:ShowTab(tabName)
                 end
             end
             searchBox:GetParent():Show()
+            if self.sortDropdown then
+                self.sortDropdown.Rebuild()
+                self.sortDropdown:Show()
+            end
         elseif tabName == "Reactions" then
             local subTab = (contentArea.Reactions and contentArea.Reactions.currentSubTab) or "Sounds"
             if subTab == "Advanced" then

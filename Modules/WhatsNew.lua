@@ -25,6 +25,19 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.86",
+        important = true,
+        lines = {
+            { "ADDED", "Mail module (Modules, Inventory): a bar under the mailbox. Collect All takes the coins and the attachments one letter at a time and stops when your bags fill, Gold only leaves the attachments where they are, and the line above counts the letters, the gold and anything about to expire." },
+            { "ADDED", "Mail: tick the letters to send them back, tidy away read letters that hold nothing, forward one to somebody else, attach from a searchable list of your bags, and keep an address book of the names you write to, with the last few a click away. Type /oxmail." },
+            { "ADDED", "Markers module (Modules, Combat): the eight raid marks for your target, the eight world flares, and ready check, role check and a pull timer, on three bars you can drag where you like. Type /oxmark." },
+            { "ADDED", "Threat Bar module (Modules, Combat): a bar under every enemy nameplate showing how close your threat is to whoever is holding it, with a glow around the plate as you close in and the name of the one holding it underneath. Type /oxthreat." },
+            { "ADDED", "Threat Bar keeps working in a fight, where the game hides the exact threat from addons: the colours, the flash and the glow are drawn without ever reading the number. Only the printed percentage goes quiet." },
+            { "ADDED", "Modules page: the cards scroll with the wheel and a bar, the title and the category tabs stay where they are, and a new dropdown under the search sorts them by name, newest, or switched on first." },
+            { "CHANGED", "Auto Queue plays a sound and says so when your group is ready. Pressing Enter stays yours: the game refuses that click to addons, and every attempt only filled the error window." },
+        },
+    },
+    {
         version = "2.3.83",
         important = true,
         lines = {
