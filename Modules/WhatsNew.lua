@@ -25,6 +25,39 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.3.89",
+        important = true,
+        lines = {
+            { "FIXED", "Threat Bar and Kick Bar show up again for players who use Platynator or another nameplate addon. Both now sit beside the health bar that is really on screen, and a tick box under Threat Bar's options turns that off." },
+            { "FIXED", "Threat Bar no longer raised an error in a fight: the aura icons on a nameplate are the game's own and may not be touched by an addon, and the search for the health bar was touching them." },
+            { "FIXED", "Auto Queue rang the ready check sound at login. It asks the game whether a group is really waiting instead of trusting the window, which reports itself open with nothing behind it." },
+            { "ADDED", "Threat Bar: /oxthreat why prints, in a fight, every check the bar makes and which one is hiding it." },
+            { "CHANGED", "Auto Queue's card no longer promises to enter the dungeon for you. Blizzard refuses that click to every addon; the module rings and writes in chat, and the Enter is yours." },
+        },
+    },
+    {
+        version = "2.3.88",
+        important = true,
+        lines = {
+            { "ADDED", "Cursor: Pick trail colour now works on every theme, not only Custom. Fire in green still runs from a bright head to a dark tail, each theme remembers its own colour, and Reset this theme puts the original back." },
+            { "ADDED", "Cursor: Rainbow runs through any theme, and a new Own colour for the trail tick box switches between your colour and the theme's." },
+            { "FIXED", "Cursor: the straight, blurry sticks that appeared beside the trail on a fast flick with the density turned up. Sparks the frame could not fit are dropped instead of being laid in a line off the path." },
+            { "FIXED", "Markers: the bars can be dragged anywhere again, the countdown no longer resets itself to zero, and the panel's transparency is yours to set. World flares go out through /wm and /cwm, which the game does allow." },
+            { "CHANGED", "Chat Filter, Action Hub and the aura triggers read far less in a fight, and each handles the values the game now keeps secret without an error." },
+        },
+    },
+    {
+        version = "2.3.87",
+        important = true,
+        lines = {
+            { "ADDED", "Flight Timer module (Modules, Quests & Travel): a bar with the time left on a flight path. It times each route the first time you fly it, remembers it, and can play a sound shortly before you land. Type /oxflight." },
+            { "ADDED", "Instances module (Modules, Dungeons & PvP): how many instances you have entered this hour, how long until the next one is free, and a log of your runs with the time, the gold and the loot each one gave. Type /oxinst." },
+            { "ADDED", "PvP Progress module (Modules, Dungeons & PvP): honour and conquest with the cap, your Great Vault progress, your rating in every bracket, and what this session has earned. Type /oxpvp." },
+            { "ADDED", "Right-click the minimap icon for the module windows: the run log and the PvP panel open from there, with no slash command to remember." },
+            { "CHANGED", "The Modules page has fewer, clearer tabs: Combat, Dungeons & PvP, Quests & Travel, Bags & Mail, Character & UI and Chat. General is gone, and nothing lands in it by accident any more." },
+        },
+    },
+    {
         version = "2.3.86",
         important = true,
         lines = {

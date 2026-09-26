@@ -185,7 +185,7 @@ Follow the existing ones (`AutoVendor`, `AutoBanker`, `CopyChat`, `Attributes`):
 - `OnEnable` / `OnDisable` must actually start and stop the work — the module
   card toggles them live, with no reload.
 - `category` must be one of the keys in `ModuleAPI.CATEGORIES`; anything else
-  silently becomes `general`.
+  silently becomes `quests` (the old keys `general`, `pvp`, `inventory`, `interface`, `tools` are mapped by `OLD_CATEGORY`).
 - Options windows come from `API:CreateOptionsWindow`, which offers
   `AddCheckbox` and `AddNote` only.
 - Modules in `OxedModules` are written in plain English, not through the

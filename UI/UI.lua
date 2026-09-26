@@ -1301,12 +1301,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.3.86)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.3.89)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.86")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.3.89")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1372,11 +1372,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  New module: Mail: collect it all, return, forward, an address book.",
-        "•  New module: Markers: raid marks, world flares, ready check, pull timer.",
-        "•  New module: Threat Bar: how close you are to pulling, under every nameplate.",
-        "•  Modules page: it scrolls now, the tabs stay put, and you can sort the cards.",
-        "•  Auto Queue calls out when your group is ready, with a sound.",
+        "•  New module: Flight Timer: how long is left on the flight, and a sound before you land.",
+        "•  New module: Instances: the hourly limit, the next free one, and a log of your runs.",
+        "•  New module: PvP Progress: honour, conquest, the Vault and your rating in every bracket.",
+        "•  Cursor: pick the trail colour on any theme, and no more straight sticks beside it.",
+        "•  Threat Bar and Kick Bar work with Platynator; right-click the minimap for module windows.",
         "•  Grab either pack from CurseForge:",
     }
 
@@ -1413,11 +1413,11 @@ function UI:CreateDashboardTab()
             local cursorBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
             cursorBtn:SetSize(120, 22)
             cursorBtn:SetPoint("LEFT", gamingLinkBtn, "RIGHT", 8, 0)
-            cursorBtn:SetText("Cursor Module")
+            cursorBtn:SetText("Flight Timer")
             cursorBtn:SetNormalFontObject("GameFontNormalSmall")
             cursorBtn:SetScript("OnClick", function()
                 UI:ShowTab("Modules")
-                if UI.searchBox then UI.searchBox:SetText("cursor") end
+                if UI.searchBox then UI.searchBox:SetText("flight") end
             end)
             cursorBtn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")

@@ -132,6 +132,38 @@ function MinimapButton:UpdatePosition(angle)
     end
 end
 
+-- Shortcuts into modules, so a window is one click away instead of a slash
+-- command. Only modules that registered quick actions (quick = { { text,
+-- func } }) and are switched on appear; Options alone is not worth a line.
+local function ModuleShortcuts()
+    local API = OxedHub.ModuleAPI
+    if not (API and API.modules) then return {} end
+    local list = {}
+    for id, mod in pairs(API.modules) do
+        if API:IsModuleEnabled(id) and type(mod.quick) == "table" and #mod.quick > 0 then
+            list[#list + 1] = mod
+        end
+    end
+    table.sort(list, function(a, b) return tostring(a.name or a.id) < tostring(b.name or b.id) end)
+
+    local lines = {}
+    if #list == 0 then return lines end
+    lines[#lines + 1] = { text = "Modules", isTitle = true, notCheckable = true }
+    for _, mod in ipairs(list) do
+        local name = tostring(mod.name or mod.id)
+        for _, action in ipairs(mod.quick) do
+            lines[#lines + 1] = {
+                text = name .. ": " .. tostring(action.text), notCheckable = true,
+                func = function()
+                    local ok, err = pcall(action.func)
+                    if not ok then print("|cffff0000OxedHub (" .. name .. "):|r " .. tostring(err)) end
+                end,
+            }
+        end
+    end
+    return lines
+end
+
 -- Show context menu
 function MinimapButton:ShowContextMenu()
     local menu = {
@@ -147,11 +179,17 @@ function MinimapButton:ShowContextMenu()
         { text = L["MINIMAP_MENU_DEBUG"], func = function()
             MinimapButton:ShowDebugLog()
         end, notCheckable = true },
+    }
+    for _, line in ipairs(ModuleShortcuts()) do menu[#menu + 1] = line end
+    local tail = {
         { text = " " },
         { text = L["MINIMAP_MENU_CLOSE"], func = function() end, notCheckable = true },
     }
+    for _, line in ipairs(tail) do menu[#menu + 1] = line end
     
-    local menuFrame = CreateFrame("Frame", "OxedHubMinimapMenu", UIParent, "UIDropDownMenuTemplate")
+    -- Made once: a new named frame per click piled up and fought over the name.
+    local menuFrame = _G.OxedHubMinimapMenu
+        or CreateFrame("Frame", "OxedHubMinimapMenu", UIParent, "UIDropDownMenuTemplate")
     
     if EasyMenu then
         EasyMenu(menu, menuFrame, "cursor", 0, 0, "MENU")

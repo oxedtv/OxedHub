@@ -139,7 +139,7 @@ loginFrame:SetScript("OnEvent", function(self)
         name     = "Auto Gossip",
         version  = "1.0.0",
         author   = "Oxed",
-        category = "general",
+        category = "quests",
         keywords = { "gossip", "npc", "dialog", "talk", "option" },
         -- Clipped at about 90 characters on the card; the detail is in Options.
         desc     = "Picks the option when an NPC's menu has only one. Choose where in Options.",

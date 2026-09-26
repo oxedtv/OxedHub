@@ -1223,7 +1223,7 @@ loginFrame:SetScript("OnEvent", function(self)
         name     = "Mail",
         version  = "1.0.0",
         author   = "Oxed",
-        category = "inventory",
+        category = "items",
         keywords = { "mail", "mailbox", "post", "letters", "open all", "address book", "contacts", "gold" },
         -- Clipped at about 100 characters on the card; detail goes in Options.
         desc     = "Open All, return, forward, an address book and bag attaching. Type /oxmail.",

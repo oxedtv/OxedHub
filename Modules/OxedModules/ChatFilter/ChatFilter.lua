@@ -60,6 +60,14 @@ local RefreshManager, OpenManager
 
 -- ── Names ───────────────────────────────────────────────────────────────────
 
+-- ⚠ A secret string still answers "string" to type(); it is the comparison
+-- that throws. Names handed over by the game -- a right-click menu, a unit,
+-- a chat line -- are checked here before anything is done with them. The
+-- helper lives above the names because they all need it.
+local function SecretValue(value)
+    return issecretvalue and issecretvalue(value) or false
+end
+
 local function PlayerRealm()
     return (GetNormalizedRealmName and GetNormalizedRealmName())
         or (GetRealmName and GetRealmName():gsub("[%s%-]", "")) or ""
@@ -68,7 +76,9 @@ end
 -- "name", "Name-Realm" or "name-Some Realm" all become "Name-Realm", so one
 -- person is one key whichever way the game or the player spelled them.
 local function FullName(name, realm)
+    if SecretValue(name) or SecretValue(realm) then return nil end
     if type(name) ~= "string" or name == "" then return nil end
+    if realm ~= nil and type(realm) ~= "string" then realm = nil end
     local short, fromName = name:match("^([^%-]+)%-(.+)$")
     if short then name, realm = short, fromName end
     realm = (realm and realm ~= "") and realm:gsub("[%s%-]", "") or PlayerRealm()
@@ -77,7 +87,8 @@ local function FullName(name, realm)
 end
 
 local function ShortName(full)
-    return (full and full:match("^([^%-]+)")) or full
+    if SecretValue(full) or type(full) ~= "string" then return nil end
+    return (full:match("^([^%-]+)")) or full
 end
 
 -- ── Saved data ──────────────────────────────────────────────────────────────
@@ -365,7 +376,12 @@ local function Decide(event, msg, author, channelBaseName, guid)
 
     local full = FullName(author)
     if not full then return false end
-    if ShortName(full) == UnitName("player") and full:match("%-(.+)$") == PlayerRealm() then
+    -- Your own line is never filtered. The player's own name can be secret
+    -- too, and comparing one is the error, so an unreadable name simply skips
+    -- this test rather than throwing.
+    local me = UnitName("player")
+    if not SecretValue(me) and ShortName(full) == me
+        and full:match("%-(.+)$") == PlayerRealm() then
         return false
     end
 
@@ -484,12 +500,21 @@ end)
 -- a unit frame carries a unit to ask instead.
 local function MenuTarget(contextData)
     if type(contextData) ~= "table" then return nil end
+    if SecretValue(contextData) or (canaccesstable and not canaccesstable(contextData)) then
+        return nil
+    end
+
     if contextData.name then
         return FullName(contextData.name, contextData.server)
     end
-    if contextData.unit and UnitIsPlayer(contextData.unit) then
-        local name, realm = UnitName(contextData.unit)
-        return FullName(name, realm)
+
+    local unit = contextData.unit
+    if unit and not SecretValue(unit) then
+        local ok, isPlayer = pcall(UnitIsPlayer, unit)
+        if ok and not SecretValue(isPlayer) and isPlayer then
+            local okName, name, realm = pcall(UnitName, unit)
+            if okName then return FullName(name, realm) end
+        end
     end
     return nil
 end
@@ -506,7 +531,9 @@ local function InstallMenus()
         pcall(Menu.ModifyMenu, tag, function(_, root, contextData)
             if not settings or settings.enabled == false then return end
             local full = MenuTarget(contextData)
-            if not full or ShortName(full) == UnitName("player") then return end
+            if not full then return end
+            local me = UnitName("player")
+            if SecretValue(me) or ShortName(full) == me then return end
             local ignored = settings.players[full] ~= nil
             root:CreateDivider()
             root:CreateButton(ignored and "Unignore (OxedHub)" or "Ignore (OxedHub)", function()
@@ -821,7 +848,8 @@ local function DrawBlockedTab()
         local line = blockedLog[index]
         local sender = line.sender or "?"
         items[#items + 1] = {
-            left = ("|cff9d9d9d%s|r  %s: %s"):format(date("%H:%M", line.time), ShortName(sender), Plain(line.text or "")),
+            left = ("|cff9d9d9d%s|r  %s: %s"):format(date("%H:%M", line.time),
+                ShortName(sender) or "?", Plain(line.text or "")),
             right = line.reason,
             tooltipTitle = sender .. "  --  " .. (line.reason or ""),
             tooltip = (line.text or "") .. "\n\n|cff9d9d9dClick to ignore this sender.|r",

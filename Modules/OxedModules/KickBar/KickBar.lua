@@ -59,6 +59,7 @@ local interruptSpellID
 local interruptIcon
 local kickFrame
 local currentNameplate
+local currentHost   -- the bar the icon sits beside, Blizzard's or another addon's
 local isShowing = false
 local moduleAPI = nil
 local castNotInterruptible = false  -- the current cast's flag, possibly a secret
@@ -377,7 +378,7 @@ local function HideKick()
         kickFrame.pulseAnim:Stop()
         kickFrame.glowAnim:Stop()
         kickFrame:Hide()
-        currentNameplate = nil
+        currentNameplate, currentHost = nil, nil
     end
 end
 
@@ -503,18 +504,22 @@ local function OnUpdate(self, dt)
     -- ── Position on nameplate ───────────────────────────────────────────
 
     local np = C_NamePlate and C_NamePlate.GetNamePlateForUnit("target")
-    if np ~= currentNameplate then
-        currentNameplate = np
+    -- Beside the health bar that is really on screen. Platynator and addons
+    -- like it hide Blizzard's plate and draw their own inside the nameplate,
+    -- and the icon placed on the bare nameplate did not show with them.
+    local host = np and OxedHub.VisiblePlateBar and OxedHub.VisiblePlateBar(np) or np
+    if np ~= currentNameplate or host ~= currentHost then
+        currentNameplate, currentHost = np, host
         kickFrame:ClearAllPoints()
         if np then
             kickFrame:SetParent(np)
             local anchor = db.anchor or "LEFT"
             if anchor == "LEFT" then
-                kickFrame:SetPoint("RIGHT", np, "LEFT", db.offsetX or -8, db.offsetY or 0)
+                kickFrame:SetPoint("RIGHT", host, "LEFT", db.offsetX or -8, db.offsetY or 0)
             elseif anchor == "RIGHT" then
-                kickFrame:SetPoint("LEFT", np, "RIGHT", -(db.offsetX or -8), db.offsetY or 0)
+                kickFrame:SetPoint("LEFT", host, "RIGHT", -(db.offsetX or -8), db.offsetY or 0)
             else
-                kickFrame:SetPoint("BOTTOM", np, "TOP", db.offsetX or 0, db.offsetY or 5)
+                kickFrame:SetPoint("BOTTOM", host, "TOP", db.offsetX or 0, db.offsetY or 5)
             end
         else
             -- No nameplate visible - show near screen center
@@ -876,7 +881,7 @@ eventFrame:SetScript("OnEvent", function(self, event, unit, _, spellID)
         Wake()
 
     elseif event == "PLAYER_TARGET_CHANGED" then
-        currentNameplate = nil
+        currentNameplate, currentHost = nil, nil
         -- The new target may already be half way through a cast.
         Wake()
     end

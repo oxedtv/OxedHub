@@ -849,7 +849,7 @@ loginFrame:SetScript("OnEvent", function(self)
         name     = "Auto Vendor",
         version  = "1.3.0",
         author   = "Oxed",
-        category = "inventory",
+        category = "items",
         keywords = { "vendor", "sell", "junk", "grey", "repair", "guild", "merchant", "gold", "sell list" },
         -- Clipped at about 90 characters on the card; the detail is in Options.
         desc     = "Sells junk and your sell list, and repairs, at any vendor. Set it up in Options.",

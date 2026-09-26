@@ -856,7 +856,7 @@ loginFrame:SetScript("OnEvent", function(self)
         name     = "Teleports",
         version  = "1.1.0",
         author   = "Oxed",
-        category = "tools",
+        category = "quests",
         keywords = { "teleport", "portal", "hearthstone", "travel", "mage", "wormhole", "toy", "death gate" },
         -- Clipped at about 100 characters on the card; detail goes in Options.
         desc     = "A button your teleports fly out of, each group its own way. /tp",

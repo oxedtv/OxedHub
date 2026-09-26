@@ -20,14 +20,22 @@ ModuleAPI.CATEGORIES = {
     -- Not a category a module can belong to: the player's own starred ones,
     -- shown second so they are one click from opening the page.
     { key = "favorites", label = "Favorites" },
-    { key = "general",   label = "General" },
     { key = "combat",    label = "Combat" },
-    { key = "pvp",       label = "PvP" },
-    { key = "chat",      label = "Chat & Social" },
-    { key = "inventory", label = "Inventory" },
-    { key = "character", label = "Character" },
-    { key = "interface", label = "Interface" },
-    { key = "tools",     label = "Travel & Tools" },
+    { key = "groups",    label = "Dungeons & PvP" },
+    { key = "quests",    label = "Quests & Travel" },
+    { key = "items",     label = "Bags & Mail" },
+    { key = "character", label = "Character & UI" },
+    { key = "chat",      label = "Chat" },
+}
+
+-- The categories before they were merged into fewer tabs. A module written
+-- against an old key, or a saved tab, still lands in the right place.
+local OLD_CATEGORY = {
+    general   = "quests",
+    pvp       = "groups",
+    inventory = "items",
+    interface = "character",
+    tools     = "quests",
 }
 
 local VALID_CATEGORY = {}
@@ -69,12 +77,14 @@ end
 local KNOWN_CATEGORY = {
     kickbar = "combat",
 }
+local DEFAULT_CATEGORY = "quests"
 
 local function NormalizeCategory(value, moduleId)
     local key = type(value) == "string" and value:lower():gsub("%s", "") or nil
     if key and VALID_CATEGORY[key] then return key end
+    if key and OLD_CATEGORY[key] then return OLD_CATEGORY[key] end
     local known = moduleId and KNOWN_CATEGORY[tostring(moduleId):lower()]
-    return known or "general"
+    return known or DEFAULT_CATEGORY
 end
 
 -- ── Registry ───────────────────────────────────────────────────────────────
@@ -476,6 +486,7 @@ function ModuleAPI:GetSelectedCategory()
     local settings = OxedHubDB and OxedHubDB.globalSettings
     local saved = settings and settings.modulesCategory
     if saved == "all" or saved == "favorites" or VALID_CATEGORY[saved] then return saved end
+    if OLD_CATEGORY[saved] then return OLD_CATEGORY[saved] end
     return "all"
 end
 

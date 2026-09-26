@@ -321,7 +321,7 @@ loginFrame:SetScript("OnEvent", function(self)
         name     = "Auto Confirm",
         version  = "1.1.0",
         author   = "Oxed",
-        category = "inventory",
+        category = "items",
         keywords = { "delete", "destroy", "confirm", "popup", "bind", "enchant", "abandon", "loot" },
         -- Clipped at about 100 characters on the card; the detail is in Options.
         desc     = "Types DELETE for you and skips the confirm popups you pick in Options.",

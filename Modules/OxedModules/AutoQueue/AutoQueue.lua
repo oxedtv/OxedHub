@@ -187,9 +187,14 @@ end
 local announced = false
 local proposalTicker
 
+-- ⚠ Asked of the game, not of a frame. Blizzard's ready popup can report
+-- itself shown at login with no proposal behind it, and the module rang the
+-- ready sound every time the player logged in.
 local function ReadyDialogShown()
-    local dialog = _G.LFGDungeonReadyDialog or _G.LFGDungeonReadyPopup
-    return dialog and dialog:IsShown() and dialog
+    if not GetLFGProposal then return false end
+    local ok, exists = pcall(GetLFGProposal)
+    if not ok or issecretvalue(exists) then return false end
+    return exists == true
 end
 
 local function AcceptReady()
@@ -613,7 +618,7 @@ end
 
 local function Start()
     if StandaloneLoaded() then
-        print(PREFIX .. "Auto Queue is off while the AutoQueue addon is loaded -- it does the same job. Disable one of them.")
+        print(PREFIX .. "Auto Queue is off while the AutoQueue addon is loaded: it does the same job. Disable one of them.")
         return
     end
     for _, event in ipairs(EVENTS) do watcher:RegisterEvent(event) end
@@ -638,7 +643,7 @@ local function PrintStatus()
     local any = picked.tank or picked.healer or picked.dps
     print("  Queue roles: " .. (any and RolesText(picked.tank, picked.healer, picked.dps)
         or ("your spec's (" .. RolesText(QueueRoles()) .. ")")))
-    print("  /aq on, /aq off -- or Options on its card under Modules.")
+    print("  /aq on, /aq off, or Options on its card under Modules.")
 end
 
 SLASH_OXEDAUTOQUEUE1 = "/aq"
@@ -727,10 +732,10 @@ loginFrame:SetScript("OnEvent", function(self)
         name     = "Auto Queue",
         version  = "1.0.0",
         author   = "Oxed",
-        category = "general",
+        category = "groups",
         keywords = { "queue", "lfg", "group finder", "role check", "ready check", "dungeon", "apply", "sign up" },
         -- Clipped at about 90 characters on the card; the detail is in Options.
-        desc     = "Accepts role checks and queues, signs up in Group Finder, pick your roles.",
+        desc     = "Accepts role checks, signs up in Group Finder, rings when your group is ready.",
         icon     = "Interface\\Icons\\INV_Misc_GroupNeedMore",
 
         defaults = DEFAULTS,

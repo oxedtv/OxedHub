@@ -60,14 +60,17 @@ local live = {
 
 -- ── Recording ───────────────────────────────────────────────────────────────
 
-local function Record(label, ms, kb)
+local function Record(label, ms, kb, topLevel)
     local s = stats[label]
     if not s then
-        s = { count = 0, total = 0, max = 0, alloc = 0 }
+        s = { count = 0, total = 0, max = 0, alloc = 0, own = 0 }
         stats[label] = s
     end
     s.count = s.count + 1
     s.total = s.total + ms
+    -- Time spent at the top of the stack only. The feature summary adds these
+    -- up; a nested call is already inside its caller's time.
+    if topLevel then s.own = (s.own or 0) + ms end
     -- Lua memory the call created. Garbage is what the collector has to clear
     -- later, and a collection is one of the classic causes of a hitch, so the
     -- functions that make the most of it are worth naming. Negative means a
@@ -85,7 +88,7 @@ local function Finish(label, bucket, slot, start, mem, ...)
     local ms = debugprofilestop() - start
     depth = depth - 1
     if depth < 0 then depth = 0 end
-    Record(label, ms, collectgarbage("count") - mem)
+    Record(label, ms, collectgarbage("count") - mem, depth == 0)
     if slot then bucket.ms[slot] = ms end
     return ...
 end
@@ -884,7 +887,7 @@ local function LiveTop()
         list[#list + 1] = {
             label = label, count = s.count, total = s.total, max = s.max,
             avg = s.count > 0 and s.total / s.count or 0, maxAt = s.maxAt,
-            alloc = s.alloc or 0,
+            alloc = s.alloc or 0, own = s.own or 0,
         }
     end
     return list
@@ -963,7 +966,7 @@ function Profiler:GetTop(sortKey)
             list[i] = {
                 label = row.label, count = row.count, total = row.total, max = row.max,
                 avg = (row.count or 0) > 0 and row.total / row.count or 0, maxAt = row.maxAt,
-                alloc = row.alloc or 0,
+                alloc = row.alloc or 0, own = row.own or 0,
             }
         end
     else
@@ -1005,6 +1008,56 @@ function Profiler:SpikeCulprit(spike)
     -- long frame reads as if it caused the frame.
     if best and best.ms < 0.1 then return nil end
     return best
+end
+
+local FAMILIES = {
+    { "^Event: ", "Triggers engine" },
+    { "^Core: ", "Triggers engine" },
+    { "^Rules for ", "Triggers engine" },
+    { "^Rule check: ", "Triggers engine" },
+    { "^Trigger: ", "Triggers engine" },
+    { "^Triggers: ", "Triggers engine" },
+    { "^Sound: ", "Sounds" },
+    { "^Animation: ", "Animations" },
+    { "^Icon: ", "Screen icons" },
+    { "^Emote: ", "Emotes" },
+    { "^Chat: ", "Chat messages" },
+    { "^Toy: ", "Toys" },
+    { "^ActionHub: ", "ActionHub bars" },
+}
+
+local function FeatureOf(label)
+    label = tostring(label or "?")
+    local head = label:match("^(.-) %-%- ")
+    if head then return head end
+    for _, family in ipairs(FAMILIES) do
+        if label:find(family[1]) then return family[2] end
+    end
+    return label
+end
+
+-- OxedHub's own time by feature, largest first, each with its share. The
+-- answer to "what should be fixed first" in one list.
+function Profiler:ByFeature(rows)
+    local byName, total = {}, 0
+    for _, row in ipairs(rows) do
+        local own = row.own or 0
+        if own > 0 then
+            local name = FeatureOf(row.label)
+            local entry = byName[name]
+            if not entry then
+                entry = { name = name, ms = 0, alloc = 0 }
+                byName[name] = entry
+            end
+            entry.ms = entry.ms + own
+            entry.alloc = entry.alloc + (row.alloc or 0)
+            total = total + own
+        end
+    end
+    local list = {}
+    for _, entry in pairs(byName) do list[#list + 1] = entry end
+    table.sort(list, function(a, b) return a.ms > b.ms end)
+    return list, total
 end
 
 -- Everything as plain text, for pasting into a message.
@@ -1050,6 +1103,20 @@ function Profiler:BuildReport()
         add("Addons, average per frame this session (the game's own figures)")
         for _, row in ipairs(averages) do
             add(("  %6.2f ms  %s"):format(row.ms, row.name))
+        end
+        add("")
+    end
+
+    -- Where OxedHub's own time went, by feature, with each one's share.
+    -- Nested calls are not counted twice, so the shares add up to the whole.
+    local features, ownTotal = self:ByFeature(self:GetTop("total"))
+    if #features > 0 and ownTotal > 0 then
+        local seconds = math.max(1, length)
+        add(("OxedHub by feature (%.1f ms a second of its own)"):format(ownTotal / seconds))
+        for i, entry in ipairs(features) do
+            if i > 12 then break end
+            add(("  %5.1f%%  %8.1f ms  %8.0f KB  %s"):format(
+                entry.ms / ownTotal * 100, entry.ms, entry.alloc, entry.name))
         end
         add("")
     end

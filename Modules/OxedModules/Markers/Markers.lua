@@ -28,6 +28,7 @@ local DEFAULTS = {
 
     locked      = false,
     scale       = 1,
+    panelAlpha  = 0.8,     -- how solid the panel behind the buttons is
     size        = 30,      -- one button, in pixels
     spacing     = 4,
     columns     = 9,       -- a row of nine: eight marks and the clear button
@@ -235,8 +236,9 @@ local function Layout(frame)
     frame:SetScale(tonumber(settings.scale) or 1)
 
     if settings.backdrop then
-        frame:SetBackdropColor(0.04, 0.04, 0.06, 0.8)
-        frame:SetBackdropBorderColor(0.35, 0.35, 0.4, 0.9)
+        local alpha = tonumber(settings.panelAlpha) or 0.8
+        frame:SetBackdropColor(0.04, 0.04, 0.06, alpha)
+        frame:SetBackdropBorderColor(0.35, 0.35, 0.4, math.min(1, alpha + 0.1))
     else
         frame:SetBackdropColor(0, 0, 0, 0)
         frame:SetBackdropBorderColor(0, 0, 0, 0)
@@ -246,6 +248,21 @@ end
 -- A secure button. Its attributes are set here, once, and never again: the
 -- game refuses an attribute change in combat, and a half-changed button is
 -- worse than one that always does the same thing.
+-- The buttons cover a bar from edge to edge, leaving almost nothing to take
+-- hold of. Dragging any of them drags the bar, while it is unlocked. A plain
+-- click is untouched, and a drag script on a secure button is allowed.
+local function MakeDraggable(button)
+    button:RegisterForDrag("LeftButton")
+    button:SetScript("OnDragStart", function(self)
+        if settings and not settings.locked then self:GetParent():StartMoving() end
+    end)
+    button:SetScript("OnDragStop", function(self)
+        local bar = self:GetParent()
+        bar:StopMovingOrSizing()
+        SavePosition(bar)
+    end)
+end
+
 local function SecureButton(frame, attributes)
     local button = CreateFrame("Button", nil, frame, "SecureActionButtonTemplate")
     button:EnableMouse(true)
@@ -255,6 +272,8 @@ local function SecureButton(frame, attributes)
         button:SetAttribute(key, value)
     end
     button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+
+    MakeDraggable(button)
 
     -- ⚠ HookScript, never SetScript: the template's own OnClick is what runs
     -- the macro, and replacing it would take the button's whole job away.
@@ -338,6 +357,7 @@ local function PlainButton(frame, texture, title, body, onClick)
     icon:SetAllPoints()
     icon:SetTexture(texture)
     button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    MakeDraggable(button)
     button:SetScript("OnClick", onClick)
     Tip(button, title, body)
     frame.buttons[#frame.buttons + 1] = button
@@ -450,6 +470,17 @@ local function BindSettings()
     -- used to be on by default, so switching the module on showed nothing at
     -- all and looked broken. They are cleared here one time; whatever the
     -- player sets afterwards is left alone.
+    -- ⚠ Once: the sliders used to save whatever the template set while the
+    -- window was being laid out, so both countdowns were written as zero.
+    -- Both at zero is that bug, never a choice: nobody sets two timers to
+    -- nothing. Put back, once, and left alone afterwards.
+    if not config.countdownFixed then
+        config.countdownFixed = true
+        if (tonumber(config.countdown) or 0) == 0 and (tonumber(config.countdown2) or 0) == 0 then
+            config.countdown, config.countdown2 = DEFAULTS.countdown, DEFAULTS.countdown2
+        end
+    end
+
     if not config.hidingSeen then
         config.hidingSeen = true
         config.hideAlone, config.needAssist, config.needTarget = false, false, false
@@ -480,22 +511,31 @@ local function AddSlider(w, key, caption, minValue, maxValue, step, format)
         if region then region:SetText("") end
     end
 
-    local refreshing = false
+    -- ⚠ A fresh slider holds 0, and the template moves it about while the
+    -- window is laid out. Until it has been told what the setting really is,
+    -- every one of those moves was written down, which is how both countdown
+    -- sliders ended up at zero. Nothing is saved before "ready".
+    local ready, refreshing = false, false
     local function Show(value) label:SetText((format):format(caption, value)) end
-    slider:SetScript("OnValueChanged", function(_, value)
-        value = math.floor(value / step + 0.5) * step
-        Show(value)
-        if refreshing then return end
-        settings[key] = value
-        Redraw()
-    end)
-    w:HookScript("OnShow", function()
+    local function Load()
         refreshing = true
         local value = tonumber(settings[key]) or minValue
         slider:SetValue(value)
         Show(value)
         refreshing = false
+        ready = true
+    end
+
+    slider:SetScript("OnValueChanged", function(_, value)
+        value = math.floor(value / step + 0.5) * step
+        Show(value)
+        if refreshing or not ready then return end
+        settings[key] = value
+        Redraw()
     end)
+
+    Load()                        -- now, while the window is being built
+    w:HookScript("OnShow", Load)  -- and again every time it opens
     w.cursorY = w.cursorY - 30
 end
 
@@ -512,8 +552,9 @@ local function ShowOptions()
         w:AddCheckbox(settings, "controls", "Ready check, role check and countdown", nil, Redraw)
 
         w:AddCheckbox(settings, "locked", "Lock the bars in place",
-            "Unlocked, drag any bar with the left button.")
+            "Unlocked, drag a bar by any of its buttons. A plain click still marks.")
         w:AddCheckbox(settings, "backdrop", "Show the panel behind the buttons", nil, Redraw)
+        AddSlider(w, "panelAlpha", "Panel opacity", 0, 1, 0.05, "%s: %.2f")
         w:AddCheckbox(settings, "tooltips", "Tooltips")
 
         AddSlider(w, "size", "Button size", 16, 64, 1, "%s: %d")

@@ -51,6 +51,7 @@ local DEFAULTS = {
     onlyCombat  = true,
 
     rounded     = true,    -- round the bar's ends
+    otherPlates = true,    -- sit under Platynator's (or another addon's) bar
 }
 
 local settings
@@ -148,18 +149,116 @@ local function PlateOf(unit)
     return ok and plate or nil
 end
 
--- The health bar to sit under, or the plate itself when another addon has put
--- something of its own there.
-local function AnchorFor(plate)
-    local frame = plate and plate.UnitFrame
-    if frame then
+-- Another nameplate addon's health bar. Platynator (and others like it) moves
+-- Blizzard's UnitFrame into a hidden frame and draws its own plate, so a bar
+-- parented to Blizzard's health bar was hidden along with it. Their plate is
+-- still a child of the nameplate: the widest visible StatusBar in it is the
+-- health bar. Looked for a few levels deep, our own frames skipped, and kept
+-- per plate while it stays visible.
+local foreignBar = setmetatable({}, { __mode = "k" })
+
+-- ⚠ A plate holds aura buttons, and on 12.0 their IsVisible and size can be
+-- secret: testing one is the error. Every answer goes through Plain, which
+-- gives nil for a secret, and buttons are never walked into at all.
+local function Plain(value)
+    if issecretvalue and issecretvalue(value) then return nil end
+    return value
+end
+
+-- true, false, or nil when the game will not say (a secret, in combat).
+local function Shown(frame)
+    local ok, visible = pcall(frame.IsShown, frame)
+    if not ok then return nil end
+    visible = Plain(visible)
+    if visible == nil then return nil end
+    return visible == true
+end
+
+-- ⚠ Whether Blizzard's plate is in use is read from where it sits, not from
+-- whether it is visible: visibility can be secret in combat, and that read
+-- as "hidden" sent every plate off to look for another addon's bar that
+-- was then skipped too, so the bar only ever showed out of combat. An addon
+-- that takes over (Platynator) moves the UnitFrame to a parent of its own.
+local function BlizzardInUse(plate, frame)
+    local ok, parent = pcall(frame.GetParent, frame)
+    return ok and parent == plate
+end
+
+local function FindForeignHealth(plate)
+    local cached = foreignBar[plate]
+    -- Platynator hands its plates from one nameplate to another, so the one
+    -- found last time must still be inside this nameplate.
+    if cached and Shown(cached) ~= false then
+        local parent, steps = cached, 0
+        while parent and steps < 8 do
+            if parent == plate then return cached end
+            parent, steps = parent:GetParent(), steps + 1
+        end
+    end
+    foreignBar[plate] = nil
+
+    local best, bestWidth
+    local function Walk(frame, depth)
+        if depth > 5 then return end
+        local okKids, kids = pcall(function() return { frame:GetChildren() } end)
+        if not okKids then return end
+        for _, child in ipairs(kids) do
+            -- ⚠ Aura buttons on a plate are forbidden objects: any method
+            -- call on one but IsForbidden is an error. Asked first, and the
+            -- type read inside pcall in case something else is too.
+            local forbidden = child.IsForbidden and child:IsForbidden()
+            local okType, isButton = false, true
+            if not forbidden then
+                okType, isButton = pcall(child.IsObjectType, child, "Button")
+            end
+            if okType and not isButton and not child._oxThreat and child ~= plate.UnitFrame
+                and Shown(child) ~= false then
+                if child:IsObjectType("StatusBar") then
+                    local ok, width = pcall(child.GetWidth, child)
+                    width = ok and Plain(width) or 0
+                    if width > 20 and (not bestWidth or width > bestWidth) then
+                        best, bestWidth = child, width
+                    end
+                end
+                Walk(child, depth + 1)
+            end
+        end
+    end
+    Walk(plate, 1)
+    foreignBar[plate] = best
+    return best
+end
+
+-- Shared with KickBar: the health bar actually on screen for a nameplate,
+-- Blizzard's or another addon's, or nil when neither can be found.
+function OxedHub.VisiblePlateBar(plate)
+    if not plate then return nil end
+    local frame = plate.UnitFrame
+    if frame and BlizzardInUse(plate, frame) then
         return frame.healthBar or frame.HealthBar or frame
     end
+    return FindForeignHealth(plate)
+end
+
+-- The health bar to sit under: Blizzard's while it is shown, another addon's
+-- when that one has taken over, the plate itself as a last resort.
+local function AnchorFor(plate)
+    if not plate then return nil end
+    local frame = plate.UnitFrame
+    if frame and BlizzardInUse(plate, frame) then
+        return frame.healthBar or frame.HealthBar or frame
+    end
+    if settings and settings.otherPlates ~= false then
+        local found = FindForeignHealth(plate)
+        if found then return found end
+    end
+    if frame then return frame.healthBar or frame.HealthBar or frame end
     return plate
 end
 
 local function NewBar()
     local bar = CreateFrame("StatusBar", nil, UIParent)
+    bar._oxThreat = true   -- never mistaken for another addon's health bar
     bar:SetMinMaxValues(0, 100)
     bar:SetValue(0)
 
@@ -222,11 +321,13 @@ end
 local RINGS = { 0.85, 0.4, 0.18 }
 
 local function EnsureGlow(bar, plate)
-    if bar.glow and bar.glow:GetParent() == plate then return bar.glow end
+    local host = AnchorFor(plate)
+    if bar.glow and bar.glow:GetParent() == plate and bar.glowHost == host then return bar.glow end
     if bar.glow then bar.glow:Hide() end
 
-    local host = AnchorFor(plate)
     local glow = CreateFrame("Frame", nil, plate)
+    glow._oxThreat = true
+    bar.glowHost = host
     glow:SetFrameLevel((host and host:GetFrameLevel() or 1) + 20)
     glow:SetPoint("TOPLEFT", host, "TOPLEFT", -#RINGS, #RINGS)
     glow:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", #RINGS, -#RINGS)
@@ -661,22 +762,30 @@ local function AddSlider(w, key, caption, minValue, maxValue, step, format)
         if region then region:SetText("") end
     end
 
-    local refreshing = false
+    -- ⚠ A fresh slider holds 0 and the template moves it about while the
+    -- window is laid out. Nothing is saved until it has been told what the
+    -- setting really is, or those moves overwrite it.
+    local ready, refreshing = false, false
     local function Show(value) label:SetText((format):format(caption, value)) end
-    slider:SetScript("OnValueChanged", function(_, value)
-        value = math.floor(value / step + 0.5) * step
-        Show(value)
-        if refreshing then return end
-        settings[key] = value
-        Restyle()
-    end)
-    w:HookScript("OnShow", function()
+    local function Load()
         refreshing = true
         local value = tonumber(settings[key]) or minValue
         slider:SetValue(value)
         Show(value)
         refreshing = false
+        ready = true
+    end
+
+    slider:SetScript("OnValueChanged", function(_, value)
+        value = math.floor(value / step + 0.5) * step
+        Show(value)
+        if refreshing or not ready then return end
+        settings[key] = value
+        Restyle()
     end)
+
+    Load()
+    w:HookScript("OnShow", Load)
     w.cursorY = w.cursorY - 30
 end
 
@@ -722,7 +831,7 @@ local function ShowOptions()
     if not API or not settings then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("Threat Bar", 520, 620)
+        optionsWindow = API:CreateOptionsWindow("Threat Bar", 520, 655)
         local w = optionsWindow
 
         AddChoiceRow(w, "style", "Colours", {
@@ -754,6 +863,8 @@ local function ShowOptions()
             "A raid warning the moment your threat passes whoever is holding the enemy. Silent while the game hides the numbers.")
 
         w:AddCheckbox(settings, "onlyCombat", "Only enemies in combat", nil, Restyle)
+        w:AddCheckbox(settings, "otherPlates", "Work with Platynator and other nameplate addons",
+            "When another addon hides the game's nameplates, the bar sits under that addon's health bar instead.", Restyle)
         w:AddCheckbox(settings, "onlyGroup", "Only in a group",
             "On your own there is nobody to take the enemy from.", Restyle)
 
@@ -769,6 +880,28 @@ SlashCmdList.OXEDHUBTHREAT = function(msg)
     msg = (msg or ""):lower()
     if msg == "test" then
         SetPreview(not previewing)
+        return
+    end
+    if msg == "why" then
+        -- Walks Redraw's checks for the target's plate and says which one
+        -- stops the bar. Every read is guarded: this runs in combat.
+        local say = function(text) print("|cff00ccffOxedHub Threat|r " .. text) end
+        local plate = C_NamePlate and C_NamePlate.GetNamePlateForUnit and PlateOf("target")
+        if not plate then return say("no nameplate on your target.") end
+        local unit = plate.namePlateUnitToken or plate.unitToken
+        say("plate " .. tostring(unit) .. ", bar made: " .. tostring(unit and bars[unit] ~= nil))
+        say("module on: " .. tostring(settings.enabled) .. ", only in a group: " .. tostring(settings.onlyGroup)
+            .. ", in a group: " .. tostring(IsInGroup and IsInGroup() or false))
+        say("can attack: " .. tostring(Known(UnitCanAttack, "player", "target"))
+            .. ", in combat: " .. tostring(Known(UnitAffectingCombat, "target")) .. " (nil = the game will not say)")
+        local ok, _, _, percent = pcall(UnitDetailedThreatSituation, "player", "target")
+        say("threat read: " .. tostring(ok) .. ", value " .. (IsSecret(percent) and "secret (fine)" or tostring(percent)))
+        local frame = plate.UnitFrame
+        say("Blizzard plate in use: " .. tostring(frame and BlizzardInUse(plate, frame)))
+        local anchor = AnchorFor(plate)
+        say("sits under: " .. tostring(anchor and (anchor:GetDebugName() or anchor:GetName()) or "nothing"))
+        local bar = unit and bars[unit]
+        if bar then say("bar shown: " .. tostring(Plain(bar:IsShown()))) end
         return
     end
     ShowOptions()

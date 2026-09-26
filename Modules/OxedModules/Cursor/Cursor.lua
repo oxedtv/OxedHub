@@ -53,6 +53,7 @@ local DEFAULTS = {
 
     classColour  = true,    -- colour from the class; off uses the picked one
     rainbow      = false,   -- cycle through the colours instead
+    trailOwnColour = false, -- a built-in theme (Fire, Arcane...) in the picked colour
     colourR      = 0.55,
     colourG      = 0.35,
     colourB      = 1.00,
@@ -89,8 +90,15 @@ local MAX_ECHOES = 12
 local WIN95_ARROW = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Cursor\\win95"
 local HideBolt          -- defined with the bolts, used earlier by RestyleAll
 local nextSpark = 1
+-- Each layer draws from a pool of its own, taken in turn. One shared pool let
+-- a dense tail eat the embers and the smoke, and at speed it ate its own far
+-- end: a meteor lays a spark every three pixels, so a fast flick wanted more
+-- than two hundred of them at once and the ring came round and overwrote the
+-- oldest, which is the end of the tail. A pool per layer keeps a tail that
+-- shortens at the back instead of breaking in the middle.
+local POOL = 70
 local watcher = CreateFrame("Frame")
-local MAX_SPARKS = 220  -- shared by every layer of a theme
+local wasSteering = false   -- the pointer was frozen last frame
 local MAX_SPARK_SPEED = 320   -- pixels a second; see DropSpark
 local MAX_TRAVEL = 150        -- how far from its birthplace a spark may get
 
@@ -198,7 +206,7 @@ local THEMES = {
             stops = { { 1, 1, 1 }, { 0.7, 0.9, 1 }, { 0.35, 0.6, 1 } },
             rise = -28, spread = 14, sway = 30, spin = 0.35, drag = 0.6,
             size0 = 1.0, size1 = 0.7, alpha = 0.9, alphaPow = 1.4 },
-          { shape = "twinkle", spacing = 9, life = 0.45, lifeVar = 0.3,
+          { shape = "twinkle", spacing = 14, scatter = 10, life = 0.45, lifeVar = 0.3,
             stops = { { 1, 1, 1 }, { 0.6, 0.85, 1 } },
             spread = 18, size0 = 0.55, size1 = 0.1, alpha = 0.95, flicker = 0.5 },
           { shape = "soft", spacing = 7, life = 0.9, lifeVar = 0.2,
@@ -210,11 +218,11 @@ local THEMES = {
     { key = "arcane",    name = "Arcane",
       halo = "ring", haloColour = { 0.8, 0.45, 1 }, spin = 0.6,
       layers = {
-          { shape = "twinkle", spacing = 7, rate = 6, life = 0.9, lifeVar = 0.3,
+          { shape = "twinkle", spacing = 14, scatter = 12, chance = 0.8, rate = 6, life = 0.9, lifeVar = 0.3,
             stops = { { 1, 0.85, 1 }, { 0.85, 0.4, 1 }, { 0.35, 0.15, 0.9 } },
             spread = 70, drag = 3.5, spin = 0.5,
             size0 = 0.6, size1 = 0.15, alpha = 0.95, flicker = 0.3 },
-          { shape = "ring", spacing = 55, life = 0.7,
+          { shape = "ring", spacing = 55, life = 0.7, accent = true,
             stops = { { 0.95, 0.6, 1 }, { 0.4, 0.2, 1 } },
             size0 = 0.8, size1 = 3.4, alpha = 0.45, alphaPow = 1.3 },
           { shape = "soft", spacing = 5, life = 0.5, lifeVar = 0.2,
@@ -226,7 +234,7 @@ local THEMES = {
     { key = "lightning", name = "Lightning",
       halo = "glow", haloColour = { 0.5, 0.75, 1 }, flicker = 0.7,
       layers = {
-          { bolt = true, spacing = 70, rate = 3, life = 0.16, reach = 55, segments = 7,
+          { bolt = true, spacing = 70, rate = 3, life = 0.16, reach = 55, segments = 7, accent = true,
             thickness = 2, stops = { { 1, 1, 1 }, { 0.55, 0.8, 1 } } },
           { shape = "dot", spacing = 10, life = 0.3, lifeVar = 0.4,
             stops = { { 1, 1, 1 }, { 0.5, 0.75, 1 } },
@@ -276,11 +284,11 @@ local THEMES = {
     { key = "holy",      name = "Holy",
       halo = "glow", haloColour = { 1, 0.85, 0.45 },
       layers = {
-          { shape = "twinkle", spacing = 10, rate = 5, life = 1.2, lifeVar = 0.3,
+          { shape = "twinkle", spacing = 16, scatter = 10, rate = 5, life = 1.2, lifeVar = 0.3,
             stops = { { 1, 1, 0.9 }, { 1, 0.85, 0.4 }, { 1, 0.6, 0.15 } },
             rise = 30, lift = 20, spread = 14, sway = 20, spin = 0.15,
             size0 = 0.55, size1 = 0.15, alpha = 0.95, flicker = 0.25 },
-          { shape = "ring", spacing = 70, life = 0.8,
+          { shape = "ring", spacing = 70, life = 0.8, accent = true,
             stops = { { 1, 0.95, 0.7 }, { 1, 0.7, 0.2 } },
             size0 = 0.6, size1 = 3.0, alpha = 0.4, alphaPow = 1.4 },
           { shape = "soft", spacing = 5, life = 0.6,
@@ -333,7 +341,7 @@ local THEMES = {
     { key = "fairy",     name = "Fairy",
       halo = "glow", haloColour = { 1, 0.7, 0.95 },
       layers = {
-          { shape = "twinkle", spacing = 6, rate = 8, life = 1.2, lifeVar = 0.4,
+          { shape = "twinkle", spacing = 12, scatter = 12, rate = 8, life = 1.2, lifeVar = 0.4,
             stops = { { 1, 0.5, 0.8 }, { 1, 0.9, 0.4 }, { 0.5, 1, 0.6 }, { 0.5, 0.7, 1 }, { 0.8, 0.5, 1 } },
             rise = -10, spread = 25, sway = 30, drag = 1.5, spin = 0.3,
             size0 = 0.45, size1 = 0.15, alpha = 1, flicker = 0.45 },
@@ -409,6 +417,23 @@ local function CustomColour(offset)
     return settings.colourR or 1, settings.colourG or 1, settings.colourB or 1
 end
 
+-- A built-in theme recoloured: the picked colour (or the rainbow) takes the
+-- place of the theme's own hue, and each stop keeps its brightness, so Fire
+-- in green still runs from a bright head to a dark tail. Near-white stops
+-- keep some of their white, which is what makes the head look hot.
+local function Tinted(r, g, b, offset)
+    if not (settings.trailOwnColour or settings.rainbow) then return r, g, b end
+    local tr, tg, tb
+    if settings.rainbow then
+        tr, tg, tb = HueToRGB(GetTime() * 0.25 + (offset or 0))
+    else
+        tr, tg, tb = settings.colourR or 1, settings.colourG or 1, settings.colourB or 1
+    end
+    local v = math.max(r, g, b)
+    local white = v > 0 and 0.6 * math.min(r, g, b) / v or 0
+    return (tr * (1 - white) + white) * v, (tg * (1 - white) + white) * v, (tb * (1 - white) + white) * v
+end
+
 -- A colour along a list of stops, age 0 the first and 1 the last. No stops
 -- means the Custom colour, dimming a little as it goes.
 local function StopsColour(stops, age, offset)
@@ -418,12 +443,12 @@ local function StopsColour(stops, age, offset)
         return r * dim, g * dim, b * dim
     end
     local count = #stops
-    if count == 1 then return stops[1][1], stops[1][2], stops[1][3] end
+    if count == 1 then return Tinted(stops[1][1], stops[1][2], stops[1][3], offset) end
     local position = math.max(0, math.min(1, age)) * (count - 1)
     local index = math.min(count - 1, math.floor(position) + 1)
     local t = position - (index - 1)
     local a, b = stops[index], stops[index + 1]
-    return a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t
+    return Tinted(a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t, offset)
 end
 
 -- The simpler themes are written as one head / tail pair; they become a
@@ -477,11 +502,11 @@ local function HaloColour(theme)
         return settings.haloR or 1, settings.haloG or 1, settings.haloB or 1
     end
     if theme.haloColour then
-        return theme.haloColour[1], theme.haloColour[2], theme.haloColour[3]
+        return Tinted(theme.haloColour[1], theme.haloColour[2], theme.haloColour[3])
     end
     if theme.head then
         local h, t = theme.head, theme.tail
-        return (h[1] + t[1]) / 2, (h[2] + t[2]) / 2, (h[3] + t[3]) / 2
+        return Tinted((h[1] + t[1]) / 2, (h[2] + t[2]) / 2, (h[3] + t[3]) / 2)
     end
     return CustomColour()
 end
@@ -606,13 +631,9 @@ local function RestyleAll()
     shadow:SetShown(settings.shadow)
 
     -- Sparks are shaped when they are dropped, since each layer has its own
-    -- look; here they are only made and cleared.
-    for index = 1, MAX_SPARKS do
+    -- look; here they are only put out. They are made on demand, per layer.
+    for index = 1, #sparks do
         local spark = sparks[index]
-        if not spark then
-            spark = root:CreateTexture(nil, "ARTWORK")
-            sparks[index] = spark
-        end
         spark.layer, spark.shape = nil, nil
         spark:SetRotation(0)
         spark:Hide()
@@ -826,8 +847,22 @@ end
 local function DropSpark(layer, x, y, mvx, mvy, now)
     if layer.bolt then return DropBolt(layer, x, y, now) end
     if layer.chance and random() > layer.chance then return end
-    local spark = sparks[nextSpark]
-    nextSpark = nextSpark % MAX_SPARKS + 1
+
+    local pool = layer.pool
+    if not pool then
+        pool = {}
+        layer.pool, layer.next = pool, 1
+    end
+
+    local slot = layer.next or 1
+    layer.next = slot % POOL + 1
+
+    local spark = pool[slot]
+    if not spark then
+        spark = root:CreateTexture(nil, "ARTWORK")
+        pool[slot] = spark
+        sparks[#sparks + 1] = spark   -- the flat list, for hiding everything
+    end
 
     local shape = layer.shape or (settings.haloShape == "star" and "star" or "dot")
     if spark.shape ~= shape then
@@ -854,6 +889,15 @@ local function DropSpark(layer, x, y, mvx, mvy, now)
 
     spark.layer = layer
     spark.born, spark.life = now, life
+    -- Scatter: dropped a few pixels off the path in a random direction, so a
+    -- layer of small sparks reads as a cloud and not as a dotted line.
+    local scatter = layer.scatter
+    if scatter and scatter > 0 then
+        local angle = random() * 6.2832
+        local distance = random() * scatter
+        x = x + math.cos(angle) * distance
+        y = y + math.sin(angle) * distance
+    end
     spark.x, spark.y = x, y
     spark.bx, spark.by = x, y
     spark.vx, spark.vy = vx, vy
@@ -1133,7 +1177,12 @@ local function OnUpdate(_, elapsed)
     if settings.trail then
         -- Trail length scales how thick every layer is: 14 is the design.
         local length = math.max(4, math.min(60, tonumber(settings.trailLength) or 14))
-        local density = length / 14
+        -- ⚠ Trail density thickens the trail; it must not turn it into a line.
+        -- Unbounded, 44 on the slider packed every layer three times tighter:
+        -- rings overlapped into a tube and sparks lay edge to edge as a solid
+        -- streak. So it is capped, accents (rings, bolts) ignore it, and no
+        -- layer is ever laid closer than half the spacing it was drawn for.
+        local density = math.min(1.6, length / 14)
         local distance = math.sqrt(dx * dx + dy * dy)
         local mvx = elapsed > 0 and dx / elapsed or 0
         local mvy = elapsed > 0 and dy / elapsed or 0
@@ -1144,8 +1193,11 @@ local function OnUpdate(_, elapsed)
         end
         -- A jump across the screen (a loading screen, the pointer coming
         -- back from steering) is not a path to fill with fire.
-        -- A long frame is a stutter or a loading screen, not a real path.
-        local jumped = distance > 300 or elapsed > 0.1
+        -- ⚠ A jump is not a path to fill: a long frame, a loading screen, or
+        -- the pointer coming back from steering somewhere else entirely.
+        -- Those laid a straight row of sparks across the screen, far from the
+        -- pointer, which then had nothing left to move them.
+        local jumped = distance > 200 or elapsed > 0.1 or steering or wasSteering
 
         for _, layer in ipairs(LayersOf(theme)) do
             if layer.step then
@@ -1161,7 +1213,8 @@ local function OnUpdate(_, elapsed)
             else
                 -- Burning in place, whether the mouse moves or not.
                 if layer.rate then
-                    layer.timer = (layer.timer or 0) + elapsed * layer.rate * density
+                    local rateScale = layer.accent and 1 or density
+                    layer.timer = (layer.timer or 0) + elapsed * layer.rate * rateScale
                     local count = 0
                     while layer.timer >= 1 and count < 8 do
                         layer.timer = layer.timer - 1
@@ -1172,15 +1225,21 @@ local function OnUpdate(_, elapsed)
                 -- Laid along the path, filled in between this frame and the
                 -- last so a fast flick stays one unbroken streak.
                 if layer.spacing and moved and not jumped then
-                    local spacing = layer.spacing / density
+                    local spacing = layer.accent and layer.spacing
+                        or math.max(layer.spacing * 0.5, layer.spacing / density)
                     layer.acc = (layer.acc or 0) + distance
                     local count = 0
                     while layer.acc >= spacing and count < 24 do
                         layer.acc = layer.acc - spacing
                         count = count + 1
-                        local t = distance > 0 and (layer.acc / distance) or 0
+                        local t = distance > 0 and math.min(1, layer.acc / distance) or 0
                         DropSpark(layer, x - dx * t, y - dy * t, mvx, mvy, now)
                     end
+                    -- ⚠ What the cap left over is dropped, not carried. Kept,
+                    -- it was laid next frame at t > 1: past the start of that
+                    -- frame's segment, in a straight line off the path. That
+                    -- was the soft, straight "sticks" beside a dense trail.
+                    if layer.acc > spacing then layer.acc = layer.acc % spacing end
                 end
             end
         end
@@ -1201,13 +1260,29 @@ local function OnUpdate(_, elapsed)
         UpdateBolts(now)
 
         local baseSize = tonumber(settings.trailSize) or 14
-        for index = 1, MAX_SPARKS do
+        for _, layer in ipairs(LayersOf(theme)) do
+            local pool = layer.pool
+            if pool then
+                for index = 1, POOL do
+                    local spark = pool[index]
+                    if spark and spark.layer then
+                        UpdateSpark(spark, elapsed, now, baseSize, index)
+                    end
+                end
+            end
+        end
+
+        -- ⚠ A safety net. A spark left over from another theme, or from a
+        -- pool no longer in use, has nobody to age it and would hang on
+        -- screen for ever. Anything shown without a live layer goes here.
+        for index = 1, #sparks do
             local spark = sparks[index]
-            if spark.layer then UpdateSpark(spark, elapsed, now, baseSize, index) end
+            if spark:IsShown() and not spark.layer then spark:Hide() end
         end
     end
 
     lastX, lastY = x, y
+    wasSteering = steering and true or false
 end
 
 -- ── When to show ────────────────────────────────────────────────────────────
@@ -1221,9 +1296,22 @@ end
 local function ApplyVisibility()
     if not root then return end
     local show = ShouldShow()
+    if show and not root:IsShown() then
+        -- Start from where the pointer is now: where it was last seen may be
+        -- an hour and a continent away.
+        local scale = UIParent:GetEffectiveScale()
+        local cx, cy = GetCursorPosition()
+        lastX, lastY = Anchor(cx, cy, scale)
+        wasSteering = true
+    end
     root:SetShown(show)
     if not show then
-        for _, spark in ipairs(sparks) do spark:Hide() end
+        -- Put out, and disowned: a spark that comes back later would carry on
+        -- from an age set before the module was switched off.
+        for _, spark in ipairs(sparks) do
+            spark.layer = nil
+            spark:Hide()
+        end
         for _, bolt in ipairs(bolts) do HideBolt(bolt) end
         if arrow then arrow:Hide() arrow.glow:Hide() end
         HideEchoes()
@@ -1284,7 +1372,7 @@ local PER_THEME = {
     "shadow", "shadowSize", "shadowAlpha",
     "trail", "trailLength", "trailSize", "trailLife",
     "idleSwirl", "swirlDelay",
-    "classColour", "rainbow", "colourR", "colourG", "colourB",
+    "classColour", "rainbow", "trailOwnColour", "colourR", "colourG", "colourB",
 }
 
 local function StoreTheme()
@@ -1348,12 +1436,15 @@ end
 
 -- Opens the game's colour picker on the chosen colour.
 -- keys are the three settings holding the colour, red first.
-local function PickColour(keys)
+-- onPick runs once a colour is chosen: picking a colour while Class colour
+-- or Rainbow is ticked used to change nothing on screen, because those win.
+local function PickColour(keys, onPick)
     if not ColorPickerFrame then return end
     local before = { settings[keys[1]], settings[keys[2]], settings[keys[3]] }
     local function Apply()
         local r, g, b = ColorPickerFrame:GetColorRGB()
         settings[keys[1]], settings[keys[2]], settings[keys[3]] = r, g, b
+        if onPick then onPick() end
     end
     local info = {
         r = settings[keys[1]], g = settings[keys[2]], b = settings[keys[3]],
@@ -1439,12 +1530,15 @@ local function Slider(col, key, caption, minValue, maxValue, step, format, apply
         if region then region:SetText("") end
     end
 
-    local refreshing = false
+    -- ⚠ A fresh slider holds 0 and the template moves it about while the
+    -- window is laid out. Nothing is saved until it has been told what the
+    -- setting really is, or those moves overwrite it.
+    local ready, refreshing = false, false
     local function Show(value) label:SetText((format):format(caption, value)) end
     slider:SetScript("OnValueChanged", function(_, value)
         value = math.floor(value / step + 0.5) * step
         Show(value)
-        if refreshing then return end
+        if refreshing or not ready then return end
         settings[key] = value
         if apply then apply() end
     end)
@@ -1454,7 +1548,9 @@ local function Slider(col, key, caption, minValue, maxValue, step, format, apply
         slider:SetValue(value)
         Show(value)
         refreshing = false
+        ready = true
     end
+    slider.Refresh()
     table.insert(w.checks, slider)
     col.y = col.y - 28
     return slider
@@ -1600,7 +1696,10 @@ local function ShowOptions()
         }, RestyleAll)
         Slider(left, "haloSize", "Glow size", 20, 120, 2, "%s: %d", RestyleAll)
         Slider(left, "haloAlpha", "Glow strength", 0.1, 1, 0.05, "%s: %.2f")
-        Button(left, "Pick glow colour", 140, function() PickColour({ "haloR", "haloG", "haloB" }) end, COLUMN_W - 140)
+        Button(left, "Pick glow colour", 140, function() PickColour({ "haloR", "haloG", "haloB" }, function()
+            settings.haloOwnColour = true
+            RefreshWindow(w)
+        end) end, COLUMN_W - 140)
         Check(left, "haloOwnColour", "Own colour for the glow",
             "Off, the glow takes the theme's colour: orange for Fire, white-hot for Meteor, your class colour in Custom.")
 
@@ -1619,10 +1718,16 @@ local function ShowOptions()
         local customNote = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         customNote:SetPoint("TOPLEFT", w, "TOPLEFT", left.x, left.y - 6)
         customNote:SetTextColor(0.75, 0.75, 0.75)
-        customNote:SetText("Trail colour, for the Custom theme:")
-        Button(left, "Pick trail colour", 140, function() PickColour({ "colourR", "colourG", "colourB" }) end, COLUMN_W - 140)
+        customNote:SetText("Trail colour, for this theme:")
+        Button(left, "Pick trail colour", 140, function() PickColour({ "colourR", "colourG", "colourB" }, function()
+            settings.classColour, settings.rainbow = false, false
+            settings.trailOwnColour = true
+            RefreshWindow(w)
+        end) end, COLUMN_W - 140)
         left.y = left.y - 30
-        Check(left, "classColour", "Class colour", "Untick to use your own colour.")
+        Check(left, "trailOwnColour", "Own colour for the trail",
+            "Recolours this theme in the picked colour and keeps its shape. Untick for the theme's own colours.")
+        Check(left, "classColour", "Class colour", "Custom theme only. Untick to use your own colour.")
         Check(left, "rainbow", "Rainbow", "Cycles through every colour; the trail runs through them too.")
 
         -- ── Right: every theme ──
@@ -1711,7 +1816,7 @@ loginFrame:SetScript("OnEvent", function(self)
         name     = "Cursor",
         version  = "1.1.0",
         author   = "Oxed",
-        category = "interface",
+        category = "character",
         keywords = { "cursor", "mouse", "pointer", "trail", "windows 95", "retro", "glow", "halo", "steering", "mouselook", "find", "fire", "frost", "meteor", "lightning", "void", "fel", "blood", "bubbles", "fairy" },
         -- Clipped at about 100 characters on the card; detail goes in Options.
         desc     = "Fire, frost, meteor and more on your pointer: halo, trail, click ripples.",

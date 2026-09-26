@@ -30,7 +30,51 @@ local LUST_TO_DEBUFF_MAP = {
 }
 
 -- Collect the configured spell IDs (primary + extras) as plain numbers.
+-- The list is worked out once per rule and kept until the rule's spells
+-- change. It used to be rebuilt -- two tables and a closure -- on every aura
+-- check, four times a second for every rule, which was most of the garbage
+-- this file made. The key is what the list is built from, so an edit to the
+-- rule's spells is picked up on the next check.
+--
+-- ⚠ Kept in a table of its own, weakly keyed by the rule, and never on the
+-- rule itself: rules live in saved variables and go out in profile exports,
+-- and a cache stored there would be written to disk and shared with it.
+local BuildConfiguredSpellIDs
+local spellCache = setmetatable({}, { __mode = "k" })
+
+-- Whether what the list was built from is still what the rule says. Compared
+-- field by field, so checking costs nothing to build.
+local function StillFits(cache, c)
+    if cache.spellID ~= c.spellID or cache.spellName ~= c.spellName
+        or cache.auraName ~= c.auraName then
+        return false
+    end
+    local extras, saved = c.extraSpellIDs, cache.extras
+    local count = type(extras) == "table" and #extras or 0
+    if count ~= #saved then return false end
+    for index = 1, count do
+        if extras[index] ~= saved[index] then return false end
+    end
+    return true
+end
+
 local function GetConfiguredSpellIDs(trigger)
+    local c = trigger.conditions or {}
+    local cache = spellCache[trigger]
+    if cache and StillFits(cache, c) then return cache.ids end
+
+    local extras = {}
+    if type(c.extraSpellIDs) == "table" then
+        for index, sid in ipairs(c.extraSpellIDs) do extras[index] = sid end
+    end
+    spellCache[trigger] = {
+        spellID = c.spellID, spellName = c.spellName, auraName = c.auraName,
+        extras = extras, ids = BuildConfiguredSpellIDs(trigger),
+    }
+    return spellCache[trigger].ids
+end
+
+BuildConfiguredSpellIDs = function(trigger)
     local ids = {}
     local seen = {}
     local c = trigger.conditions or {}

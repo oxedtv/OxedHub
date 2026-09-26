@@ -1578,6 +1578,19 @@ local function UpdateNodeCooldown(btn)
     -- Asked once per node. It used to be looked up four times over.
     local spellID = GetSlotSpellID(slot)
 
+    -- What this node answers to: its spell and that spell's base and override
+    -- forms, since the game's event may name any of them. Kept on the node so
+    -- a cooldown event about one spell only touches the nodes that show it.
+    if btn._ohSpell ~= spellID then
+        btn._ohSpell = spellID
+        local answers = btn._ohAnswers or {}
+        wipe(answers)
+        if spellID then
+            for _, id in ipairs(SpellVariants(spellID)) do answers[id] = true end
+        end
+        btn._ohAnswers = answers
+    end
+
     -- Dim icons that can't be used right now (e.g. a mount while
     -- indoors / in a no-mount zone), like the default action bars.
     ApplyUsabilityShading(btn, IsSlotUsable(slot))
@@ -1768,16 +1781,84 @@ cooldownEventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
 -- The first event of a frame schedules the pass; the rest of that frame's
 -- events find it already queued. Nothing shows later than before -- the pass
 -- still lands on the very next frame.
+--
+-- ⚠ Only the nodes that changed. This pass was OxedHub's single largest cost
+-- -- 1.9 ms and 21 KB of garbage, four times a second in a fight -- because
+-- every cooldown event walked every node on every hub. When the event names
+-- its spell, only the nodes showing that spell are redrawn; an event that
+-- names nothing (the global cooldown, a bag item) still redraws them all, but
+-- at most twice a second. A spell cooldown still shows on the next frame.
 local cooldownQueued = false
-cooldownEventFrame:SetScript("OnEvent", function()
+local pendingSpells = {}      -- spellID -> true, gathered over one frame
+local pendingAll = false
+local lastFullPass = 0
+local FULL_GAP = 0.5          -- the least time between two passes over everything
+
+local function IsSecretValue(value)
+    return issecretvalue and issecretvalue(value) or false
+end
+
+-- Named for the profiler, so a report says which of the two costs the time.
+local function Named(label, fn)
+    return OxedHub.Profiler and OxedHub.Profiler:Wrap(label, fn) or fn
+end
+
+local UpdateSome = Named("ActionHub: cooldowns, changed spells only", function(spells)
+    for _, w in ipairs(ActionHub.widgets or {}) do
+        for _, btn in ipairs((w and w.buttons) or {}) do
+            local answers = btn and btn._ohAnswers
+            if answers and btn.slotData and btn:IsVisible() then
+                for spellID in pairs(spells) do
+                    if answers[spellID] then
+                        local ok, err = pcall(UpdateNodeCooldown, btn)
+                        if not ok then CDDebug("node update failed: " .. tostring(err)) end
+                        break
+                    end
+                end
+            end
+        end
+    end
+end)
+
+local UpdateAll = Named("ActionHub: cooldowns, every node", function()
+    ActionHub:UpdateWidgetCooldowns()
+end)
+
+local function Flush()
+    cooldownQueued = false
+    if not (OxedHub.ActionHub and OxedHub.db) then return end
+
+    if next(pendingSpells) then
+        UpdateSome(pendingSpells)
+        wipe(pendingSpells)
+    end
+
+    if pendingAll then
+        local now = GetTime()
+        local wait = FULL_GAP - (now - lastFullPass)
+        if wait <= 0 then
+            pendingAll = false
+            lastFullPass = now
+            UpdateAll()
+        elseif not cooldownQueued then
+            -- Too soon after the last one: the rest of the burst folds into a
+            -- single pass when the gap is up.
+            cooldownQueued = true
+            C_Timer.After(wait, Flush)
+        end
+    end
+end
+
+cooldownEventFrame:SetScript("OnEvent", function(_, event, spellID)
+    if (event == "SPELL_UPDATE_COOLDOWN" or event == "SPELL_UPDATE_CHARGES")
+        and type(spellID) == "number" and not IsSecretValue(spellID) then
+        pendingSpells[spellID] = true
+    else
+        pendingAll = true
+    end
     if cooldownQueued then return end
     cooldownQueued = true
-    C_Timer.After(0, function()
-        cooldownQueued = false
-        if OxedHub.ActionHub and OxedHub.ActionHub.UpdateWidgetCooldowns then
-            OxedHub.ActionHub:UpdateWidgetCooldowns()
-        end
-    end)
+    C_Timer.After(0, Flush)
 end)
 
 function ActionHub:QueueCooldownRefresh()
