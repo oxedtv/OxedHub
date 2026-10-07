@@ -31,6 +31,12 @@ local TICK = 0.2
 local Engine = OxedHub.BossEngine
 local settings
 local optionsWindow
+
+-- The blue "drag me" boxes show only while this module's options are open.
+local function OptionsOpen()
+    if optionsWindow and optionsWindow:IsShown() then return true end
+    return false
+end
 local anchor
 local bars = {}
 local ticker
@@ -80,7 +86,7 @@ local function Layout()
     if not anchor then return end
     anchor:SetScale(settings.scale)
     anchor:SetSize(settings.width, settings.height)
-    local editing = settings.enabled and not settings.locked
+    local editing = settings.enabled and not settings.locked and OptionsOpen()
     anchor.hint:SetShown(editing)
     anchor.text:SetShown(editing)
     anchor:EnableMouse(editing)
@@ -140,7 +146,7 @@ local function Update()
         end
     end
     for i = shown + 1, #bars do bars[i]:Hide() end
-    anchor:SetShown(shown > 0 or (settings.enabled and not settings.locked))
+    anchor:SetShown(shown > 0 or (settings.enabled and not settings.locked and OptionsOpen()))
     if shown == 0 and ticker then ticker:Cancel(); ticker = nil end
 end
 
@@ -177,6 +183,8 @@ local function ShowOptions()
     if not optionsWindow then
         local w = API:CreateOptionsWindow("Boss Health", 460, 420)
         optionsWindow = w
+        w:HookScript("OnShow", function() Watch() end)
+        w:HookScript("OnHide", function() Watch() end)
         w:AddCheckbox(settings, "marks", "Marks where the fight changes", nil, function()
             for _, bar in ipairs(bars) do bar.encounter = false end
         end)

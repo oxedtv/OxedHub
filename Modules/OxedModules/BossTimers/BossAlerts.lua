@@ -70,6 +70,12 @@ local TICK = 0.05
 local Engine = OxedHub.BossEngine
 local settings
 local optionsWindow
+
+-- The blue "drag me" boxes show only while this module's options are open.
+local function OptionsOpen()
+    if optionsWindow and optionsWindow:IsShown() then return true end
+    return false
+end
 local countFrame, flashFrame
 local rows = {}
 local ticker
@@ -188,7 +194,7 @@ local function Restyle()
             row:SetPoint("TOP", countFrame, "TOP", 0, -step)
         end
     end
-    local editing = settings.enabled and not settings.locked
+    local editing = settings.enabled and not settings.locked and OptionsOpen()
     for _, frame in ipairs({ countFrame, flashFrame }) do
         frame.hint:SetShown(editing)
         frame.hintText:SetShown(editing)
@@ -389,6 +395,8 @@ local function ShowOptions()
     if not optionsWindow then
         local w = API:CreateOptionsWindow("Boss Alerts", 480, 670)
         optionsWindow = w
+        w:HookScript("OnShow", function() Restyle() end)
+        w:HookScript("OnHide", function() Restyle() end)
 
         AddButton(w, "Show a test", 20, ShowTest)
         AddButton(w, "Text and warnings", 250, ShowTextOptions)

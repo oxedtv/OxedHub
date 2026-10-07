@@ -234,6 +234,37 @@ end
 -- DIALOG at level 200: above the OxedHub window, whose sidebar sits at 150,
 -- and below the sound and animation pickers at 220, so a picker opened from
 -- one of these is never hidden behind it.
+-- Every options window, so a new one never opens on top of another.
+local optionWindows = {}
+local lastShownWindow
+-- Set by a module link: the window being replaced, whose place the next
+-- window takes.
+local replacing
+
+-- Puts a window that is opening beside the one already open (right of it,
+-- or left when there is no room), or in the place of the one it replaces.
+local function PlaceWindow(f)
+    if replacing then
+        local old = replacing
+        replacing = nil
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", old:GetLeft() or 0, old:GetTop() or 0)
+        return
+    end
+    local other
+    for _, w in ipairs(optionWindows) do
+        if w ~= f and w:IsShown() and (not other or w == lastShownWindow) then other = w end
+    end
+    if not other or not other:GetRight() then return end
+    f:ClearAllPoints()
+    local roomRight = UIParent:GetWidth() - other:GetRight()
+    if roomRight >= f:GetWidth() + 8 then
+        f:SetPoint("TOPLEFT", other, "TOPRIGHT", 8, 0)
+    else
+        f:SetPoint("TOPRIGHT", other, "TOPLEFT", -8, 0)
+    end
+end
+
 function ModuleAPI:CreateOptionsWindow(title, width, height)
     -- BasicFrameTemplate, the same frame as the Pick Sound window: the modern
     -- stone panel. The "WithInset" one used to be here, and its dark inset
@@ -485,7 +516,11 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
                     button:SetText(on and mod.name or (mod.name .. " (off)"))
                 end
                 button:SetScript("OnClick", function()
+                    -- The linked module's window takes this one's place.
+                    replacing = self
+                    self:Hide()
                     if mod.OnOptionsShow then pcall(mod.OnOptionsShow, mod) end
+                    replacing = nil
                 end)
                 button:SetScript("OnEnter", function(b)
                     GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
@@ -505,8 +540,11 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
     end
 
     f:SetScript("OnShow", function(self)
+        PlaceWindow(self)
+        lastShownWindow = self
         for _, box in ipairs(self.checks) do box.Refresh() end
     end)
+    table.insert(optionWindows, f)
 
     f:Hide()
     return f
@@ -520,6 +558,60 @@ function ModuleAPI:SoundName(id, emptyText)
         or (OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.customSounds) or {}
     local sound = library[id]
     return (sound and sound.name) or tostring(id)
+end
+
+-- ── The game's confirmation popups ──────────────────────────────────────────
+-- The shown popup of a given kind ("PARTY_INVITE", "DELETE_ITEM"...), or nil.
+-- The popup frames were reworked in 12.0, so each way of finding one is tried.
+function ModuleAPI:FindPopup(which)
+    if StaticPopup_FindVisible then
+        local ok, dialog = pcall(StaticPopup_FindVisible, which)
+        if ok and dialog then return dialog end
+    end
+    for i = 1, 4 do
+        local dialog = _G["StaticPopup" .. i]
+        if dialog and dialog:IsShown() and dialog.which == which then return dialog end
+    end
+    return nil
+end
+
+-- The popup's first button ("Yes", "Accept").
+function ModuleAPI:PopupButton(dialog)
+    if not dialog then return nil end
+    return dialog.button1
+        or (dialog.ButtonContainer and dialog.ButtonContainer.Button1)
+        or (dialog.GetName and dialog:GetName() and _G[dialog:GetName() .. "Button1"])
+end
+
+-- A line of our own under a popup; one shared note, moved to whichever
+-- popup asks. Hidden again when that popup closes.
+local popupNote
+local hookedPopups = setmetatable({}, { __mode = "k" })  -- never write into Blizzard's frames
+function ModuleAPI:PopupNote(dialog, text, r, g, b)
+    if not dialog then return end
+    if not popupNote then
+        popupNote = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+        popupNote:SetFrameStrata("DIALOG")
+        popupNote:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        popupNote:SetBackdropColor(0, 0, 0, 0.85)
+        popupNote:SetBackdropBorderColor(0.6, 0.5, 0.2, 1)
+        popupNote.text = popupNote:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        popupNote.text:SetPoint("CENTER")
+        popupNote.text:SetJustifyH("CENTER")
+    end
+    popupNote:SetParent(dialog)
+    popupNote:SetFrameLevel(dialog:GetFrameLevel() + 5)
+    popupNote:ClearAllPoints()
+    popupNote:SetPoint("TOP", dialog, "BOTTOM", 0, -2)
+    popupNote.text:SetWidth(math.max(200, (dialog:GetWidth() or 320) - 24))
+    popupNote.text:SetText(text)
+    popupNote.text:SetTextColor(r or 1, g or 0.82, b or 0)
+    popupNote:SetSize(math.max(220, dialog:GetWidth() or 320), popupNote.text:GetStringHeight() + 14)
+    popupNote:Show()
+    if not hookedPopups[dialog] then
+        hookedPopups[dialog] = true
+        dialog:HookScript("OnHide", function() if popupNote then popupNote:Hide() end end)
+    end
 end
 
 -- Plays a sound chosen with AddSoundPicker through OxedHub's own player, so

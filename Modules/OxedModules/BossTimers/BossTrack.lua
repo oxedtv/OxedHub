@@ -42,6 +42,12 @@ local TICK = 0.03
 local Engine = OxedHub.BossEngine
 local settings
 local optionsWindow
+
+-- The blue "drag me" boxes show only while this module's options are open.
+local function OptionsOpen()
+    if optionsWindow and optionsWindow:IsShown() then return true end
+    return false
+end
 local track, iconAnchor
 local trackIcons, alertIcons = {}, {}
 local ticker
@@ -223,7 +229,7 @@ local function Restyle()
     end
     iconAnchor:SetSize(settings.iconSize, settings.iconSize)
 
-    local editing = settings.enabled and not settings.locked
+    local editing = settings.enabled and not settings.locked and OptionsOpen()
     track:SetShown(active and settings.track and (editing or ticker ~= nil))
     iconAnchor:SetShown(active and settings.icons)
     for _, frame in ipairs({ track, iconAnchor }) do
@@ -373,6 +379,8 @@ local function ShowOptions()
     if not optionsWindow then
         local w = API:CreateOptionsWindow("Boss Track", 480, 710)
         optionsWindow = w
+        w:HookScript("OnShow", function() Restyle() end)
+        w:HookScript("OnHide", function() Restyle() end)
         local test = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         test:SetSize(170, 22)
         test:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)

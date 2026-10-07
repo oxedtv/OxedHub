@@ -25,6 +25,22 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.2",
+        important = true,
+        lines = {
+            { "NEW", "Fast Loot: takes all the loot at once, the moment the window opens. Follows the game's auto loot setting and key." },
+            { "NEW", "Break Time: a friendly reminder to take a break after a long session, with your own sound. Never in a fight or a boss encounter." },
+            { "NEW", "Inviter Info: under every group invite, the inviter's class, race and realm, and whether they are a friend or in your guild." },
+            { "NEW", "Purchase Guard: Yes stays locked for a moment on purchases you cannot undo, with a red line saying why." },
+            { "NEW", "Quest Item Alert: names the quest an item starts before you delete it, and whether you have done it." },
+            { "NEW", "Chat Leave: right-click a channel's name in chat to leave it, no /leave needed." },
+            { "NEW", "Loot Banner: trims the boss loot banner: none when you are alone, only good items, or only yours." },
+            { "FIXED", "Boss and dungeon modules: the blue drag boxes only show while the module's options are open." },
+            { "FIXED", "Module options: a window opened while another is open sits beside it, and the Works together with buttons swap one window for the other instead of stacking them." },
+            { "CHANGED", "Boss Timers, Boss Alerts, Boss Track, Boss Health and Enemy Casts moved to the Dungeons & PvP tab." },
+        },
+    },
+    {
         version = "2.4.1",
         important = true,
         lines = {

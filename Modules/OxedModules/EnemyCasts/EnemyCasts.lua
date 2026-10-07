@@ -45,6 +45,12 @@ local DEFAULTS = {
 local Engine = OxedHub.BossEngine
 local settings
 local optionsWindow
+
+-- The blue "drag me" boxes show only while this module's options are open.
+local function OptionsOpen()
+    if optionsWindow and optionsWindow:IsShown() then return true end
+    return false
+end
 local anchor
 local bars = {}          -- pool of bar frames
 local byUnit = {}        -- [unit] = bar in use
@@ -187,7 +193,7 @@ local function Relayout()
     if not anchor then return end
     anchor:SetScale(settings.scale)
     anchor:SetSize(settings.width, settings.height)
-    local editing = settings.enabled and not settings.locked
+    local editing = settings.enabled and not settings.locked and OptionsOpen()
     anchor.hint:SetShown(editing)
     anchor.text:SetShown(editing)
     anchor:EnableMouse(editing)
@@ -400,6 +406,8 @@ local function ShowOptions()
     if not optionsWindow then
         local w = API:CreateOptionsWindow("Enemy Casts", 480, 710)
         optionsWindow = w
+        w:HookScript("OnShow", function() Relayout() end)
+        w:HookScript("OnHide", function() Relayout() end)
         local test = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         test:SetSize(170, 22)
         test:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)

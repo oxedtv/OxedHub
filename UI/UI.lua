@@ -1301,12 +1301,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.1)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.2)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.1")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.2")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1372,11 +1372,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  New: Boss Timers, Boss Alerts, Boss Track and Boss Health for dungeons and raids.",
-        "•  New: Trash Timers, Enemy Casts and Party Interrupts for Mythic+.",
-        "•  Every boss ability can have its own sound, text and timing.",
-        "•  Action Hub: More options per hub: mouseover, combat only, mana and cooldown colours.",
-        "•  Find them all under Modules, Dungeons & PvP. They ship switched off.",
+        "•  New: Fast Loot, Break Time, Inviter Info and Purchase Guard.",
+        "•  New: Quest Item Alert, Chat Leave and Loot Banner.",
+        "•  Boss modules: drag boxes only show while their options are open.",
+        "•  Options windows no longer open on top of each other.",
+        "•  Boss Timers and friends now live under Modules, Dungeons & PvP.",
         "•  Grab either pack from CurseForge:",
     }
 

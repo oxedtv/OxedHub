@@ -105,6 +105,14 @@ local MIN_REFIRE = 1.0   -- two abilities at once give one sound, not two
 local Engine = OxedHub.BossEngine
 local settings
 local optionsWindow, abilitiesWindow
+local lookWindow
+
+-- The blue "drag me" boxes show only while this module's options are open.
+local function OptionsOpen()
+    if optionsWindow and optionsWindow:IsShown() then return true end
+    if lookWindow and lookWindow:IsShown() then return true end
+    return false
+end
 local anchor
 local bars = {}
 local ticker
@@ -268,7 +276,7 @@ local function Restyle()
     anchor:SetScale(settings.scale or 1)
     anchor:SetSize(settings.width, settings.height)
     for index, bar in ipairs(bars) do LayoutBar(bar, index) end
-    local editing = not settings.locked and settings.enabled
+    local editing = not settings.locked and settings.enabled and OptionsOpen()
     anchor.hint:SetShown(editing)
     anchor.text:SetShown(editing)
     anchor:EnableMouse(editing)
@@ -652,7 +660,7 @@ local function AddButton(w, text, x, onClick)
     return button
 end
 
-local lookWindow, colourWindow
+local colourWindow
 local function ShowColours()
     local API = OxedHub.ModuleAPI
     if not colourWindow then
@@ -676,6 +684,8 @@ local function ShowLook()
     if not lookWindow then
         local w = API:CreateOptionsWindow("Boss Timers: look", 480, 580)
         lookWindow = w
+        w:HookScript("OnShow", function() Restyle() end)
+        w:HookScript("OnHide", function() Restyle() end)
         AddButton(w, "Show test bars", 20, ShowTest)
         AddButton(w, "Colours", 250, ShowColours)
         w.cursorY = w.cursorY - 32
@@ -715,6 +725,8 @@ local function ShowOptions()
     if not optionsWindow then
         local w = API:CreateOptionsWindow("Boss Timers", 480, 670)
         optionsWindow = w
+        w:HookScript("OnShow", function() Restyle() end)
+        w:HookScript("OnHide", function() Restyle() end)
 
         AddButton(w, "Abilities, one by one", 20, ShowAbilities)
         AddButton(w, "Look", 250, ShowLook)
