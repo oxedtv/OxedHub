@@ -882,6 +882,43 @@ for _, days in ipairs(EXPIRY_STEPS) do
     }
 end
 
+-- The game's own note for an ignored player (12.x lets you write one when you
+-- ignore someone). Its function's name is not settled across builds, so the
+-- friend list's ignore functions are tried, by name and by list position.
+local function PlainText(value)
+    if type(value) ~= "string" or (issecretvalue and issecretvalue(value)) or value == "" then return nil end
+    return value
+end
+
+local function GameIgnoreNote(full)
+    if not C_FriendList then return nil end
+    local short = full and full:match("^([^%-]+)")
+    local index
+    if C_FriendList.GetNumIgnores and C_FriendList.GetIgnoreName then
+        for i = 1, C_FriendList.GetNumIgnores() or 0 do
+            local okN, name = pcall(C_FriendList.GetIgnoreName, i)
+            if okN and (name == full or name == short) then index = i; break end
+        end
+    end
+    for key, fn in pairs(C_FriendList) do
+        if type(fn) == "function" and key:find("^Get") and key:find("Ignore") then
+            for _, arg in ipairs({ full, short, index }) do
+                if arg ~= nil then
+                    local ok, result = pcall(fn, arg)
+                    if ok then
+                        if key:find("Note") and PlainText(result) then return result end
+                        if type(result) == "table" then
+                            local note = PlainText(result.note) or PlainText(result.notes)
+                            if note then return note end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
 local function DrawIgnoreTab()
     local items = {}
     local filterText = manager.searchBox and manager.searchBox:GetText():lower():gsub("^%s+", ""):gsub("%s+$", "") or ""
@@ -904,7 +941,7 @@ local function DrawIgnoreTab()
         else
             right = "|cff888888Permanent|r"
         end
-        local note = type(entry) == "table" and entry.note
+        local note = (type(entry) == "table" and entry.note) or GameIgnoreNote(full)
         items[#items + 1] = {
             left = "|cffffffff" .. full .. "|r" .. (note and ("  |cffffd100(" .. note .. ")|r") or ""),
             right = right,

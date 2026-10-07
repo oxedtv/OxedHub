@@ -25,6 +25,18 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.3",
+        important = true,
+        lines = {
+            { "NEW", "Buff Tracker: a big icon with a timer while a chosen buff is on you, also in a fight. The game draws it itself. Add buffs with the same spell search the triggers use." },
+            { "NEW", "Power Infusion trigger (Combat Triggers): one icon on screen while a priest's Power Infusion is on you. No sound: in a fight the game hides your buffs from addons." },
+            { "CHANGED", "Currency Transfer: after Transfer Max, OxedHub says in chat what it moved, from whom and to whom." },
+            { "CHANGED", "Chat Filter: the ignore list also shows the note you wrote in the game's own ignore window." },
+            { "CHANGED", "My Buff (by Spell ID) asks the game one more way whether the buff is on you." },
+            { "FIXED", "Opening or closing OxedHub in a fight from the minimap button no longer raises a blocked-action error." },
+        },
+    },
+    {
         version = "2.4.2",
         important = true,
         lines = {

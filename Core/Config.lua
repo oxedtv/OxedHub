@@ -2,7 +2,7 @@ local addonName, OxedHub = ...
 
 -- Configuration and Constants
 OxedHub.CONFIG = {
-    VERSION = "2.4.2",
+    VERSION = "2.4.3",
     DB_VERSION = 1,
 
     -- Shown in the Export/Import "About" panel. Edit freely.
@@ -59,6 +59,7 @@ OxedHub.CONFIG = {
         -- Combat Triggers
         { value = "COMBAT_STATE", label = "Enter/Exit Combat", desc = "When you enter or leave combat", category = "combat" },
         { value = "BLOODLUST", label = "Bloodlust / Heroism", desc = "When the Bloodlust/Heroism/Time Warp buff lands on you (works in combat)", category = "combat" },
+        { value = "POWER_INFUSION", label = "Power Infusion", desc = "An icon while a priest's Power Infusion is on you; the game draws it, so it works in combat (no sound)", category = "combat" },
         { value = "BASIC_AURA_TRACKER", label = "My Target Debuffs", desc = "Native aura tracker that automatically monitors your target debuffs (no spell ID required).", category = "combat" },
         { value = "CD_READY", label = "Cooldown Ready", desc = "When a tracked spell's cooldown finishes", category = "combat" },
         { value = "INTERRUPT_USED", label = "Interrupt", desc = "When you use your interrupt spell (cast, success, or fail)", category = "combat" },

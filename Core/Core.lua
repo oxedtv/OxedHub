@@ -3069,6 +3069,12 @@ function Core:HandleSlashCommand(msg)
                 sid, tostring(type(active) == "table" and active[sid] == true), listSize))
             local okD, auraD = pcall(C_UnitAuras.GetAuraDataBySpellID, "player", sid)
             print(("  GetAuraDataBySpellID: pcallOK=%s  found=%s"):format(tostring(okD), tostring(okD and auraD ~= nil)))
+            if C_UnitAuras.GetUnitAuraBySpellID then
+                local okU, auraU = pcall(C_UnitAuras.GetUnitAuraBySpellID, "player", sid)
+                print(("  GetUnitAuraBySpellID: pcallOK=%s  found=%s"):format(tostring(okU), tostring(okU and auraU ~= nil)))
+            else
+                print("  GetUnitAuraBySpellID: not in this client")
+            end
             local seen, secretIDs, matched = 0, 0, false
             for i = 1, 40 do
                 local okA, a = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")

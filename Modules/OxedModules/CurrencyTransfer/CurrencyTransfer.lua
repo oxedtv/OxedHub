@@ -111,6 +111,54 @@ local function update2()
     end
 end
 
+-- ── Saying what our button moved ───────────────────────────────────────────
+-- The game writes its own line ("X transferred ... to Y"); after a transfer
+-- made with our Transfer Max button, OxedHub says so too, from the game's
+-- transfer log.
+local usedOurButtonAt = 0
+local logSizeAtClick       -- entries in the log when our button was pressed
+
+local function LogSize()
+    if not (C_CurrencyInfo and C_CurrencyInfo.FetchCurrencyTransferTransactions) then return nil end
+    local ok, list = pcall(C_CurrencyInfo.FetchCurrencyTransferTransactions)
+    return ok and type(list) == "table" and #list or nil
+end
+local lastReported
+local logWatcher = CreateFrame("Frame")
+
+local function NameFromGUID(guid)
+    if type(guid) ~= "string" or (issecretvalue and issecretvalue(guid)) then return nil end
+    local ok, _, _, _, _, _, name = pcall(GetPlayerInfoByGUID, guid)
+    return ok and name or nil
+end
+
+local function ReportLastTransfer()
+    if GetTime() - usedOurButtonAt > 20 then return end
+    if not (C_CurrencyInfo and C_CurrencyInfo.FetchCurrencyTransferTransactions) then return end
+    local ok, list = pcall(C_CurrencyInfo.FetchCurrencyTransferTransactions)
+    if not ok or type(list) ~= "table" or #list == 0 then return end
+    -- Only an entry that arrived after the click is this transfer.
+    if logSizeAtClick and #list <= logSizeAtClick then return end
+    local last = list[#list]
+    local amount = last.quantityTransferred
+    local currencyID = last.currencyType
+    if type(amount) ~= "number" or type(currencyID) ~= "number" then return end
+    local key = tostring(last.sourceCharacterGUID) .. currencyID .. amount .. tostring(last.timestamp)
+    if key == lastReported then return end
+    lastReported = key
+    usedOurButtonAt = 0
+    local link = C_CurrencyInfo.GetCurrencyLink and C_CurrencyInfo.GetCurrencyLink(currencyID, amount)
+    local from = NameFromGUID(last.sourceCharacterGUID) or "another character"
+    local to = NameFromGUID(last.destinationCharacterGUID) or UnitName("player")
+    print(("|cff00ccffOxedHub|r transferred %s x%d from %s to %s."):format(
+        link or ("currency " .. currencyID), amount, from, to))
+end
+
+logWatcher:SetScript("OnEvent", function()
+    -- The log can arrive a moment after the currency itself.
+    C_Timer.After(0.3, ReportLastTransfer)
+end)
+
 local function TryInitialize()
     if isInitialized then return true end
     
@@ -147,6 +195,16 @@ local function TryInitialize()
     cancel:SetPoint("LEFT", confirm, "RIGHT", 8, 0)
     
     btn:SetAttribute("typerelease", "click")
+    -- Remember that this transfer was ours, so OxedHub can report it.
+    btn:HookScript("OnClick", function()
+        usedOurButtonAt = GetTime()
+        logSizeAtClick = LogSize()
+        if C_CurrencyInfo and C_CurrencyInfo.RequestCurrencyTransferLog then
+            pcall(C_CurrencyInfo.RequestCurrencyTransferLog)
+        end
+    end)
+    logWatcher:RegisterEvent("CURRENCY_TRANSFER_LOG_UPDATE")
+    logWatcher:RegisterEvent("ACCOUNT_CHARACTER_CURRENCY_DATA_RECEIVED")
     SecureHandlerSetFrameRef(btn, "menu", CurrencyTransferMenu)
 
     btn:RegisterEvent("CURRENCY_DISPLAY_UPDATE")

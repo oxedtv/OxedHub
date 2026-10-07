@@ -132,6 +132,14 @@ local function HasConfiguredAura(trigger)
         if active and active[sid] then return true, sid end
     end
     for _, sid in ipairs(GetConfiguredSpellIDs(trigger)) do
+        -- The direct lookup newer clients answer for a known spell id, also
+        -- for buffs other players put on you (Power Infusion and the like).
+        if C_UnitAuras.GetUnitAuraBySpellID then
+            local ok, aura = pcall(C_UnitAuras.GetUnitAuraBySpellID, "player", sid)
+            if ok and aura then
+                return true, sid
+            end
+        end
         if C_UnitAuras.GetAuraDataBySpellID then
             local ok, aura = pcall(C_UnitAuras.GetAuraDataBySpellID, "player", sid)
             if ok and aura then
