@@ -349,7 +349,16 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
         local slider = CreateFrame("Slider", nil, self, "OptionsSliderTemplate")
         slider:SetOrientation("HORIZONTAL")
         slider:SetSize(190, 16)
-        slider:SetPoint("TOPLEFT", self, "TOPLEFT", self:GetWidth() - 230, self.cursorY - 5)
+        -- A caption too long for the space left of the slider (measured at
+        -- its widest value) gets a line of its own, the slider under it.
+        local sliderX = self:GetWidth() - 230
+        label:SetText((format or "%s: %s"):format(caption, maxValue))
+        local ownLine = label:GetStringWidth() > sliderX - 30
+        if ownLine then
+            slider:SetPoint("TOPLEFT", self, "TOPLEFT", 30, self.cursorY - 24)
+        else
+            slider:SetPoint("TOPLEFT", self, "TOPLEFT", sliderX, self.cursorY - 5)
+        end
         slider:SetMinMaxValues(minValue, maxValue)
         slider:SetValueStep(step)
         slider:SetObeyStepOnDrag(true)
@@ -376,7 +385,10 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
             ready = true
         end
         table.insert(self.checks, slider)
-        self.cursorY = self.cursorY - 30
+        self.cursorY = self.cursorY - (ownLine and 50 or 30)
+        -- The extra line makes the window that much taller, so nothing below
+        -- is pushed out of it.
+        if ownLine then self:SetHeight(self:GetHeight() + 20) end
         return slider
     end
 

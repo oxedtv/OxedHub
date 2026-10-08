@@ -186,17 +186,19 @@ end
 
 -- ── Your interrupt ─────────────────────────────────────────────────────────
 
-local function UpdateOwn()
-    if not ownSpell then FindOwnInterrupt() end
-    if not ownSpell then Relayout(); return end
-    ownBar = ownBar or NewBar()
-    ownBar.name:SetText(UnitName("player"))
-    ownBar.icon:SetTexture(C_Spell.GetSpellTexture(ownSpell))
-    local _, class = UnitClass("player")
-    local colour = settings.classColour and C_ClassColor and C_ClassColor.GetClassColor(class)
-    ownBar.name:SetTextColor((colour or WHITE_FONT_COLOR):GetRGB())
-    ownBar.fill:GetStatusBarTexture():SetVertexColor(GREEN:GetRGBA())
+-- The bar's cooldown only: what runs on every cooldown change in the game,
+-- so nothing here builds a table, a closure or a layout.
+local bindingDuration
+local function BindOwnTime()
+    ownBar.binding = ownBar.binding or C_DurationUtil.CreateDurationTextBinding()
+    ownBar.binding:SetFontString(ownBar.time)
+    ownBar.binding:SetDuration(bindingDuration)
+    if ownBar.binding.SetTextFormat then ownBar.binding:SetTextFormat("%.0f") end
+    ownBar.binding:SetEnabled(true)
+end
 
+local function RefreshOwnCooldown()
+    if not (ownBar and ownSpell) then return end
     local duration
     if C_Spell.GetSpellCooldownDuration then
         local ok, value = pcall(C_Spell.GetSpellCooldownDuration, ownSpell)
@@ -207,18 +209,40 @@ local function UpdateOwn()
         ownBar.fill:SetTimerDuration(duration, 0, 1)
         if ownBar.fill.SetToTargetValue then ownBar.fill:SetToTargetValue() end
         if C_DurationUtil and C_DurationUtil.CreateDurationTextBinding then
-            pcall(function()
-                ownBar.binding = ownBar.binding or C_DurationUtil.CreateDurationTextBinding()
-                ownBar.binding:SetFontString(ownBar.time)
-                ownBar.binding:SetDuration(duration)
-                if ownBar.binding.SetTextFormat then ownBar.binding:SetTextFormat("%.0f") end
-                ownBar.binding:SetEnabled(true)
-            end)
+            bindingDuration = duration
+            pcall(BindOwnTime)
         end
     else
         ownBar.fill:SetValue(1)
         ownBar.time:SetText("")
     end
+end
+
+-- The game fires its cooldown event for every spell of everyone's bars, many
+-- times a second in a fight. Ours waits for a quiet moment and looks once.
+local cooldownQueued = false
+local function RunQueuedCooldown()
+    cooldownQueued = false
+    RefreshOwnCooldown()
+end
+local function QueueOwnCooldown()
+    if cooldownQueued then return end
+    cooldownQueued = true
+    C_Timer.After(0.15, RunQueuedCooldown)
+end
+
+-- Who and what the bar shows: on a spec, talent or pet change, not per cooldown.
+local function UpdateOwn()
+    if not ownSpell then FindOwnInterrupt() end
+    if not ownSpell then Relayout(); return end
+    ownBar = ownBar or NewBar()
+    ownBar.name:SetText(UnitName("player"))
+    ownBar.icon:SetTexture(C_Spell.GetSpellTexture(ownSpell))
+    local _, class = UnitClass("player")
+    local colour = settings.classColour and C_ClassColor and C_ClassColor.GetClassColor(class)
+    ownBar.name:SetTextColor((colour or WHITE_FONT_COLOR):GetRGB())
+    ownBar.fill:GetStatusBarTexture():SetVertexColor(GREEN:GetRGBA())
+    RefreshOwnCooldown()
     Relayout()
 end
 
@@ -279,11 +303,11 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         local ok, err = pcall(OnInterrupted, unit, spellID, interruptedBy)
         if not ok then geterrorhandler()(err) end
     elseif event == "SPELL_UPDATE_COOLDOWN" then
-        UpdateOwn()
+        QueueOwnCooldown()
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         local unit, _, spellID = ...
         if unit == "player" and ownSpell and not (issecretvalue and issecretvalue(spellID)) and spellID == ownSpell then
-            C_Timer.After(0.1, UpdateOwn)
+            C_Timer.After(0.1, RefreshOwnCooldown)
         end
     else
         -- Spec, talents, pet or zone changed: find the interrupt again.

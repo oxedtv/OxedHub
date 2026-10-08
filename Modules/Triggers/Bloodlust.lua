@@ -77,10 +77,21 @@ local function HasLustAura(spellID)
     return false
 end
 
+-- The id found last time is asked first. While a lust or its Sated is up
+-- (ten minutes after every lust) the whole list used to be asked four times a
+-- second, and the game answers each yes with a fresh table: 1.5 KB a check.
+-- Nothing new can land while Sated is up, so one question is enough until it
+-- goes.
+local lastFound
 local function GetActiveLustBuff()
     if not C_UnitAuras then return nil end
+    if lastFound and HasLustAura(lastFound) then
+        return lastFound
+    end
+    lastFound = nil
     for _, spellID in ipairs(LUST_BUFFS) do
         if HasLustAura(spellID) then
+            lastFound = spellID
             return spellID
         end
     end

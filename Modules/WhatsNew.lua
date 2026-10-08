@@ -25,6 +25,18 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.4",
+        important = true,
+        lines = {
+            { "NEW", "Bulk Buy: Shift-click an item at a vendor to buy any amount, with Stack and Max buttons and the total cost. A big purchase asks once more, and it buys a stack at a time so nothing is lost." },
+            { "NEW", "Bonus Roll Guard: a bonus roll needs two clicks, and the first one shows which spec the loot goes to." },
+            { "NEW", "Loot Banner: drag the boss loot banner wherever you want it; a blue box shows its place while the options are open." },
+            { "FIXED", "Auto Queue no longer clashes with Premade Groups Filter: with it installed, auto sign-up and keep my note leave the job to it, and the blocked-action error is gone." },
+            { "CHANGED", "Lighter in a fight: Party Interrupts makes almost no garbage now, Action Hub looks at a node when its cooldown ends instead of every half second, and Bloodlust, Gold World Quests and the boss modules do much less work." },
+            { "CHANGED", "Module options: a slider whose label is long gets a line of its own instead of covering the slider." },
+        },
+    },
+    {
         version = "2.4.3",
         important = true,
         lines = {

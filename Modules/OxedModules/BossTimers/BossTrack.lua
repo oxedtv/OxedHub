@@ -37,7 +37,11 @@ local DEFAULTS = {
     locked       = false,
 }
 
-local TICK = 0.03
+-- Smooth enough for icons sliding along the track; faster cost more than
+-- it showed.
+local TICK = 0.05
+
+local function BySoonest(a, b) return a.trackLeft < b.trackLeft end
 
 local Engine = OxedHub.BossEngine
 local settings
@@ -260,7 +264,7 @@ local function Tick()
             end
         end
     end
-    table.sort(list, function(a, b) return a.trackLeft < b.trackLeft end)
+    table.sort(list, BySoonest)
 
     -- The track.
     local used = 0

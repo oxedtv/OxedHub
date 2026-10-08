@@ -67,6 +67,8 @@ local KIND_SETTING = {
 
 local TICK = 0.05
 
+local function BySoonest(a, b) return a.alertLeft < b.alertLeft end
+
 local Engine = OxedHub.BossEngine
 local settings
 local optionsWindow
@@ -262,7 +264,7 @@ local function Tick()
         end
     end
 
-    table.sort(coming, function(a, b) return a.alertLeft < b.alertLeft end)
+    table.sort(coming, BySoonest)
     local shown = 0
     for i = 1, math.min(#coming, settings.countRows) do
         local ev = coming[i]

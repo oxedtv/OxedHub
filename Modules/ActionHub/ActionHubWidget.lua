@@ -2380,6 +2380,13 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
         StyleCooldownText(cd2, -6)
         btn.cooldown2 = cd2
 
+        -- The moment a sweep ends, look at this node again: that is when it
+        -- turns ready. The game times the sweep itself, so nothing has to
+        -- watch it on a ticker.
+        local function CooldownEnded() ActionHub:QueueNodeRefresh(btn) end
+        cd1:HookScript("OnCooldownDone", CooldownEnded)
+        cd2:HookScript("OnCooldownDone", CooldownEnded)
+
         local hlFrame = CreateFrame("Frame", nil, btn)
         hlFrame:SetAllPoints()
         hlFrame:SetFrameLevel(btn:GetFrameLevel() + 20)
@@ -2929,7 +2936,11 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
 
     if totalSlots > 0 and db.onScreen then
         local tick = 0
-        ActionHub.cooldownTicker = C_Timer.NewTicker(0.5, function()
+        -- Only a safety net now: a node is looked at again the moment its
+        -- sweep ends (OnCooldownDone), and procs come by their own events.
+        -- With many nodes the old half-second pass was most of what the
+        -- bars cost.
+        ActionHub.cooldownTicker = C_Timer.NewTicker(1.5, function()
             ActionHub:UpdateRunningCooldowns()
             -- A proc whose event named a different spell id is still caught.
             tick = tick + 1

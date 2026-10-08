@@ -323,9 +323,24 @@ local function HookListingButtons()
     end
 end
 
+-- ⚠ Group Finder addons that sign up in one click and keep the note
+-- themselves. With one of them loaded, ours step aside: pressing Sign Up from
+-- inside their call is refused by the game (ApplyToGroup is protected, and the
+-- press is not the player's), which raised ADDON_ACTION_BLOCKED under their
+-- name, and both did the same job anyway.
+local OTHER_SIGNUP_ADDONS = { "PremadeGroupsFilter" }
+local function OtherSignUpAddon()
+    for _, name in ipairs(OTHER_SIGNUP_ADDONS) do
+        local loaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(name)
+        if loaded then return name end
+    end
+    return nil
+end
+
 local signUpBusy = false
 local function OnApplicationDialogShow()
     if not Active("autoSignUp") or signUpBusy then return end
+    if OtherSignUpAddon() then return end
     if settings.shiftNote and IsShiftKeyDown() then return end
     signUpBusy = true
     C_Timer.After(0.5, function() signUpBusy = false end)
@@ -377,7 +392,7 @@ local function HookFinderFrames()
     end
     -- Replaced only when the option is on, so a player who never wants it
     -- never has the function touched.
-    if not hooked.note and settings.keepNote and LFGListApplicationDialog_Show then
+    if not hooked.note and settings.keepNote and LFGListApplicationDialog_Show and not OtherSignUpAddon() then
         hooked.note = true
         originalDialogShow = LFGListApplicationDialog_Show
         LFGListApplicationDialog_Show = KeepNoteDialogShow
@@ -710,6 +725,7 @@ local function ShowOptions()
             "Pick one or more roles to queue as. None picked: your spec's role.", ShowRoleBar)
         w:AddCheckbox(settings, "report", "Say the roles you signed up as in chat")
         w:AddNote("Roles are saved per character. /aq shows the status; /aq on and /aq off switch the module.")
+        w:AddNote("With Premade Groups Filter installed, it signs you up and keeps your note itself; those two options here then step aside.")
     end
     optionsWindow:Show()
 end

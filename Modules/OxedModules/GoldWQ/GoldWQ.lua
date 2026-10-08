@@ -358,6 +358,13 @@ local function StepScan()
     end
 end
 
+-- ⚠ QUEST_LOG_UPDATE arrives many times a minute (any quest progress, any
+-- loot): a full scan of every zone for each one was most of what this module
+-- cost. That event scans at most once per QUEST_LOG_GAP; zone changes, turn-ins
+-- and the Rescan button still scan at once.
+local QUEST_LOG_GAP = 30
+local lastScanAt = 0
+
 scan = function()
     if not settings or settings.enabled == false then return end
     if not (C_TaskQuest and (C_TaskQuest.GetQuestsOnMap or C_TaskQuest.GetQuestsForPlayerByMapID)) then return end
@@ -365,6 +372,7 @@ scan = function()
         rescanWanted = true
         return
     end
+    lastScanAt = GetTime()
     job = { zone = 0, list = {}, seen = {}, unloaded = 0, sa = {}, active = {}, skipped = {} }
     StepScan()
 end
@@ -1475,7 +1483,7 @@ watcher:SetScript("OnEvent", function(self, event, ...)
     if event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
         requestScan(2)
     elseif event == "QUEST_LOG_UPDATE" then
-        requestScan(1)
+        if GetTime() - lastScanAt >= QUEST_LOG_GAP then requestScan(1) end
     elseif event == "QUEST_TURNED_IN" then
         local questID, _, money = ...
         if SecretValue(questID) then return end

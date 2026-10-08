@@ -1301,12 +1301,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.3)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.4)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.3")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.4")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1372,11 +1372,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  New: Buff Tracker, a big icon while a chosen buff is on you, also in a fight.",
-        "•  New: Power Infusion trigger, one icon while PI is on you.",
-        "•  Currency Transfer: OxedHub says in chat what it moved.",
-        "•  Chat Filter shows the notes from the game's ignore window.",
-        "•  No more blocked-action error opening OxedHub in a fight.",
+        "•  New: Bulk Buy, Shift-click a vendor item to buy any amount.",
+        "•  New: Bonus Roll Guard, two clicks to roll and your loot spec shown first.",
+        "•  Loot Banner: put the boss loot banner wherever you like.",
+        "•  Auto Queue works alongside Premade Groups Filter, no more errors.",
+        "•  Lighter in a fight: far less work for Action Hub and the new modules.",
         "•  Grab either pack from CurseForge:",
     }
 

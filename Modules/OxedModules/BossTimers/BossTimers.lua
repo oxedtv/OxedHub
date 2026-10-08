@@ -100,6 +100,8 @@ local KIND_NAME = {
 }
 
 local TICK       = 0.1   -- bar and warning refresh while anything is coming
+
+local function BySoonest(a, b) return a.left < b.left end
 local MIN_REFIRE = 1.0   -- two abilities at once give one sound, not two
 
 local Engine = OxedHub.BossEngine
@@ -317,7 +319,7 @@ local function Tick()
 
     local shown = 0
     if settings.showBars then
-        table.sort(sorted, function(a, b) return a.left < b.left end)
+        table.sort(sorted, BySoonest)
         for i = 1, math.min(#sorted, settings.maxBars) do
             local ev = sorted[i]
             local bar = bars[i] or CreateBar(i)

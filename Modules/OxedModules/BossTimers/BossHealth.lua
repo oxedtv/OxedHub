@@ -115,28 +115,35 @@ local function PlaceMarks(bar, encounter)
     end
 end
 
+-- Run through pcall as named functions: no closure per boss per tick.
+local BOSS_UNITS = { "boss1", "boss2", "boss3", "boss4", "boss5" }
+
+local function FillHealth(bar, unit)
+    bar:SetMinMaxValues(0, UnitHealthMax(unit))
+    bar:SetValue(UnitHealth(unit))
+end
+
+local function FillPercent(bar, unit)
+    local curve = CurveConstants and CurveConstants.ScaleTo100
+    bar.pct:SetFormattedText("%d%%", UnitHealthPercent(unit, true, curve))
+end
+
 local function Update()
     local _, encounter = Engine:GetCurrentEncounter()
     local shown = 0
     for i = 1, MAX_BOSSES do
-        local unit = "boss" .. i
+        local unit = BOSS_UNITS[i]
         local ok, exists = pcall(UnitExists, unit)
         -- A secret "exists" is shown: there is a boss frame to fill.
         local present = ok and ((issecretvalue and issecretvalue(exists)) or exists)
         if present then
             shown = shown + 1
             local bar = Bar(shown)
-            pcall(function()
-                bar:SetMinMaxValues(0, UnitHealthMax(unit))
-                bar:SetValue(UnitHealth(unit))
-            end)
+            pcall(FillHealth, bar, unit)
             bar.name:SetText(UnitName(unit))
             bar.pct:SetText("")
             if settings.showText and UnitHealthPercent then
-                pcall(function()
-                    local curve = CurveConstants and CurveConstants.ScaleTo100
-                    bar.pct:SetFormattedText("%d%%", UnitHealthPercent(unit, true, curve))
-                end)
+                pcall(FillPercent, bar, unit)
             end
             if bar.encounter ~= encounter then
                 bar.encounter = encounter
