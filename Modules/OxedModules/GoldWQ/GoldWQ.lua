@@ -34,6 +34,8 @@ local DEFAULTS = {
 local settings          -- OxedHubDB.modules.goldwq, bound at login
 local optionsWindow
 local ui, content
+local coin                -- the round gold coin shown while minimised
+local ShowCoin, UpdateCoin, PlaceAt
 local refreshUI
 local toggleOptions
 local setMinimapShown
@@ -171,6 +173,7 @@ local function SnapshotCaches()
         c.caches[cache.name] = count
     end
     if refreshUI then refreshUI() end
+    if UpdateCoin then UpdateCoin() end
 end
 
 -- ── Scanning Engine ─────────────────────────────────────────────────────────
@@ -1068,6 +1071,93 @@ local function SaveUI()
     }
 end
 
+-- ── The minimised coin ─────────────────────────────────────────────────────
+
+-- Puts frame's top-left corner on other's, both on UIParent, whatever their
+-- scales (the window has a scale setting of its own).
+PlaceAt = function(frame, other)
+    local left, top = other:GetLeft(), other:GetTop()
+    if not (left and top) then return false end
+    local ratio = other:GetEffectiveScale() / frame:GetEffectiveScale()
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left * ratio, top * ratio)
+    return true
+end
+
+local function TotalCopper()
+    local total = 0
+    for _, q in ipairs(available) do total = total + (q.copper or 0) end
+    return total
+end
+
+UpdateCoin = function()
+    if not coin then return end
+    coin.count:SetText(#available > 0 and tostring(#available) or "")
+end
+
+ShowCoin = function()
+    if not coin then
+        coin = CreateFrame("Button", "OxedHubGoldWQCoin", UIParent)
+        coin:SetSize(46, 46)
+        coin:SetFrameStrata("MEDIUM")
+        coin:SetClampedToScreen(true)
+        coin:SetMovable(true)
+        coin:RegisterForDrag("LeftButton")
+        coin:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+
+        local icon = coin:CreateTexture(nil, "ARTWORK")
+        icon:SetPoint("TOPLEFT", 6, -6)
+        icon:SetPoint("BOTTOMRIGHT", -6, 6)
+        icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_01")
+        local mask = coin:CreateMaskTexture()
+        mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetAllPoints(icon)
+        icon:AddMaskTexture(mask)
+
+        local ring = coin:CreateTexture(nil, "OVERLAY")
+        ring:SetSize(76, 76)
+        ring:SetPoint("TOPLEFT", -1, 1)
+        ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+
+        coin.count = coin:CreateFontString(nil, "OVERLAY", "NumberFontNormalLarge")
+        coin.count:SetPoint("BOTTOMRIGHT", -2, 2)
+        coin.count:SetTextColor(1, 0.82, 0)
+
+        coin:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+        coin:SetScript("OnDragStart", coin.StartMoving)
+        coin:SetScript("OnDragStop", function(self)
+            self:StopMovingOrSizing()
+            -- The window follows: it opens where the coin was left.
+            if ui then
+                PlaceAt(ui, self)
+                SaveUI()
+            end
+        end)
+        coin:SetScript("OnClick", function(_, button)
+            if button == "RightButton" then toggleOptions() return end
+            if ui and ui.SetCollapsed then ui.SetCollapsed(false) end
+        end)
+        coin:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText("Gold World Quests")
+            GameTooltip:AddLine(("%d available, %s in all"):format(#available, MoneyString(TotalCopper())), 1, 1, 1)
+            GameTooltip:AddLine("Click: open the list   Right-click: options   Drag: move", 0.7, 0.7, 0.7)
+            GameTooltip:Show()
+        end)
+        coin:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    if not ui then buildUI() end
+    -- A window never shown yet (just after a reload) has no corner to read:
+    -- anchor to it instead, which lands in the same place.
+    if not PlaceAt(coin, ui) then
+        coin:ClearAllPoints()
+        coin:SetPoint("TOPLEFT", ui, "TOPLEFT", 0, 0)
+    end
+    UpdateCoin()
+    coin:Show()
+    if settings then settings.coinShown = true end
+end
+
 buildUI = function()
     if ui then return end
     EnsureData()
@@ -1114,6 +1204,7 @@ buildUI = function()
     cbtn.t:SetText("-")
     cbtn:SetScript("OnEnter", function() cbtn.t:SetTextColor(1, 1, 1, 1) end)
     cbtn:SetScript("OnLeave", function() cbtn.t:SetTextColor(0.85, 0.85, 0.85, 1) end)
+    cbtn:Hide()   -- replaced by the Minimise button beside Config
 
     -- Header action buttons in classic red with gold text (matching OxedHub style)
     local rescan = CreateFrame("Button", nil, ui, "UIPanelButtonTemplate")
@@ -1182,6 +1273,22 @@ buildUI = function()
     ApplyRedButtonStyle(optBtn)
     optBtn:SetScript("OnClick", function() toggleOptions() end)
 
+    local minBtn = CreateFrame("Button", nil, ui, "UIPanelButtonTemplate")
+    minBtn:SetSize(30, 20)
+    -- On the left of the title bar, away from the other buttons.
+    minBtn:SetPoint("TOPLEFT", ui, "TOPLEFT", 6, -1)
+    minBtn:SetText("-")
+    ApplyRedButtonStyle(minBtn)
+    -- A bigger dash than the red style's small text, so it reads as minimise.
+    local dash = minBtn:GetFontString()
+    if dash then dash:SetFont(STANDARD_TEXT_FONT, 18, "OUTLINE"); dash:SetTextColor(1, 0.82, 0) end
+    minBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Minimise to a gold coin")
+        GameTooltip:Show()
+    end)
+    minBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
     -- Scroll Area (inside the stone border, below TitleBg)
     local scroll = CreateFrame("ScrollFrame", nil, ui)
     scroll:SetPoint("TOPLEFT", 14, -26)
@@ -1208,30 +1315,40 @@ buildUI = function()
 
     ui.fullHeight = curH
 
-    local function ApplyCollapse()
+    -- Minimised, the window becomes a round gold coin where it stood, with
+    -- the number of gold quests on it. A click brings the window back.
+    local function ApplyCollapse(show)
+        scroll:Show()
+        grip:Show()
+        ui:SetHeight(ui.fullHeight or 420)
         if settings and settings.collapsed then
-            scroll:Hide()
-            grip:Hide()
-            ui:SetHeight(32)
-            cbtn.t:SetText("+")
-        else
-            scroll:Show()
-            grip:Show()
-            ui:SetHeight(ui.fullHeight or 420)
-            cbtn.t:SetText("-")
+            if ui:IsShown() then ui:Hide() end
+            if show then ShowCoin() end
+        elseif coin then
+            coin:Hide()
         end
     end
 
     ui.SetCollapsed = function(v)
         if v and not (settings and settings.collapsed) then ui.fullHeight = ui:GetHeight() end
         if settings then settings.collapsed = v and true or false end
-        ApplyCollapse()
+        if v then
+            ApplyCollapse(true)
+        else
+            if coin and coin:IsShown() then
+                PlaceAt(ui, coin)
+                coin:Hide()
+            end
+            if settings then settings.coinShown = false end
+            ui:Show()
+        end
         SaveUI()
     end
     cbtn:SetScript("OnClick", function()
         ui.SetCollapsed(not (settings and settings.collapsed))
     end)
-    ApplyCollapse()
+    minBtn:SetScript("OnClick", function() ui.SetCollapsed(true) end)
+    ApplyCollapse(false)
 
     ui:SetScript("OnShow", function()
         SnapshotCaches()
@@ -1244,6 +1361,16 @@ end
 
 toggleUI = function()
     if not ui then buildUI() end
+    if settings and settings.collapsed then
+        -- Minimised: the coin is what shows and hides.
+        if coin and coin:IsShown() then
+            coin:Hide()
+            settings.coinShown = false
+        else
+            ShowCoin()
+        end
+        return
+    end
     if ui:IsShown() then ui:Hide() else ui:Show() end
 end
 
@@ -1634,7 +1761,12 @@ loginFrame:SetScript("OnEvent", function(self)
             shouldAnnounce = settings.announce
             requestScan(3)
 
-            if settings.openOnLogin then
+            if settings.collapsed and settings.coinShown then
+                -- Minimised before the reload: the coin comes back where it was.
+                C_Timer.After(1, function()
+                    if settings.enabled ~= false and settings.collapsed then ShowCoin() end
+                end)
+            elseif settings.openOnLogin then
                 C_Timer.After(2, function()
                     if not ui then buildUI() end
                     ui:Show()
@@ -1643,6 +1775,7 @@ loginFrame:SetScript("OnEvent", function(self)
         end,
 
         OnDisable = function()
+            if coin then coin:Hide() end
             watcher:UnregisterEvent("PLAYER_ENTERING_WORLD")
             watcher:UnregisterEvent("ZONE_CHANGED_NEW_AREA")
             watcher:UnregisterEvent("QUEST_LOG_UPDATE")

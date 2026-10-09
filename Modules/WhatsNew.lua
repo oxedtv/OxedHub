@@ -25,6 +25,16 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.5",
+        important = true,
+        lines = {
+            { "NEW", "Gold World Quests: a Minimise button turns the window into a round gold coin showing how many gold quests are up. Click it to open the list, drag it to move both." },
+            { "CHANGED", "Performance window: the small readout says Recording in green, recording starts and stops only from its top line, and it stays on screen when you open the full window." },
+            { "CHANGED", "Lighter again: Buff Reminder checks the group at most every two seconds, Action Hub stops polling toys and remembers what to range-check, and its buttons make no garbage when they change colour." },
+            { "FIXED", "Boss Timers no longer stutters on the first bar of a pull: the bars are prepared before the fight." },
+        },
+    },
+    {
         version = "2.4.4",
         important = true,
         lines = {

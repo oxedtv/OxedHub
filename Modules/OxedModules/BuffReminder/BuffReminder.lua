@@ -855,6 +855,26 @@ local function MarkDirty()
     C_Timer.After(REFRESH_DELAY, Refresh)
 end
 
+-- ⚠ Other group members' auras change all the time in a raid or a busy
+-- group: one refresh for each made 156 MB of garbage in two hours. Their
+-- changes wait GROUP_DELAY and fold into one refresh; your own still show
+-- at once.
+local GROUP_DELAY = 2
+local groupPending = false
+local function RunGroupRefresh()
+    groupPending = false
+    MarkDirty()
+end
+local function MarkGroupDirty()
+    if groupPending or pending then return end
+    groupPending = true
+    C_Timer.After(GROUP_DELAY, RunGroupRefresh)
+end
+
+local function IsGroupUnit(unit)
+    return type(unit) == "string" and (unit:find("^party") or unit:find("^raid")) ~= nil
+end
+
 -- ── Events ──────────────────────────────────────────────────────────────────
 
 local EVENTS = {
@@ -868,11 +888,16 @@ local EVENTS = {
 
 watcher:SetScript("OnEvent", function(_, event, unit)
     if event == "UNIT_AURA" then
+        -- Nameplates, the target and the rest: not ours to track, dropped
+        -- before anything else (this event arrives a million times a session).
+        local own = unit == "player" or unit == "pet"
+        if not own and not IsGroupUnit(unit) then return end
         -- Forgotten even in combat, so the answer after the fight is fresh;
         -- the bar itself is hidden in combat and is not rebuilt then.
-        if unit then ForgetUnit(unit) end
+        ForgetUnit(unit)
         if InCombatLockdown() then return end
-        if unit ~= "player" and unit ~= "pet" and not (unit and (unit:find("^party") or unit:find("^raid"))) then
+        if not own then
+            MarkGroupDirty()
             return
         end
     elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then

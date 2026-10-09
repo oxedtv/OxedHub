@@ -579,7 +579,7 @@ local function UpdateMini()
     mini.dot:SetVertexColor(P:IsActive() and 0.25 or 1, P:IsActive() and 1 or 0.3, 0.25)
 
     if P:IsActive() then
-        mini.top.text:SetText(("OxedHub %s%.2f ms/s|r   peak %s%.1f ms|r   %d fps")
+        mini.top.text:SetText(("|cff40ff40Recording|r   OxedHub %s%.2f ms/s|r   peak %s%.1f ms|r   %d fps")
             :format(MsColour(live.msPerSecond), live.msPerSecond,
                 MsColour(live.peakFrameMs), live.peakFrameMs, fps + 0.5))
     else
@@ -682,21 +682,17 @@ local function BuildMini()
         "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     mini.dot:AddMaskTexture(dotMask)
 
-    button:SetScript("OnClick", function(_, mouse)
-        local P = Profiler()
-        if mouse == "RightButton" then
-            if P:IsActive() then P:Stop() else P:Start() end
-            UpdateMini()
-        else
-            HideMini()
-            Performance:Open()
-        end
+    -- Recording is started and stopped only from the top line, so a stray
+    -- click on the icon never ends a recording. The readout stays on screen.
+    button:SetScript("OnClick", function()
+        Performance:Open()
+        ShowMini()
     end)
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
         GameTooltip:SetText("OxedHub Performance")
         GameTooltip:AddLine("Click: open the full window", 1, 1, 1)
-        GameTooltip:AddLine("Right-click: start or stop recording", 1, 1, 1)
+        GameTooltip:AddLine("Click the top line to start or stop recording", 1, 1, 1)
         GameTooltip:AddLine("Drag: move", 1, 1, 1)
         GameTooltip:Show()
     end)

@@ -1293,6 +1293,12 @@ end
 
 local DEFAULT_RANGE_COLOR = { 0.85, 0.25, 0.25 }
 
+local function PaintTexture(tex, desat, r, g, b, alpha)
+    if tex.SetDesaturated then tex:SetDesaturated(desat) end
+    tex:SetVertexColor(r, g, b)
+    tex:SetAlpha(alpha)
+end
+
 local function ApplyButtonColoring(btn)
     if not btn then return end
 
@@ -1335,20 +1341,17 @@ local function ApplyButtonColoring(btn)
     btn._ohAlpha = alpha
     btn._ohUsableSplit = btn.splitIcon
 
-    local textures = {}
-    if btn.icon then table.insert(textures, btn.icon) end
-    if btn.splitIcon then
-        local texs = btn.splitIcon.texs
-        if not texs and btn.splitIcon.leftTexture then
-            texs = { btn.splitIcon.leftTexture, btn.splitIcon.rightTexture }
+    -- No tables here: this runs for every button on every refresh.
+    if btn.icon then PaintTexture(btn.icon, desat, r, g, b, alpha) end
+    local split = btn.splitIcon
+    if split then
+        local texs = split.texs
+        if texs then
+            for i = 1, #texs do PaintTexture(texs[i], desat, r, g, b, alpha) end
+        else
+            if split.leftTexture then PaintTexture(split.leftTexture, desat, r, g, b, alpha) end
+            if split.rightTexture then PaintTexture(split.rightTexture, desat, r, g, b, alpha) end
         end
-        for _, t in ipairs(texs or {}) do table.insert(textures, t) end
-    end
-
-    for _, tex in ipairs(textures) do
-        if tex.SetDesaturated then tex:SetDesaturated(desat) end
-        tex:SetVertexColor(r, g, b)
-        tex:SetAlpha(alpha)
     end
 end
 
@@ -1568,11 +1571,15 @@ function ActionHub:UpdateRunningCooldowns()
     end
 end
 
-function ActionHub:UpdateUsability()
+-- includeToys: a toy's usability only changes with the place (indoors,
+-- a zone, mounting up), not with the spell-usable stream that arrives several
+-- times a second. A hub full of toys asked every one of them on each.
+function ActionHub:UpdateUsability(includeToys)
     for _, w in ipairs(self.widgets or {}) do
         for _, btn in ipairs((w and w.buttons) or {}) do
             local slot = btn and btn.slotData
-            if slot and USABILITY_KINDS[slot.type] and btn:IsVisible() then
+            if slot and USABILITY_KINDS[slot.type] and btn:IsVisible()
+                and (includeToys ~= false or slot.type ~= "toy") then
                 ApplyUsabilityShading(btn, IsSlotUsable(slot))
             end
         end
@@ -1600,11 +1607,16 @@ local usabilityQueued = false
 local USABILITY_DELAY = 0.25
 -- Named, not a new function per queue: /oxprofile counted the little
 -- functions made here, a thousand of them in five minutes.
+local usabilityToys = false   -- this pass also looks at toys
+local QueueUsability
 local function RunUsability()
     usabilityQueued = false
-    if OxedHub.ActionHub and OxedHub.db then OxedHub.ActionHub:UpdateUsability() end
+    local toys = usabilityToys
+    usabilityToys = false
+    if OxedHub.ActionHub and OxedHub.db then OxedHub.ActionHub:UpdateUsability(toys) end
 end
-local function QueueUsability()
+QueueUsability = function(withToys)
+    if withToys then usabilityToys = true end
     if usabilityQueued then return end
     usabilityQueued = true
     -- A tenth of a second rather than the next frame: SPELL_UPDATE_USABLE
@@ -1613,6 +1625,7 @@ local function QueueUsability()
     -- became a few thousand.
     C_Timer.After(USABILITY_DELAY, RunUsability)
 end
+local function QueueToysAgain() QueueUsability(true) end
 
 usabilityFrame:SetScript("OnEvent", function(_, event)
     if not OxedHub.ActionHub then return end
@@ -1625,13 +1638,15 @@ usabilityFrame:SetScript("OnEvent", function(_, event)
         OxedHub.ActionHub:RefreshCooldownsAfterLoading()
     end
 
-    QueueUsability()
+    -- Toys only when the place changed, not on the spell-usable stream.
+    local placeChanged = event ~= "SPELL_UPDATE_USABLE"
+    QueueUsability(placeChanged)
 
     -- Zone transitions can report the old state for a moment, so check again --
     -- but only for those. It used to follow every usability event too, doubling
     -- the work of the busiest event on the list for no reason.
-    if event ~= "SPELL_UPDATE_USABLE" then
-        C_Timer.After(0.3, QueueUsability)
+    if placeChanged then
+        C_Timer.After(0.3, QueueToysAgain)
     end
 end)
 
@@ -1717,23 +1732,33 @@ local function SpellInRangeOnce(spellID, unit)
     return answer
 end
 
+-- What a node's range is checked by, worked out once per slot: a spell id,
+-- an item id, or false for nothing to check (an emote, a marker, a toy with
+-- no spell). Working it out on every sweep -- five times a second, for every
+-- node -- was most of what the sweep cost on a big hub. A macro is the
+-- exception and is read each time: its spell can change with conditions.
+local function RangeSubject(btn, slot)
+    if btn._ohRangeFor == slot then
+        return btn._ohRangeSpell, btn._ohRangeItem
+    end
+    local spell, item = false, false
+    local slotType = slot.type
+    if slotType == "spell" then
+        spell = slot.id or false
+    elseif slotType == "item" then
+        item = slot.id or false
+    end
+    -- Toys: no range tint. Nearly none of them aims at the target, and
+    -- asking for each on every sweep was the cost of a hub full of them.
+    btn._ohRangeFor, btn._ohRangeSpell, btn._ohRangeItem = slot, spell, item
+    return spell, item
+end
+
 local function CheckNodeRange(btn, unit)
     local slot = btn and btn.slotData
     if not slot or not slot.type then return nil end
 
-    local slotType = slot.type
-    if slotType == "spell" then
-        return SpellInRangeOnce(slot.id, unit)
-    elseif slotType == "item" then
-        return SafeIsItemInRange(slot.id, unit)
-    elseif slotType == "toy" then
-        -- The cooldown pass already worked the spell out and kept it on the
-        -- node; asking again twelve times a second was most of this sweep.
-        local spellID = btn._ohSpell or GetSlotSpellID(slot)
-        if spellID then
-            return SpellInRangeOnce(spellID, unit)
-        end
-    elseif slotType == "macro" then
+    if slot.type == "macro" then
         local spellID = btn._ohSpell or GetSlotSpellID(slot)
         if spellID then
             return SpellInRangeOnce(spellID, unit)
@@ -1748,7 +1773,12 @@ local function CheckNodeRange(btn, unit)
                 end
             end
         end
+        return nil
     end
+
+    local spell, item = RangeSubject(btn, slot)
+    if spell then return SpellInRangeOnce(spell, unit) end
+    if item then return SafeIsItemInRange(item, unit) end
     return nil
 end
 
@@ -1831,7 +1861,7 @@ end
 -- Five times a second. It was 0.08 s, twelve and a half sweeps a second over
 -- every visible node; a red tint arriving a fifth of a second later is not
 -- seen, and the sweep costs two and a half times less.
-local RANGE_TICK = 0.2
+local RANGE_TICK = 0.25
 
 local function OnTargetChanged()
     if HasLiveTarget() ~= false then
@@ -1975,7 +2005,10 @@ local pendingAll = false
 -- from the game). Only the nodes that can hold an item answer to it now.
 local pendingItems = false
 local lastItemPass = 0
-local ITEM_NODES = { item = true, toy = true, emote = true, macro = true }
+-- Toys are not here: a toy's cooldown only starts when it is used, and a
+-- click on its node already looks again. The bag cooldown event arrives on
+-- most casts, and a hub of toys had every one read again each time.
+local ITEM_NODES = { item = true, emote = true, macro = true }
 local lastFullPass = 0
 local FULL_GAP = 0.5          -- the least time between two passes over everything
 
