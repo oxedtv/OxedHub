@@ -58,24 +58,46 @@ local function RoomFor(itemID, stackSize)
     return free
 end
 
+local function IsCurrencyLink(link)
+    return type(link) == "string" and link:find("currency:", 1, true) ~= nil
+end
+
+local function CurrencyFromLink(link)
+    if not (C_CurrencyInfo and link) then return nil end
+    local info = C_CurrencyInfo.GetCurrencyInfoFromLink and C_CurrencyInfo.GetCurrencyInfoFromLink(link)
+    if not info and C_CurrencyInfo.GetCurrencyInfo then
+        local id = tonumber(link:match("currency:(%d+)"))
+        info = id and C_CurrencyInfo.GetCurrencyInfo(id)
+    end
+    return info
+end
+
+-- How much of one price entry the player has. The link says which kind it
+-- is: the fourth return of GetMerchantItemCostItem is not a reliable sign,
+-- and reading an item as a currency (or the other way) gave 0, which made
+-- every currency purchase look unaffordable.
+local function Owned(link)
+    if IsCurrencyLink(link) then
+        local info = CurrencyFromLink(link)
+        return info and info.quantity or nil
+    end
+    return C_Item.GetItemCount(link, true, false, true, true) or 0
+end
+
 -- How many you can pay for: gold, and each currency or item it also costs.
 local function Affordable(index, item)
     local most = math.huge
+    local bundle = math.max(1, item.stackCount or 1)
     if item.price and item.price > 0 then
-        most = math.floor(GetMoney() / item.price) * (item.stackCount or 1)
+        most = math.floor(GetMoney() / item.price) * bundle
     end
     local costs = GetMerchantItemCostInfo and GetMerchantItemCostInfo(index) or 0
     for i = 1, costs do
-        local _, value, link, currencyName = GetMerchantItemCostItem(index, i)
-        if value and value > 0 then
-            local owned = 0
-            if currencyName and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfoFromLink and link then
-                local info = C_CurrencyInfo.GetCurrencyInfoFromLink(link)
-                owned = info and info.quantity or 0
-            elseif link then
-                owned = C_Item.GetItemCount(link, true, false, true, true) or 0
-            end
-            most = math.min(most, math.floor(owned / value) * (item.stackCount or 1))
+        local _, value, link = GetMerchantItemCostItem(index, i)
+        -- Without a link the game has not told us yet; let the server decide.
+        if value and value > 0 and link then
+            local owned = Owned(link)
+            if owned then most = math.min(most, math.floor(owned / value) * bundle) end
         end
     end
     return most
@@ -130,6 +152,8 @@ local function Purchase(amount)
     StopBuying()
     local index, left = current.index, amount
     local perCall = math.max(1, current.maxStack)
+    -- A currency has no stacks: the whole amount goes in one call.
+    if current.isCurrency then perCall = amount end
     buying = C_Timer.NewTicker(STEP, function()
         if left <= 0 or not (MerchantFrame and MerchantFrame:IsShown()) then
             StopBuying()
@@ -257,17 +281,26 @@ local function Open(index, owner)
     local item = ItemInfo(index)
     if not (item and item.name) then return false end
     local link = GetMerchantItemLink(index)
+    local isCurrency = IsCurrencyLink(link)
     local instant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
-    local itemID = link and instant and instant(link)
+    local itemID = link and not isCurrency and instant and instant(link)
     local maxStack = (GetMerchantItemMaxStack and GetMerchantItemMaxStack(index)) or 1
     local itemStack = (itemID and C_Item.GetItemMaxStackSizeByID and C_Item.GetItemMaxStackSizeByID(itemID)) or maxStack
     current = {
         index = index, name = item.name, icon = item.texture, price = item.price,
         bundle = math.max(1, item.stackCount or 1), maxStack = math.max(1, maxStack),
-        available = item.numAvailable,
+        available = item.numAvailable, isCurrency = isCurrency,
     }
     current.afford = Affordable(index, item)
-    current.room = RoomFor(itemID, math.max(1, itemStack or 1))
+    if isCurrency then
+        -- Room for a currency is what is left under its cap (0 = no cap).
+        local info = CurrencyFromLink(link)
+        local cap = info and info.maxQuantity or 0
+        current.room = cap > 0 and math.max(0, cap - (info.quantity or 0)) or math.huge
+        current.maxStack = math.max(current.maxStack, current.bundle)
+    else
+        current.room = RoomFor(itemID, math.max(1, itemStack or 1))
+    end
 
     BuildWindow()
     window:ClearAllPoints()

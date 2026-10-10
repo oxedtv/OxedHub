@@ -239,10 +239,16 @@ local function StopTicker()
 end
 
 local coming = {}
+-- ⚠ Asleep until the next ability reaches its warning or countdown time, the
+-- same as Boss Track: most ticks of a fight had nothing to show.
+local idleUntil = 0
+
 local function Tick()
+    if GetTime() < idleUntil then return end
     wipe(coming)
     local any = false
     local here = WantedHere()
+    local gap
     for _, ev in pairs(Engine:GetEvents()) do
         any = true
         if here and Engine:IsActive(ev) and Wanted(ev) then
@@ -260,6 +266,9 @@ local function Tick()
                     ev.alertLeft = left
                     coming[#coming + 1] = ev
                 end
+                local near = math.max(settings.countdown and settings.countFrom or 0,
+                    (settings.flash and not ev.flashed) and warnAt or 0)
+                if not gap or left - near < gap then gap = left - near end
             end
         end
     end
@@ -270,8 +279,13 @@ local function Tick()
         local ev = coming[i]
         local row = Row(i)
         local left = ev.alertLeft
-        local number = settings.countDecimals and ("%.1f"):format(left) or tostring(math.ceil(left))
-        row:SetText((DisplayName(ev) or "Ability") .. "  " .. number)
+        -- The text is built again only when the number on it changes.
+        local shownNumber = settings.countDecimals and math.floor(left * 10) or math.ceil(left)
+        if row.ev ~= ev or row.number ~= shownNumber then
+            row.ev, row.number = ev, shownNumber
+            local number = settings.countDecimals and ("%.1f"):format(left) or tostring(shownNumber)
+            row:SetText((DisplayName(ev) or "Ability") .. "  " .. number)
+        end
         if left <= 1.5 then row:SetTextColor(1, 0.2, 0.15)
         elseif left <= 3 then row:SetTextColor(1, 0.65, 0.1)
         else row:SetTextColor(1, 0.9, 0.3) end
@@ -280,7 +294,17 @@ local function Tick()
     end
     for i = shown + 1, #rows do rows[i]:Hide() end
 
-    if not any then StopTicker() end
+    if not any then
+        StopTicker()
+        return
+    end
+    if shown == 0 then
+        if not here then
+            idleUntil = GetTime() + 1
+        elseif gap and gap > 0.2 then
+            idleUntil = GetTime() + math.min(gap - 0.1, 2)
+        end
+    end
 end
 
 local function StartTicker()
@@ -289,8 +313,11 @@ local function StartTicker()
 end
 
 Engine:AddListener({
-    OnEventAdded = function() StartTicker() end,
-    OnEncounterEnd = function() for _, row in ipairs(rows) do row:Hide() end end,
+    OnEventAdded = function()
+        idleUntil = 0
+        StartTicker()
+    end,
+    OnEncounterEnd = function() for _, row in ipairs(rows) do row:Hide(); row.ev = nil end end,
 })
 
 -- ── Game warnings ──────────────────────────────────────────────────────────

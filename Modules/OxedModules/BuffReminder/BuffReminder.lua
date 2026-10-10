@@ -51,14 +51,36 @@ local DEFAULTS = {
     locked        = true,   -- unlocked: drag the bar, a sample icon marks it
     shiftDrag     = true,   -- Shift+drag moves the bar even while it is locked
     point = "CENTER", x = 0, y = 180,
+
+    showTargeted  = true,   -- buffs you put on somebody else (beacons, Earth Shield...)
+    expiringMinutes = 5,    -- "running out" means under this many minutes
+    growDirection = "RIGHT",-- RIGHT, LEFT, CENTER, DOWN, UP
+    spacing       = 6,      -- pixels between icons
+    perRow        = 10,     -- icons before a new row (or column)
+    glowMissing   = false,  -- a glow around icons for what is missing
+    glowExpiring  = true,   -- a glow around icons for what is running out
+    rightSnooze   = true,   -- right-click an icon to hide it for a while
+    snoozeMinutes = 10,
+    sound         = "",     -- played when something new goes missing ("" = none)
+    onlyInGroup   = false,
+    hideLeveling  = false,  -- nothing below the maximum level
+    -- Where the bar shows at all (a ready check shows it anywhere).
+    where_openWorld = true, where_dungeon = true, where_raid = true,
+    where_delve = true, where_scenario = true, where_pvp = false,
+    -- Class choices
+    prefLethal    = 0,      -- 0 = the best one you know
+    prefNonLethal = 0,
+    rune_250 = 0, rune_251 = 0, rune_252 = 0,   -- death knight rune per spec, 0 = any
+    ignoreTravelForm = true, -- no wrong-form reminder while travelling or mounted
 }
 
-local EXPIRING_SECONDS = 300
+local function ExpiringSeconds()
+    return (tonumber(settings and settings.expiringMinutes) or 5) * 60
+end
 local READY_CHECK_SECONDS = 30
 local REFRESH_DELAY = 0.3     -- events arrive in bursts; one rebuild per burst
 local TICK = 10               -- range and time-left change without events
 local MAX_BUTTONS = 30
-local PER_ROW = 10            -- icons wrap onto a new row after this many
 
 local Data = OxedHub.BuffReminderData
 local settings
@@ -68,6 +90,8 @@ local watcher = CreateFrame("Frame")
 local bar, buttons = nil, {}
 local pending, ticker = false, nil
 local readyCheckUntil = 0
+local snoozed = {}            -- entry key -> GetTime() until which it stays hidden
+local MarkDirty               -- defined with Refresh, used by the click handlers
 
 -- ── Small safe readers ──────────────────────────────────────────────────────
 
@@ -397,7 +421,7 @@ end
 
 local function Needed(found, left)
     if found == false then return true end
-    return found and settings.expiring and left and left < EXPIRING_SECONDS or false
+    return found and settings.expiring and left and left < ExpiringSeconds() or false
 end
 
 local function EvaluateRaid(entry, out)
@@ -419,7 +443,7 @@ local function EvaluateRaid(entry, out)
     local spell = CastSpellFor(entry)
     if missing > 0 then
         Add(out, entry, { texture = SpellTexture(spell), count = missing, names = names, spell = spell })
-    elseif settings.expiring and soonest and soonest < EXPIRING_SECONDS then
+    elseif settings.expiring and soonest and soonest < ExpiringSeconds() then
         Add(out, entry, { texture = SpellTexture(spell), timeLeft = soonest, spell = spell })
     end
 end
@@ -563,9 +587,285 @@ local function EvaluateRepair(out, entry)
     end
 end
 
+-- ── Buffs you put on others ─────────────────────────────────────────────────
+
+local function SpellName(spellID)
+    local name = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(spellID)
+    return type(name) == "string" and name or nil
+end
+
+-- Is one of `ids` on `unit`, cast by you? Answers like FindAura.
+local function FindMine(unit, ids)
+    if not (C_UnitAuras and C_UnitAuras.GetUnitAuraBySpellID) then return nil end
+    local unknown = false
+    for _, id in ipairs(ids) do
+        local ok, aura = pcall(C_UnitAuras.GetUnitAuraBySpellID, unit, id)
+        if not ok or IsSecret(aura) then
+            unknown = true
+        elseif aura then
+            local source = aura.sourceUnit
+            if IsSecret(source) then
+                unknown = true
+            elseif source == "player" or (source and UnitIsUnit(source, "player")) then
+                local expires = aura.expirationTime
+                if IsSecret(expires) or not expires or expires == 0 then return true, nil end
+                return true, expires - GetTime()
+            end
+        end
+    end
+    if unknown then return nil end
+    return false
+end
+
+-- Kept beside the other answers for the unit, under the entry itself (the
+-- ids table already holds the "anybody's" answer).
+local function FindMineCached(unit, entry)
+    local cache = auraCache[unit]
+    if not cache then
+        cache = {}
+        auraCache[unit] = cache
+    end
+    local known = cache[entry]
+    if known ~= nil then
+        if known == 0 then return false end
+        if known == -1 then return true, nil end
+        return true, known - GetTime()
+    end
+    local found, left = FindMine(unit, entry.auras)
+    if found == false then
+        cache[entry] = 0
+    elseif found then
+        cache[entry] = left and (GetTime() + left) or -1
+    end
+    return found, left
+end
+
+local function RoleOf(unit)
+    local role = UnitGroupRolesAssigned and UnitGroupRolesAssigned(unit)
+    if IsSecret(role) then return nil end
+    return role
+end
+
+-- "/cast" on the player it was on last, else one with the wanted role, else
+-- mouseover or target, else the plain cast. Names are cleaned so a strange
+-- one cannot break out of the [@...] condition.
+local function TargetMacro(entry, spellID)
+    local name = SpellName(spellID)
+    if not name then return nil end
+    local target = settings.lastTargets and settings.lastTargets[entry.key]
+    if not target and entry.role then
+        local units, count = GroupUnits()
+        for i = 1, count do
+            local unit = units[i]
+            if unit ~= "player" and UnitExists(unit) and RoleOf(unit) == entry.role then
+                target = GetUnitName(unit, true)
+                break
+            end
+        end
+    end
+    local first = ""
+    if type(target) == "string" and target ~= "" then
+        first = ("[@%s,help,nodead]"):format((target:gsub("[%[%];,\r\n]", "")))
+    end
+    return ("/cast %s[@mouseover,help,nodead][@target,help,nodead][] %s"):format(first, name)
+end
+
+local function EvaluateTargeted(entry, out)
+    if not IsInGroup() then return end
+    if entry.readyCheckOnly then
+        if GetTime() >= readyCheckUntil then return end
+        local cd = C_Spell and C_Spell.GetSpellCooldown and C_Spell.GetSpellCooldown(entry.known)
+        if cd and not IsSecret(cd.duration) and (cd.duration or 0) > 2 then return end
+    end
+    local spell = entry.cast or entry.known
+    local record = { texture = SpellTexture(spell), spell = spell }
+
+    if entry.selfAura then
+        entry._selfList = entry._selfList or { entry.selfAura }
+        local found, left = FindAuraCached("player", entry._selfList)
+        if not Needed(found, left) then return end
+        record.timeLeft = found and left or nil
+        record.macro = TargetMacro(entry, spell)
+        Add(out, entry, record)
+        return
+    end
+
+    local units, count = GroupUnits()
+    local anyFound, soonest = false, nil
+    for i = 1, count do
+        local unit = units[i]
+        if unit ~= "player" and Countable(unit) then
+            local found, left = FindMineCached(unit, entry)
+            if found == nil then return end         -- cannot tell: show nothing
+            if found then
+                anyFound = true
+                settings.lastTargets[entry.key] = GetUnitName(unit, true)
+                if left and (not soonest or left < soonest) then soonest = left end
+            end
+        end
+    end
+    if anyFound then
+        if not (settings.expiring and soonest and soonest < ExpiringSeconds()) then return end
+        record.timeLeft = soonest
+    end
+    record.macro = TargetMacro(entry, spell)
+    Add(out, entry, record)
+end
+
+-- ── Class specials ──────────────────────────────────────────────────────────
+
+-- Rogue poisons of one kind: how many are on, against how many you may have.
+local function EvaluatePoison(entry, out)
+    local list = entry.castList
+    entry._one = entry._one or {}
+    local known, active, soonest = 0, 0, nil
+    for _, id in ipairs(list) do
+        if Known(id) then
+            known = known + 1
+            entry._one[id] = entry._one[id] or { id }
+            local found, left = FindAuraCached("player", entry._one[id])
+            if found == nil then return end
+            if found then
+                active = active + 1
+                if left and (not soonest or left < soonest) then soonest = left end
+            end
+        end
+    end
+    if known == 0 then return end
+    local required = math.min(known, Known(Data.TWO_POISONS_TALENT) and 2 or 1)
+    local missing = active < required
+    if not missing and not (settings.expiring and soonest and soonest < ExpiringSeconds()) then return end
+
+    -- What a click casts: the chosen poison if it is not on, else the best
+    -- known one that is not on.
+    local pref = settings[entry.poisons == "lethal" and "prefLethal" or "prefNonLethal"]
+    local cast
+    if pref and pref > 0 and Known(pref) and FindAuraCached("player", entry._one[pref] or { pref }) == false then
+        cast = pref
+    end
+    if not cast then
+        for _, id in ipairs(list) do
+            if Known(id) and FindAuraCached("player", entry._one[id]) == false then cast = id break end
+        end
+    end
+    cast = cast or (pref and pref > 0 and Known(pref) and pref) or nil
+    if not cast then
+        for _, id in ipairs(list) do if Known(id) then cast = id break end end
+    end
+    Add(out, entry, { texture = SpellTexture(cast), spell = cast, timeLeft = (not missing) and soonest or nil,
+        label = required > 1 and ("%d/%d"):format(active, required) or nil })
+end
+
+local function WeaponEnchantID(slot)
+    local link = GetInventoryItemLink("player", slot)
+    return link and tonumber(link:match("item:%d+:(%d*)")) or 0
+end
+
+local function RuneInfo(enchant)
+    for _, rune in ipairs(Data.RUNES) do
+        if rune.enchant == enchant then return rune end
+    end
+end
+
+-- The rune chosen for this spec on each weapon; with none chosen, any rune.
+local function EvaluateRuneforge(entry, specID, out)
+    local wanted = specID and tonumber(settings["rune_" .. specID]) or 0
+    if wanted <= 0 then
+        if PermanentEnchant(entry.enchants) then return end
+        Add(out, entry, { texture = SpellTexture(entry.cast), spell = entry.cast })
+        return
+    end
+    local rune = RuneInfo(wanted)
+    for _, hand in ipairs({ { 16, "MH" }, { 17, "OH" } }) do
+        if (hand[1] == 16 or IsWeapon(17)) and GetInventoryItemID("player", hand[1]) and WeaponEnchantID(hand[1]) ~= wanted then
+            Add(out, entry, { texture = SpellTexture(rune and rune.spell or entry.cast), spell = entry.cast,
+                label = hand[2], wrong = rune and rune.name })
+        end
+    end
+end
+
+local function ActiveFormSpell()
+    local index = GetShapeshiftForm and GetShapeshiftForm() or 0
+    if index == 0 then return 0 end
+    local _, _, _, spellID = GetShapeshiftFormInfo(index)
+    return spellID
+end
+
+local function EvaluateDruidForm(entry, specID, out)
+    local want = specID and Data.DRUID_FORM[specID]
+    if not want then return end
+    if settings.ignoreTravelForm and ((GetShapeshiftFormID and Data.DRUID_TRAVEL_FORMS[GetShapeshiftFormID() or 0])
+        or IsMounted()) then return end
+    local active = ActiveFormSpell()
+    if active == nil or active == want then return end
+    Add(out, entry, { texture = SpellTexture(want), spell = want })
+end
+
+local function EvaluateStance(entry, specID, out)
+    local allowed = specID and Data.WARRIOR_STANCE[specID]
+    if not allowed then return end
+    local active = ActiveFormSpell()
+    if active == nil then return end
+    for _, id in ipairs(allowed) do if id == active then return end end
+    local want = (specID == 72 and Known(Data.BERSERKER_STANCE)) and Data.BERSERKER_STANCE or allowed[1]
+    Add(out, entry, { texture = SpellTexture(want), spell = want })
+end
+
+local function EvaluateFelguard(entry, out)
+    if not UnitExists("pet") or UnitIsDead("pet") then return end
+    local ok, _, family = pcall(UnitCreatureFamily, "pet")
+    if not ok or IsSecret(family) or type(family) ~= "number" then return end
+    if family == 29 then return end
+    Add(out, entry, { texture = SpellTexture(entry.cast), spell = entry.cast })
+end
+
+local function EvaluatePassive(entry, out)
+    if not UnitExists("pet") or not GetPetActionInfo then return end
+    for i = 1, (NUM_PET_ACTION_SLOTS or 10) do
+        local name, _, _, isActive = GetPetActionInfo(i)
+        if name == "PET_MODE_PASSIVE" and isActive then
+            Add(out, entry, { texture = entry.icon, macro = "/petassist" })
+            return
+        end
+    end
+end
+
+local function InDelve()
+    local _, _, difficultyID = GetInstanceInfo()
+    return difficultyID == 208
+end
+
+local function EvaluateMageFood(entry, out)
+    local index = GetSpecialization and GetSpecialization()
+    local role = index and GetSpecializationRole and GetSpecializationRole(index)
+    if role ~= "HEALER" or not IsInGroup() or not GroupHasClass("MAGE") then return end
+    if ItemCount(entry.item) > 0 then return end
+    Add(out, entry, { texture = entry.icon, stack = 0 })
+end
+
 local function Evaluate(entry, specID, inInstance, forced, out)
     if entry.group == "raid" then return EvaluateRaid(entry, out) end
+    if entry.group == "targeted" then return EvaluateTargeted(entry, out) end
     if entry.check == "pet" then return EvaluatePet(entry, specID, out) end
+    if entry.check == "felguard" then return EvaluateFelguard(entry, out) end
+    if entry.check == "passive" then return EvaluatePassive(entry, out) end
+    if entry.check == "poison" then return EvaluatePoison(entry, out) end
+    if entry.check == "runeforge" then return EvaluateRuneforge(entry, specID, out) end
+    if entry.check == "druidForm" then return EvaluateDruidForm(entry, specID, out) end
+    if entry.check == "stance" then return EvaluateStance(entry, specID, out) end
+    if entry.check == "delveFood" then
+        if not InDelve() then return end
+        local found, left = FindAuraCached("player", entry.auras)
+        if Needed(found, left) then Add(out, entry, { texture = entry.icon, timeLeft = found and left or nil }) end
+        return
+    end
+    if entry.present then
+        -- Shown while it is ON (a buff you should not leave running).
+        if FindAuraCached("player", entry.auras) == true then
+            Add(out, entry, { texture = SpellTexture(entry.known) })
+        end
+        return
+    end
 
     if entry.group == "consumable" then
         local check = entry.check
@@ -579,6 +879,7 @@ local function Evaluate(entry, specID, inInstance, forced, out)
         if not inInstance and not forced then return end
         if check == "oil" then return EvaluateOil(entry, out) end
         if check == "healthstone" then return EvaluateHealthstone(out, entry) end
+        if check == "mageFood" then return EvaluateMageFood(entry, out) end
         return EvaluateBuffItem(entry, out)
     end
 
@@ -598,6 +899,39 @@ local function Evaluate(entry, specID, inInstance, forced, out)
     Add(out, entry, { texture = SpellTexture(spell), spell = spell, timeLeft = found and left or nil })
 end
 
+-- Where the player is, in the words of the "Where it shows" options.
+local function ContentType()
+    local inInstance, instanceType = IsInInstance()
+    if not inInstance then return "openWorld" end
+    if instanceType == "party" then return "dungeon" end
+    if instanceType == "raid" then return "raid" end
+    if instanceType == "pvp" or instanceType == "arena" then return "pvp" end
+    if instanceType == "scenario" then return InDelve() and "delve" or "scenario" end
+    return "openWorld"
+end
+
+-- Custom buffs become entries like the built-in ones, made once per spell.
+local customEntries = {}
+local function CustomEntries()
+    local list = settings.customBuffs
+    local out = customEntries.list or {}
+    customEntries.list = out
+    wipe(out)
+    for _, id in ipairs(list) do
+        local entry = customEntries[id]
+        if not entry then
+            entry = { key = "custom" .. id, group = "custom", auras = { id }, cast = id, custom = true }
+            customEntries[id] = entry
+        end
+        out[#out + 1] = entry
+    end
+    return out
+end
+
+local function MaxLevel()
+    return GetMaxLevelForPlayerExpansion and GetMaxLevelForPlayerExpansion() or 80
+end
+
 local function Collect()
     local list = {}
     local forced = GetTime() < readyCheckUntil
@@ -608,6 +942,9 @@ local function Collect()
         if settings.hideResting and IsResting() then return list end
         if settings.hideMounted and (IsMounted() or UnitInVehicle("player")) then return list end
         if UnitIsDeadOrGhost("player") then return list end
+        if settings["where_" .. ContentType()] == false then return list end
+        if settings.onlyInGroup and not IsInGroup() then return list end
+        if settings.hideLeveling and UnitLevel("player") < MaxLevel() then return list end
     end
     if C_PetBattles and C_PetBattles.IsInBattle and C_PetBattles.IsInBattle() then return list end
 
@@ -624,7 +961,11 @@ local function Collect()
                 hideKey = "hide_" .. entry.key
                 entry._hideKey = hideKey
             end
-            if settings[hideKey] ~= true and Applies(entry, class, specID) then
+            local on
+            if entry.optIn then on = settings[hideKey] == false else on = settings[hideKey] ~= true end
+            local until_ = snoozed[entry.key]
+            if until_ and until_ <= GetTime() then snoozed[entry.key] = nil until_ = nil end
+            if on and not until_ and (entry.custom or Applies(entry, class, specID)) then
                 Evaluate(entry, specID, inInstance, forced, list)
             end
         end
@@ -632,6 +973,8 @@ local function Collect()
 
     Run(Data.RAID, settings.showRaid, true)
     Run(Data.SELF, settings.showSelf, true)
+    Run(CustomEntries(), true, true)
+    Run(Data.TARGETED, settings.showTargeted, true)
     Run(Data.PET, settings.showPets, true)
     Run(Data.CONSUMABLE, settings.showConsumables, false)
     return list
@@ -647,9 +990,15 @@ local function IconSize()
     return math.max(MIN_SIZE, math.min(MAX_SIZE, size))
 end
 
+
 local function FormatLeft(seconds)
     if seconds >= 60 then return ("%dm"):format(math.ceil(seconds / 60)) end
     return ("%ds"):format(math.max(0, math.floor(seconds)))
+end
+
+local function LabelOf(entry)
+    if entry.custom then return SpellName(entry.cast) or ("Spell " .. entry.cast) end
+    return Data.LABELS[entry.key] or entry.key
 end
 
 local function ShowTooltip(button)
@@ -661,16 +1010,16 @@ local function ShowTooltip(button)
         GameTooltip:Show()
         return
     end
-    local key = record.entry.key
+    local label = LabelOf(record.entry)
     if record.item then
         GameTooltip:SetItemByID(record.item)
     elseif record.spell then
         GameTooltip:SetSpellByID(record.spell)
     else
-        GameTooltip:SetText(Data.LABELS[key] or key)
+        GameTooltip:SetText(label)
     end
     GameTooltip:AddLine(" ")
-    GameTooltip:AddLine("Buff Reminder: " .. (Data.LABELS[key] or key), 0.6, 0.8, 1)
+    GameTooltip:AddLine("Buff Reminder: " .. label, 0.6, 0.8, 1)
     if record.count then
         GameTooltip:AddLine(("%d nearby missing it"):format(record.count), 1, 0.4, 0.4)
         if record.names then
@@ -681,13 +1030,55 @@ local function ShowTooltip(button)
     elseif record.stack == 0 then
         GameTooltip:AddLine("None in your bags", 1, 0.4, 0.4)
     end
+    if record.wrong then
+        GameTooltip:AddLine("Wanted: " .. record.wrong, 1, 0.4, 0.4)
+    end
     if record.slot then
         GameTooltip:AddLine(record.slot == 16 and "For your main hand" or "For your off hand", 1, 1, 1)
     end
-    if settings.clickCast and (record.spell or record.item or record.macro) then
-        GameTooltip:AddLine("Click to " .. ((record.item or record.macro) and "use it" or "cast it"), 0.5, 1, 0.5)
+    if record.entry.group == "targeted" then
+        local last = settings.lastTargets[record.entry.key]
+        if last then GameTooltip:AddLine("Casts on " .. last .. " (it was on them last)", 1, 1, 1) end
+    end
+    if settings.clickCast and (record.spell or record.item or record.macro) and not record.entry.noClick then
+        GameTooltip:AddLine("Click to " .. ((record.item or (record.macro and not record.spell)) and "use it" or "cast it"), 0.5, 1, 0.5)
+    end
+    if settings.rightSnooze then
+        GameTooltip:AddLine(("Right-click: hide it for %d minutes"):format(settings.snoozeMinutes or 10), 0.7, 0.7, 0.7)
     end
     GameTooltip:Show()
+end
+
+-- Glow: a soft border that pulses. The animation runs on the texture, never
+-- on the secure button itself.
+local function CreateGlow(button)
+    local glow = button:CreateTexture(nil, "OVERLAY", nil, 7)
+    glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+    glow:SetBlendMode("ADD")
+    glow:SetPoint("CENTER")
+    glow:Hide()
+    local pulse = glow:CreateAnimationGroup()
+    pulse:SetLooping("BOUNCE")
+    local fade = pulse:CreateAnimation("Alpha")
+    fade:SetFromAlpha(1)
+    fade:SetToAlpha(0.3)
+    fade:SetDuration(0.6)
+    glow.pulse = pulse
+    button.glow = glow
+end
+
+local function SetGlow(button, on, r, g, b)
+    local glow = button.glow
+    if on then
+        local size = button:GetWidth() * 1.9
+        glow:SetSize(size, size)
+        glow:SetVertexColor(r, g, b)
+        glow:Show()
+        if not glow.pulse:IsPlaying() then glow.pulse:Play() end
+    else
+        glow.pulse:Stop()
+        glow:Hide()
+    end
 end
 
 local function CreateButton(index)
@@ -722,8 +1113,20 @@ local function CreateButton(index)
     button.under:SetPoint("TOP", button, "BOTTOM", 0, -1)
     button.under:SetWordWrap(false)   -- long names are cut with "..."
 
+    CreateGlow(button)
+
     button:SetScript("OnEnter", ShowTooltip)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- Right-click hides the reminder for a while. The secure actions are set
+    -- for the left button only, so the right one never casts.
+    button:SetScript("PostClick", function(self, mouse, down)
+        if mouse ~= "RightButton" or down or not settings.rightSnooze then return end
+        local record = self.record
+        if not record or InCombatLockdown() then return end
+        snoozed[record.entry.key] = GetTime() + (settings.snoozeMinutes or 10) * 60
+        GameTooltip:Hide()
+        MarkDirty()
+    end)
     button:SetScript("OnDragStart", function()
         if not settings or InCombatLockdown() then return end
         if not settings.locked or (settings.shiftDrag and IsShiftKeyDown()) then
@@ -758,30 +1161,60 @@ local function PlaceBar()
     bar:SetPoint(settings.point or "CENTER", UIParent, settings.point or "CENTER", settings.x or 0, settings.y or 180)
 end
 
+local ACTION_KEYS = { "type", "type1", "spell1", "item1", "macrotext1", "unit1", "type2" }
+
 local function SetAction(button, record)
-    button:SetAttribute("type", nil)
-    button:SetAttribute("spell", nil)
-    button:SetAttribute("item", nil)
-    button:SetAttribute("macrotext", nil)
-    if not settings.clickCast or not record or record.sample then return end
+    for _, key in ipairs(ACTION_KEYS) do button:SetAttribute(key, nil) end
+    if not settings.clickCast or not record or record.sample or record.entry.noClick then return end
     if record.macro then
-        button:SetAttribute("type", "macro")
-        button:SetAttribute("macrotext", record.macro)
+        button:SetAttribute("type1", "macro")
+        button:SetAttribute("macrotext1", record.macro)
     elseif record.item then
-        button:SetAttribute("type", "item")
-        button:SetAttribute("item", "item:" .. record.item)
+        button:SetAttribute("type1", "item")
+        button:SetAttribute("item1", "item:" .. record.item)
     elseif record.spell then
-        button:SetAttribute("type", "spell")
-        button:SetAttribute("spell", record.spell)
-        button:SetAttribute("unit", "player")
+        button:SetAttribute("type1", "spell")
+        button:SetAttribute("spell1", record.spell)
+        button:SetAttribute("unit1", "player")
     end
+end
+
+-- Where icon i of `count` goes, by the chosen direction. Rows (or columns,
+-- for UP and DOWN) hold perRow icons each.
+local function Slot(i, count, perRow, size, gap, rowHeight)
+    local direction = settings.growDirection or "RIGHT"
+    local line = math.floor((i - 1) / perRow)          -- which row / column
+    local pos = (i - 1) % perRow                       -- place within it
+    local lines = math.ceil(count / perRow)
+    local across = math.min(count, perRow)
+    local step = size + gap
+
+    if direction == "DOWN" or direction == "UP" then
+        local x = line * step
+        local y
+        if direction == "DOWN" then y = -pos * rowHeight
+        else y = -(across - 1 - pos) * rowHeight end
+        return x, y, lines * step - gap, across * rowHeight
+    end
+
+    local inThisRow = math.min(perRow, count - line * perRow)
+    local x
+    if direction == "LEFT" then
+        x = (across - 1 - pos) * step
+    elseif direction == "CENTER" then
+        x = (across - inThisRow) * step / 2 + pos * step
+    else
+        x = pos * step
+    end
+    return x, -line * rowHeight, across * step - gap, lines * rowHeight
 end
 
 -- Out of combat only: shows, hides and re-targets secure buttons.
 local function Render(list)
     if InCombatLockdown() then return end
     local size = IconSize()
-    local gap = 6
+    local gap = tonumber(settings.spacing) or 6
+    local perRow = math.max(1, tonumber(settings.perRow) or 10)
     local rowHeight = size + 16   -- room for the name / time under each icon
 
     -- A sample icon marks the bar while it is unlocked or Options is open,
@@ -792,21 +1225,19 @@ local function Render(list)
     end
 
     local count = math.min(#list, MAX_BUTTONS)
-    local columns = math.max(1, math.min(count, PER_ROW))
-    local rows = math.max(1, math.ceil(count / PER_ROW))
-    bar:SetSize(columns * size + (columns - 1) * gap, rows * rowHeight)
+    local _, _, width, height = Slot(1, math.max(1, count), perRow, size, gap, rowHeight)
+    bar:SetSize(math.max(1, width), math.max(1, height))
 
     for i = 1, MAX_BUTTONS do
         local record = list[i]
         local button = buttons[i] or (record and CreateButton(i))
         if button then
             if record then
-                local column = (i - 1) % PER_ROW
-                local row = math.floor((i - 1) / PER_ROW)
+                local x, y = Slot(i, count, perRow, size, gap, rowHeight)
                 button:SetSize(size, size)
                 button.under:SetWidth(size + 18)
                 button:ClearAllPoints()
-                button:SetPoint("TOPLEFT", bar, "TOPLEFT", column * (size + gap), -row * rowHeight)
+                button:SetPoint("TOPLEFT", bar, "TOPLEFT", x, y)
                 button.record = not record.sample and record or nil
                 button.icon:SetTexture(record.texture or 134400)
                 button.icon:SetDesaturated(record.timeLeft ~= nil or record.stack == 0)
@@ -824,19 +1255,52 @@ local function Render(list)
                     local name = record.name
                     if not name and settings.showNames and not record.sample then
                         name = record.item and C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(record.item)
-                        name = name or Data.LABELS[record.entry.key]
+                        name = name or LabelOf(record.entry)
                     end
                     button.under:SetText(name or "")
+                end
+
+                if record.sample then
+                    SetGlow(button, false)
+                elseif record.timeLeft then
+                    SetGlow(button, settings.glowExpiring, 1, 0.82, 0.2)
+                else
+                    SetGlow(button, settings.glowMissing, 1, 0.3, 0.3)
                 end
 
                 SetAction(button, record)
                 button:Show()
             else
                 button.record = nil
+                SetGlow(button, false)
                 SetAction(button, nil)
                 button:Hide()
             end
         end
+    end
+end
+
+-- A sound when something new goes missing. Not on the first look after
+-- login or a switch-on, and not more than once in ten seconds.
+local shownKeys, nextKeys = {}, {}
+local quietUntil, lastSound = 0, 0
+
+local function SoundForNew(list)
+    local fresh = false
+    wipe(nextKeys)
+    for _, record in ipairs(list) do
+        local key = record.entry and record.entry.key
+        if key then
+            nextKeys[key] = true
+            if not shownKeys[key] and not record.timeLeft then fresh = true end
+        end
+    end
+    shownKeys, nextKeys = nextKeys, shownKeys
+    local now = GetTime()
+    if fresh and settings.sound and settings.sound ~= "" and now >= quietUntil and now - lastSound > 10 then
+        lastSound = now
+        local API = OxedHub.ModuleAPI
+        if API and API.PlaySound then API:PlaySound(settings.sound) end
     end
 end
 
@@ -846,10 +1310,12 @@ local function Refresh()
     if InCombatLockdown() then return end
     -- While the game keeps auras secret, keep the bar as it was.
     if AurasSecretNow() then return end
-    Render(Collect())
+    local list = Collect()
+    SoundForNew(list)
+    Render(list)
 end
 
-local function MarkDirty()
+MarkDirty = function()
     if pending then return end
     pending = true
     C_Timer.After(REFRESH_DELAY, Refresh)
@@ -883,7 +1349,7 @@ local EVENTS = {
     "UPDATE_SHAPESHIFT_FORM", "SPELLS_CHANGED", "PLAYER_UPDATE_RESTING",
     "PLAYER_MOUNT_DISPLAY_CHANGED", "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE",
     "ZONE_CHANGED_NEW_AREA", "READY_CHECK", "BAG_UPDATE_DELAYED", "PLAYER_DEAD", "PLAYER_UNGHOST",
-    "UPDATE_INVENTORY_DURABILITY", "PET_STABLE_UPDATE",
+    "UPDATE_INVENTORY_DURABILITY", "PET_STABLE_UPDATE", "PET_BAR_UPDATE", "PLAYER_LEVEL_UP",
 }
 
 watcher:SetScript("OnEvent", function(_, event, unit)
@@ -908,7 +1374,7 @@ watcher:SetScript("OnEvent", function(_, event, unit)
             readyCheckUntil = GetTime() + READY_CHECK_SECONDS
             C_Timer.After(READY_CHECK_SECONDS + 0.5, MarkDirty)
         end
-    elseif event == "BAG_UPDATE_DELAYED" and InCombatLockdown() then
+    elseif (event == "BAG_UPDATE_DELAYED" or event == "PET_BAR_UPDATE") and InCombatLockdown() then
         return
     end
     MarkDirty()
@@ -917,6 +1383,7 @@ end)
 local function Start()
     EnsureBar()
     PlaceBar()
+    quietUntil = GetTime() + 5
     for _, event in ipairs(EVENTS) do watcher:RegisterEvent(event) end
     if not InCombatLockdown() then
         -- The game hides the bar in combat and shows it after, even while
@@ -964,49 +1431,267 @@ local function BindSettings()
     for key, value in pairs(DEFAULTS) do
         if config[key] == nil then config[key] = value end
     end
+    -- Lists are made here, never in DEFAULTS (they would be shared).
+    if type(config.customBuffs) ~= "table" then config.customBuffs = {} end
+    if type(config.lastTargets) ~= "table" then config.lastTargets = {} end
+    -- The old "large icons" box becomes a size the slider can show.
+    if (tonumber(config.iconSize) or 0) <= 0 then config.iconSize = config.largeIcons and 44 or 34 end
     settings = config
 end
 
--- The options window only offers tick boxes, so the size slider is built
--- here: a plain Slider with no template (template names move between builds).
-local function AddSizeSlider(w)
-    local label = w:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    label:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 4)
+-- ── Options ─────────────────────────────────────────────────────────────────
 
-    local slider = CreateFrame("Slider", nil, w)
-    slider:SetOrientation("HORIZONTAL")
-    slider:SetSize(260, 16)
-    slider:SetPoint("TOPLEFT", w, "TOPLEFT", 24, w.cursorY - 24)
-    slider:SetMinMaxValues(MIN_SIZE, MAX_SIZE)
-    slider:SetValueStep(2)
-    slider:SetObeyStepOnDrag(true)
-    slider:EnableMouseWheel(true)
-    slider:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+local subWindows = {}
 
-    local track = slider:CreateTexture(nil, "BACKGROUND")
-    track:SetPoint("LEFT", 0, 0)
-    track:SetPoint("RIGHT", 0, 0)
-    track:SetHeight(4)
-    track:SetColorTexture(0.35, 0.35, 0.35, 0.9)
+-- A plain button on an options window, two to a row.
+local function AddButtonRow(w, items)
+    local width = math.floor((w:GetWidth() - 50) / 2)
+    for i, item in ipairs(items) do
+        local col = (i - 1) % 2
+        if i > 1 and col == 0 then w.cursorY = w.cursorY - 26 end
+        local b = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+        b:SetSize(width, 22)
+        b:SetPoint("TOPLEFT", w, "TOPLEFT", 20 + col * (width + 10), w.cursorY - 4)
+        b:SetText(item[1])
+        b:SetScript("OnClick", item[2])
+    end
+    w.cursorY = w.cursorY - 34
+end
 
-    local function Show(value) label:SetText(("Icon size: %d"):format(value)) end
-    slider:SetScript("OnValueChanged", function(_, value)
-        value = math.floor(value + 0.5)
-        Show(value)
-        if value ~= IconSize() then
-            settings.iconSize = value
+local function Heading(w, text)
+    local h = w:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    h:SetPoint("TOPLEFT", w, "TOPLEFT", 18, w.cursorY - 6)
+    h:SetText(text)
+    w.cursorY = w.cursorY - 24
+end
+
+-- Shows a second window once built; the second click closes it.
+local function ToggleSub(name, build)
+    local w = subWindows[name]
+    if not w then
+        w = build()
+        subWindows[name] = w
+        w:HookScript("OnShow", MarkDirty)
+    end
+    if w:IsShown() then w:Hide() else w:Show() end
+end
+
+local function FitHeight(w)
+    w:SetHeight(math.max(120, -w.cursorY + 16))
+end
+
+-- Every reminder that can apply to your class, each with its own box.
+local function BuildReminders(API)
+    local w = API:CreateOptionsWindow("Buff Reminder: Reminders", 380, 400)
+    local _, class = UnitClass("player")
+    -- A tick means "remind me"; stored as hide_<key>, opt-in ones off until ticked.
+    local byKey = {}
+    local proxy = setmetatable({}, {
+        __index = function(_, key)
+            local entry = byKey[key]
+            if entry and entry.optIn then return settings["hide_" .. key] == false end
+            return settings["hide_" .. key] ~= true
+        end,
+        __newindex = function(_, key, value)
+            settings["hide_" .. key] = not value
             MarkDirty()
+        end,
+    })
+    local parts = {
+        { "raid", Data.RAID }, { "self", Data.SELF }, { "targeted", Data.TARGETED },
+        { "pet", Data.PET }, { "consumable", Data.CONSUMABLE },
+    }
+    for _, part in ipairs(parts) do
+        local any = false
+        for _, entry in ipairs(part[2]) do
+            if not entry.class or entry.class == class then
+                if not any then
+                    Heading(w, Data.GROUP_TITLES[part[1]])
+                    any = true
+                end
+                byKey[entry.key] = entry
+                w:AddCheckbox(proxy, entry.key, Data.LABELS[entry.key] or entry.key,
+                    entry.optIn and "Off until you tick it." or nil)
+            end
         end
-    end)
-    slider:SetScript("OnMouseWheel", function(self, delta)
-        self:SetValue(self:GetValue() + delta * 2)
-    end)
-    w:HookScript("OnShow", function()
-        local size = IconSize()
-        slider:SetValue(size)
-        Show(size)
-    end)
-    w.cursorY = w.cursorY - 50
+    end
+    FitHeight(w)
+    return w
+end
+
+local DIRECTIONS = {
+    { value = "RIGHT", text = "Grow to the right" }, { value = "LEFT", text = "Grow to the left" },
+    { value = "CENTER", text = "Centred" }, { value = "DOWN", text = "Grow downwards" },
+    { value = "UP", text = "Grow upwards" },
+}
+
+local function BuildLayout(API)
+    local w = API:CreateOptionsWindow("Buff Reminder: Layout and glow", 440, 400)
+    w:AddSlider(settings, "iconSize", "Icon size", MIN_SIZE, MAX_SIZE, 2, "%s: %d", MarkDirty)
+    w:AddSlider(settings, "spacing", "Space between icons", 0, 20, 1, "%s: %d", MarkDirty)
+    w:AddSlider(settings, "perRow", "Icons per row", 1, 20, 1, "%s: %d", MarkDirty)
+    w:AddChoice(settings, "growDirection", "Direction", DIRECTIONS, MarkDirty)
+    w:AddCheckbox(settings, "showNames", "Show names under the icons", nil, MarkDirty)
+    w:AddCheckbox(settings, "glowMissing", "Glow around what is missing", nil, MarkDirty)
+    w:AddCheckbox(settings, "glowExpiring", "Glow around what is running out", nil, MarkDirty)
+    w:AddCheckbox(settings, "locked", "Lock the bar",
+        "Untick to drag the bar; a sample icon marks it while nothing is missing.", MarkDirty)
+    w:AddCheckbox(settings, "shiftDrag", "Shift+drag moves the locked bar")
+    FitHeight(w)
+    return w
+end
+
+local function BuildWhere(API)
+    local w = API:CreateOptionsWindow("Buff Reminder: Where it shows", 380, 400)
+    Heading(w, "Show the bar in")
+    w:AddCheckbox(settings, "where_openWorld", "The open world", nil, MarkDirty)
+    w:AddCheckbox(settings, "where_dungeon", "Dungeons", nil, MarkDirty)
+    w:AddCheckbox(settings, "where_raid", "Raids", nil, MarkDirty)
+    w:AddCheckbox(settings, "where_delve", "Delves", nil, MarkDirty)
+    w:AddCheckbox(settings, "where_scenario", "Other scenarios", nil, MarkDirty)
+    w:AddCheckbox(settings, "where_pvp", "Battlegrounds and arenas", nil, MarkDirty)
+    Heading(w, "And hide it")
+    w:AddCheckbox(settings, "onlyInstances", "Group and own buffs only inside instances", nil, MarkDirty)
+    w:AddCheckbox(settings, "onlyInGroup", "When you are not in a group", nil, MarkDirty)
+    w:AddCheckbox(settings, "hideLeveling", "While you are levelling", nil, MarkDirty)
+    w:AddCheckbox(settings, "hideResting", "In cities and inns", nil, MarkDirty)
+    w:AddCheckbox(settings, "hideMounted", "While mounted", nil, MarkDirty)
+    w:AddNote("A ready check shows everything for 30 seconds wherever you are.")
+    FitHeight(w)
+    return w
+end
+
+local function SpellChoices(ids, firstText)
+    local choices = { { value = 0, text = firstText } }
+    for _, id in ipairs(ids) do
+        choices[#choices + 1] = { value = id, text = SpellName(id) or ("Spell " .. id) }
+    end
+    return choices
+end
+
+local function BuildClass(API, class)
+    local w = API:CreateOptionsWindow("Buff Reminder: Class choices", 440, 300)
+    if class == "ROGUE" then
+        Heading(w, "Poisons a click applies")
+        w:AddChoice(settings, "prefLethal", "Lethal", SpellChoices(Data.LETHAL_POISONS, "Best you know"), MarkDirty)
+        w:AddChoice(settings, "prefNonLethal", "Non-lethal", SpellChoices(Data.NONLETHAL_POISONS, "Best you know"), MarkDirty)
+        w:AddNote("With Dragon-Tempered Blades two of each kind are needed; the icon shows how many are on.")
+    elseif class == "DEATHKNIGHT" then
+        Heading(w, "Rune each spec should have")
+        local choices = { { value = 0, text = "Any rune" } }
+        for _, rune in ipairs(Data.RUNES) do choices[#choices + 1] = { value = rune.enchant, text = rune.name } end
+        for _, spec in ipairs(Data.DK_SPECS) do
+            w:AddChoice(settings, "rune_" .. spec.id, spec.name, choices, MarkDirty)
+        end
+        w:AddNote("A weapon with a different rune shows the one you want; a click opens Runeforging.")
+    elseif class == "DRUID" then
+        w:AddCheckbox(settings, "ignoreTravelForm", "No wrong-form reminder while travelling or mounted", nil, MarkDirty)
+        w:AddNote("Turn on \"Wrong druid form\" in Reminders: Balance wants Moonkin Form, Feral wants Cat Form.")
+    elseif class == "WARRIOR" then
+        w:AddNote("Turn on \"Wrong warrior stance\" in Reminders: Arms wants Battle Stance, Fury Battle or Berserker, Protection Defensive.")
+    end
+    FitHeight(w)
+    return w
+end
+
+-- Custom buffs: any spell, by ID or by the name of one you know. Shown when
+-- it is not on you; a click casts it when you know it.
+local MAX_CUSTOM = 12
+
+local function BuildCustom(API)
+    local w = API:CreateOptionsWindow("Buff Reminder: Custom buffs", 400, 200)
+    w:AddNote("Type a spell ID, or the name of a spell you know, and press Add. "
+        .. "It shows when that buff is not on you.")
+
+    -- ⚠ SetAutoFocus(false): a new EditBox takes the keyboard at once.
+    local box = CreateFrame("EditBox", nil, w, "InputBoxTemplate")
+    box:SetAutoFocus(false)
+    box:SetSize(220, 22)
+    box:SetPoint("TOPLEFT", w, "TOPLEFT", 26, w.cursorY - 4)
+    box:SetScript("OnEscapePressed", box.ClearFocus)
+
+    local add = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+    add:SetSize(80, 22)
+    add:SetPoint("LEFT", box, "RIGHT", 10, 0)
+    add:SetText("Add")
+
+    local status = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    status:SetPoint("TOPLEFT", box, "BOTTOMLEFT", -4, -4)
+    status:SetTextColor(1, 0.5, 0.5)
+    w.cursorY = w.cursorY - 48
+
+    local top = w.cursorY
+    local rows = {}
+    local function Rebuild()
+        local list = settings.customBuffs
+        for i = 1, MAX_CUSTOM do
+            local row = rows[i]
+            local id = list[i]
+            if id and not row then
+                row = CreateFrame("Frame", nil, w)
+                row:SetSize(w:GetWidth() - 40, 24)
+                row:SetPoint("TOPLEFT", w, "TOPLEFT", 20, top - (i - 1) * 26)
+                row.icon = row:CreateTexture(nil, "ARTWORK")
+                row.icon:SetSize(20, 20)
+                row.icon:SetPoint("LEFT")
+                row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+                row.text:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
+                row.remove = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+                row.remove:SetSize(70, 20)
+                row.remove:SetPoint("RIGHT")
+                row.remove:SetText("Remove")
+                rows[i] = row
+            end
+            if row then
+                if id then
+                    row.icon:SetTexture(SpellTexture(id) or 134400)
+                    row.text:SetText(("%s  |cff888888%d|r"):format(SpellName(id) or "Unknown spell", id))
+                    row.remove:SetScript("OnClick", function()
+                        table.remove(settings.customBuffs, i)
+                        Rebuild()
+                        MarkDirty()
+                    end)
+                    row:Show()
+                else
+                    row:Hide()
+                end
+            end
+        end
+        w:SetHeight(-top + math.max(1, #list) * 26 + 20)
+    end
+
+    local function Add()
+        local text = strtrim(box:GetText() or "")
+        if text == "" then return end
+        local id = tonumber(text)
+        if not id and C_Spell and C_Spell.GetSpellInfo then
+            local info = C_Spell.GetSpellInfo(text)
+            id = info and info.spellID
+        end
+        if not id or not SpellName(id) then
+            status:SetText("No spell found for \"" .. text .. "\".")
+            return
+        end
+        for _, have in ipairs(settings.customBuffs) do
+            if have == id then status:SetText("Already on the list.") return end
+        end
+        if #settings.customBuffs >= MAX_CUSTOM then
+            status:SetText(("At most %d custom buffs."):format(MAX_CUSTOM))
+            return
+        end
+        table.insert(settings.customBuffs, id)
+        status:SetText("")
+        box:SetText("")
+        box:ClearFocus()
+        Rebuild()
+        MarkDirty()
+    end
+    add:SetScript("OnClick", Add)
+    box:SetScript("OnEnterPressed", Add)
+    w:HookScript("OnShow", Rebuild)
+    w:HookScript("OnHide", function() box:ClearFocus() end)
+    Rebuild()
+    return w
 end
 
 local function ShowOptions()
@@ -1014,29 +1699,44 @@ local function ShowOptions()
     if not API or not settings then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("Buff Reminder", 440, 580)
+        optionsWindow = API:CreateOptionsWindow("Buff Reminder", 440, 600)
         local w = optionsWindow
         w:AddCheckbox(settings, "showRaid", "Group buff your class gives",
             "Arcane Intellect, Battle Shout, Mark of the Wild and so on, with how many nearby players lack it.", MarkDirty)
         w:AddCheckbox(settings, "showSelf", "Your own buffs",
-            "Poisons, elemental shields, weapon imbues, paladin aura, Shadowform, runeforge.", MarkDirty)
-        w:AddCheckbox(settings, "showPets", "Missing pet", nil, MarkDirty)
+            "Poisons, shields, weapon imbues, paladin aura, Shadowform, runeforge, and your custom buffs.", MarkDirty)
+        w:AddCheckbox(settings, "showTargeted", "Buffs you put on others",
+            "Beacons, Earth Shield, Source of Magic, Blistering Scales, Symbiotic Relationship, Soulstone on a ready check. "
+            .. "A click casts on whoever had it last.", MarkDirty)
+        w:AddCheckbox(settings, "showPets", "Pet: missing, on Passive, or the wrong demon", nil, MarkDirty)
         w:AddCheckbox(settings, "showConsumables", "Consumables: food, flask, rune, oil, healthstone",
-            "In instances, every matching item in your bags gets its own icon with its count. Oil is offered per hand. The rune only shows when you carry one. Also: low durability anywhere, and Soulwell or Refreshment Table on a ready check.", MarkDirty)
-        w:AddCheckbox(settings, "expiring", "Also buffs with under five minutes left", nil, MarkDirty)
-        w:AddCheckbox(settings, "onlyInstances", "Group and own buffs only inside instances", nil, MarkDirty)
-        w:AddCheckbox(settings, "hideResting", "Hide in cities and inns", nil, MarkDirty)
-        w:AddCheckbox(settings, "hideMounted", "Hide while mounted", nil, MarkDirty)
+            "In instances, every matching item in your bags gets its own icon with its count. Oil is offered per hand. The rune only shows when you carry one. Also: delve food, low durability anywhere, and Soulwell or Refreshment Table on a ready check.", MarkDirty)
+        w:AddCheckbox(settings, "expiring", "Also buffs that are running out", nil, MarkDirty)
+        w:AddSlider(settings, "expiringMinutes", "Running out means under", 1, 30, 1, "%s %d min", MarkDirty)
         w:AddCheckbox(settings, "readyCheck", "Show everything for 30 seconds on a ready check")
         w:AddCheckbox(settings, "clickCast", "Click an icon to cast or use it", nil, MarkDirty)
-        w:AddCheckbox(settings, "showNames", "Show names under the icons", nil, MarkDirty)
-        AddSizeSlider(w)
-        w:AddCheckbox(settings, "locked", "Lock the bar",
-            "Untick to drag the bar; a sample icon marks it while nothing is missing.", MarkDirty)
-        w:AddCheckbox(settings, "shiftDrag", "Shift+drag moves the locked bar")
+        w:AddCheckbox(settings, "rightSnooze", "Right-click an icon to hide it for a while", nil, MarkDirty)
+        w:AddSlider(settings, "snoozeMinutes", "Hidden for", 1, 60, 1, "%s %d min")
+        w:AddSoundPicker(settings, "sound", "Sound when something goes missing", "None")
+
+        local _, class = UnitClass("player")
+        local items = {
+            { "Reminders", function() ToggleSub("reminders", function() return BuildReminders(API) end) end },
+            { "Custom buffs", function() ToggleSub("custom", function() return BuildCustom(API) end) end },
+            { "Layout and glow", function() ToggleSub("layout", function() return BuildLayout(API) end) end },
+            { "Where it shows", function() ToggleSub("where", function() return BuildWhere(API) end) end },
+        }
+        if class == "ROGUE" or class == "DEATHKNIGHT" or class == "DRUID" or class == "WARRIOR" then
+            items[#items + 1] = { "Class choices", function() ToggleSub("class", function() return BuildClass(API, class) end) end }
+        end
+        AddButtonRow(w, items)
         w:AddNote("The bar hides in combat and is rebuilt when combat ends, so nothing it shows is guessed from hidden combat data.")
+        FitHeight(w)
         w:HookScript("OnShow", MarkDirty)
-        w:HookScript("OnHide", MarkDirty)
+        w:HookScript("OnHide", function()
+            for _, sub in pairs(subWindows) do sub:Hide() end
+            MarkDirty()
+        end)
     end
     optionsWindow:Show()
 end
@@ -1057,10 +1757,11 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "buffreminder",
         name     = "Buff Reminder",
-        version  = "1.2.0",
+        version  = "1.3.0",
         author   = "Oxed",
         category = "combat",
-        keywords = { "buff", "missing", "food", "flask", "rune", "oil", "pet", "poison", "consumables", "healthstone", "ready check" },
+        keywords = { "buff", "missing", "food", "flask", "rune", "oil", "pet", "poison", "consumables",
+            "healthstone", "ready check", "beacon", "earth shield", "soulstone", "stance", "form", "custom" },
         -- Clipped at about 90 characters on the card; the detail is in Options.
         desc     = "Icons for missing buffs, pets and consumables. Click one to cast it.",
         icon     = "Interface\\Icons\\Spell_Holy_MagicalSentry",
@@ -1071,6 +1772,8 @@ loginFrame:SetScript("OnEvent", function(self)
 
         OnEnable = function(_, config)
             settings = config
+            if type(settings.customBuffs) ~= "table" then settings.customBuffs = {} end
+            if type(settings.lastTargets) ~= "table" then settings.lastTargets = {} end
             SafeStart()
         end,
 

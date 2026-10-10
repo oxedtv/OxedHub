@@ -55,6 +55,7 @@ end
 local track, iconAnchor
 local trackIcons, alertIcons = {}, {}
 local ticker
+local idleUntil = 0       -- see Tick: no work until an ability comes near
 local active = false
 
 local function Own(ev)
@@ -195,6 +196,9 @@ end
 
 local function Restyle()
     if not track then return end
+    -- Settings changed: every track icon draws itself again on the next tick.
+    for _, icon in ipairs(trackIcons) do icon.ev = nil end
+    idleUntil = 0
     track:SetScale(settings.scale)
     iconAnchor:SetScale(settings.scale)
     local long, wide = settings.trackLength, settings.trackWidth
@@ -249,8 +253,15 @@ local function StopTicker()
     if ticker then ticker:Cancel(); ticker = nil end
 end
 
+-- ⚠ Nothing to draw until the next ability reaches the track or its warning
+-- time: the ticker runs 20 times a second for the whole fight, and most of
+-- that time every ability is still far away. Until then a tick returns at
+-- once. A new event resets it.
+
+
 local list = {}
 local function Tick()
+    if GetTime() < idleUntil then return end
     wipe(list)
     local any = false
     local here = WantedHere()
@@ -274,9 +285,15 @@ local function Tick()
             if ev.trackLeft <= settings.trackSeconds then
                 used = used + 1
                 local icon = TrackIcon(used)
-                icon:SetSize(wide, wide)
-                icon.tex:SetTexture(ev.icon)
-                icon.border:SetColorTexture(KindColour(ev))
+                -- What the icon shows changes only when another ability takes
+                -- its place; only the position moves on every tick.
+                if icon.ev ~= ev or icon.wide ~= wide then
+                    icon.ev, icon.wide = ev, wide
+                    icon:SetSize(wide, wide)
+                    icon.tex:SetTexture(ev.icon)
+                    icon.border:SetColorTexture(KindColour(ev))
+                    if settings.showNames then SetName(icon.name, ev) end
+                end
                 local offset = (long - wide) * ev.trackLeft / settings.trackSeconds
                 icon:ClearAllPoints()
                 icon.name:ClearAllPoints()
@@ -289,7 +306,6 @@ local function Tick()
                     icon:SetPoint(goal, track, goal, settings.reverse and -offset or offset, 0)
                     icon.name:SetPoint("BOTTOM", icon, "TOP", 0, 2)
                 end
-                if settings.showNames then SetName(icon.name, ev) end
                 icon.name:SetShown(settings.showNames)
                 icon:Show()
             end
@@ -335,6 +351,25 @@ local function Tick()
     if not any then
         StopTicker()
         Restyle()
+        return
+    end
+
+    -- Nothing on screen: sleep until the soonest ability is close enough.
+    if used == 0 and shown == 0 then
+        if not here then
+            idleUntil = GetTime() + 1
+            return
+        end
+        local gap
+        local warnDefault = TimersSetting("warnAt", 5)
+        for _, ev in ipairs(list) do
+            local own = Own(ev)
+            local near = math.max(settings.track and settings.trackSeconds or 0,
+                settings.icons and ((own and own.warnAt) or warnDefault) or 0)
+            local wait = ev.trackLeft - near
+            if not gap or wait < gap then gap = wait end
+        end
+        if gap and gap > 0.2 then idleUntil = GetTime() + math.min(gap - 0.1, 2) end
     end
 end
 
@@ -345,7 +380,10 @@ local function StartTicker()
 end
 
 Engine:AddListener({
-    OnEventAdded = function() StartTicker() end,
+    OnEventAdded = function()
+        idleUntil = 0
+        StartTicker()
+    end,
 })
 
 local function Start()

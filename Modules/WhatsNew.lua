@@ -25,6 +25,18 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.6",
+        important = true,
+        lines = {
+            { "NEW", "Buff Reminder, much bigger: buffs you put on others (Beacons, Earth Shield, Source of Magic, Blistering Scales, Symbiotic Relationship, Soulstone on a ready check), pet on Passive, wrong demon, wrong form or stance, delve food and mage food." },
+            { "NEW", "Buff Reminder: custom buffs by spell ID or name, a list to switch each reminder on or off, layout and glow, where it shows (open world, dungeons, raids, delves, PvP), right-click to hide an icon for a while, and a sound when something goes missing." },
+            { "NEW", "Buff Reminder class choices: pick your rogue poisons (two of each with Dragon-Tempered Blades) and the death knight rune each spec should have." },
+            { "FIXED", "Bulk Buy now buys with currencies, not only gold, and buys currencies themselves up to their cap." },
+            { "NEW", "Attributes: a slider for the on-screen box's background opacity." },
+            { "CHANGED", "Lighter in a fight: Boss Track and Boss Alerts rest until an ability comes near, Kick Bar only repaints when its state changes, and the first screen icon of a session no longer stutters." },
+        },
+    },
+    {
         version = "2.4.5",
         important = true,
         lines = {

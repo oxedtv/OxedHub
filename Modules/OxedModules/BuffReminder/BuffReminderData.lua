@@ -41,14 +41,21 @@ Data.RAID = {
 -- Things that only concern you.
 Data.SELF = {
     -- Rogue poisons: one lethal and one non-lethal.
-    { key = "lethalPoison", group = "self", class = "ROGUE", known = 2823,
-      auras = { 2823, 8679, 315584, 381664 }, castList = { 315584, 2823, 8679, 381664 } },
-    { key = "utilityPoison", group = "self", class = "ROGUE", known = 3408,
-      auras = { 3408, 5761, 381637 }, castList = { 3408, 381637, 5761 } },
+    -- The poison chosen in Options is the one cast; with Dragon-Tempered
+    -- Blades two of each kind are needed.
+    { key = "lethalPoison", group = "self", class = "ROGUE", check = "poison", poisons = "lethal",
+      castList = { 381664, 2823, 315584, 8679 } },
+    { key = "utilityPoison", group = "self", class = "ROGUE", check = "poison", poisons = "nonLethal",
+      castList = { 381637, 5761, 3408 } },
 
-    -- Shaman
-    { key = "shamanShield", group = "self", class = "SHAMAN",
+    -- Shaman. With Elemental Orbit you keep Earth Shield on yourself AND a
+    -- Water / Lightning Shield; without it any one shield is enough.
+    { key = "shamanShield", group = "self", class = "SHAMAN", notKnown = 383010,
       auras = { 52127, 192106, 974, 383648 }, castList = { 192106, 52127 } },
+    { key = "shamanShieldEO", group = "self", class = "SHAMAN", known = 383010,
+      auras = { 52127, 192106 }, castList = { 192106, 52127 } },
+    { key = "earthShieldSelf", group = "self", class = "SHAMAN", known = 383010,
+      auras = { 383648 }, cast = 974 },
     { key = "flametongue", group = "self", class = "SHAMAN", known = 318038, enchants = { 5400 } },
     { key = "windfury",    group = "self", class = "SHAMAN", known = 33757,  enchants = { 5401 } },
     { key = "earthliving", group = "self", class = "SHAMAN", known = 382021, enchants = { 6498 } },
@@ -69,20 +76,90 @@ Data.SELF = {
     { key = "attunement", group = "self", class = "EVOKER", specs = { [1473] = true }, known = 403208,
       auras = { 403264, 403265 }, castList = { 403264, 403265 } },
 
-    -- Death knight runeforge on the weapon
+    -- Death knight runeforge on the weapon. With a rune chosen for the spec in
+    -- Options, a different rune counts as wrong.
     { key = "runeforge", group = "self", class = "DEATHKNIGHT", level = 55, cast = 53428, permanent = true,
-      enchants = { 3368, 3370, 3847, 6241, 6242, 6243, 6244, 6245 } },
+      check = "runeforge", enchants = { 3368, 3370, 3847, 6241, 6242, 6243, 6244, 6245 } },
+
+    -- Warlock: Grimoire of Sacrifice taken, the demon not sacrificed yet.
+    { key = "grimoireOfSacrifice", group = "self", class = "WARLOCK", known = 108503, auras = { 196099 } },
+    -- Burning Rush left running: shown while it IS on (opt-in).
+    { key = "burningRush", group = "self", class = "WARLOCK", known = 111400, auras = { 111400 },
+      present = true, optIn = true, noClick = true },
+
+    -- The wrong form or stance for the spec (opt-in). Read from the stance
+    -- bar, so it is right even where auras are hidden.
+    { key = "druidForm", group = "self", class = "DRUID", specs = { [102] = true, [103] = true },
+      check = "druidForm", optIn = true },
+    { key = "warriorStance", group = "self", class = "WARRIOR", check = "stance", optIn = true },
 }
+
+-- Buffs you put on somebody else. Shown in a group when nobody nearby carries
+-- yours. A click casts on the player it was on last, else mouseover / target.
+--   selfAura  checked on you instead of the group (the link buff the caster gets)
+--   role      the click prefers a group member with this role
+Data.TARGETED = {
+    { key = "beaconOfLight", group = "targeted", class = "PALADIN", specs = { [65] = true },
+      known = 53563, notKnown = 200025, auras = { 53563 } },
+    { key = "beaconOfFaith", group = "targeted", class = "PALADIN", specs = { [65] = true },
+      known = 156910, notKnown = 200025, auras = { 156910 } },
+    { key = "earthShieldOthers", group = "targeted", class = "SHAMAN", known = 974, auras = { 974 },
+      role = "TANK" },
+    { key = "blisteringScales", group = "targeted", class = "EVOKER", specs = { [1473] = true },
+      known = 360827, auras = { 360827 }, role = "TANK" },
+    { key = "timelessness", group = "targeted", class = "EVOKER", specs = { [1473] = true },
+      known = 412710, auras = { 412710 } },
+    { key = "sourceOfMagic", group = "targeted", class = "EVOKER", known = 369459, auras = { 369459 },
+      role = "HEALER" },
+    { key = "weyrnstone", group = "targeted", class = "EVOKER", known = 408233, selfAura = 410318 },
+    { key = "symbiotic", group = "targeted", class = "DRUID", known = 474750, selfAura = 474754 },
+    -- Soulstone: only on a ready check, and not while it is cooling down.
+    { key = "soulstone", group = "targeted", class = "WARLOCK", known = 20707, auras = { 20707 },
+      readyCheckOnly = true, role = "HEALER" },
+}
+
+-- Rogue poisons, best first. Dragon-Tempered Blades lets you keep two of each.
+Data.LETHAL_POISONS = { 381664, 2823, 315584, 8679 }        -- Amplifying, Deadly, Instant, Wound
+Data.NONLETHAL_POISONS = { 381637, 5761, 3408 }             -- Atrophic, Numbing, Crippling
+Data.TWO_POISONS_TALENT = 381801
+
+-- Death knight runes: permanent enchant ID -> the Runeforging spell for its icon.
+Data.RUNES = {
+    { enchant = 3368, spell = 53344,  name = "Fallen Crusader" },
+    { enchant = 3370, spell = 53343,  name = "Razorice" },
+    { enchant = 3847, spell = 62158,  name = "Stoneskin Gargoyle" },
+    { enchant = 6241, spell = 326805, name = "Sanguination" },
+    { enchant = 6242, spell = 326855, name = "Spellwarding" },
+    { enchant = 6244, spell = 326977, name = "Unending Thirst" },
+    { enchant = 6245, spell = 327082, name = "Apocalypse" },
+}
+Data.DK_SPECS = { { id = 250, name = "Blood" }, { id = 251, name = "Frost" }, { id = 252, name = "Unholy" } }
+
+-- Forms and stances each spec should be in.
+Data.DRUID_FORM = { [102] = 24858, [103] = 768 }            -- Balance: Moonkin, Feral: Cat
+Data.DRUID_TRAVEL_FORMS = { [3] = true, [4] = true, [27] = true }
+Data.WARRIOR_STANCE = { [71] = { 386164 }, [72] = { 386164, 386196 }, [73] = { 386208 } }
+Data.BERSERKER_STANCE = 386196
 
 Data.PET = {
     { key = "hunterPet",  group = "pet", class = "HUNTER",  known = 883, check = "pet" },
     { key = "warlockPet", group = "pet", class = "WARLOCK", known = 688, check = "pet", notAura = 196099 },
     { key = "unholyPet",  group = "pet", class = "DEATHKNIGHT", specs = { [252] = true }, known = 46584, check = "pet" },
     { key = "frostPet",   group = "pet", class = "MAGE", specs = { [64] = true }, known = 31687, check = "pet" },
+    -- Demonology without its Felguard out.
+    { key = "wrongDemon", group = "pet", class = "WARLOCK", specs = { [266] = true }, known = 30146,
+      notAura = 196099, check = "felguard", cast = 30146 },
+    -- Any pet left on Passive.
+    { key = "petPassive", group = "pet", check = "passive", icon = 132311 },
 }
 
 Data.CONSUMABLE = {
     { key = "food",  group = "consumable", check = "food",  instance = true, icon = 136000 },
+    -- Delves have their own food buff.
+    { key = "delveFood", group = "consumable", check = "delveFood", auras = { 442522 }, icon = 136000 },
+    -- A healer with no Conjured Mana Bun while a mage is in the group (opt-in).
+    { key = "mageFood", group = "consumable", check = "mageFood", instance = true, optIn = true,
+      item = 113509, icon = 134029 },
     { key = "flask", group = "consumable", check = "flask", instance = true,
       auras = { 432021, 431971, 431972, 431973, 431974, 432473,
                 1235057, 1235108, 1235110, 1235111, 1239355 } },
@@ -109,6 +186,21 @@ Data.LABELS = {
     frostPet = "Water Elemental", food = "Well Fed", flask = "Flask", rune = "Augment rune",
     weaponOil = "Weapon oil or stone", healthstone = "Healthstone", repair = "Repair your gear",
     soulwell = "Soulwell", refreshment = "Refreshment Table",
+    shamanShieldEO = "Water or Lightning Shield", earthShieldSelf = "Earth Shield on you",
+    grimoireOfSacrifice = "Grimoire of Sacrifice", burningRush = "Burning Rush left on",
+    druidForm = "Wrong druid form", warriorStance = "Wrong warrior stance",
+    beaconOfLight = "Beacon of Light", beaconOfFaith = "Beacon of Faith",
+    earthShieldOthers = "Earth Shield on an ally", blisteringScales = "Blistering Scales",
+    timelessness = "Timelessness", sourceOfMagic = "Source of Magic", weyrnstone = "Weyrnstone",
+    symbiotic = "Symbiotic Relationship", soulstone = "Soulstone",
+    wrongDemon = "Felguard not out", petPassive = "Pet on Passive",
+    delveFood = "Delve food", mageFood = "Ask the mage for food",
+}
+
+-- Shown above each part of the Reminders list in Options.
+Data.GROUP_TITLES = {
+    raid = "Group buff", self = "Your own buffs", targeted = "Buffs you put on others",
+    pet = "Pet", consumable = "Consumables and chores",
 }
 
 -- Classes whose weapon slot already holds a class imbue; the oil reminder

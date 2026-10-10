@@ -380,9 +380,12 @@ local function ShowKick()
     end
 end
 
+local shownState            -- 1 kick, 2 out of range, 3 cooldown: what the icon shows now
+
 local function HideKick()
     -- The next showing paints its swipe afresh, and reads the cooldown now.
     cooldownPainted = false
+    shownState = nil
     readyCheckedAt = 0
     if isShowing then
         isShowing = false
@@ -558,7 +561,11 @@ local function OnUpdate(self)
     end
 
     -- ── Apply scale ─────────────────────────────────────────────────────
-    kickFrame:SetScale(db.scale or 1.4)
+    local scale = db.scale or 1.4
+    if kickFrame._scale ~= scale then
+        kickFrame._scale = scale
+        kickFrame:SetScale(scale)
+    end
     -- The game decides visibility from the secret: fully transparent when the
     -- cast cannot be interrupted, the chosen alpha when it can. Plain booleans
     -- are accepted too, so the same call serves out of combat. Clients without
@@ -570,12 +577,25 @@ local function OnUpdate(self)
     end
 
     -- ── Update icon ─────────────────────────────────────────────────────
-    if interruptIcon then
+    if interruptIcon and kickFrame._icon ~= interruptIcon then
+        kickFrame._icon = interruptIcon
         kickFrame.icon:SetTexture(interruptIcon)
     end
 
     -- ── Visual state ────────────────────────────────────────────────────
-    if isReady and inRange then
+    -- Painted only when it changes: the loop runs while the target casts,
+    -- and the colours, text and animations were set again on every tick.
+    local state = (isReady and inRange) and 1 or (isReady and 2 or 3)
+    if state == shownState then
+        if state == 3 and not cooldownPainted then
+            cooldownPainted = true
+            PaintCooldown(kickFrame.cooldown)
+        end
+        ShowKick()
+        return
+    end
+    shownState = state
+    if state == 1 then
         -- GREEN PULSING - KICK NOW!
         kickFrame:SetBackdropBorderColor(0.1, 1, 0.1, 1)
         kickFrame.glow:SetVertexColor(0.1, 1, 0.1, 0.6)
@@ -602,7 +622,7 @@ local function OnUpdate(self)
             end
         end
 
-    elseif isReady and not inRange then
+    elseif state == 2 then
         -- YELLOW - ready but out of range
         kickFrame:SetBackdropBorderColor(1, 0.82, 0, 0.9)
         kickFrame.glow:SetVertexColor(1, 0.82, 0, 0.3)

@@ -1803,6 +1803,8 @@ local function ShowOptions()
             "A small box you can put anywhere. Drag it with the left button, right-click it to choose the stats and set your targets.",
             function() ApplyHudVisibility() end)
         optionsWindow:AddNote("Right-click the box to pick what it shows. /oxstats toggles it.")
+        optionsWindow:AddSlider(settings, "hudAlpha", "Box background", 0, 1, 0.05, "%s: %.2f",
+            function() StyleHud() end)
         optionsWindow:AddCheckbox(settings, "primary", "Attributes",
             "Your specialisation's main stat and stamina.", Refresh)
         optionsWindow:AddCheckbox(settings, "gear", "Gear",

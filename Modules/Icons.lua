@@ -116,6 +116,29 @@ local function AcquireIconFrame()
     return frame
 end
 
+-- ⚠ The first icon of a session built its frame, a cooldown from a template,
+-- a mask and a font on the spot: 6.6 ms in the middle of a fight (Anti-Magic
+-- Shell, measured). Two frames are made ready shortly after login instead,
+-- out of combat, so a cast only takes one from the pool.
+local WARM_FRAMES = 2
+local warmup = CreateFrame("Frame")
+warmup:RegisterEvent("PLAYER_LOGIN")
+warmup:SetScript("OnEvent", function(self)
+    self:UnregisterAllEvents()
+    C_Timer.After(4, function()
+        if InCombatLockdown() then return end
+        local made = {}
+        for i = 1, WARM_FRAMES - #iconPool - #activeIcons do
+            local frame = AcquireIconFrame()
+            frame.fontSize = 20   -- the size AcquireIconFrame sets
+            frame.texture:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+            frame:Hide()
+            made[i] = frame
+        end
+        for _, frame in ipairs(made) do table.insert(iconPool, frame) end
+    end)
+end)
+
 function Icons:PlayScreenIcon(spellID, posData, duration, expirationTime, isAura)
     local frame = AcquireIconFrame()
     frame.spellID = tonumber(spellID) or spellID -- Tag frame with spellID
@@ -157,8 +180,12 @@ function Icons:PlayScreenIcon(spellID, posData, duration, expirationTime, isAura
     frame.clipFrame:SetHeight(size)
     frame.texture:SetHeight(size)
     
+    -- SetFont only when the size changes: each new size loads the font again.
     local fontSize = math.max(12, math.floor(size * 0.32))
-    frame.timerText:SetFont("Fonts\\2002.TTF", fontSize, "OUTLINE")
+    if frame.fontSize ~= fontSize then
+        frame.fontSize = fontSize
+        frame.timerText:SetFont("Fonts\\2002.TTF", fontSize, "OUTLINE")
+    end
     
     local isLust = OxedHub.IsLustSpell and OxedHub.IsLustSpell(spellID)
     local isDurationMode = posData.showDuration or isLust
