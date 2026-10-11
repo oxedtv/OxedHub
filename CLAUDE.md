@@ -234,6 +234,13 @@ sound and says so in chat. Never add an automatic press back.
 
 Role checks are different: `CompleteLFGRoleCheck(true)` is allowed and works.
 
+### Some popups cannot be accepted for the player
+
+Auto Confirm (`AutoDelete.lua`) presses Accept on game popups. A popup whose
+Accept calls a protected function is blocked when an addon presses it: the
+"use this item and it binds" popup (`USE_BIND`) runs `ConfirmBindOnUse` and
+raised ADDON_ACTION_FORBIDDEN every time. Keep such popups out of `RULES`.
+
 ### IsItemInRange is protected in combat
 
 `C_Item.IsItemInRange` (and the old global) raise ADDON_ACTION_BLOCKED when an

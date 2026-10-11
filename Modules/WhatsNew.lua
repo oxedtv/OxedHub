@@ -25,6 +25,17 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.7",
+        important = true,
+        lines = {
+            { "FIXED", "Triggers work in player housing again: the neighbourhood and your house count as the open world, so rules with Open World ticked fire there." },
+            { "FIXED", "No more stutter the first time a screen icon shows (Anti-Magic Shell and others): icons and fonts are loaded right after login." },
+            { "FIXED", "Auto Confirm no longer tries to accept the \"use and bind\" popup, which the game blocks for addons and reported as an error." },
+            { "FIXED", "Toy Box: no blocked-action errors when scrolling the toy list or clicking a quick slot in combat." },
+            { "FIXED", "Break Time: Show it now no longer errors, and Later no longer resets how long you have been playing." },
+        },
+    },
+    {
         version = "2.4.6",
         important = true,
         lines = {

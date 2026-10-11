@@ -23,11 +23,15 @@ local optionsWindow
 local reminder
 local ticker
 local dueAt              -- GetTime() at which the next reminder is due
+local playingSince       -- GetTime() of the last real break (a snooze keeps it)
 local afkSince
 local eventFrame = CreateFrame("Frame")
 
+-- A snooze (minutes given) moves the reminder only; a break starts the
+-- "you have been playing for" clock again too.
 local function Reset(minutes)
     dueAt = GetTime() + (minutes or settings.every) * 60
+    if not minutes or not playingSince then playingSince = GetTime() end
 end
 
 local function Busy()
@@ -37,7 +41,9 @@ local function Busy()
 end
 
 local function PlayedText()
-    local minutes = math.floor((GetTime() - (dueAt - settings.every * 60)) / 60 + 0.5)
+    -- ⚠ "Show it now" can open the reminder before the clock ever started
+    -- (module just switched on, or off): dueAt was nil and this threw.
+    local minutes = math.floor((GetTime() - (playingSince or GetTime())) / 60 + 0.5)
     if minutes >= 90 then
         return ("%d hours %d minutes"):format(math.floor(minutes / 60), minutes % 60)
     end

@@ -1325,8 +1325,13 @@ function Triggers:CheckZoneRestrictions(zones)
     
     local inInstance, instanceType = IsInInstance()
     
-    -- Check each zone type - only allow if explicitly checked (true)
-    if zones.OPEN_WORLD and not inInstance then
+    -- ⚠ Player housing (the neighbourhood, inside a house) reports itself as
+    -- an instance of a type none of the boxes below names, so every rule
+    -- with a zone set stayed silent there. Any instance that is not a
+    -- dungeon, raid, scenario or PvP counts as the open world.
+    local KNOWN = instanceType == "party" or instanceType == "raid" or instanceType == "scenario"
+        or instanceType == "pvp" or instanceType == "arena"
+    if zones.OPEN_WORLD and (not inInstance or not KNOWN) then
         return true
     end
     if zones.PARTY and instanceType == "party" then

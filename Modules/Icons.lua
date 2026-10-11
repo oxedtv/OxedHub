@@ -136,6 +136,31 @@ warmup:SetScript("OnEvent", function(self)
             made[i] = frame
         end
         for _, frame in ipairs(made) do table.insert(iconPool, frame) end
+
+        -- An empty frame was not enough: the 6.6 ms came back (2.4.6 report).
+        -- The cost is the first load of that trigger's icon file and of the
+        -- timer font at that size. Each icon trigger's texture and font size
+        -- are loaded now, on a hidden frame, so the cast finds them ready.
+        local frame = iconPool[1]
+        local profile = OxedHub.db and OxedHub.db.profile
+        if not (frame and profile and type(profile.triggers) == "table") then return end
+        frame.cd:SetSwipeTexture("Interface\\Cooldown\\swipe")
+        frame.cd:SetSwipeTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
+        local fonts = {}
+        for _, trigger in pairs(profile.triggers) do
+            local actions = type(trigger) == "table" and trigger.enabled ~= false and trigger.actions
+            if type(actions) == "table" and actions.showIcon then
+                local id = trigger.conditions and trigger.conditions.spellID
+                if id then frame.texture:SetTexture(ResolveIconTexture(id, actions.iconTextureType)) end
+                local size = actions.iconUseCustomPosition and (actions.iconSize or 64) or 64
+                local fontSize = math.max(12, math.floor(size * 0.32))
+                if not fonts[fontSize] then
+                    fonts[fontSize] = true
+                    frame.timerText:SetFont("Fonts\\2002.TTF", fontSize, "OUTLINE")
+                end
+            end
+        end
+        frame.fontSize = nil   -- whichever size was loaded last; set again on use
     end)
 end)
 

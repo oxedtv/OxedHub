@@ -83,7 +83,9 @@ local RULES = {
     AUTOEQUIP_BIND                  = { setting = "equipBind" },
     EQUIP_BIND_TRADEABLE            = { setting = "equipBind" },
     EQUIP_BIND_REFUNDABLE           = { setting = "equipBind" },
-    USE_BIND                        = { setting = "equipBind" },
+    -- ⚠ No USE_BIND: its Accept calls ConfirmBindOnUse, which is protected.
+    -- A press from an addon is blocked and raises ADDON_ACTION_FORBIDDEN, so
+    -- that popup is always the player's to click.
     ACTION_WILL_BIND_ITEM           = { setting = "equipBind" },
     LOOT_BIND                       = { setting = "lootBind" },
     CONFIRM_LOOT_ROLL               = { setting = "lootBind" },

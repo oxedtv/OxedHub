@@ -885,6 +885,9 @@ function Toys:GetOrCreateToyboxFrame()
         slot.Cooldown = cd
 
         slot:SetScript("PreClick", function(self, button)
+            -- Attributes cannot change in combat; the ones set before the
+            -- fight still use the toy.
+            if InCombatLockdown() then return end
             local cursorType = GetCursorInfo()
             if cursorType or Toys._draggedToyID or self._isDragging or button == "RightButton" then
                 self:SetAttribute("type", nil)
@@ -1033,6 +1036,29 @@ function Toys:GetOrCreateToyboxFrame()
     holder.ScrollChild = toyChild
     holder.ScrollFrame = toyScroll
     ApplyModernScroll(toyScroll)
+
+    -- ⚠ The grid holds secure toy buttons, so the scroll frame is protected:
+    -- scrolling it in combat is blocked (159 blocked calls in one report). In
+    -- a fight the wheel does nothing and the bar steps aside until it ends.
+    local wheel = toyScroll:GetScript("OnMouseWheel")
+    toyScroll:SetScript("OnMouseWheel", function(self, delta)
+        if InCombatLockdown() then return end
+        if wheel then wheel(self, delta) end
+    end)
+    local combatScroll = CreateFrame("Frame")
+    combatScroll:RegisterEvent("PLAYER_REGEN_DISABLED")
+    combatScroll:RegisterEvent("PLAYER_REGEN_ENABLED")
+    combatScroll:SetScript("OnEvent", function(_, event)
+        local bar = toyScroll.oxedMinimalScrollBar
+        if not bar then return end
+        if event == "PLAYER_REGEN_DISABLED" then
+            bar.oxedWasShown = bar:IsShown()
+            bar:Hide()
+        elseif bar.oxedWasShown then
+            bar.oxedWasShown = nil
+            bar:Show()
+        end
+    end)
 
     -- Said across the top of the grid, where the player is already looking.
     -- Nothing about the tiles changes when the dock is unlocked, so someone who
