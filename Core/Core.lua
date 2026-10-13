@@ -2179,7 +2179,7 @@ function Core:OnSpellCastSucceeded(unit, castGUID, spellID)
                     seq = mySeq,
                 }
 
-                -- Start cooldown animation immediately on cast (BliZzi-style).
+                -- Start cooldown animation immediately on cast.
                 -- Cooldown shows as soon as you press the button, not after success.
                 local hasCooldownAnim = false
                 for _, trigger in pairs(OxedHub.db.profile.triggers or {}) do
@@ -2197,7 +2197,7 @@ function Core:OnSpellCastSucceeded(unit, castGUID, spellID)
                     unit = unit,
                     result = "cast",
                 })
-                -- Schedule fail check after timeout (BliZzi uses 0.6s)
+                -- Schedule fail check after timeout (0.6s)
                 C_Timer.After(INTERRUPT_RESULT_TIMEOUT, function()
                     if pendingInterrupt and pendingInterrupt.seq == mySeq then
                         OxedHub.Triggers:ProcessEvent("INTERRUPT_USED", {

@@ -1301,12 +1301,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.7)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.10)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.7")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.10")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1372,11 +1372,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  New: Bulk Buy, Shift-click a vendor item to buy any amount.",
-        "•  New: Bonus Roll Guard, two clicks to roll and your loot spec shown first.",
-        "•  Loot Banner: put the boss loot banner wherever you like.",
-        "•  Auto Queue works alongside Premade Groups Filter, no more errors.",
-        "•  Lighter in a fight: far less work for Action Hub and the new modules.",
+        "•  New: MythicLooter, full M+, Raid & Delve loot browser by spec and slot.",
+        "•  New: KickSync, party interrupt tracker & polished Party Keystones window.",
+        "•  New: SmartMisdirect, 1-click Hunter / Rogue priority macro generator.",
+        "•  Auto Queue: integrated Movable LFG Eye with live preview & scaling.",
+        "•  KickBar: taint-safe execution & unified OxedHub stone styling.",
         "•  Grab either pack from CurseForge:",
     }
 
@@ -1399,6 +1399,7 @@ function UI:CreateDashboardTab()
             memeLinkBtn:SetPoint("LEFT", listPanel, "TOPLEFT", 14, -((idx) * 32) + 2)
             memeLinkBtn:SetText("Meme Pack Link")
             memeLinkBtn:SetNormalFontObject("GameFontNormalSmall")
+            if ApplyRedButtonStyle then ApplyRedButtonStyle(memeLinkBtn) end
             memeLinkBtn:SetScript("OnClick", function() ShowPackLink("meme") end)
 
             local gamingLinkBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
@@ -1406,43 +1407,46 @@ function UI:CreateDashboardTab()
             gamingLinkBtn:SetPoint("LEFT", memeLinkBtn, "RIGHT", 8, 0)
             gamingLinkBtn:SetText("Gaming Pack Link")
             gamingLinkBtn:SetNormalFontObject("GameFontNormalSmall")
+            if ApplyRedButtonStyle then ApplyRedButtonStyle(gamingLinkBtn) end
             gamingLinkBtn:SetScript("OnClick", function() ShowPackLink("gaming") end)
 
             -- Straight to the module this release is about: the Modules page
             -- with its own name already typed into the search box.
-            local cursorBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
-            cursorBtn:SetSize(120, 22)
-            cursorBtn:SetPoint("LEFT", gamingLinkBtn, "RIGHT", 8, 0)
-            cursorBtn:SetText("BRes & Lust")
-            cursorBtn:SetNormalFontObject("GameFontNormalSmall")
-            cursorBtn:SetScript("OnClick", function()
+            local mythicBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
+            mythicBtn:SetSize(120, 22)
+            mythicBtn:SetPoint("LEFT", gamingLinkBtn, "RIGHT", 8, 0)
+            mythicBtn:SetText("MythicLooter")
+            mythicBtn:SetNormalFontObject("GameFontNormalSmall")
+            if ApplyRedButtonStyle then ApplyRedButtonStyle(mythicBtn) end
+            mythicBtn:SetScript("OnClick", function()
                 UI:ShowTab("Modules")
-                if UI.searchBox then UI.searchBox:SetText("bres") end
+                if UI.searchBox then UI.searchBox:SetText("mythiclooter") end
             end)
-            cursorBtn:SetScript("OnEnter", function(self)
+            mythicBtn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:AddLine("BRes & Lust Tracker", 1, 0.82, 0)
-                GameTooltip:AddLine("Opens the Modules page on the new tracker.", 1, 1, 1, true)
+                GameTooltip:AddLine("MythicLooter", 1, 0.82, 0)
+                GameTooltip:AddLine("Opens the Modules page on MythicLooter.", 1, 1, 1, true)
                 GameTooltip:Show()
             end)
-            cursorBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            mythicBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-            local currencyBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
-            currencyBtn:SetSize(120, 22)
-            currencyBtn:SetPoint("LEFT", cursorBtn, "RIGHT", 8, 0)
-            currencyBtn:SetText("Currency")
-            currencyBtn:SetNormalFontObject("GameFontNormalSmall")
-            currencyBtn:SetScript("OnClick", function()
+            local kickSyncBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
+            kickSyncBtn:SetSize(120, 22)
+            kickSyncBtn:SetPoint("LEFT", mythicBtn, "RIGHT", 8, 0)
+            kickSyncBtn:SetText("KickSync")
+            kickSyncBtn:SetNormalFontObject("GameFontNormalSmall")
+            if ApplyRedButtonStyle then ApplyRedButtonStyle(kickSyncBtn) end
+            kickSyncBtn:SetScript("OnClick", function()
                 UI:ShowTab("Modules")
-                if UI.searchBox then UI.searchBox:SetText("currency") end
+                if UI.searchBox then UI.searchBox:SetText("kicksync") end
             end)
-            currencyBtn:SetScript("OnEnter", function(self)
+            kickSyncBtn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:AddLine("Currency Transfer", 1, 0.82, 0)
-                GameTooltip:AddLine("Opens the Modules page on the new transfer module.", 1, 1, 1, true)
+                GameTooltip:AddLine("KickSync", 1, 0.82, 0)
+                GameTooltip:AddLine("Opens the Modules page on KickSync.", 1, 1, 1, true)
                 GameTooltip:Show()
             end)
-            currencyBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            kickSyncBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
         end
     end
 

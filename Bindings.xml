@@ -14,4 +14,7 @@
     <Binding name="OXEDHUB_VENDOR_TOGGLE_HOVERED" category="OXEDHUB_CATEGORY">
         OxedHub_AutoVendorToggleHovered()
     </Binding>
+    <Binding name="KEYSTONELOOT_TOGGLE" category="OXEDHUB_CATEGORY" header="BINDING_HEADER_KEYSTONELOOT">
+        if KeystoneLootFrame then KeystoneLootFrame:SetShown(not KeystoneLootFrame:IsShown()) end
+    </Binding>
 </Bindings>

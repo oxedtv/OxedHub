@@ -1,0 +1,3 @@
+-- KickSyncMisdirect.lua - Shim forwarding to standalone SmartMisdirect module
+local addonName, OxedHub = ...
+OxedHub.KickSyncMisdirect = OxedHub.SmartMisdirect or {}

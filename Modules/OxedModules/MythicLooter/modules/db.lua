@@ -1,0 +1,316 @@
+local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; AddonName = "MythicLooter";
+
+KeystoneLoot.DB = {};
+
+local DB = KeystoneLoot.DB;
+
+local CURRENT_SEASON = KeystoneLoot.Config.season;
+local DEFAULT_WHISPER_MESSAGE = KeystoneLoot.Config.whisperMessage;
+
+local DB_VERSION = 20;
+local CHAR_DB_VERSION = 4;
+
+local observers = {};
+
+function DB:Init()
+    self:InitGlobalDB();
+    self:InitCharDB();
+end
+
+function DB:InitGlobalDB()
+    -- TODO: Will be removed in the next version
+    if (KeystoneLootDB and KeystoneLootDB.minimapButtonEnabled ~= nil) then
+        KeystoneLootDB = {};
+    end
+
+    if (not KeystoneLootDB or not KeystoneLootDB.version) then
+        KeystoneLootDB = {
+            version = 0,
+            settings = {},
+            favorites = {},
+            currentSeason = 0
+        };
+    end
+
+    while (KeystoneLootDB.version < DB_VERSION) do
+        self:MigrateGlobalDB(KeystoneLootDB.version);
+        KeystoneLootDB.version = KeystoneLootDB.version + 1;
+    end
+
+    self:CheckSeason();
+end
+
+function DB:InitCharDB()
+    -- TODO: Will be removed in the next version
+    if (KeystoneLootCharDB and KeystoneLootCharDB.favoriteLoot ~= nil) then
+        KeystoneLootCharDB = {};
+    end
+
+    if (not KeystoneLootCharDB or not KeystoneLootCharDB.version) then
+        KeystoneLootCharDB = {
+            version = 0,
+            filters = {},
+            ui = {}
+        };
+    end
+
+    while (KeystoneLootCharDB.version < CHAR_DB_VERSION) do
+        self:MigrateCharDB(KeystoneLootCharDB.version);
+        KeystoneLootCharDB.version = KeystoneLootCharDB.version + 1;
+    end
+end
+
+function DB:MigrateGlobalDB(fromVersion)
+    if (fromVersion == 0) then
+        -- First install
+        KeystoneLootDB.settings = {
+            minimap = {
+                enabled = true,
+                degrees = 195
+            },
+            lootReminder = {
+                dungeons = true
+            },
+            highlighting = {
+                crit = true,
+                haste = true,
+                mastery = true,
+                versatility = true,
+                noStats = true
+            },
+            keystoneTooltip = true
+        };
+
+        KeystoneLootDB.favorites = {};
+    end
+
+    if (fromVersion == 1) then
+        KeystoneLootDB.settings.favoriteTooltip = true;
+    end
+
+    if (fromVersion == 2) then
+        KeystoneLootDB.settings.hiddenCharacters = {};
+    end
+
+    if (fromVersion == 3) then
+        KeystoneLootDB.settings.wideMode = false;
+    end
+
+    if (fromVersion == 4) then
+        KeystoneLootDB.settings.highlighting.comboMode = false;
+    end
+
+    if (fromVersion == 5) then
+        KeystoneLootDB.settings.hideOtherItems = false;
+    end
+
+    if (fromVersion == 6) then
+        KeystoneLootDB.settings.lootReminder.dropAlert = true;
+        KeystoneLootDB.settings.lootReminder.whisperMessage = DEFAULT_WHISPER_MESSAGE;
+    end
+
+    if (fromVersion == 7) then
+        KeystoneLootDB.settings.multiSlotFilter = false;
+    end
+
+    if (fromVersion == 8) then
+        KeystoneLootDB.settings.keyCommand = {
+            CHAT_MSG_PARTY = true,
+            CHAT_MSG_PARTY_LEADER = true,
+            CHAT_MSG_GUILD = true
+        };
+    end
+
+    if (fromVersion == 9) then
+        KeystoneLootDB.settings.favoriteIcon = true;
+    end
+
+    if (fromVersion == 10) then
+        KeystoneLootDB.settings.slotName = true;
+    end
+
+    if (fromVersion == 11) then
+        KeystoneLootDB.settings.mythicPlusNotification = true;
+    end
+
+    if (fromVersion == 12) then
+        KeystoneLootDB.settings.lootReminder.party = true;
+    end
+
+    if (fromVersion == 13) then
+        KeystoneLootDB.settings.ownedTooltip = true;
+    end
+
+    if (fromVersion == 14) then
+        KeystoneLootDB.settings.lootReminder.share = true;
+
+        if (KeystoneLootDB.settings.lootReminder.whisperMessage == "Can I have {item} please?") then
+            KeystoneLootDB.settings.lootReminder.whisperMessage = DEFAULT_WHISPER_MESSAGE;
+        end
+    end
+
+    if (fromVersion == 15) then
+        KeystoneLootDB.settings.roleCheck = KeystoneLoot.RoleCheck.MODE_MYTHIC_PLUS;
+    end
+
+    if (fromVersion == 16) then
+        KeystoneLootDB.settings.windowScale = 100;
+    end
+
+    if (fromVersion == 17) then
+        KeystoneLootDB.settings.ownedCheck = "hero";
+    end
+
+    if (fromVersion == 18) then
+        local enabled = KeystoneLootDB.settings.mythicPlusNotification;
+        KeystoneLootDB.settings.mythicPlusNotification = {
+            joined = enabled,
+            full = enabled
+        };
+    end
+
+    if (fromVersion == 19) then
+        KeystoneLootDB.settings.favoriteIcon = KeystoneLootDB.settings.favoriteIcon and "BOTTOMLEFT";
+    end
+end
+
+function DB:MigrateCharDB(fromVersion)
+    if (fromVersion == 0) then
+        -- First install
+        local _, _, classId = UnitClass("player");
+        local specId = C_SpecializationInfo.GetSpecializationInfo(C_SpecializationInfo.GetSpecialization() or 1);
+
+        KeystoneLootCharDB.filters = {
+            classId = classId,
+            specId = specId or 0,
+            slotId = 0,
+            dungeon = {
+                track = "champion",
+                rank = 1
+            },
+            raid = {
+                difficulty = "normal",
+                rank = 1
+            }
+        };
+
+        KeystoneLootCharDB.ui = {
+            selectedTab = "dungeons",
+            selectedRaidTab = KeystoneLoot.RaidDatabase[1].journalInstanceId
+        }
+    end
+
+    if (fromVersion == 1) then
+        KeystoneLootCharDB.voidcore = {};
+    end
+
+    if (fromVersion == 2) then
+        KeystoneLootCharDB.voidcoreChecked = false;
+    end
+
+    if (fromVersion == 3) then
+        KeystoneLootCharDB.bankTracks = {};
+    end
+end
+
+function DB:CheckSeason()
+    local currentSeason = CURRENT_SEASON;
+
+    if (not KeystoneLootDB.currentSeason) then
+        KeystoneLootDB.currentSeason = currentSeason;
+        return;
+    end
+
+    if (KeystoneLootDB.currentSeason ~= currentSeason) then
+        -- New season - wipe all favorites
+        wipe(KeystoneLootDB.favorites);
+        KeystoneLootDB.currentSeason = currentSeason;
+    end
+end
+
+function DB:Get(path)
+    local keys = { strsplit(".", path) };
+    local current = KeystoneLootCharDB;
+
+    -- Try CharDB first
+    for _, key in ipairs(keys) do
+        if (current) then
+            current = current[key];
+        else
+            break;
+        end
+    end
+
+    -- Fallback to global DB
+    if (current == nil) then
+        current = KeystoneLootDB;
+
+        for _, key in ipairs(keys) do
+            if (current) then
+                current = current[key];
+            else
+                break;
+            end
+        end
+    end
+
+    return current;
+end
+
+function DB:Set(path, value)
+    local keys = { strsplit(".", path) };
+    local lastKey = table.remove(keys);
+
+    -- Determine which DB
+    local db
+    if (path:match("^settings") or path:match("^favorites")) then
+        db = KeystoneLootDB;
+    else
+        db = KeystoneLootCharDB;
+    end
+
+    -- Navigate to parent
+    local current = db;
+    for _, key in ipairs(keys) do
+        if (not current[key]) then
+            current[key] = {};
+        end
+
+        current = current[key];
+    end
+
+    -- Set value
+    current[lastKey] = value;
+
+    -- Notify observers
+    self:Notify(path, value);
+end
+
+function DB:AddObserver(key, callback)
+    if (not observers[key]) then
+        observers[key] = {};
+    end
+
+    table.insert(observers[key], callback);
+end
+
+function DB:Notify(path, value)
+    -- Exact match
+    if (observers[path]) then
+        for _, callback in ipairs(observers[path]) do
+            callback(value);
+        end
+    end
+
+    -- Wildcard match (e.g., "filters.*")
+    for pattern, callbacks in pairs(observers) do
+        if (pattern:match("%*$")) then
+            local prefix = pattern:gsub("%*$", "");
+            if (path:match("^" .. prefix)) then
+                for _, callback in ipairs(callbacks) do
+                    callback(value);
+                end
+            end
+        end
+    end
+end

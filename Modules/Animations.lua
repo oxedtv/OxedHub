@@ -2741,7 +2741,7 @@ function Animations:PlayCooldownProgress(spellID, iconTexture, customDuration)
         cd:SetHideCountdownNumbers(true)
         frame.cooldown = cd
 
-        -- Custom countdown text (BliZzi-style)
+        -- Custom countdown text
         local txt = frame:CreateFontString(nil, "OVERLAY")
         txt:SetPoint("CENTER", frame, "CENTER", 0, 0)
         txt:SetFont(OxedHub:GetFont(STANDARD_TEXT_FONT), 20, "OUTLINE")
@@ -2799,7 +2799,7 @@ function Animations:PlayCooldownProgress(spellID, iconTexture, customDuration)
     local function ApplyCooldown(cdDuration)
         frame.cooldown:SetCooldown(startTime, cdDuration)
         frame.cooldown:Show()
-        -- Auto-hide ticker + custom countdown text update (BliZzi-style)
+        -- Auto-hide ticker + custom countdown text update
         frame.hideTicker = C_Timer.NewTicker(0.1, function()
             local remaining = cdDuration - (GetTime() - startTime)
             -- Update countdown text

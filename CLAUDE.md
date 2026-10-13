@@ -258,3 +258,36 @@ treated as refused from the start (`nativeSoundUnavailable = true` in
 button asks the client, and a yes is saved per build. All five PvP trigger
 files check `Triggers:IsSelfAuraNativeBlocked()` before calling it. Never add
 an automatic probe back.
+
+### Dynamic audio switching and sound handles in combat
+
+`PlaySoundFile(path, channel)` and `PlaySound(id, channel)` return `willPlay, soundHandle`.
+To switch sound tracks dynamically in combat (e.g. switching heartbeat pulse at
+35% HP or cutting to a death sound without audio overlap):
+- Store `activeSoundHandle` returned by `PlaySoundFile`.
+- Call `StopSound(activeSoundHandle, fadeMs)` before playing a new track. This
+  cuts off the running audio stream immediately instead of queuing or overlapping.
+- Audio APIs (`PlaySoundFile`, `StopSound`) and player health (`UnitHealth("player")`)
+  are completely unprotected and safe to call during `InCombatLockdown()`.
+- Pair health percentage checks with `_G["LowHealthFrame"]:IsShown()` to stay in sync
+  with Blizzard's native low-health screen pulse.
+- Always guard audio triggers with a debounce/cooldown window and auto-stop
+  timers (`C_Timer.After`) so fluctuating HP around thresholds does not stutter
+  or spam sound.
+
+### Secret boolean values and UnitCastingInfo in tainted execution
+
+In WoW 12.0 / Retail, when execution is tainted (e.g. following `TargetNearestEnemy`,
+secure macro clicks, or action bar presses), `UnitCastingInfo` / `UnitChannelInfo`
+return `notInterruptible` as a `<secret boolean>`.
+- Any boolean test in Lua (`if val`, `not val`, `val or false`, `val and true`)
+  raises a fatal Lua error:
+  `attempt to perform boolean test on local 'notInterruptible' (a secret boolean value, while execution tainted by 'OxedHub')`
+- You can store/assign it (`a = notInterruptible`), but NEVER test its truthiness
+  outside of `pcall`.
+- Wrap the test inside `pcall(function() if notInterruptible then isShielded = true end end)`:
+  if `pcall` fails, the value is secret.
+- When secret, pass it directly to C widget helpers like
+  `frame:SetAlphaFromBoolean(val, falseAlpha, trueAlpha)` and fall back to visible
+  UI textures (`TargetFrameSpellBar.BorderShield:IsVisible()`) for Lua-side logic.
+

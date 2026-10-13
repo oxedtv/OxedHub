@@ -25,6 +25,19 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.10",
+        important = true,
+        lines = {
+            { "NEW", "MythicLooter: complete M+, Raid, Delves, and World Bosses loot browser. Filter by spec, slot, and item level, track Great Vault items, save favorites, and receive dungeon drop alerts." },
+            { "NEW", "KickSync: cross-addon party interrupt tracker supporting ElvUI, Cell, Grid2, SUF, NDui, and Blizzard frames. Features wasted-kick watchdog and active defensive overlays." },
+            { "NEW", "Party Keystones: redesigned keystone list (/kskeys) with clean Blizzard gold levels, class colors, and 1-click dungeon teleport shortcuts (including Kings' Rest)." },
+            { "NEW", "SmartMisdirect: standalone 1-click secure macro generator (/smartmd) for Hunter (Misdirection) and Rogue (Tricks of the Trade) prioritizing tanks, focus, or pets." },
+            { "CHANGED", "Auto Queue: fully integrated Movable LFG Eye. Drag the queue eye anywhere on screen, adjust scale, test live preview (/eye), and reset position with 1 click." },
+            { "CHANGED", "KickBar: full taint-safe execution guards and unified OxedHub stone options panel with red buttons." },
+            { "CHANGED", "Unified Design: all module options windows and party tools upgraded to authentic OxedHub stone frames with red action buttons." },
+        },
+    },
+    {
         version = "2.4.7",
         important = true,
         lines = {

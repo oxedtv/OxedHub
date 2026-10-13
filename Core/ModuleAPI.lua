@@ -95,10 +95,11 @@ function ModuleAPI:Register(moduleInfo)
     if not moduleInfo or not moduleInfo.id then return end
 
     -- The order they arrive in is the order of the TOC, so the newest module
-    -- is the one registered last. That is what "Newest first" sorts by; there
-    -- is no date on a module to sort by instead.
+    -- is the one registered last. That is what "Newest first" sorts by.
+    -- Modules declaring an explicit 'updated' timestamp receive priority.
     registerCount = registerCount + 1
-    moduleInfo._order = registerCount
+    local updateBoost = (tonumber(moduleInfo.updated) or 0) * 1000
+    moduleInfo._order = updateBoost + registerCount
 
     self.modules[moduleInfo.id] = moduleInfo
 
@@ -1037,6 +1038,8 @@ function ModuleAPI:RefreshModulesTab()
             allModules[lowerId].id = mod.id
             allModules[lowerId].isLoaded = true
             allModules[lowerId]._registered = true
+            allModules[lowerId]._order = mod._order
+            allModules[lowerId].updated = mod.updated
         end
     end
 
@@ -1118,6 +1121,10 @@ function ModuleAPI:RefreshModulesTab()
         elseif sortKey == "nameDesc" then
             return (a.name or "") > (b.name or "")
         elseif sortKey == "newest" then
+            local ua = a.updated or 0
+            local ub = b.updated or 0
+            if ua ~= ub then return ua > ub end
+
             -- A module OxedHub only found, and never registered, has no place
             -- in that order and goes last.
             local oa, ob = a._order or 0, b._order or 0

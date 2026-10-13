@@ -46,6 +46,10 @@ local DEFAULTS = {
     keepNote       = true,   -- keep the sign-up note between applications
     roleBar        = true,   -- the role picker above the Group Finder window
     report         = true,   -- "Signed up as: ..." in chat
+    -- Movable LFG Eye (MovableLFGEye integration)
+    movableEye     = true,   -- make Blizzard's queue eye movable and draggable
+    eyeLocked      = false,  -- lock eye dragging
+    eyeScale       = 1.0,    -- eye scale (0.5 to 2.5)
     -- UI state, not options
     roleBarHidden  = false,
     tutorialSeen   = false,
@@ -589,11 +593,164 @@ local function BuildRoleBar()
     ShowRoleBar()
 end
 
+-- ── Movable LFG Eye ─────────────────────────────────────────────────────────
+local eyeInitialized = false
+local eyeMoverOverlay = nil
+local eyeTestMode = false
+local pendingEyeRestore = false
+local EYE_APPLY_FLAG = "_oxed_aq_eye_applying"
+
+local function GetQueueEyeButton()
+    return _G["QueueStatusButton"] or _G["QueueStatusMinimapButton"]
+end
+
+local function SaveEyePosition(frame)
+    if not frame or not settings then return end
+    local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
+    local relName = "UIParent"
+    if relativeTo and relativeTo.GetName then
+        relName = relativeTo:GetName() or relName
+    end
+    settings.eyePoint = {
+        point = point or "TOPRIGHT",
+        relTo = relName,
+        relativePoint = relativePoint or "TOPRIGHT",
+        x = tonumber(string.format("%.2f", x or 0)) or 0,
+        y = tonumber(string.format("%.2f", y or 0)) or 0,
+    }
+end
+
+local function RestoreEyePosition()
+    local btn = GetQueueEyeButton()
+    if not btn or not settings or not Active("movableEye") then return end
+    if InCombatLockdown() then
+        pendingEyeRestore = true
+        return
+    end
+
+    local p = settings.eyePoint
+    if not p then return end
+
+    local relFrame = _G[p.relTo] or UIParent
+    btn[EYE_APPLY_FLAG] = true
+    btn:ClearAllPoints()
+    btn:SetPoint(p.point or "TOPRIGHT", relFrame, p.relativePoint or "TOPRIGHT", p.x or 0, p.y or 0)
+    C_Timer.After(0.01, function()
+        if btn then btn[EYE_APPLY_FLAG] = nil end
+    end)
+end
+
+local function UpdateEyeAppearance()
+    local btn = GetQueueEyeButton()
+    if not btn then return end
+
+    if not Active("movableEye") then
+        btn:SetScale(1.0)
+        btn:SetAlpha(1.0)
+        if eyeMoverOverlay then eyeMoverOverlay:Hide() end
+        return
+    end
+
+    local sc = tonumber(settings and settings.eyeScale) or 1.0
+    btn:SetScale(math.max(0.5, math.min(2.5, sc)))
+
+    if eyeMoverOverlay then
+        if eyeTestMode or (Active("movableEye") and not settings.eyeLocked) then
+            eyeMoverOverlay:Show()
+        else
+            eyeMoverOverlay:Hide()
+        end
+    end
+
+    if eyeTestMode then
+        RestoreEyePosition()
+        btn:Show()
+        if btn.Eye then btn.Eye:Show() end
+        if btn.Eye and btn.Eye.EyeTexture then btn.Eye.EyeTexture:Show() end
+    end
+end
+
+local function SetupEyeButton()
+    if eyeInitialized then return end
+    local btn = GetQueueEyeButton()
+    if not btn then return end
+
+    btn:SetMovable(true)
+    btn:EnableMouse(true)
+    btn:RegisterForDrag("LeftButton")
+    btn:SetClampedToScreen(true)
+
+    -- Visual mover outline frame when unlocked / in test mode
+    eyeMoverOverlay = CreateFrame("Frame", nil, btn, "BackdropTemplate")
+    eyeMoverOverlay:SetAllPoints(btn)
+    eyeMoverOverlay:SetFrameLevel(btn:GetFrameLevel() + 10)
+    eyeMoverOverlay:SetBackdrop({
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 2,
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+    eyeMoverOverlay:SetBackdropBorderColor(0.2, 0.9, 0.4, 0.8)
+    eyeMoverOverlay:SetBackdropColor(0.1, 0.8, 0.3, 0.15)
+    local label = eyeMoverOverlay:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    label:SetPoint("BOTTOM", eyeMoverOverlay, "TOP", 0, 3)
+    label:SetText("LFG Eye")
+    label:SetTextColor(0.4, 1.0, 0.5)
+    eyeMoverOverlay:Hide()
+
+    btn:SetScript("OnDragStart", function(self)
+        if not Active("movableEye") then return end
+        if settings.eyeLocked and not eyeTestMode then return end
+        self:StartMoving()
+    end)
+
+    btn:SetScript("OnDragStop", function(self)
+        if not Active("movableEye") then return end
+        self:StopMovingOrSizing()
+        SaveEyePosition(self)
+    end)
+
+    -- Anti-override hook: reapply if Blizzard's Minimap code resets position
+    hooksecurefunc(btn, "SetPoint", function(self)
+        if self[EYE_APPLY_FLAG] or not Active("movableEye") then return end
+        if settings and settings.eyePoint then
+            C_Timer.After(0.05, function()
+                if btn and not btn[EYE_APPLY_FLAG] and Active("movableEye") then
+                    RestoreEyePosition()
+                end
+            end)
+        end
+    end)
+
+    eyeInitialized = true
+end
+
+local function SetEyeTestMode(enabled)
+    eyeTestMode = enabled
+    local btn = GetQueueEyeButton()
+    if not btn then return end
+    if enabled then
+        SetupEyeButton()
+        RestoreEyePosition()
+        UpdateEyeAppearance()
+    else
+        UpdateEyeAppearance()
+        if not (C_LFGList and C_LFGList.GetActiveEntryInfo and C_LFGList.GetActiveEntryInfo()) then
+            btn:Hide()
+        end
+    end
+end
+
 -- ── Events ──────────────────────────────────────────────────────────────────
 
 local function Setup()
     HookFinderFrames()
     BuildRoleBar()
+    if Active("movableEye") then
+        SetupEyeButton()
+        RestoreEyePosition()
+        UpdateEyeAppearance()
+    end
 end
 
 watcher:SetScript("OnEvent", function(_, event, arg1, arg2)
@@ -615,6 +772,11 @@ watcher:SetScript("OnEvent", function(_, event, arg1, arg2)
         OnApplicationStatus(arg1, arg2)
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
         RefreshRoleBar()
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        if pendingEyeRestore then
+            pendingEyeRestore = false
+            RestoreEyePosition()
+        end
     end
 end)
 
@@ -622,7 +784,7 @@ local EVENTS = {
     "ADDON_LOADED", "PLAYER_ENTERING_WORLD", "LFG_ROLE_CHECK_SHOW",
     "LFG_PROPOSAL_SHOW", "LFG_PROPOSAL_SUCCEEDED", "LFG_PROPOSAL_FAILED",
     "LFG_LIST_SEARCH_RESULTS_RECEIVED", "LFG_LIST_APPLICATION_STATUS_UPDATED",
-    "PLAYER_SPECIALIZATION_CHANGED",
+    "PLAYER_SPECIALIZATION_CHANGED", "PLAYER_REGEN_ENABLED",
 }
 
 -- The stand-alone AutoQueue does all of this too; both at once would answer
@@ -648,6 +810,8 @@ local function Stop()
     StopProposalWatch()
     ShowRoleBar()
     if tutorial then tutorial:Hide() end
+    eyeTestMode = false
+    UpdateEyeAppearance()
 end
 
 -- ── Slash command ───────────────────────────────────────────────────────────
@@ -658,7 +822,7 @@ local function PrintStatus()
     local any = picked.tank or picked.healer or picked.dps
     print("  Queue roles: " .. (any and RolesText(picked.tank, picked.healer, picked.dps)
         or ("your spec's (" .. RolesText(QueueRoles()) .. ")")))
-    print("  /aq on, /aq off, or Options on its card under Modules.")
+    print("  /aq on, /aq off, /aq eye (preview), or Options on its card under Modules.")
 end
 
 SLASH_OXEDAUTOQUEUE1 = "/aq"
@@ -677,9 +841,28 @@ SlashCmdList["OXEDAUTOQUEUE"] = function(message)
             if on then Start() else Stop() end
         end
         print(PREFIX .. "Auto Queue " .. (on and "on." or "off."))
+    elseif message == "eye" or message == "eyetest" or message == "testeye" then
+        SetEyeTestMode(not eyeTestMode)
+        print(PREFIX .. "LFG Eye test preview " .. (eyeTestMode and "|cff00ff00enabled|r." or "|cffff4444disabled|r."))
+    elseif message == "reseteye" then
+        if settings then
+            settings.eyePoint = nil
+            settings.eyeScale = 1.0
+            settings.eyeLocked = false
+        end
+        RestoreEyePosition()
+        UpdateEyeAppearance()
+        print(PREFIX .. "LFG Eye position reset to default.")
     else
         PrintStatus()
     end
+end
+
+SLASH_OXEDAUTOQUEUE_EYE1 = "/eye"
+SLASH_OXEDAUTOQUEUE_EYE2 = "/lfgeye"
+SlashCmdList["OXEDAUTOQUEUE_EYE"] = function()
+    SetEyeTestMode(not eyeTestMode)
+    print(PREFIX .. "LFG Eye test preview " .. (eyeTestMode and "|cff00ff00enabled|r." or "|cffff4444disabled|r."))
 end
 
 -- ── Settings ────────────────────────────────────────────────────────────────
@@ -703,7 +886,7 @@ local function ShowOptions()
     if not API or not settings then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("Auto Queue", 440, 500)
+        optionsWindow = API:CreateOptionsWindow("Auto Queue", 450, 680)
         local w = optionsWindow
         w:AddCheckbox(settings, "roleCheck", "Answer role checks",
             "Dungeon Finder role checks are accepted at once with your queue roles.")
@@ -724,7 +907,60 @@ local function ShowOptions()
         w:AddCheckbox(settings, "roleBar", "Role picker above the Group Finder",
             "Pick one or more roles to queue as. None picked: your spec's role.", ShowRoleBar)
         w:AddCheckbox(settings, "report", "Say the roles you signed up as in chat")
-        w:AddNote("Roles are saved per character. /aq shows the status; /aq on and /aq off switch the module.")
+
+        w:AddCheckbox(settings, "movableEye", "Make LFG Eye movable",
+            "Makes Blizzard's Queue Status \"Eye\" icon movable anywhere on your screen. Left-click and drag to move.", function(checked)
+                if checked then
+                    SetupEyeButton()
+                    RestoreEyePosition()
+                end
+                UpdateEyeAppearance()
+            end)
+        w:AddCheckbox(settings, "eyeLocked", "Lock LFG Eye position",
+            "Locks the LFG Eye in place to prevent accidental dragging.", function()
+                UpdateEyeAppearance()
+            end)
+        w:AddSlider(settings, "eyeScale", "LFG Eye scale", 0.5, 2.5, 0.1, "%s: %.1fx", function()
+            UpdateEyeAppearance()
+        end)
+
+        -- Action buttons for LFG Eye
+        local eyeBtnRow = CreateFrame("Frame", nil, w)
+        eyeBtnRow:SetSize(400, 28)
+        eyeBtnRow:SetPoint("TOPLEFT", w, "TOPLEFT", 18, w.cursorY)
+
+        local testEyeBtn = CreateFrame("Button", nil, eyeBtnRow, "UIPanelButtonTemplate")
+        testEyeBtn:SetSize(130, 24)
+        testEyeBtn:SetPoint("LEFT", eyeBtnRow, "LEFT", 0, 0)
+        testEyeBtn:SetText("Test / Drag Eye")
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
+            OxedHub.UI:ApplyRedButtonStyle(testEyeBtn)
+        end
+        testEyeBtn:SetScript("OnClick", function()
+            SetEyeTestMode(not eyeTestMode)
+        end)
+
+        local resetEyeBtn = CreateFrame("Button", nil, eyeBtnRow, "UIPanelButtonTemplate")
+        resetEyeBtn:SetSize(130, 24)
+        resetEyeBtn:SetPoint("LEFT", testEyeBtn, "RIGHT", 10, 0)
+        resetEyeBtn:SetText("Reset Position")
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
+            OxedHub.UI:ApplyRedButtonStyle(resetEyeBtn)
+        end
+        resetEyeBtn:SetScript("OnClick", function()
+            if settings then
+                settings.eyePoint = nil
+                settings.eyeScale = 1.0
+                settings.eyeLocked = false
+            end
+            RestoreEyePosition()
+            UpdateEyeAppearance()
+            print(PREFIX .. "LFG Eye position reset to default.")
+        end)
+
+        w.cursorY = w.cursorY - 36
+
+        w:AddNote("Roles are saved per character. /aq shows status; /aq eye (or /eye) toggles preview.")
         w:AddNote("With Premade Groups Filter installed, it signs you up and keeps your note itself; those two options here then step aside.")
     end
     optionsWindow:Show()
@@ -746,12 +982,12 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "autoqueue",
         name     = "Auto Queue",
-        version  = "1.0.0",
+        version  = "1.2.0",
+        updated  = 20261013.9,
         author   = "Oxed",
         category = "groups",
-        keywords = { "queue", "lfg", "group finder", "role check", "ready check", "dungeon", "apply", "sign up" },
-        -- Clipped at about 90 characters on the card; the detail is in Options.
-        desc     = "Accepts role checks, signs up in Group Finder, rings when your group is ready.",
+        keywords = { "queue", "lfg", "group finder", "role check", "ready check", "dungeon", "apply", "sign up", "eye", "movable eye" },
+        desc     = "Accepts role checks, signs up in Group Finder, movable & customizable LFG eye, rings when ready.",
         icon     = "Interface\\Icons\\INV_Misc_GroupNeedMore",
 
         defaults = DEFAULTS,

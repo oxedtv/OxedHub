@@ -1,24 +1,47 @@
 -- ============================================================================
--- KickBar - Interrupt Alert (built-in OxedHub module)
--- Shows a kick icon on the target's nameplate when your interrupt is off
--- cooldown and the target is casting an interruptible spell.
+-- KickBar - Interrupt Alert & Floating Highlight (OxedHub built-in module)
+-- State-of-the-art interrupt alert system:
 --
--- States:
---   GREEN  pulsing = interrupt ready + in range  -> KICK NOW!
---   YELLOW         = interrupt ready + out of range
---   RED    dimmed  = interrupt on cooldown (CD sweep shown)
---   HIDDEN         = target not casting / not interruptible / no target
+--   * Display Modes:
+--       - NAMEPLATE : Anchored beside enemy target's nameplate
+--       - FLOATING  : Movable HUD icon placed anywhere on screen
 --
--- This used to be an addon of its own, with its own .toc and its own saved
--- variables. It now loads as part of OxedHub: its settings live in
--- OxedHubDB.modules.kickbar, and it is switched on and off from its card on the
--- Modules page, or with /kickbar.
+--   * Visual States:
+--       - GREEN PULSING : Interrupt ready & in range -> KICK NOW!
+--       - GOLD PROC     : Critical / Important cast highlight!
+--       - YELLOW        : Interrupt ready but out of range (Range tint)
+--       - DESATURATED   : "Almost Ready" preview (< 2s on CD)
+--       - RED DIMMED    : Interrupt on cooldown (cooldown sweep + timer)
+--
+--   * Modern Retail 12.x / Midnight Features:
+--       - FlipBook Proc Loop sparkle glow (UI-HUD-ActionBar-Proc-Loop-Flipbook)
+--       - Engine-driven cast countdown timer on the icon
+--       - C-side secret-value protection (issecretvalue & SetAlphaFromBoolean)
+--       - Focus target & Target cast tracking
+--       - OxedHub SoundPicker & Animation integration
 -- ============================================================================
 
 local addonName, OxedHub = ...
-local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
+local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer
+local issecretvalue = _G.issecretvalue
+local issecret = _G.issecret
 
--- ── Interrupt spell database (first known spell wins) ───────────────────────
+local function IsSecret(val)
+    if issecretvalue then
+        local ok, s = pcall(issecretvalue, val)
+        if ok and s then return true end
+    end
+    if issecret then
+        local ok, s = pcall(issecret, val)
+        if ok and s then return true end
+    end
+    local ok = pcall(function()
+        if val then end
+    end)
+    return not ok
+end
+
+-- ── Interrupt Spell Database ───────────────────────────────────────────────
 local INTERRUPT_SPELLS = {
     DEATHKNIGHT = { 47528 },                -- Mind Freeze
     DEMONHUNTER = { 183752 },               -- Disrupt
@@ -31,41 +54,85 @@ local INTERRUPT_SPELLS = {
     PRIEST      = { 15487 },                -- Silence (Shadow only)
     ROGUE       = { 1766 },                 -- Kick
     SHAMAN      = { 57994 },                -- Wind Shear
-    WARLOCK     = {},                       -- through Command Demon, see FindInterruptSpell
+    WARLOCK     = {},                       -- through Command Demon (see FindInterruptSpell)
     WARRIOR     = { 6552 },                 -- Pummel
 }
 
--- ── Default settings ────────────────────────────────────────────────────────
+local COMMAND_DEMON = 119898
+local COMMAND_DEMON_INTERRUPTS = {
+    [119910] = true,  -- Spell Lock (Felhunter)
+    [132409] = true,  -- Spell Lock (Fel Ravager)
+    [119914] = true,  -- Axe Toss (Felguard)
+}
+
+-- ── Default Settings ────────────────────────────────────────────────────────
 local DEFAULTS = {
-    enabled     = false,  -- off until the player switches it on (see ModuleAPI:Register)
-    scale       = 1.4,
-    alpha       = 1.0,
-    anchor      = "LEFT",   -- which side of the nameplate
-    offsetX     = -8,
-    offsetY     = 0,
-    showLabel   = true,
-    showOnCD    = true,     -- show dimmed icon when interrupt is on CD
+    enabled            = false,
+    displayMode        = "NAMEPLATE", -- "NAMEPLATE" or "FLOATING"
+    scale              = 1.4,
+    alpha              = 1.0,
+
+    -- Floating HUD position
+    locked             = true,
+    posX               = 0,
+    posY               = 150,
+    point              = "CENTER",
+    strata             = "HIGH",
+
+    -- Nameplate anchor
+    anchor             = "LEFT",      -- "LEFT", "RIGHT", "TOP"
+    offsetX            = -8,
+    offsetY            = 0,
+
+    -- Visual & Behavior features
+    showLabel          = true,
+    showOnCD           = true,
+    showAlmostReady    = true,        -- desaturated preview when CD <= 2.0s
+    showCastTimer      = true,        -- cast countdown number on the icon
+    showGlow           = true,        -- Blizzard Proc FlipBook sparkle glow
+    highlightImportant = true,        -- golden glow for important casts
+    importantOnly      = false,
+    trackFocus         = true,        -- watch focus target if set
+    rangeTint          = true,        -- tint icon red when out of range
+
+    -- Sounds & animations
+    sound              = "",
+    animation          = "",
 }
 
 -- ── State ───────────────────────────────────────────────────────────────────
--- The module's settings table, OxedHubDB.modules.kickbar, bound at login.
--- Local rather than the old global: it is no longer a saved variable of its
--- own, and a global of the same name would collide with the standalone addon
--- if that is still installed.
 local KickBarDB
-
 local playerClass
 local interruptSpellID
 local interruptIcon
+local interruptHasRange = false
 local kickFrame
 local currentNameplate
-local currentHost   -- the bar the icon sits beside, Blizzard's or another addon's
+local currentHost
 local isShowing = false
 local moduleAPI = nil
-local castNotInterruptible = false  -- the current cast's flag, possibly a secret
-local castShielded = false          -- a readable best guess, for the sound only
+local castNotInterruptible = false
+local castShielded = false
+local isImportantCast = false
+local currentCastUnit = nil
+local debugTestMode = false
+local lastInterruptAt = nil
 
--- ── API compatibility wrappers ──────────────────────────────────────────────
+local UPDATE_RATE = 0.05
+local READY_GAP = 0.2
+local ALMOST_READY_THRESHOLD = 2.0
+local readyCheckedAt = 0
+local readyCached = false
+local cooldownPainted = false
+local shownState = nil
+local watchTicker = nil
+
+-- Colors
+local COLOR_WHITE            = { 1.0, 1.0, 1.0, 1.0 }
+local COLOR_OUT_OF_RANGE     = { 0.85, 0.35, 0.35, 1.0 }
+local COLOR_IMPORTANT_GLOW   = { 1.0, 0.65, 0.15, 1.0 }
+
+-- ── API Compatibility Wrappers ──────────────────────────────────────────────
 
 local function GetSpellCooldownCompat(spellID)
     if C_Spell and C_Spell.GetSpellCooldown then
@@ -86,119 +153,31 @@ local function GetSpellInfoCompat(spellID)
 end
 
 local function IsSpellInRangeCompat(spellID, unit)
-    if C_Spell and C_Spell.IsSpellInRange then
-        return C_Spell.IsSpellInRange(spellID, unit)
-    end
-    if IsSpellInRange then
-        local name = GetSpellInfoCompat(spellID)
-        if name then
-            local r = IsSpellInRange(name, unit)
-            return r == 1
+    local inRange = nil
+    pcall(function()
+        if C_Spell and C_Spell.IsSpellInRange then
+            local r = C_Spell.IsSpellInRange(spellID, unit)
+            if not IsSecret(r) and type(r) == "boolean" then
+                inRange = r
+            end
+            return
         end
-    end
-    return nil
-end
-
--- ── Find the player's interrupt spell ───────────────────────────────────────
-
--- ── Is the interrupt actually ready? ────────────────────────────────────────
--- The old check read the cooldown's start and duration and compared them. In
--- combat those come back as secret values, the comparison throws, and the
--- fallback it landed in assumed "ready" -- so in exactly the fights where it
--- mattered, the icon said KICK! with the interrupt still on cooldown.
---
--- isActive is the one field that is never secret. It is also true during the
--- global cooldown, though, so on its own every other spell cast would grey the
--- kick out for a second and a half. The spell's base cooldown is plain static
--- data, and together with when the interrupt was last used it tells a real
--- cooldown apart from the GCD. Same approach as the action hub's cooldowns.
-
-local lastInterruptAt = nil
-
-local function IsGlobalCooldownOnly(spellID)
-    local baseMs = 0
-    if GetSpellBaseCooldown then
-        local ok, value = pcall(GetSpellBaseCooldown, spellID)
-        if ok and type(value) == "number" then baseMs = value end
-    end
-    -- No cooldown of its own: whatever is running is the GCD.
-    if baseMs <= 1500 then return true end
-    -- Never used, or used long enough ago that its own cooldown is over.
-    if not lastInterruptAt then return true end
-    return (GetTime() - lastInterruptAt) > (baseMs / 1000)
-end
-
--- Named, not written inline: this runs on every tick while the target casts.
-local function CooldownActive(spellID)
-    local info = C_Spell.GetSpellCooldown(spellID)
-    if type(info) ~= "table" or info.isActive == nil then return nil end
-    return info.isActive == true
-end
-
-local function ReadyFromNumbers(start, duration)
-    if not start or start == 0 or not duration or duration == 0 then return true end
-    return duration <= 1.5
-end
-
-local function IsInterruptReady()
-    if not interruptSpellID then return false end
-
-    if C_Spell and C_Spell.GetSpellCooldown then
-        local ok, active = pcall(CooldownActive, interruptSpellID)
-        if ok and active ~= nil then
-            if active and IsGlobalCooldownOnly(interruptSpellID) then active = false end
-            return not active
-        end
-    end
-
-    -- Clients without isActive: the numbers are readable there.
-    local start, duration = GetSpellCooldownCompat(interruptSpellID)
-    local ok, ready = pcall(ReadyFromNumbers, start, duration)
-    if ok then return ready end
-
-    -- Nothing readable at all. Not ready is the safe answer: greying out a
-    -- kick that is up costs a glance, calling KICK! on one that is down costs
-    -- the cast you meant to stop.
-    return false
-end
-
--- The cooldown sweep. Numeric SetCooldown is closed to addons in this version;
--- the duration object is the route that is allowed, secrets and all.
-local function PaintCooldown(cdFrame)
-    if not cdFrame or not interruptSpellID then return end
-    if C_Spell and C_Spell.GetSpellCooldownDuration and cdFrame.SetCooldownFromDurationObject then
-        local okDur, durObj = pcall(C_Spell.GetSpellCooldownDuration, interruptSpellID)
-        if okDur and durObj then
-            local okSet = pcall(cdFrame.SetCooldownFromDurationObject, cdFrame, durObj)
-            if okSet then
-                cdFrame:Show()
-                return
+        if IsSpellInRange then
+            local name = GetSpellInfoCompat(spellID)
+            if name and not IsSecret(name) then
+                local r = IsSpellInRange(name, unit)
+                if not IsSecret(r) then
+                    if r == 1 or r == true then
+                        inRange = true
+                    elseif r == 0 or r == false then
+                        inRange = false
+                    end
+                end
             end
         end
-    end
-    -- Older clients: plain numbers, still guarded in case they are secret.
-    local start, duration = GetSpellCooldownCompat(interruptSpellID)
-    local ok = pcall(function()
-        if duration and duration > 1.5 then
-            cdFrame:SetCooldown(start, duration)
-            cdFrame:Show()
-        else
-            cdFrame:Hide()
-        end
     end)
-    if not ok then cdFrame:Hide() end
+    return inRange
 end
-
--- A warlock does not kick with a spell of their own. Their pet does, and the
--- player orders it through Command Demon, which turns into the pet's interrupt
--- while that pet is out. The pet's own spell ids (19647, 89766) are never known
--- to the player, which is why looking for them found no interrupt at all.
-local COMMAND_DEMON = 119898
-local COMMAND_DEMON_INTERRUPTS = {
-    [119910] = true,  -- Spell Lock (Felhunter)
-    [132409] = true,  -- Spell Lock (Fel Ravager)
-    [119914] = true,  -- Axe Toss (Felguard)
-}
 
 local function KnowsSpell(id)
     if C_SpellBook and C_SpellBook.IsSpellInSpellBook then
@@ -208,9 +187,7 @@ local function KnowsSpell(id)
     return (IsPlayerSpell and IsPlayerSpell(id)) or (IsSpellKnown and IsSpellKnown(id)) or false
 end
 
--- The id actually on the player's bar: talents can replace a spell with a
--- version of their own, and that is the one whose cooldown and range count.
-local function Resolved(id)
+local function ResolvedSpell(id)
     if C_Spell and C_Spell.GetOverrideSpell then
         local ok, override = pcall(C_Spell.GetOverrideSpell, id)
         if ok and override and override ~= 0 then return override end
@@ -225,17 +202,17 @@ local function FindInterruptSpell()
     end
 
     interruptSpellID, interruptIcon = nil, nil
-
     local found
+
     if playerClass == "WARLOCK" and KnowsSpell(COMMAND_DEMON) then
-        local override = Resolved(COMMAND_DEMON)
+        local override = ResolvedSpell(COMMAND_DEMON)
         if COMMAND_DEMON_INTERRUPTS[override] then found = override end
     end
 
     if not found then
         for _, id in ipairs(INTERRUPT_SPELLS[playerClass] or {}) do
             if KnowsSpell(id) then
-                found = Resolved(id)
+                found = ResolvedSpell(id)
                 break
             end
         end
@@ -245,54 +222,228 @@ local function FindInterruptSpell()
         interruptSpellID = found
         local _, _, icon = GetSpellInfoCompat(found)
         interruptIcon = icon
+        if C_Spell and C_Spell.SpellHasRange then
+            interruptHasRange = C_Spell.SpellHasRange(found) or false
+        else
+            interruptHasRange = true
+        end
     end
 end
 
--- Talents, a spec change and a new pet all settle over several events in a
--- row, and the spellbook is not final at the first of them. One rescan a
--- moment after the last one reads it once it has.
-local rescanPending = false
-local function QueueRescan(restart)
-    if rescanPending then return end
-    rescanPending = true
-    C_Timer.After(0.5, function()
-        rescanPending = false
-        restart()
-    end)
+-- ── Cooldown & Readiness Evaluation ─────────────────────────────────────────
+
+local function IsGlobalCooldownOnly(spellID)
+    local baseMs = 0
+    if GetSpellBaseCooldown then
+        local ok, value = pcall(GetSpellBaseCooldown, spellID)
+        if ok and type(value) == "number" then baseMs = value end
+    end
+    if baseMs <= 1500 then return true end
+    if not lastInterruptAt then return true end
+    return (GetTime() - lastInterruptAt) > (baseMs / 1000)
 end
 
--- ── Build the kick icon frame ───────────────────────────────────────────────
+local function CooldownActive(spellID)
+    local ok, active = pcall(function()
+        local info = C_Spell.GetSpellCooldown(spellID)
+        if type(info) ~= "table" then return nil end
+        if IsSecret(info.isActive) then return nil end
+        local act = false
+        pcall(function()
+            if info.isActive then act = true end
+        end)
+        return act
+    end)
+    if ok then return active end
+    return nil
+end
+
+local function ReadyFromNumbers(start, duration)
+    if IsSecret(start) or IsSecret(duration) then return true end
+    if type(start) ~= "number" or type(duration) ~= "number" then return true end
+    if start == 0 or duration == 0 then return true end
+    return duration <= 1.5
+end
+
+local function GetRemainingCD(spellID)
+    if not spellID or IsSecret(spellID) then return 0 end
+    local rem = 0
+    pcall(function()
+        local start, duration = GetSpellCooldownCompat(spellID)
+        if IsSecret(start) or IsSecret(duration) then return end
+        if type(start) ~= "number" or type(duration) ~= "number" then return end
+        if start == 0 or duration <= 1.5 then return end
+        local left = (start + duration) - GetTime()
+        if left > 0 then rem = left end
+    end)
+    return rem
+end
+
+local function IsInterruptReady()
+    if not interruptSpellID then return false end
+
+    if C_Spell and C_Spell.GetSpellCooldown then
+        local ok, active = pcall(CooldownActive, interruptSpellID)
+        if ok and active ~= nil then
+            if active and IsGlobalCooldownOnly(interruptSpellID) then active = false end
+            return not active
+        end
+    end
+
+    local start, duration = GetSpellCooldownCompat(interruptSpellID)
+    local ok, ready = pcall(ReadyFromNumbers, start, duration)
+    if ok then return ready end
+
+    return false
+end
+
+local function PaintCooldown(cdFrame)
+    if not cdFrame or not interruptSpellID then return end
+    if C_Spell and C_Spell.GetSpellCooldownDuration and cdFrame.SetCooldownFromDurationObject then
+        local okDur, durObj = pcall(C_Spell.GetSpellCooldownDuration, interruptSpellID)
+        if okDur and durObj then
+            local okSet = pcall(cdFrame.SetCooldownFromDurationObject, cdFrame, durObj)
+            if okSet then
+                cdFrame:Show()
+                return
+            end
+        end
+    end
+
+    local start, duration = GetSpellCooldownCompat(interruptSpellID)
+    local ok = pcall(function()
+        if duration and duration > 1.5 then
+            cdFrame:SetCooldown(start, duration)
+            cdFrame:Show()
+        else
+            cdFrame:Hide()
+        end
+    end)
+    if not ok then cdFrame:Hide() end
+end
+
+-- ── Cast Shielding & Target Detection ───────────────────────────────────────
+
+local function Visible(f)
+    if not f or not f.IsVisible then return false end
+    local ok, vis = pcall(function()
+        local v = f:IsVisible()
+        if IsSecret(v) then return false end
+        return v and true or false
+    end)
+    return ok and vis or false
+end
+
+local function CastbarShielded()
+    local shielded = false
+    pcall(function()
+        if Visible(TargetFrameSpellBar) and Visible(TargetFrameSpellBar.BorderShield) then
+            shielded = true
+            return
+        end
+        local np = C_NamePlate and C_NamePlate.GetNamePlateForUnit("target")
+        local blizzard = np and np.UnitFrame and np.UnitFrame.CastBar
+        if Visible(blizzard) and Visible(blizzard.BorderShield) then
+            shielded = true
+            return
+        end
+        local plater = np and np.unitFrame and np.unitFrame.castBar
+        if Visible(plater) and Visible(plater.Shield) then
+            shielded = true
+            return
+        end
+        if ElvUF_Target and Visible(ElvUF_Target.Castbar) then
+            local ni = ElvUF_Target.Castbar.notInterruptible
+            if not IsSecret(ni) and ni then
+                shielded = true
+                return
+            end
+        end
+    end)
+    return shielded
+end
+
+-- Resolves which unit to watch (focus if set & casting, otherwise target)
+local function GetActiveCastUnit()
+    local db = KickBarDB or DEFAULTS
+    if db.trackFocus and UnitExists("focus") and UnitCanAttack("player", "focus") and not UnitIsDead("focus") then
+        local focusCasting = false
+        pcall(function()
+            local c1 = UnitCastingInfo("focus")
+            local c2 = UnitChannelInfo("focus")
+            if type(c1) ~= "nil" or type(c2) ~= "nil" then focusCasting = true end
+        end)
+        if focusCasting then return "focus" end
+    end
+    if UnitExists("target") and UnitCanAttack("player", "target") and not UnitIsDead("target") then
+        return "target"
+    end
+    return nil
+end
+
+local function ReadHostileCast(unit)
+    if not unit or not UnitCanAttack("player", unit) then return nil end
+
+    local name, notInterruptible, spellID, duration
+    name, _, _, _, _, _, _, notInterruptible, spellID = UnitCastingInfo(unit)
+    if type(name) ~= "nil" then
+        if UnitCastingDuration then duration = UnitCastingDuration(unit) end
+    else
+        local numEmpowerStages
+        name, _, _, _, _, _, notInterruptible, spellID, _, numEmpowerStages = UnitChannelInfo(unit)
+        if type(name) == "nil" then return nil end
+        pcall(function()
+            if numEmpowerStages and not IsSecret(numEmpowerStages) and numEmpowerStages > 0 and UnitEmpoweredChannelDuration then
+                duration = UnitEmpoweredChannelDuration(unit, true)
+            end
+        end)
+        if not duration and UnitChannelDuration then
+            pcall(function() duration = UnitChannelDuration(unit) end)
+        end
+    end
+
+    if type(name) == "nil" then return nil end
+    return name, notInterruptible, spellID, duration
+end
+
+-- ── Frame Construction with FlipBook & Dual Layer ──────────────────────────
 
 local function CreateKickFrame()
     if kickFrame then return end
 
-    -- No global name: nothing looks it up by name, and "KickBarFrame" would be
-    -- shared with the standalone addon if both happened to be loaded.
     local f = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     f:EnableMouse(false)
-    f:SetSize(38, 38)
+    f:SetSize(40, 40)
     f:SetFrameStrata("HIGH")
     f:SetFrameLevel(500)
     f:Hide()
 
-    -- Dark backdrop
+    -- Dark backdrop with crisp border
     f:SetBackdrop({
         bgFile   = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         edgeSize = 8,
         insets   = { left = 1, right = 1, top = 1, bottom = 1 },
     })
-    f:SetBackdropColor(0.05, 0.05, 0.08, 0.85)
+    f:SetBackdropColor(0.06, 0.06, 0.09, 0.9)
     f:SetBackdropBorderColor(0, 1, 0, 1)
 
-    -- Spell icon
-    local icon = f:CreateTexture(nil, "ARTWORK")
+    -- Full-color Spell Icon
+    local icon = f:CreateTexture(nil, "BACKGROUND")
     icon:SetPoint("TOPLEFT", 2, -2)
     icon:SetPoint("BOTTOMRIGHT", -2, 2)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     f.icon = icon
 
-    -- Cooldown sweep
+    -- Desaturated Icon Layer (for "Almost Ready" preview)
+    local iconDesat = f:CreateTexture(nil, "BACKGROUND", nil, 1)
+    iconDesat:SetAllPoints(icon)
+    iconDesat:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    iconDesat:SetDesaturated(true)
+    iconDesat:SetAlpha(0)
+    f.iconDesat = iconDesat
+
+    -- Cooldown Sweep
     local cd = CreateFrame("Cooldown", nil, f, "CooldownFrameTemplate")
     cd:SetPoint("TOPLEFT", 2, -2)
     cd:SetPoint("BOTTOMRIGHT", -2, 2)
@@ -301,140 +452,121 @@ local function CreateKickFrame()
     cd:Hide()
     f.cooldown = cd
 
-    -- Outer glow (larger colored border behind the frame)
-    local glow = f:CreateTexture(nil, "BACKGROUND", nil, -1)
-    glow:SetPoint("TOPLEFT", -5, 5)
-    glow:SetPoint("BOTTOMRIGHT", 5, -5)
-    glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
-    glow:SetBlendMode("ADD")
-    glow:SetVertexColor(0, 1, 0, 0)
+    -- Outer Glow / FlipBook Proc Animation
+    local glow = f:CreateTexture(nil, "ARTWORK", nil, 2)
+    glow:SetPoint("CENTER", f, "CENTER", 0, 0)
+    glow:SetSize(60, 60)
+    glow:Hide()
     f.glow = glow
 
-    -- "KICK" label below icon
-    local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("TOP", f, "BOTTOM", 0, -1)
-    label:SetText("KICK")
-    label:SetTextColor(0, 1, 0, 1)
-    f.label = label
+    local hasFlipBook = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("UI-HUD-ActionBar-Proc-Loop-Flipbook")
+    if hasFlipBook then
+        glow:SetAtlas("UI-HUD-ActionBar-Proc-Loop-Flipbook")
+        local ag = glow:CreateAnimationGroup()
+        ag:SetLooping("REPEAT")
+        local fb = ag:CreateAnimation("FlipBook")
+        fb:SetDuration(1.0)
+        fb:SetOrder(1)
+        fb:SetFlipBookRows(6)
+        fb:SetFlipBookColumns(5)
+        fb:SetFlipBookFrames(30)
+        f.procAnim = ag
+    else
+        glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+        glow:SetBlendMode("ADD")
+        glow:SetVertexColor(0.1, 1, 0.1, 0.8)
+        local ag = glow:CreateAnimationGroup()
+        ag:SetLooping("REPEAT")
+        local a1 = ag:CreateAnimation("Alpha")
+        a1:SetFromAlpha(0.35)
+        a1:SetToAlpha(0.9)
+        a1:SetDuration(0.35)
+        a1:SetOrder(1)
+        local a2 = ag:CreateAnimation("Alpha")
+        a2:SetFromAlpha(0.9)
+        a2:SetToAlpha(0.35)
+        a2:SetDuration(0.35)
+        a2:SetOrder(2)
+        f.procAnim = ag
+    end
 
-    -- Pulse animation group (scale)
+    -- Pulse animation (icon scale)
     local scaleAg = f:CreateAnimationGroup()
     scaleAg:SetLooping("REPEAT")
     local up = scaleAg:CreateAnimation("Scale")
     up:SetScaleFrom(1, 1)
-    up:SetScaleTo(1.15, 1.15)
+    up:SetScaleTo(1.12, 1.12)
     up:SetDuration(0.35)
     up:SetOrder(1)
     up:SetSmoothing("IN_OUT")
     local down = scaleAg:CreateAnimation("Scale")
-    down:SetScaleFrom(1.15, 1.15)
+    down:SetScaleFrom(1.12, 1.12)
     down:SetScaleTo(1, 1)
     down:SetDuration(0.35)
     down:SetOrder(2)
     down:SetSmoothing("IN_OUT")
     f.pulseAnim = scaleAg
 
-    -- Glow alpha pulse
-    local glowAg = f.glow:CreateAnimationGroup()
-    glowAg:SetLooping("REPEAT")
-    local gIn = glowAg:CreateAnimation("Alpha")
-    gIn:SetFromAlpha(0.35)
-    gIn:SetToAlpha(0.85)
-    gIn:SetDuration(0.4)
-    gIn:SetOrder(1)
-    local gOut = glowAg:CreateAnimation("Alpha")
-    gOut:SetFromAlpha(0.85)
-    gOut:SetToAlpha(0.35)
-    gOut:SetDuration(0.4)
-    gOut:SetOrder(2)
-    f.glowAnim = glowAg
+    -- Cast Countdown Timer text on bottom-left of icon
+    local timerText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    timerText:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 4, 3)
+    timerText:SetTextColor(1, 1, 1, 1)
+    timerText:Hide()
+    f.timerText = timerText
 
-    -- Fade-in animation
-    local fadeIn = f:CreateAnimationGroup()
-    local a = fadeIn:CreateAnimation("Alpha")
-    a:SetFromAlpha(0)
-    a:SetToAlpha(1)
-    a:SetDuration(0.15)
-    f.fadeIn = fadeIn
+    -- Bottom state label ("KICK", "RANGE", "CD", "SOON")
+    local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("TOP", f, "BOTTOM", 0, -2)
+    label:SetText("KICK")
+    label:SetTextColor(0, 1, 0, 1)
+    f.label = label
+
+    -- Drag-and-drop support for Floating Mode
+    f:SetMovable(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", function(self)
+        local db = KickBarDB or DEFAULTS
+        if db.displayMode == "FLOATING" and not db.locked then
+            self:StartMoving()
+        end
+    end)
+    f:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local db = KickBarDB or DEFAULTS
+        if db.displayMode == "FLOATING" then
+            local point, _, _, x, y = self:GetPoint()
+            db.point = point or "CENTER"
+            db.posX = math.floor((x or 0) + 0.5)
+            db.posY = math.floor((y or 0) + 0.5)
+        end
+    end)
 
     kickFrame = f
 end
 
--- ── Core update logic ───────────────────────────────────────────────────────
-
-local elapsed = 0
-local UPDATE_RATE = 0.05   -- twenty looks a second while the target casts
-local READY_GAP = 0.2
-local readyCheckedAt, readyCached = 0, false
-local cooldownPainted = false
+-- ── Core Update Logic ───────────────────────────────────────────────────────
 
 local function ShowKick()
     if not isShowing then
         isShowing = true
         kickFrame:Show()
-        -- ⚠ No fade-in. An Alpha animation on the frame itself drives the
-        -- frame's alpha while it plays, which overrode SetAlphaFromBoolean and
-        -- flashed the icon on casts that cannot be interrupted. Animations on
-        -- child textures (the glow) are fine: a child's alpha multiplies the
-        -- frame's, so a hidden frame keeps them hidden.
     end
 end
 
-local shownState            -- 1 kick, 2 out of range, 3 cooldown: what the icon shows now
-
 local function HideKick()
-    -- The next showing paints its swipe afresh, and reads the cooldown now.
     cooldownPainted = false
     shownState = nil
     readyCheckedAt = 0
     if isShowing then
         isShowing = false
-        kickFrame.pulseAnim:Stop()
-        kickFrame.glowAnim:Stop()
+        if kickFrame.pulseAnim then kickFrame.pulseAnim:Stop() end
+        if kickFrame.procAnim then kickFrame.procAnim:Stop() end
+        if kickFrame.glow then kickFrame.glow:Hide() end
+        if kickFrame.timerText then kickFrame.timerText:Hide() end
         kickFrame:Hide()
         currentNameplate, currentHost = nil, nil
     end
 end
-
--- The update loop only runs while the target is casting. It used to run every
--- frame for as long as the module was on -- flying round a city with no target
--- at all -- which /oxprofile showed as one call per frame, all session. A cast
--- starting on the target wakes it (see the events at the bottom of the file),
--- and the first tick that finds nothing to watch puts it back to sleep.
--- Both used through pcall on every tick while the target casts. They used to
--- be written inline, which made two new functions every tick: /oxprofile
--- counted 9.6 MB of garbage from this loop in half an hour of dungeon.
-local function IsTrue(value) return value == true end
-
-local function Visible(frame)
-    return frame and frame.IsVisible and frame:IsVisible()
-end
-
-local function CastbarShielded()
-    -- 1. Default UI Target Frame
-    if Visible(TargetFrameSpellBar) and Visible(TargetFrameSpellBar.BorderShield) then
-        return true
-    end
-    -- 2. Default UI Nameplates
-    local np = C_NamePlate and C_NamePlate.GetNamePlateForUnit("target")
-    local blizzard = np and np.UnitFrame and np.UnitFrame.CastBar
-    if Visible(blizzard) and Visible(blizzard.BorderShield) then return true end
-    -- 3. Plater Nameplates
-    local plater = np and np.unitFrame and np.unitFrame.castBar
-    if Visible(plater) and Visible(plater.Shield) then return true end
-    -- 4. ElvUI Target Frame
-    if ElvUF_Target and Visible(ElvUF_Target.Castbar) and ElvUF_Target.Castbar.notInterruptible then
-        return true
-    end
-    return false
-end
-
--- ⚠ A ticker, not OnUpdate. The loop only does work every UPDATE_RATE, but an
--- OnUpdate script is still called on every single frame: at 150 fps that was
--- 46 000 calls in twenty minutes, most of them only to learn it was too soon.
--- A ticker is called exactly as often as there is work, and exists only while
--- the target casts.
-local watchTicker
 
 local function StopWatch()
     if watchTicker then
@@ -448,96 +580,25 @@ local function Sleep()
     StopWatch()
 end
 
-local function OnUpdate(self)
-
+local function PositionFrame()
     local db = KickBarDB or DEFAULTS
+    local mode = db.displayMode or "NAMEPLATE"
 
-    -- Must be enabled and have an interrupt spell
-    if not db.enabled or not interruptSpellID then
-        Sleep()
-        return
-    end
-
-    -- Must have an attackable, alive target
-    if not UnitExists("target") or not UnitCanAttack("player", "target") or UnitIsDead("target") then
-        Sleep()
-        return
-    end
-
-    -- Check if target is casting or channeling
-    local castName, _, _, _, _, _, _, notInterruptible = UnitCastingInfo("target")
-    local isCasting = castName ~= nil
-    if not isCasting then
-        castName, _, _, _, _, _, notInterruptible = UnitChannelInfo("target")
-        isCasting = castName ~= nil
-    end
-
-    if not isCasting then
-        Sleep()
-        return
-    end
-
-    -- ⚠ WHETHER THE CAST CAN BE INTERRUPTED. Do not go back to reading the
-    -- castbars for this.
-    --
-    -- In combat notInterruptible is a secret value: comparing it errors, so the
-    -- addon cannot know the answer. The old code guessed from the shield on a
-    -- visible castbar, and whenever no castbar was showing -- a different UI,
-    -- the castbar turned off -- it guessed "interruptible" and put KICK! on
-    -- casts that cannot be kicked.
-    --
-    -- The frame is handed the secret instead (SetAlphaFromBoolean, further
-    -- down), and the game itself hides the icon when the cast cannot be
-    -- interrupted. castShielded below is only a best guess, and only decides
-    -- whether to play the sound, which the game has no way to hide for us.
-    if notInterruptible == nil then notInterruptible = false end
-    castNotInterruptible = notInterruptible
-
-    local safeNotInterruptible = false
-    do
-        local ok, val = pcall(IsTrue, notInterruptible)
-        if ok then
-            safeNotInterruptible = val
-        else
-            -- A secret: read the castbars, for the sound only.
-            local okShield, shielded = pcall(CastbarShielded)
-            safeNotInterruptible = okShield and shielded or false
+    if mode == "FLOATING" then
+        if kickFrame:GetParent() ~= UIParent then
+            kickFrame:SetParent(UIParent)
         end
-    end
-
-    castShielded = safeNotInterruptible
-
-    -- ── Target IS casting an interruptible spell! ───────────────────────
-
-    -- Check interrupt cooldown.
-    -- ⚠ Read at most every READY_GAP, not on each 0.04 s tick: every read is
-    -- a fresh table from the game, and the loop runs the whole time the target
-    -- casts (58 000 ticks and 5 MB in half an hour). A kick coming off
-    -- cooldown shows a fifth of a second late at worst.
-    local now = GetTime()
-    if now - readyCheckedAt >= READY_GAP then
-        readyCheckedAt = now
-        readyCached = IsInterruptReady()
-    end
-    local isReady = readyCached
-
-    -- If on CD and user doesn't want to see CD state, hide
-    if not isReady and not db.showOnCD then
-        HideKick()
+        kickFrame:ClearAllPoints()
+        kickFrame:SetPoint(db.point or "CENTER", UIParent, db.point or "CENTER", db.posX or 0, db.posY or 150)
+        kickFrame:EnableMouse(not db.locked)
         return
     end
 
-    -- Check range
-    local inRange = IsSpellInRangeCompat(interruptSpellID, "target")
-    if inRange == nil then inRange = true end
-
-    -- ── Position on nameplate ───────────────────────────────────────────
-
+    -- NAMEPLATE mode
+    kickFrame:EnableMouse(false)
     local np = C_NamePlate and C_NamePlate.GetNamePlateForUnit("target")
-    -- Beside the health bar that is really on screen. Platynator and addons
-    -- like it hide Blizzard's plate and draw their own inside the nameplate,
-    -- and the icon placed on the bare nameplate did not show with them.
     local host = np and OxedHub.VisiblePlateBar and OxedHub.VisiblePlateBar(np) or np
+
     if np ~= currentNameplate or host ~= currentHost then
         currentNameplate, currentHost = np, host
         kickFrame:ClearAllPoints()
@@ -552,114 +613,305 @@ local function OnUpdate(self)
                 kickFrame:SetPoint("BOTTOM", host, "TOP", db.offsetX or 0, db.offsetY or 5)
             end
         else
-            -- No nameplate visible - show near screen center
             kickFrame:SetParent(UIParent)
             kickFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 150)
         end
-        kickFrame:SetFrameStrata("HIGH")
-        kickFrame:SetFrameLevel(500)
+    end
+end
+
+local function UpdateCastTimer(unit)
+    local db = KickBarDB or DEFAULTS
+    if not db.showCastTimer or not kickFrame.timerText then
+        if kickFrame.timerText then kickFrame.timerText:Hide() end
+        return
     end
 
-    -- ── Apply scale ─────────────────────────────────────────────────────
+    local ok, rem = pcall(function()
+        local _, _, _, _, _, endTime = UnitCastingInfo(unit)
+        if not endTime then
+            _, _, _, _, _, endTime = UnitChannelInfo(unit)
+        end
+        if endTime then
+            return (endTime / 1000) - GetTime()
+        end
+        return nil
+    end)
+
+    if ok and rem and type(rem) == "number" and rem > 0 then
+        local text = (rem < 10) and string.format("%.1f", rem) or string.format("%d", math.floor(rem))
+        kickFrame.timerText:SetText(text)
+
+        -- Color transition: Red (< 2.5s) -> Yellow (< 6s) -> White
+        if rem <= 2.5 then
+            kickFrame.timerText:SetTextColor(1, 0.4, 0.4, 1)
+        elseif rem <= 6.0 then
+            kickFrame.timerText:SetTextColor(1, 0.9, 0.3, 1)
+        else
+            kickFrame.timerText:SetTextColor(1, 1, 1, 1)
+        end
+        kickFrame.timerText:Show()
+    else
+        kickFrame.timerText:Hide()
+    end
+end
+
+local function OnUpdate()
+    local db = KickBarDB or DEFAULTS
+
+    -- Test / Preview mode override
+    if debugTestMode then
+        PositionFrame()
+        kickFrame:SetScale(db.scale or 1.4)
+        kickFrame:SetAlpha(db.alpha or 1.0)
+        kickFrame:SetBackdropBorderColor(0.1, 1, 0.1, 1)
+        kickFrame.icon:SetTexture(interruptIcon or 132219)
+        kickFrame.icon:SetDesaturated(false)
+        kickFrame.icon:SetVertexColor(1, 1, 1, 1)
+        kickFrame.iconDesat:SetAlpha(0)
+        kickFrame.label:SetText("TEST")
+        kickFrame.label:SetTextColor(0.1, 1, 0.1, 1)
+        kickFrame.label:SetShown(db.showLabel ~= false)
+        kickFrame.cooldown:Hide()
+        if db.showGlow and kickFrame.glow then
+            kickFrame.glow:Show()
+            if kickFrame.procAnim and not kickFrame.procAnim:IsPlaying() then
+                kickFrame.procAnim:Play()
+            end
+        end
+        if db.showCastTimer and kickFrame.timerText then
+            kickFrame.timerText:SetText("1.8")
+            kickFrame.timerText:SetTextColor(1, 0.4, 0.4, 1)
+            kickFrame.timerText:Show()
+        end
+        ShowKick()
+        return
+    end
+
+    if not db.enabled or not interruptSpellID then
+        Sleep()
+        return
+    end
+
+    local unit = GetActiveCastUnit()
+    if not unit then
+        Sleep()
+        return
+    end
+    currentCastUnit = unit
+
+    local castName, notInterruptible, spellID, durObj = ReadHostileCast(unit)
+    if type(castName) == "nil" then
+        Sleep()
+        return
+    end
+
+    -- Secret notInterruptible guard
+    -- In WoW 12.0 / Retail, when execution is tainted (e.g. TargetNearestEnemy),
+    -- notInterruptible is a <secret boolean>. Any boolean test (if, or, and, not) on it raises:
+    -- "attempt to perform boolean test on local 'notInterruptible' (a secret boolean value, while execution tainted by 'OxedHub')"
+    local isShielded = false
+    local isPlainBool = false
+    local okTest = pcall(function()
+        if notInterruptible then
+            isShielded = true
+        end
+        isPlainBool = true
+    end)
+
+    if okTest and isPlainBool then
+        -- notInterruptible is a normal un-tainted boolean
+        castNotInterruptible = isShielded
+        local okShield, visualShield = pcall(CastbarShielded)
+        castShielded = isShielded or (okShield and visualShield or false)
+    else
+        -- notInterruptible is a secret boolean!
+        -- Store it directly without boolean testing so it can be passed to SetAlphaFromBoolean
+        castNotInterruptible = notInterruptible
+        -- Check visible castbar shield textures safely
+        local okShield, visualShield = pcall(CastbarShielded)
+        castShielded = okShield and visualShield or false
+    end
+
+    -- Important spell detection
+    isImportantCast = false
+    if (db.highlightImportant or db.importantOnly) and spellID and not IsSecret(spellID) then
+        pcall(function()
+            if C_Spell and C_Spell.IsSpellImportant then
+                local okImp, imp = pcall(C_Spell.IsSpellImportant, spellID)
+                if okImp and not IsSecret(imp) then
+                    local isPlain = false
+                    pcall(function()
+                        if imp then isPlain = true end
+                    end)
+                    if isPlain then
+                        isImportantCast = true
+                    end
+                end
+            end
+        end)
+    end
+
+    if db.importantOnly and not isImportantCast then
+        HideKick()
+        return
+    end
+
+    -- Cooldown & Readiness Check
+    local now = GetTime()
+    if now - readyCheckedAt >= READY_GAP then
+        readyCheckedAt = now
+        readyCached = IsInterruptReady()
+    end
+    local isReady = readyCached
+    local remCD = not isReady and GetRemainingCD(interruptSpellID) or 0
+    local isAlmostReady = not isReady and db.showAlmostReady and (remCD <= ALMOST_READY_THRESHOLD) and (remCD > 0)
+
+    if not isReady and not isAlmostReady and not db.showOnCD then
+        HideKick()
+        return
+    end
+
+    -- Range Check
+    local inRange = true
+    if db.rangeTint and interruptHasRange then
+        local okR, r = pcall(IsSpellInRangeCompat, interruptSpellID, unit)
+        if okR and type(r) == "boolean" then
+            inRange = r
+        end
+    end
+
+    PositionFrame()
+
+    -- Apply scale & alpha
     local scale = db.scale or 1.4
     if kickFrame._scale ~= scale then
         kickFrame._scale = scale
         kickFrame:SetScale(scale)
     end
-    -- The game decides visibility from the secret: fully transparent when the
-    -- cast cannot be interrupted, the chosen alpha when it can. Plain booleans
-    -- are accepted too, so the same call serves out of combat. Clients without
-    -- the setter fall back to the readable answer, where there is one.
+
+    local alphaApplied = false
     if kickFrame.SetAlphaFromBoolean then
-        kickFrame:SetAlphaFromBoolean(castNotInterruptible, 0, db.alpha or 1.0)
-    else
+        local okAlpha = pcall(kickFrame.SetAlphaFromBoolean, kickFrame, castNotInterruptible, 0, db.alpha or 1.0)
+        if okAlpha then alphaApplied = true end
+    end
+    if not alphaApplied then
         kickFrame:SetAlpha(castShielded and 0 or (db.alpha or 1.0))
     end
 
-    -- ── Update icon ─────────────────────────────────────────────────────
     if interruptIcon and kickFrame._icon ~= interruptIcon then
         kickFrame._icon = interruptIcon
         kickFrame.icon:SetTexture(interruptIcon)
+        kickFrame.iconDesat:SetTexture(interruptIcon)
     end
 
-    -- ── Visual state ────────────────────────────────────────────────────
-    -- Painted only when it changes: the loop runs while the target casts,
-    -- and the colours, text and animations were set again on every tick.
-    local state = (isReady and inRange) and 1 or (isReady and 2 or 3)
-    if state == shownState then
-        if state == 3 and not cooldownPainted then
-            cooldownPainted = true
-            PaintCooldown(kickFrame.cooldown)
-        end
-        ShowKick()
-        return
+    -- Determine Visual State:
+    -- 1 = Ready & In Range (KICK!)
+    -- 2 = Ready & Out of Range (RANGE)
+    -- 3 = Almost Ready (< 2s left) (SOON)
+    -- 4 = On Cooldown (CD)
+    local state = 4
+    if isReady and inRange then
+        state = 1
+    elseif isReady and not inRange then
+        state = 2
+    elseif isAlmostReady then
+        state = 3
     end
-    shownState = state
-    if state == 1 then
-        -- GREEN PULSING - KICK NOW!
-        kickFrame:SetBackdropBorderColor(0.1, 1, 0.1, 1)
-        kickFrame.glow:SetVertexColor(0.1, 1, 0.1, 0.6)
-        kickFrame.icon:SetDesaturated(false)
-        kickFrame.icon:SetVertexColor(1, 1, 1, 1)
-        kickFrame.label:SetTextColor(0.1, 1, 0.1, 1)
-        kickFrame.label:SetText("KICK!")
-        kickFrame.cooldown:Hide()
-        if not kickFrame.pulseAnim:IsPlaying() then
-            kickFrame.pulseAnim:Play()
-            kickFrame.glowAnim:Play()
 
-            -- The sound and animation picked in the module's options. Skipped
-            -- when the castbars show a shield: the icon is already hidden for
-            -- such a cast, but a sound cannot be hidden, so this is the one
-            -- place the best guess is still used.
-            if moduleAPI and not castShielded then
-                if db.sound and db.sound ~= "" and moduleAPI.sounds then
-                    moduleAPI.sounds:Play(db.sound)
+    if state ~= shownState then
+        shownState = state
+
+        if state == 1 then
+            -- STATE 1: GREEN PULSING (KICK!)
+            kickFrame:SetBackdropBorderColor(0.1, 1, 0.1, 1)
+            kickFrame.icon:SetDesaturated(false)
+            kickFrame.icon:SetVertexColor(1, 1, 1, 1)
+            kickFrame.iconDesat:SetAlpha(0)
+            kickFrame.label:SetTextColor(0.1, 1, 0.1, 1)
+            kickFrame.label:SetText(isImportantCast and "PRIO!" or "KICK!")
+            kickFrame.cooldown:Hide()
+
+            -- Proc Glow
+            if db.showGlow and kickFrame.glow then
+                if isImportantCast and db.highlightImportant then
+                    kickFrame.glow:SetVertexColor(unpack(COLOR_IMPORTANT_GLOW))
+                else
+                    kickFrame.glow:SetVertexColor(1, 1, 1, 0.9)
                 end
-                if db.animation and db.animation ~= "" and moduleAPI.animations then
-                    moduleAPI.animations:Play(db.animation)
+                kickFrame.glow:Show()
+                if kickFrame.procAnim and not kickFrame.procAnim:IsPlaying() then
+                    kickFrame.procAnim:Play()
                 end
             end
-        end
 
-    elseif state == 2 then
-        -- YELLOW - ready but out of range
-        kickFrame:SetBackdropBorderColor(1, 0.82, 0, 0.9)
-        kickFrame.glow:SetVertexColor(1, 0.82, 0, 0.3)
-        kickFrame.icon:SetDesaturated(false)
-        kickFrame.icon:SetVertexColor(1, 1, 1, 0.85)
-        kickFrame.label:SetTextColor(1, 0.82, 0, 1)
-        kickFrame.label:SetText("RANGE")
-        kickFrame.cooldown:Hide()
-        kickFrame.pulseAnim:Stop()
-        kickFrame.glowAnim:Stop()
+            if not kickFrame.pulseAnim:IsPlaying() then
+                kickFrame.pulseAnim:Play()
 
-    else
-        -- RED - on cooldown
-        kickFrame:SetBackdropBorderColor(0.8, 0.15, 0.15, 0.7)
-        kickFrame.glow:SetVertexColor(0, 0, 0, 0)
-        kickFrame.icon:SetDesaturated(true)
-        kickFrame.icon:SetVertexColor(1, 1, 1, 0.5)
-        kickFrame.label:SetTextColor(0.8, 0.15, 0.15, 0.8)
-        kickFrame.label:SetText("CD")
-        kickFrame.pulseAnim:Stop()
-        kickFrame.glowAnim:Stop()
-        -- Once per cooldown: the swipe runs by itself once set. Setting it
-        -- again on every tick asked the game for a new duration each time.
-        if not cooldownPainted then
-            cooldownPainted = true
-            PaintCooldown(kickFrame.cooldown)
+                -- Play sound / animation once upon transition
+                if moduleAPI and not castShielded then
+                    if db.sound and db.sound ~= "" and moduleAPI.sounds then
+                        moduleAPI.sounds:Play(db.sound)
+                    end
+                    if db.animation and db.animation ~= "" and moduleAPI.animations then
+                        moduleAPI.animations:Play(db.animation)
+                    end
+                end
+            end
+
+        elseif state == 2 then
+            -- STATE 2: OUT OF RANGE (RANGE)
+            kickFrame:SetBackdropBorderColor(1, 0.82, 0, 0.9)
+            kickFrame.icon:SetDesaturated(false)
+            kickFrame.icon:SetVertexColor(unpack(COLOR_OUT_OF_RANGE))
+            kickFrame.iconDesat:SetAlpha(0)
+            kickFrame.label:SetTextColor(1, 0.82, 0, 1)
+            kickFrame.label:SetText("RANGE")
+            kickFrame.cooldown:Hide()
+            if kickFrame.pulseAnim then kickFrame.pulseAnim:Stop() end
+            if kickFrame.procAnim then kickFrame.procAnim:Stop() end
+            if kickFrame.glow then kickFrame.glow:Hide() end
+
+        elseif state == 3 then
+            -- STATE 3: ALMOST READY PREVIEW (SOON)
+            kickFrame:SetBackdropBorderColor(0.4, 0.7, 1, 0.8)
+            kickFrame.icon:SetDesaturated(true)
+            kickFrame.icon:SetVertexColor(0.7, 0.7, 0.7, 0.8)
+            kickFrame.iconDesat:SetAlpha(1)
+            kickFrame.label:SetTextColor(0.4, 0.7, 1, 1)
+            kickFrame.label:SetText(string.format("%.1fs", remCD))
+            if kickFrame.pulseAnim then kickFrame.pulseAnim:Stop() end
+            if kickFrame.procAnim then kickFrame.procAnim:Stop() end
+            if kickFrame.glow then kickFrame.glow:Hide() end
+
+        else
+            -- STATE 4: ON COOLDOWN (CD)
+            kickFrame:SetBackdropBorderColor(0.8, 0.15, 0.15, 0.7)
+            kickFrame.icon:SetDesaturated(true)
+            kickFrame.icon:SetVertexColor(1, 1, 1, 0.5)
+            kickFrame.iconDesat:SetAlpha(0)
+            kickFrame.label:SetTextColor(0.8, 0.15, 0.15, 0.8)
+            kickFrame.label:SetText("CD")
+            if kickFrame.pulseAnim then kickFrame.pulseAnim:Stop() end
+            if kickFrame.procAnim then kickFrame.procAnim:Stop() end
+            if kickFrame.glow then kickFrame.glow:Hide() end
+
+            if not cooldownPainted then
+                cooldownPainted = true
+                PaintCooldown(kickFrame.cooldown)
+            end
         end
     end
+
     if isReady then cooldownPainted = false end
 
-    -- Show label
-    kickFrame.label:SetShown(db.showLabel ~= false)
+    -- Update Cast Countdown Timer
+    UpdateCastTimer(unit)
 
+    kickFrame.label:SetShown(db.showLabel ~= false)
     ShowKick()
 end
 
--- ── Starting and stopping ───────────────────────────────────────────────────
+-- ── Lifecycle Watchers ──────────────────────────────────────────────────────
 
 local eventFrame = CreateFrame("Frame")
 
@@ -667,47 +919,42 @@ local function IsOn()
     return KickBarDB ~= nil and KickBarDB.enabled ~= false
 end
 
--- Runs the check only while switched on and while the class actually has an
--- interrupt. The old code started it on every login regardless, so turning the
--- module off only hid the icon while the loop kept running underneath.
--- Starts the update loop if there is a cast worth watching right now: an
--- attackable target that is casting or channelling. Otherwise the loop stays
--- off and the icon hidden; the next cast on the target calls this again.
-local function Watch()
-    OnUpdate(eventFrame)
-end
-
 local function StartWatch()
     if watchTicker then return end
-    watchTicker = C_Timer.NewTicker(UPDATE_RATE, Watch)
-    Watch()
+    watchTicker = C_Timer.NewTicker(UPDATE_RATE, OnUpdate)
+    OnUpdate()
 end
 
 local function Wake()
+    if debugTestMode then
+        StartWatch()
+        return
+    end
+
     if not (IsOn() and interruptSpellID and kickFrame) then
         HideKick()
         StopWatch()
         return
     end
-    local attackable = UnitExists("target") and UnitCanAttack("player", "target")
-        and not UnitIsDead("target")
-    -- ⚠ Take the answer into a local first. With nothing being cast these
-    -- return NO VALUES at all, not nil, and type() with no argument is an
-    -- error: "bad argument #1 to '?' (value expected)". Passing the call
-    -- straight into type() threw every time the player took a target that was
-    -- not casting.
-    local castName, channelName
-    if attackable then
-        castName = UnitCastingInfo("target")
-        channelName = UnitChannelInfo("target")
+
+    local unit = GetActiveCastUnit()
+    if unit then
+        local hasCast = false
+        pcall(function()
+            local c1 = UnitCastingInfo(unit)
+            local c2 = UnitChannelInfo(unit)
+            if type(c1) ~= "nil" or type(c2) ~= "nil" then
+                hasCast = true
+            end
+        end)
+        if hasCast then
+            StartWatch()
+            return
+        end
     end
-    local casting = attackable and (castName ~= nil or channelName ~= nil)
-    if casting then
-        StartWatch()
-    else
-        HideKick()
-        StopWatch()
-    end
+
+    HideKick()
+    StopWatch()
 end
 
 local function StartUpdates()
@@ -721,9 +968,6 @@ local function StopUpdates()
     StopWatch()
 end
 
--- The settings table, created with every default it is missing. Bound whether
--- or not the module is on: switched off, OnEnable never runs, and the old code
--- then invented a fresh table with enabled = true and ran anyway.
 local function BindSettings()
     OxedHubDB = OxedHubDB or {}
     OxedHubDB.modules = OxedHubDB.modules or {}
@@ -738,8 +982,6 @@ local function BindSettings()
     KickBarDB = config
 end
 
--- On and off through the Modules page whenever it is there, so the card's tick
--- box, the saved flag and the running loop can never disagree.
 local function SetEnabled(on)
     if OxedHub.ModuleAPI and OxedHub.ModuleAPI:GetModule("kickbar") then
         OxedHub.ModuleAPI:SetModuleEnabled("kickbar", on)
@@ -749,114 +991,188 @@ local function SetEnabled(on)
     end
 end
 
--- ── Options window ──────────────────────────────────────────────────────────
+-- ── Options Window ──────────────────────────────────────────────────────────
 
+local optionsWindow
 local optionsFrame
 
 local function ShowOptions()
-    if not optionsFrame then
-        local f = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplate")
-        f:SetSize(400, 300)
-        f:SetPoint("CENTER")
-        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        f.title:SetPoint("CENTER", f.TitleBg, "CENTER", 0, 0)
-        f.title:SetText("KickBar Settings")
-        -- Above the OxedHub window, below the pickers it opens.
-        --
-        -- Same strata as the main window but at the default level, it drew
-        -- under the window's sidebar and content, which sit well above their
-        -- base level. The sound and animation pickers are DIALOG at level 220,
-        -- so this stays just under them: a strata higher and the picker opened
-        -- by "Select Sound" would itself be hidden behind these settings.
-        f:SetFrameStrata("DIALOG")
-        f:SetFrameLevel(200)
-        f:SetClampedToScreen(true)
+    local API = OxedHub.ModuleAPI
+    if not API then return end
 
-        local function OpenPicker(pickerType, callback)
+    local db = KickBarDB or DEFAULTS
+
+    if not optionsWindow then
+        optionsWindow = API:CreateOptionsWindow("KickBar", 460, 560)
+        optionsFrame = optionsWindow
+
+        optionsWindow:AddNote("Interrupt alert icon on enemy nameplates or floating HUD with timer, proc glow, and almost-ready preview.")
+
+        -- Action Buttons Row 1: Mode & Lock
+        local btnMode = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
+        btnMode:SetSize(200, 24)
+        btnMode:SetPoint("TOPLEFT", optionsWindow, "TOPLEFT", 20, optionsWindow.cursorY - 2)
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnMode) end
+
+        local btnLock = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
+        btnLock:SetSize(200, 24)
+        btnLock:SetPoint("LEFT", btnMode, "RIGHT", 10, 0)
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnLock) end
+
+        optionsWindow.cursorY = optionsWindow.cursorY - 30
+
+        -- Action Buttons Row 2: Test & Reset
+        local btnTest = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
+        btnTest:SetSize(200, 24)
+        btnTest:SetPoint("TOPLEFT", optionsWindow, "TOPLEFT", 20, optionsWindow.cursorY - 2)
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnTest) end
+
+        local btnReset = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
+        btnReset:SetSize(200, 24)
+        btnReset:SetPoint("LEFT", btnTest, "RIGHT", 10, 0)
+        btnReset:SetText("Reset HUD Center")
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnReset) end
+
+        optionsWindow.cursorY = optionsWindow.cursorY - 34
+
+        local function RefreshActionButtons()
+            local curDb = KickBarDB or DEFAULTS
+            local isFloating = (curDb.displayMode == "FLOATING")
+            btnMode:SetText(isFloating and "Mode: Floating HUD" or "Mode: Nameplate")
+            btnLock:SetText(curDb.locked and "Locked (Click to Drag)" or "Unlocked (Click to Lock)")
+            btnTest:SetText(debugTestMode and "Test Mode: ON" or "Test Mode: OFF")
+        end
+
+        btnMode:SetScript("OnClick", function()
+            local curDb = KickBarDB or DEFAULTS
+            curDb.displayMode = (curDb.displayMode == "FLOATING") and "NAMEPLATE" or "FLOATING"
+            PositionFrame()
+            OnUpdate()
+            RefreshActionButtons()
+        end)
+
+        btnLock:SetScript("OnClick", function()
+            local curDb = KickBarDB or DEFAULTS
+            curDb.locked = not curDb.locked
+            PositionFrame()
+            RefreshActionButtons()
+        end)
+
+        btnTest:SetScript("OnClick", function()
+            debugTestMode = not debugTestMode
+            if debugTestMode then StartUpdates() else Wake() end
+            RefreshActionButtons()
+        end)
+
+        btnReset:SetScript("OnClick", function()
+            local curDb = KickBarDB or DEFAULTS
+            curDb.posX = 0
+            curDb.posY = 150
+            curDb.point = "CENTER"
+            PositionFrame()
+            RefreshActionButtons()
+        end)
+
+        -- Scale Slider
+        optionsWindow:AddSlider(db, "scale", "Icon scale", 0.6, 2.5, 0.05, "%s: %.2fx", function(val)
+            if kickFrame then kickFrame:SetScale(val) end
+        end)
+
+        -- Nameplate Anchor Choice
+        optionsWindow:AddChoice(db, "anchor", "Nameplate anchor", {
+            { value = "LEFT",  text = "Left" },
+            { value = "RIGHT", text = "Right" },
+            { value = "TOP",   text = "Top" },
+        }, function()
+            PositionFrame()
+            OnUpdate()
+        end)
+
+        -- Sound Picker
+        optionsWindow:AddSoundPicker(db, "sound", "Sound alert", "None")
+
+        -- Animation Picker
+        local animLabel = optionsWindow:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        animLabel:SetPoint("TOPLEFT", optionsWindow, "TOPLEFT", 20, optionsWindow.cursorY - 6)
+        animLabel:SetTextColor(0.8, 0.8, 0.8)
+
+        local function RefreshAnim()
+            local curDb = KickBarDB or DEFAULTS
+            local aVal = (curDb.animation and curDb.animation ~= "") and curDb.animation or "None"
+            animLabel:SetText("Animation alert: " .. aVal)
+        end
+
+        local animButton = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
+        animButton:SetSize(140, 22)
+        animButton:SetPoint("TOPLEFT", optionsWindow, "TOPLEFT", optionsWindow:GetWidth() - 180, optionsWindow.cursorY - 2)
+        animButton:SetText("Choose animation")
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(animButton) end
+
+        animButton:SetScript("OnClick", function()
             local Triggers = OxedHub.Triggers
             if not Triggers then return end
-
-            local mockTrigger = { actions = {} }
-
+            local curDb = KickBarDB or DEFAULTS
+            local mockTrigger = { actions = { animation = curDb.animation or "" } }
             local origRefresh = Triggers.RefreshTriggersList
             Triggers.RefreshTriggersList = function(self)
-                Triggers.RefreshTriggersList = origRefresh -- restore immediately
-                callback(mockTrigger.actions[pickerType])
+                Triggers.RefreshTriggersList = origRefresh
+                curDb.animation = mockTrigger.actions.animation
+                RefreshAnim()
             end
+            Triggers:ShowAnimationPicker(mockTrigger, "animation")
+        end)
 
-            if pickerType == "sound" then
-                Triggers:ShowSoundPicker(mockTrigger, "sound")
-            elseif pickerType == "animation" then
-                Triggers:ShowAnimationPicker(mockTrigger, "animation")
+        animButton.Refresh = RefreshAnim
+        table.insert(optionsWindow.checks, animButton)
+        optionsWindow.cursorY = optionsWindow.cursorY - 30
+
+        -- Feature Checkboxes
+        optionsWindow:AddCheckbox(db, "showCastTimer", "Show cast countdown timer on icon", "Displays remaining enemy cast duration with color shift.", function()
+            OnUpdate()
+        end)
+
+        optionsWindow:AddCheckbox(db, "showAlmostReady", "Almost ready preview (< 2s on CD)", "Displays desaturated preview icon when kick is almost off CD.", function()
+            OnUpdate()
+        end)
+
+        optionsWindow:AddCheckbox(db, "showGlow", "Blizzard proc sparkle glow", "FlipBook sparkle animation when interrupt is ready.", function()
+            OnUpdate()
+        end)
+
+        optionsWindow:AddCheckbox(db, "highlightImportant", "Highlight priority casts in gold", "Uses Blizzard spell database to illuminate critical interrupts.", function()
+            OnUpdate()
+        end)
+
+        optionsWindow:AddCheckbox(db, "trackFocus", "Track focus target casts", "Watches enemy Focus target casts in addition to your current target.", function()
+            OnUpdate()
+        end)
+
+        optionsWindow:AddCheckbox(db, "rangeTint", "Range tinting", "Tints the icon red when target is out of interrupt range.", function()
+            OnUpdate()
+        end)
+
+        optionsWindow:AddCheckbox(db, "showOnCD", "Show dimmed icon on cooldown", "Displays dimmed icon with sweep when interrupt is on CD.", function()
+            OnUpdate()
+        end)
+
+        optionsWindow.RefreshUI = function()
+            RefreshActionButtons()
+            RefreshAnim()
+            for _, box in ipairs(optionsWindow.checks) do
+                if box.Refresh then box.Refresh() end
             end
         end
 
-        local soundLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        soundLabel:SetPoint("TOPLEFT", 20, -40)
-        soundLabel:SetText("Sound:")
-
-        local soundValue = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        soundValue:SetPoint("TOPLEFT", soundLabel, "BOTTOMLEFT", 0, -8)
-        soundValue:SetText("None")
-        f.soundValue = soundValue
-
-        local soundBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        soundBtn:SetSize(120, 22)
-        soundBtn:SetPoint("LEFT", soundValue, "RIGHT", 15, 0)
-        soundBtn:SetText("Select Sound")
-        soundBtn:SetScript("OnClick", function()
-            OpenPicker("sound", function(val)
-                if KickBarDB then KickBarDB.sound = val end
-                f.soundValue:SetText((val and val ~= "") and val or "None")
-            end)
+        optionsWindow:HookScript("OnShow", function()
+            optionsWindow:RefreshUI()
         end)
-
-        local animLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        animLabel:SetPoint("TOPLEFT", soundValue, "BOTTOMLEFT", 0, -20)
-        animLabel:SetText("Animation:")
-
-        local animValue = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        animValue:SetPoint("TOPLEFT", animLabel, "BOTTOMLEFT", 0, -8)
-        animValue:SetText("None")
-        f.animValue = animValue
-
-        local animBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        animBtn:SetSize(120, 22)
-        animBtn:SetPoint("LEFT", animValue, "RIGHT", 15, 0)
-        animBtn:SetText("Select Animation")
-        animBtn:SetScript("OnClick", function()
-            OpenPicker("animation", function(val)
-                if KickBarDB then KickBarDB.animation = val end
-                f.animValue:SetText((val and val ~= "") and val or "None")
-            end)
-        end)
-
-        local desc = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        desc:SetPoint("TOPLEFT", animValue, "BOTTOMLEFT", 0, -30)
-        desc:SetWidth(360)
-        desc:SetJustifyH("LEFT")
-        desc:SetText("Select an OxedHub sound or animation to play when your kick becomes ready.")
-
-        -- Make frame draggable
-        f:EnableMouse(true)
-        f:SetMovable(true)
-        f:RegisterForDrag("LeftButton")
-        f:SetScript("OnDragStart", f.StartMoving)
-        f:SetScript("OnDragStop", f.StopMovingOrSizing)
-
-        optionsFrame = f
     end
 
-    local currentSound = KickBarDB and KickBarDB.sound or ""
-    optionsFrame.soundValue:SetText(currentSound ~= "" and currentSound or "None")
-
-    local currentAnim = KickBarDB and KickBarDB.animation or ""
-    optionsFrame.animValue:SetText(currentAnim ~= "" and currentAnim or "None")
-
-    optionsFrame:Show()
+    optionsWindow:RefreshUI()
+    optionsWindow:Show()
 end
 
--- ── Module registration ─────────────────────────────────────────────────────
+-- ── Module Registration ─────────────────────────────────────────────────────
 
 local function RegisterModule()
     if not OxedHub.ModuleAPI then return end
@@ -864,11 +1180,12 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "kickbar",
         name     = "KickBar",
-        version  = "1.2.0",
+        version  = "2.0.0",
+        updated  = 20261013.9,
         author   = "Oxed",
         category = "combat",
-        keywords = { "kick", "interrupt", "nameplate", "cast", "pummel", "counterspell" },
-        desc     = "Shows a kick alert icon on enemy nameplates when your interrupt is ready.",
+        keywords = { "kick", "interrupt", "nameplate", "cast", "floating", "pummel", "counterspell" },
+        desc     = "Interrupt alert icon on enemy nameplates or floating HUD with timer, proc glow, and almost-ready preview.",
         icon     = "Interface\\Icons\\ability_kick",
 
         defaults = DEFAULTS,
@@ -877,8 +1194,6 @@ local function RegisterModule()
             ShowOptions()
         end,
 
-        -- Register calls this at login when the module is on, and the Modules
-        -- page calls it when it is switched back on.
         OnEnable = function(_, config, api)
             KickBarDB = config
             moduleAPI = api
@@ -897,60 +1212,57 @@ eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
--- The interrupt can change without a spec change: a talent that replaces it,
--- or a warlock summoning a different pet.
+eventFrame:RegisterEvent("PLAYER_FOCUS_CHANGED")
 eventFrame:RegisterEvent("SPELLS_CHANGED")
 eventFrame:RegisterEvent("TRAIT_CONFIG_UPDATED")
 eventFrame:RegisterUnitEvent("UNIT_PET", "player")
--- A cast starting on the target is what wakes the update loop; nothing else
--- needs it running.
-eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_START", "target")
-eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "target")
-pcall(eventFrame.RegisterUnitEvent, eventFrame, "UNIT_SPELLCAST_EMPOWER_START", "target")
--- When the interrupt was last used, for telling its cooldown from the GCD.
--- The pet as well: Spell Lock is the warlock's pet casting, not the warlock.
+
+eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_START", "target", "focus")
+eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "target", "focus")
+pcall(eventFrame.RegisterUnitEvent, eventFrame, "UNIT_SPELLCAST_EMPOWER_START", "target", "focus")
 eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "pet")
 
 eventFrame:SetScript("OnEvent", function(self, event, unit, _, spellID)
     if event == "UNIT_SPELLCAST_SUCCEEDED" then
-        if interruptSpellID and tonumber(spellID) == interruptSpellID then
-            lastInterruptAt = GetTime()
+        if interruptSpellID and not IsSecret(spellID) then
+            local okNum, numID = pcall(tonumber, spellID)
+            if okNum and numID == interruptSpellID then
+                lastInterruptAt = GetTime()
+            end
         end
         return
     end
 
     if event == "PLAYER_LOGIN" then
         BindSettings()
-        -- Starts the check through OnEnable when the module is switched on.
         RegisterModule()
-        -- Without the Modules page to hand the switch to, start it directly.
         if not OxedHub.ModuleAPI and IsOn() then StartUpdates() end
 
     elseif event == "PLAYER_ENTERING_WORLD" then
-        -- The interrupt known can change while away (talents, a spec swap).
         if IsOn() then StartUpdates() end
 
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
-        -- Re-scan for interrupt spell (different specs may have different interrupts)
         interruptSpellID = nil
         interruptIcon = nil
         if IsOn() then StartUpdates() else StopUpdates() end
 
     elseif event == "SPELLS_CHANGED" or event == "TRAIT_CONFIG_UPDATED" or event == "UNIT_PET" then
-        if IsOn() then QueueRescan(StartUpdates) end
+        C_Timer.After(0.5, function()
+            FindInterruptSpell()
+            Wake()
+        end)
 
     elseif event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START"
         or event == "UNIT_SPELLCAST_EMPOWER_START" then
         Wake()
 
-    elseif event == "PLAYER_TARGET_CHANGED" then
+    elseif event == "PLAYER_TARGET_CHANGED" or event == "PLAYER_FOCUS_CHANGED" then
         currentNameplate, currentHost = nil, nil
-        -- The new target may already be half way through a cast.
         Wake()
     end
 end)
 
--- ── Slash commands ──────────────────────────────────────────────────────────
+-- ── Slash Commands ──────────────────────────────────────────────────────────
 
 SLASH_KICKBAR1 = "/kickbar"
 SLASH_KICKBAR2 = "/kb"
@@ -959,50 +1271,57 @@ SlashCmdList["KICKBAR"] = function(msg)
     local db = KickBarDB or DEFAULTS
 
     if msg == "toggle" or msg == "" then
-        SetEnabled(not IsOn())
-        print("|cff00ff00KickBar|r: " .. (IsOn() and "Enabled" or "Disabled"))
+        ShowOptions()
 
     elseif msg == "on" then
         SetEnabled(true)
-        print("|cff00ff00KickBar|r: Enabled")
+        print("|cff00ff96KickBar|r: Enabled")
 
     elseif msg == "off" then
         SetEnabled(false)
-        print("|cff00ff00KickBar|r: Disabled")
+        print("|cff00ff96KickBar|r: Disabled")
+
+    elseif msg == "test" or msg == "debug" then
+        debugTestMode = not debugTestMode
+        print("|cff00ff96KickBar|r: Test Preview " .. (debugTestMode and "|cff00ff00ON|r" or "|cffff4040OFF|r"))
+        if debugTestMode then StartUpdates() else Wake() end
+        if optionsFrame and optionsFrame:IsShown() then optionsFrame:RefreshUI() end
+
+    elseif msg == "lock" then
+        db.locked = true
+        PositionFrame()
+        print("|cff00ff96KickBar|r: Icon Locked")
+        if optionsFrame and optionsFrame:IsShown() then optionsFrame:RefreshUI() end
+
+    elseif msg == "unlock" then
+        db.locked = false
+        PositionFrame()
+        print("|cff00ff96KickBar|r: Icon Unlocked (Drag with Left Mouse Button)")
+        if optionsFrame and optionsFrame:IsShown() then optionsFrame:RefreshUI() end
+
+    elseif msg == "floating" or msg == "mode" then
+        db.displayMode = (db.displayMode == "FLOATING") and "NAMEPLATE" or "FLOATING"
+        PositionFrame()
+        print("|cff00ff96KickBar|r: Mode set to |cffffffff" .. db.displayMode .. "|r")
+        if optionsFrame and optionsFrame:IsShown() then optionsFrame:RefreshUI() end
 
     elseif msg:match("^scale") then
         local val = tonumber(msg:match("scale%s+(.+)"))
         if val and val >= 0.5 and val <= 3.0 then
             db.scale = val
-            print("|cff00ff00KickBar|r: Scale set to " .. val)
+            if kickFrame then kickFrame:SetScale(val) end
+            print("|cff00ff96KickBar|r: Scale set to " .. val)
+            if optionsFrame and optionsFrame:IsShown() then optionsFrame:RefreshUI() end
         else
-            print("|cff00ff00KickBar|r: Usage: /kickbar scale 0.5-3.0 (current: " .. (db.scale or 1.4) .. ")")
+            print("|cff00ff96KickBar|r: Usage: /kickbar scale 0.5-3.0 (current: " .. (db.scale or 1.4) .. ")")
         end
 
-    elseif msg == "cd" then
-        db.showOnCD = not db.showOnCD
-        print("|cff00ff00KickBar|r: Show on cooldown: " .. (db.showOnCD and "ON" or "OFF"))
-
-    elseif msg == "label" then
-        db.showLabel = not db.showLabel
-        print("|cff00ff00KickBar|r: Label: " .. (db.showLabel and "ON" or "OFF"))
-
-    elseif msg:match("^sound") then
-        local val = msg:match("sound%s+(.+)")
-        db.sound = val or ""
-        print("|cff00ff00KickBar|r: Sound set to '" .. db.sound .. "'")
-
-    elseif msg:match("^anim") then
-        local val = msg:match("anim%s+(.+)")
-        db.animation = val or ""
-        print("|cff00ff00KickBar|r: Animation set to '" .. db.animation .. "'")
-
     elseif msg == "status" then
-        print("|cff00ff00KickBar|r Status:")
+        print("|cff00ff96KickBar|r Status:")
         print("  Enabled: " .. tostring(IsOn()))
+        print("  Mode: " .. (db.displayMode or "NAMEPLATE"))
+        print("  Locked: " .. tostring(db.locked))
         print("  Scale: " .. (db.scale or 1.4))
-        print("  Show on CD: " .. tostring(db.showOnCD))
-        print("  Show label: " .. tostring(db.showLabel))
         if interruptSpellID then
             local name = GetSpellInfoCompat(interruptSpellID)
             print("  Interrupt: " .. (name or "?") .. " (ID: " .. interruptSpellID .. ")")
@@ -1011,12 +1330,6 @@ SlashCmdList["KICKBAR"] = function(msg)
         end
 
     else
-        print("|cff00ff00KickBar|r Commands:")
-        print("  /kickbar         - Toggle on/off")
-        print("  /kickbar on/off  - Enable or disable")
-        print("  /kickbar scale # - Set icon scale (0.5-3.0)")
-        print("  /kickbar cd      - Toggle show on cooldown")
-        print("  /kickbar label   - Toggle KICK/RANGE/CD label")
-        print("  /kickbar status  - Show current settings")
+        ShowOptions()
     end
 end

@@ -2,8 +2,9 @@
 ## Title: Oxed Hub
 ## Notes: Unified interface for sounds, animations, emotes, chat messages, and toys based on in-game events
 ## Author: https://customwowaddon.com/
-## Version: 2.4.7
-## SavedVariables: OxedHubDB
+## Version: 2.4.10
+## SavedVariables: OxedHubDB, KeystoneLootDB
+## SavedVariablesPerCharacter: KeystoneLootCharDB
 ## OptionalDeps: OxedHub_MemePack, OxedHub_GamingPack, OxedHub_CustomMedia
 ## Category: Audio
 ## IconTexture: Interface\AddOns\OxedHub\Media\Textures\Minimap\o-oxed-minimap.tga
@@ -125,7 +126,6 @@ Modules\ActionHub\ActionHubPicker.lua
 Modules\Experimental.lua
 
 # Built-in modules, listed on the Modules page (after Core\ModuleAPI.lua)
-Modules\OxedModules\KickBar\KickBar.lua
 Modules\OxedModules\AutoDelete\AutoDelete.lua
 Modules\OxedModules\AutoVendor\AutoVendor.lua
 Modules\OxedModules\Attributes\Attributes.lua
@@ -172,6 +172,105 @@ Modules\OxedModules\LootBanner\LootBanner.lua
 Modules\OxedModules\BuffIcons\BuffIcons.lua
 Modules\OxedModules\BulkBuy\BulkBuy.lua
 Modules\OxedModules\BonusRollGuard\BonusRollGuard.lua
+Modules\OxedModules\KickBar\KickBar.lua
+Modules\OxedModules\MemedOn\MemedOnEffects.lua
+Modules\OxedModules\MemedOn\MemedOn.lua
+Modules\OxedModules\KickSync\KickSyncUnitFrames.lua
+Modules\OxedModules\KickSync\KickSyncDefensives.lua
+Modules\OxedModules\KickSync\KickSyncKeystones.lua
+Modules\OxedModules\KickSync\KickSyncMisdirect.lua
+Modules\OxedModules\KickSync\KickSync.lua
+Modules\OxedModules\SmartMisdirect\SmartMisdirect.lua
+Modules\OxedModules\Heartbeat\Heartbeat.lua
+Modules\OxedModules\MythicLooter\MythicLooter.lua
+Modules\OxedModules\MythicLooter\libs\menu\MenuConstants.lua
+Modules\OxedModules\MythicLooter\libs\menu\Mainline\MenuConstants.lua
+Modules\OxedModules\MythicLooter\libs\menu\MenuVariants.lua
+Modules\OxedModules\MythicLooter\libs\menu\Mainline\MenuVariants.lua
+Modules\OxedModules\MythicLooter\libs\menu\Compositor.lua
+Modules\OxedModules\MythicLooter\libs\menu\Menu.lua
+Modules\OxedModules\MythicLooter\libs\menu\Menu.xml
+Modules\OxedModules\MythicLooter\libs\menu\DropdownButton.lua
+Modules\OxedModules\MythicLooter\libs\menu\MenuTemplates.lua
+Modules\OxedModules\MythicLooter\libs\menu\MenuTemplates.xml
+Modules\OxedModules\MythicLooter\libs\menu\Mainline\MenuTemplates.lua
+Modules\OxedModules\MythicLooter\libs\menu\Mainline\MenuTemplates.xml
+Modules\OxedModules\MythicLooter\libs\menu\MenuUtil.lua
+Modules\OxedModules\MythicLooter\config.lua
+Modules\OxedModules\MythicLooter\app.lua
+Modules\OxedModules\MythicLooter\locales\locale.lua
+Modules\OxedModules\MythicLooter\locales\enUS.lua
+Modules\OxedModules\MythicLooter\locales\deDE.lua
+Modules\OxedModules\MythicLooter\locales\esES.lua
+Modules\OxedModules\MythicLooter\locales\frFR.lua
+Modules\OxedModules\MythicLooter\locales\itIT.lua
+Modules\OxedModules\MythicLooter\locales\koKR.lua
+Modules\OxedModules\MythicLooter\locales\ptBR.lua
+Modules\OxedModules\MythicLooter\locales\ruRU.lua
+Modules\OxedModules\MythicLooter\locales\zhCN.lua
+Modules\OxedModules\MythicLooter\locales\zhTW.lua
+Modules\OxedModules\MythicLooter\bindings.lua
+Modules\OxedModules\MythicLooter\data\items.lua
+Modules\OxedModules\MythicLooter\data\dungeons.lua
+Modules\OxedModules\MythicLooter\data\raids.lua
+Modules\OxedModules\MythicLooter\data\catalyst.lua
+Modules\OxedModules\MythicLooter\data\enchants.lua
+Modules\OxedModules\MythicLooter\data\upgrade_tracks.lua
+Modules\OxedModules\MythicLooter\data\keystone_mapping.lua
+Modules\OxedModules\MythicLooter\data\voidcore.lua
+Modules\OxedModules\MythicLooter\modules\db.lua
+Modules\OxedModules\MythicLooter\modules\character.lua
+Modules\OxedModules\MythicLooter\modules\query.lua
+Modules\OxedModules\MythicLooter\modules\favorites.lua
+Modules\OxedModules\MythicLooter\modules\upgrade.lua
+Modules\OxedModules\MythicLooter\modules\keystone.lua
+Modules\OxedModules\MythicLooter\modules\voidcore.lua
+Modules\OxedModules\MythicLooter\modules\owned.lua
+Modules\OxedModules\MythicLooter\modules\role_check.lua
+Modules\OxedModules\MythicLooter\modules\api.lua
+Modules\OxedModules\MythicLooter\ui\copy_popup.lua
+Modules\OxedModules\MythicLooter\ui\keystone_tooltip.lua
+Modules\OxedModules\MythicLooter\ui\item_tooltip.lua
+Modules\OxedModules\MythicLooter\ui\favorite_icon.lua
+Modules\OxedModules\MythicLooter\ui\ellesmere_skin.lua
+Modules\OxedModules\MythicLooter\ui\templates\mixins\icon_button.lua
+Modules\OxedModules\MythicLooter\ui\templates\mixins\entry_frame.lua
+Modules\OxedModules\MythicLooter\ui\templates\mixins\teleport_button.lua
+Modules\OxedModules\MythicLooter\ui\templates\templates.xml
+Modules\OxedModules\MythicLooter\ui\dungeons_frame\mixins\dungeons_frame.lua
+Modules\OxedModules\MythicLooter\ui\dungeons_frame\dungeons_frame.xml
+Modules\OxedModules\MythicLooter\ui\raids_frame\mixins\block_frame.lua
+Modules\OxedModules\MythicLooter\ui\raids_frame\mixins\raids_frame.lua
+Modules\OxedModules\MythicLooter\ui\raids_frame\mixins\raid_dropdown.lua
+Modules\OxedModules\MythicLooter\ui\raids_frame\raids_frame.xml
+Modules\OxedModules\MythicLooter\ui\loot_reminder_frame\mixins\loot_reminder_frame.lua
+Modules\OxedModules\MythicLooter\ui\loot_reminder_frame\mixins\icon_button.lua
+Modules\OxedModules\MythicLooter\ui\loot_reminder_frame\mixins\spec_card.lua
+Modules\OxedModules\MythicLooter\ui\loot_reminder_frame\mixins\efficiency_icon.lua
+Modules\OxedModules\MythicLooter\ui\loot_reminder_frame\loot_reminder_frame.xml
+Modules\OxedModules\MythicLooter\ui\drop_notification_frame\mixins\row_frame.lua
+Modules\OxedModules\MythicLooter\ui\drop_notification_frame\mixins\whisper_button.lua
+Modules\OxedModules\MythicLooter\ui\drop_notification_frame\mixins\drop_notification_frame.lua
+Modules\OxedModules\MythicLooter\ui\drop_notification_frame\drop_notification_frame.xml
+Modules\OxedModules\MythicLooter\ui\mythicplus_notification_frame\mixins\card_button.lua
+Modules\OxedModules\MythicLooter\ui\mythicplus_notification_frame\mixins\mythicplus_notification_frame.lua
+Modules\OxedModules\MythicLooter\ui\mythicplus_notification_frame\mythicplus_notification_frame.xml
+Modules\OxedModules\MythicLooter\ui\catalyst_frame\mixins\catalyst_frame.lua
+Modules\OxedModules\MythicLooter\ui\catalyst_frame\mixins\catalyst_icon.lua
+Modules\OxedModules\MythicLooter\ui\catalyst_frame\catalyst_frame.xml
+Modules\OxedModules\MythicLooter\ui\custom_item_frame\mixins\custom_item_frame.lua
+Modules\OxedModules\MythicLooter\ui\custom_item_frame\mixins\custom_item_icon.lua
+Modules\OxedModules\MythicLooter\ui\custom_item_frame\custom_item_frame.xml
+Modules\OxedModules\MythicLooter\ui\minimap_button\mixins\minimap_button.lua
+Modules\OxedModules\MythicLooter\ui\minimap_button\minimap_button.xml
+Modules\OxedModules\MythicLooter\ui\keystoneloot_frame\mixins\class_dropdown.lua
+Modules\OxedModules\MythicLooter\ui\keystoneloot_frame\mixins\slot_dropdown.lua
+Modules\OxedModules\MythicLooter\ui\keystoneloot_frame\mixins\itemlevel_dropdown.lua
+Modules\OxedModules\MythicLooter\ui\keystoneloot_frame\mixins\character_dropdown.lua
+Modules\OxedModules\MythicLooter\ui\keystoneloot_frame\mixins\settings_dropdown.lua
+Modules\OxedModules\MythicLooter\ui\keystoneloot_frame\mixins\keystoneloot_frame.lua
+Modules\OxedModules\MythicLooter\ui\keystoneloot_frame\keystoneloot_frame.xml
+Modules\OxedModules\MythicLooter\ui\bootstrap.lua
 Modules\Rings\OxedRing.lua
 Modules\Rings\OxedRingEditor.lua
 Modules\Search.lua
