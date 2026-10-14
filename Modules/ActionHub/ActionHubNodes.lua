@@ -25,6 +25,26 @@ local ipairs = ipairs
 local pairs = pairs
 local type = type
 
+local function SafeGetItemSpell(itemID)
+    if not itemID then return nil end
+    if C_Item and C_Item.GetItemSpell then
+        return C_Item.GetItemSpell(itemID)
+    elseif GetItemSpell then
+        return GetItemSpell(itemID)
+    end
+    return nil
+end
+
+local function SafeGetItemInfoInstant(item)
+    if not item then return nil end
+    if C_Item and C_Item.GetItemInfoInstant then
+        return C_Item.GetItemInfoInstant(item)
+    elseif GetItemInfoInstant then
+        return GetItemInfoInstant(item)
+    end
+    return nil
+end
+
 local function StyleCooldownText(cdFrame, offsetY)
     local activeDB = ActionHub:GetActiveHubDB()
     local fontSize = (activeDB and activeDB.cooldownTextSize) or 11
@@ -369,7 +389,10 @@ MacroItemNow = function(slot)
         if not key then return nil end
         if GetMacroSpell and GetMacroSpell(key) then return nil end
         local _, link = GetMacroItem and GetMacroItem(key)
-        if link and GetItemInfoInstant then return (GetItemInfoInstant(link)) end
+        if link then
+            local itemID = SafeGetItemInfoInstant(link)
+            if itemID then return itemID end
+        end
     end
     return nil
 end
@@ -507,7 +530,7 @@ local function ItemCooldown(itemID)
         if d and s and d > 1.5 and s > 0 then return s, d end
     end
 
-    local _, spellID = GetItemSpell(itemID)
+    local _, spellID = SafeGetItemSpell(itemID)
     if spellID then
         return SpellCooldown(spellID)
     end
@@ -551,8 +574,8 @@ local function GetSlotCooldown(slot)
             end
 
             local _, itemLink = GetMacroItem and GetMacroItem(key)
-            if itemLink and GetItemInfoInstant then
-                local itemID = GetItemInfoInstant(itemLink)
+            if itemLink then
+                local itemID = SafeGetItemInfoInstant(itemLink)
                 if itemID then
                     return ItemCooldown(itemID)
                 end
@@ -612,7 +635,7 @@ function ActionHub:DumpCooldowns()
                         :format(tostring(ok), Raw(s), Raw(d))
                 end
 
-                local spellID = slot.type == "spell" and slot.id or select(2, GetItemSpell(slot.id))
+                local spellID = slot.type == "spell" and slot.id or select(2, SafeGetItemSpell(slot.id))
                 if spellID and C_Spell and C_Spell.GetSpellCooldown then
                     local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
                     if ok and type(info) == "table" then
@@ -843,7 +866,7 @@ local function SlotSpellIDRaw(slot)
             return nil
         end
         if slot.type == "toy" or slot.type == "item" then
-            local _, sid = GetItemSpell(slot.id)
+            local _, sid = SafeGetItemSpell(slot.id)
             return sid
         end
         -- A macro has no cooldown of its own; whatever it casts does. Without
@@ -868,10 +891,10 @@ local function SlotSpellIDRaw(slot)
             -- Item macros: a potion or a trinket has its cooldown on the spell
             -- the item casts.
             local _, itemLink = GetMacroItem and GetMacroItem(key)
-            if itemLink and GetItemInfoInstant then
-                local itemID = GetItemInfoInstant(itemLink)
+            if itemLink then
+                local itemID = SafeGetItemInfoInstant(itemLink)
                 if itemID then
-                    local _, itemSpell = GetItemSpell(itemID)
+                    local _, itemSpell = SafeGetItemSpell(itemID)
                     return itemSpell
                 end
             end
@@ -1376,8 +1399,15 @@ local function UpdateItemCount(btn, slot, hub)
     -- One of something (a trinket, a hearthstone) needs no number.
     if not count or count == 1 then
         if btn.itemCountText then btn.itemCountText:Hide() end
+        btn._ohItemCount = nil
         return
     end
+    -- Every cooldown pass over an item node comes here; SetText on a number
+    -- makes a new string each time, so redraw only when the count changed.
+    if btn._ohItemCount == count and btn.itemCountText and btn.itemCountText:IsShown() then
+        return
+    end
+    btn._ohItemCount = count
     if not btn.itemCountText then
         btn.itemCountText = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
         btn.itemCountText:SetDrawLayer("OVERLAY", 7)
@@ -1413,7 +1443,7 @@ local function GetDirectToyDisplay(itemID)
         icon = C_Item.GetItemIconByID(itemID)
     end
     if not icon then
-        local _, _, _, _, instantIcon = GetItemInfoInstant(itemID)
+        local _, _, _, _, instantIcon = SafeGetItemInfoInstant(itemID)
         icon = instantIcon
     end
 
@@ -1604,7 +1634,8 @@ local usabilityQueued = false
 -- A quarter of a second: SPELL_UPDATE_USABLE comes in streams, and each pass
 -- asked every node again (0.5 ms, 3286 times in half an hour). An icon greying
 -- a moment later is not seen; the pass itself is.
-local USABILITY_DELAY = 0.25
+-- 0.4 now: still 8149 passes at 0.26 ms an hour at 0.25.
+local USABILITY_DELAY = 0.4
 -- Named, not a new function per queue: /oxprofile counted the little
 -- functions made here, a thousand of them in five minutes.
 local usabilityToys = false   -- this pass also looks at toys
@@ -1766,8 +1797,8 @@ local function CheckNodeRange(btn, unit)
         local key = slot.label or slot.id
         if key and GetMacroItem then
             local _, itemLink = GetMacroItem(key)
-            if itemLink and GetItemInfoInstant then
-                local itemID = GetItemInfoInstant(itemLink)
+            if itemLink then
+                local itemID = SafeGetItemInfoInstant(itemLink)
                 if itemID then
                     return SafeIsItemInRange(itemID, unit)
                 end

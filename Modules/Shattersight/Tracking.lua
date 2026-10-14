@@ -510,8 +510,9 @@ function SS:PrintTrackingStats()
         print(string.format("|cFF00FFFF[%s — %s]|r %d disenchant(s)",
             expName, qName, bucket.attempts))
         for itemID, total in pairs(bucket.matTotals) do
-            local name = (C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID))
-                      or GetItemInfo(itemID)
+            local getItemInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+            local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID))
+                      or (getItemInfo and getItemInfo(itemID))
                       or ("Item #" .. itemID)
             print(string.format("  %s: avg %.2f per disenchant", name, total / bucket.attempts))
         end

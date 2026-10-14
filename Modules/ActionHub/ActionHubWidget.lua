@@ -2496,8 +2496,10 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
                 else
                     newSlot.type = "item"
                     newSlot.id = itemID
-                    newSlot.icon = C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(itemID) or GetItemIcon(itemID)
-                    newSlot.label = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID) or GetItemInfo(itemID) or tostring(itemID)
+                    local getItemIcon = (C_Item and C_Item.GetItemIconByID) or GetItemIcon
+                    local getItemInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+                    newSlot.icon = (getItemIcon and getItemIcon(itemID))
+                    newSlot.label = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID)) or (getItemInfo and getItemInfo(itemID)) or tostring(itemID)
                 end
             elseif infoType == "mount" then
                 local mountID = info1

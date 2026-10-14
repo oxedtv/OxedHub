@@ -894,10 +894,16 @@ function ActionHub:RefreshPickerList()
                 end
                 if itemID and not seenIDs[itemID] then
                     seenIDs[itemID] = true
-                    local itemName, _, _, _, _, itemType, itemSubType, _, _, itemIcon = GetItemInfo(itemID)
+                    local getItemInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+                    local itemName, itemType, itemSubType, itemIcon
+                    if getItemInfo then
+                        local n, _, _, _, _, t, st, _, _, ic = getItemInfo(itemID)
+                        itemName, itemType, itemSubType, itemIcon = n, t, st, ic
+                    end
                     if itemType == "Consumable" then
                         local cat = itemSubType or "Other"
-                        local count = GetItemCount(itemID) or 0
+                        local getItemCount = (C_Item and C_Item.GetItemCount) or GetItemCount
+                        local count = (getItemCount and getItemCount(itemID)) or 0
                         table.insert(items, {
                             type = "item",
                             id = itemID,

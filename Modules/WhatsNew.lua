@@ -25,6 +25,16 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.11",
+        important = false,
+        lines = {
+            { "CHANGED", "Added TOC interface 120105 for WoW Midnight / modern retail support." },
+            { "FIXED", "ItemUse trigger: safely resolve item spell IDs using C_Item.GetItemSpell with legacy fallback." },
+            { "FIXED", "Shattersight & item tooltips: resolved Lua error on item hover by migrating legacy GetItemInfo and GetItemCount calls to C_Item." },
+            { "FIXED", "KickBar: enhanced castbar shield detection and cached spell importance checks to eliminate combat taint." },
+        },
+    },
+    {
         version = "2.4.10",
         important = true,
         lines = {

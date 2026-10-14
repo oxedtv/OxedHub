@@ -22,6 +22,16 @@ local QUALITY_ICONS = {
     [3] = "|cFF0070DDr3|r",
 }
 
+local function SafeGetItemInfo(item)
+    if not item then return nil end
+    if C_Item and C_Item.GetItemInfo then
+        return C_Item.GetItemInfo(item)
+    elseif GetItemInfo then
+        return GetItemInfo(item)
+    end
+    return nil
+end
+
 -- ---------------------------------------------------------------------------
 -- SavedVariables / DB
 -- ---------------------------------------------------------------------------
@@ -96,7 +106,7 @@ local function GetMatName(mat)
     if mat.id and mat.id > 0 then
         local name = C_Item.GetItemNameByID and C_Item.GetItemNameByID(mat.id)
         if name then return name end
-        local fallbackName = GetItemInfo(mat.id)
+        local fallbackName = SafeGetItemInfo(mat.id)
         if fallbackName then return fallbackName end
     end
     return mat.name or ("Item #" .. (mat.id or "?"))
@@ -117,7 +127,7 @@ local function BuildDisenchantLines(tooltip, data)
     if not itemLink and data then
         itemLink = data.hyperlink or data.link or data.itemLink
         if not itemLink and (data.id or data.itemID) then
-            local _, link = GetItemInfo(data.id or data.itemID)
+            local _, link = SafeGetItemInfo(data.id or data.itemID)
             itemLink = link
         end
     end
@@ -251,7 +261,7 @@ local function BuildDisenchantLines(tooltip, data)
             name = GetMatName(mat)
         else
             name = (C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID))
-                or GetItemInfo(itemID)
+                or SafeGetItemInfo(itemID)
                 or ("Item #" .. itemID)
         end
 

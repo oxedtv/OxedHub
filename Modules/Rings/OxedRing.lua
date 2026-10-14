@@ -604,7 +604,8 @@ local function GetDirectToyDisplay(itemID)
         icon = C_Item.GetItemIconByID(itemID)
     end
     if not icon then
-        local _, _, _, _, instantIcon = GetItemInfoInstant(itemID)
+        local getItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+        local instantIcon = getItemInfoInstant and select(5, getItemInfoInstant(itemID))
         icon = instantIcon
     end
 
@@ -736,14 +737,15 @@ function OxedRing:RebuildSlices()
                 end
             end
         elseif data.type == "item" then
-            -- Consumable items: resolve icon from item ID
-            local _, _, _, _, _, _, _, _, _, itemIcon = GetItemInfo(data.id)
+            local getItemInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+            local itemIcon = getItemInfo and select(10, getItemInfo(data.id))
             if not itemIcon then
                 if C_Item and C_Item.GetItemIconByID then
                     itemIcon = C_Item.GetItemIconByID(data.id)
                 end
                 if not itemIcon then
-                    local _, _, _, _, instantIcon = GetItemInfoInstant(data.id)
+                    local getItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+                    local instantIcon = getItemInfoInstant and select(5, getItemInfoInstant(data.id))
                     itemIcon = instantIcon
                 end
             end
@@ -799,8 +801,15 @@ function OxedRing:RebuildSlices()
         if slice.cooldown then
             CooldownFrame_Set(slice.cooldown, 0, 0, 0)
             if (data.type == "toy" or data.type == "item") and data.id then
-                local startTime, duration, enable = GetItemCooldown(data.id)
-                if startTime and duration and duration > 0 then
+                -- The global GetItemCooldown is gone in this client.
+                local getItemCooldown = (C_Item and C_Item.GetItemCooldown)
+                    or (C_Container and C_Container.GetItemCooldown) or GetItemCooldown
+                local startTime, duration, enable
+                if getItemCooldown then
+                    local ok, s, d, e = pcall(getItemCooldown, data.id)
+                    if ok then startTime, duration, enable = s, d, e end
+                end
+                if type(startTime) == "number" and type(duration) == "number" and duration > 0 then
                     CooldownFrame_Set(slice.cooldown, startTime, duration, enable)
                 end
             end

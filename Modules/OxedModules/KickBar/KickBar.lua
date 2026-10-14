@@ -26,19 +26,29 @@ local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer
 local issecretvalue = _G.issecretvalue
 local issecret = _G.issecret
 
+-- The ticker runs many times a second, so nothing on its path may build a
+-- closure: every `pcall(function() ... end)` is a fresh table for the garbage
+-- collector. Helpers below are named once and called with their arguments.
+local function TruthTest(v)
+    if v then return true end
+    return false
+end
+
 local function IsSecret(val)
     if issecretvalue then
         local ok, s = pcall(issecretvalue, val)
-        if ok and s then return true end
+        if ok then return s == true end
     end
     if issecret then
         local ok, s = pcall(issecret, val)
         if ok and s then return true end
     end
-    local ok = pcall(function()
-        if val then end
-    end)
-    return not ok
+    return not pcall(TruthTest, val)
+end
+
+local function HasCast(unit)
+    if type(UnitCastingInfo(unit)) ~= "nil" then return true end
+    return type(UnitChannelInfo(unit)) ~= "nil"
 end
 
 -- ── Interrupt Spell Database ───────────────────────────────────────────────
@@ -118,8 +128,11 @@ local currentCastUnit = nil
 local debugTestMode = false
 local lastInterruptAt = nil
 
-local UPDATE_RATE = 0.05
+local UPDATE_RATE = 0.1     -- the timer shows tenths; faster only made garbage
 local READY_GAP = 0.2
+local importantSpell = nil  -- spellID whose "important" answer is cached
+local importantCached = false
+local timerKey = nil        -- last cast-timer text shown, to skip SetText
 local ALMOST_READY_THRESHOLD = 2.0
 local readyCheckedAt = 0
 local readyCached = false
@@ -152,31 +165,34 @@ local function GetSpellInfoCompat(spellID)
     return nil, nil, nil
 end
 
-local function IsSpellInRangeCompat(spellID, unit)
-    local inRange = nil
-    pcall(function()
-        if C_Spell and C_Spell.IsSpellInRange then
-            local r = C_Spell.IsSpellInRange(spellID, unit)
-            if not IsSecret(r) and type(r) == "boolean" then
-                inRange = r
-            end
-            return
+local function ReadSpellRange(spellID, unit)
+    if C_Spell and C_Spell.IsSpellInRange then
+        local r = C_Spell.IsSpellInRange(spellID, unit)
+        if not IsSecret(r) and type(r) == "boolean" then
+            return r
         end
-        if IsSpellInRange then
-            local name = GetSpellInfoCompat(spellID)
-            if name and not IsSecret(name) then
-                local r = IsSpellInRange(name, unit)
-                if not IsSecret(r) then
-                    if r == 1 or r == true then
-                        inRange = true
-                    elseif r == 0 or r == false then
-                        inRange = false
-                    end
+        return nil
+    end
+    if IsSpellInRange then
+        local name = GetSpellInfoCompat(spellID)
+        if name and not IsSecret(name) then
+            local r = IsSpellInRange(name, unit)
+            if not IsSecret(r) then
+                if r == 1 or r == true then
+                    return true
+                elseif r == 0 or r == false then
+                    return false
                 end
             end
         end
-    end)
-    return inRange
+    end
+    return nil
+end
+
+local function IsSpellInRangeCompat(spellID, unit)
+    local ok, inRange = pcall(ReadSpellRange, spellID, unit)
+    if ok then return inRange end
+    return nil
 end
 
 local function KnowsSpell(id)
@@ -243,17 +259,16 @@ local function IsGlobalCooldownOnly(spellID)
     return (GetTime() - lastInterruptAt) > (baseMs / 1000)
 end
 
+local function ReadCooldownActive(spellID)
+    local info = C_Spell.GetSpellCooldown(spellID)
+    if type(info) ~= "table" then return nil end
+    local active = info.isActive
+    if IsSecret(active) then return nil end
+    return active and true or false
+end
+
 local function CooldownActive(spellID)
-    local ok, active = pcall(function()
-        local info = C_Spell.GetSpellCooldown(spellID)
-        if type(info) ~= "table" then return nil end
-        if IsSecret(info.isActive) then return nil end
-        local act = false
-        pcall(function()
-            if info.isActive then act = true end
-        end)
-        return act
-    end)
+    local ok, active = pcall(ReadCooldownActive, spellID)
     if ok then return active end
     return nil
 end
@@ -265,18 +280,21 @@ local function ReadyFromNumbers(start, duration)
     return duration <= 1.5
 end
 
+local function ReadRemainingCD(spellID)
+    local start, duration = GetSpellCooldownCompat(spellID)
+    if IsSecret(start) or IsSecret(duration) then return 0 end
+    if type(start) ~= "number" or type(duration) ~= "number" then return 0 end
+    if start == 0 or duration <= 1.5 then return 0 end
+    local left = (start + duration) - GetTime()
+    if left > 0 then return left end
+    return 0
+end
+
 local function GetRemainingCD(spellID)
     if not spellID or IsSecret(spellID) then return 0 end
-    local rem = 0
-    pcall(function()
-        local start, duration = GetSpellCooldownCompat(spellID)
-        if IsSecret(start) or IsSecret(duration) then return end
-        if type(start) ~= "number" or type(duration) ~= "number" then return end
-        if start == 0 or duration <= 1.5 then return end
-        local left = (start + duration) - GetTime()
-        if left > 0 then rem = left end
-    end)
-    return rem
+    local ok, rem = pcall(ReadRemainingCD, spellID)
+    if ok and type(rem) == "number" then return rem end
+    return 0
 end
 
 local function IsInterruptReady()
@@ -324,56 +342,51 @@ end
 
 -- ── Cast Shielding & Target Detection ───────────────────────────────────────
 
+local function ReadVisible(f)
+    local v = f:IsVisible()
+    if IsSecret(v) then return false end
+    return v and true or false
+end
+
 local function Visible(f)
     if not f or not f.IsVisible then return false end
-    local ok, vis = pcall(function()
-        local v = f:IsVisible()
-        if IsSecret(v) then return false end
-        return v and true or false
-    end)
+    local ok, vis = pcall(ReadVisible, f)
     return ok and vis or false
 end
 
+local function ReadCastbarShield()
+    if Visible(TargetFrameSpellBar) and Visible(TargetFrameSpellBar.BorderShield) then
+        return true
+    end
+    local np = C_NamePlate and C_NamePlate.GetNamePlateForUnit("target")
+    local blizzard = np and np.UnitFrame and np.UnitFrame.CastBar
+    if Visible(blizzard) and Visible(blizzard.BorderShield) then
+        return true
+    end
+    local plater = np and np.unitFrame and np.unitFrame.castBar
+    if Visible(plater) and Visible(plater.Shield) then
+        return true
+    end
+    if ElvUF_Target and Visible(ElvUF_Target.Castbar) then
+        local ni = ElvUF_Target.Castbar.notInterruptible
+        if not IsSecret(ni) and ni then
+            return true
+        end
+    end
+    return false
+end
+
 local function CastbarShielded()
-    local shielded = false
-    pcall(function()
-        if Visible(TargetFrameSpellBar) and Visible(TargetFrameSpellBar.BorderShield) then
-            shielded = true
-            return
-        end
-        local np = C_NamePlate and C_NamePlate.GetNamePlateForUnit("target")
-        local blizzard = np and np.UnitFrame and np.UnitFrame.CastBar
-        if Visible(blizzard) and Visible(blizzard.BorderShield) then
-            shielded = true
-            return
-        end
-        local plater = np and np.unitFrame and np.unitFrame.castBar
-        if Visible(plater) and Visible(plater.Shield) then
-            shielded = true
-            return
-        end
-        if ElvUF_Target and Visible(ElvUF_Target.Castbar) then
-            local ni = ElvUF_Target.Castbar.notInterruptible
-            if not IsSecret(ni) and ni then
-                shielded = true
-                return
-            end
-        end
-    end)
-    return shielded
+    local ok, shielded = pcall(ReadCastbarShield)
+    return ok and shielded or false
 end
 
 -- Resolves which unit to watch (focus if set & casting, otherwise target)
 local function GetActiveCastUnit()
     local db = KickBarDB or DEFAULTS
     if db.trackFocus and UnitExists("focus") and UnitCanAttack("player", "focus") and not UnitIsDead("focus") then
-        local focusCasting = false
-        pcall(function()
-            local c1 = UnitCastingInfo("focus")
-            local c2 = UnitChannelInfo("focus")
-            if type(c1) ~= "nil" or type(c2) ~= "nil" then focusCasting = true end
-        end)
-        if focusCasting then return "focus" end
+        local ok, focusCasting = pcall(HasCast, "focus")
+        if ok and focusCasting then return "focus" end
     end
     if UnitExists("target") and UnitCanAttack("player", "target") and not UnitIsDead("target") then
         return "target"
@@ -392,13 +405,16 @@ local function ReadHostileCast(unit)
         local numEmpowerStages
         name, _, _, _, _, _, notInterruptible, spellID, _, numEmpowerStages = UnitChannelInfo(unit)
         if type(name) == "nil" then return nil end
-        pcall(function()
-            if numEmpowerStages and not IsSecret(numEmpowerStages) and numEmpowerStages > 0 and UnitEmpoweredChannelDuration then
-                duration = UnitEmpoweredChannelDuration(unit, true)
+        if numEmpowerStages and UnitEmpoweredChannelDuration and not IsSecret(numEmpowerStages) then
+            local okN, empowered = pcall(TruthTest, type(numEmpowerStages) == "number" and numEmpowerStages > 0)
+            if okN and empowered then
+                local okD, d = pcall(UnitEmpoweredChannelDuration, unit, true)
+                if okD then duration = d end
             end
-        end)
+        end
         if not duration and UnitChannelDuration then
-            pcall(function() duration = UnitChannelDuration(unit) end)
+            local okD, d = pcall(UnitChannelDuration, unit)
+            if okD then duration = d end
         end
     end
 
@@ -555,6 +571,7 @@ end
 
 local function HideKick()
     cooldownPainted = false
+    timerKey = nil
     shownState = nil
     readyCheckedAt = 0
     if isShowing then
@@ -619,6 +636,24 @@ local function PositionFrame()
     end
 end
 
+local function ReadCastRemaining(unit)
+    local _, _, _, _, _, endTime = UnitCastingInfo(unit)
+    if not endTime then
+        _, _, _, _, _, endTime = UnitChannelInfo(unit)
+    end
+    if endTime then
+        return (endTime / 1000) - GetTime()
+    end
+    return nil
+end
+
+local function ReadImportant(spellID)
+    if not (C_Spell and C_Spell.IsSpellImportant) then return false end
+    local imp = C_Spell.IsSpellImportant(spellID)
+    if IsSecret(imp) then return false end
+    return imp and true or false
+end
+
 local function UpdateCastTimer(unit)
     local db = KickBarDB or DEFAULTS
     if not db.showCastTimer or not kickFrame.timerText then
@@ -626,31 +661,32 @@ local function UpdateCastTimer(unit)
         return
     end
 
-    local ok, rem = pcall(function()
-        local _, _, _, _, _, endTime = UnitCastingInfo(unit)
-        if not endTime then
-            _, _, _, _, _, endTime = UnitChannelInfo(unit)
-        end
-        if endTime then
-            return (endTime / 1000) - GetTime()
-        end
-        return nil
-    end)
+    local ok, rem = pcall(ReadCastRemaining, unit)
 
     if ok and rem and type(rem) == "number" and rem > 0 then
-        local text = (rem < 10) and string.format("%.1f", rem) or string.format("%d", math.floor(rem))
-        kickFrame.timerText:SetText(text)
+        -- Tenths under 10 s, whole seconds above; only touch the font
+        -- string when what it shows would change.
+        local key = (rem < 10) and math.floor(rem * 10) or (1000 + math.floor(rem))
+        if key ~= timerKey then
+            timerKey = key
+            if rem < 10 then
+                kickFrame.timerText:SetFormattedText("%.1f", key / 10)
+            else
+                kickFrame.timerText:SetFormattedText("%d", key - 1000)
+            end
 
-        -- Color transition: Red (< 2.5s) -> Yellow (< 6s) -> White
-        if rem <= 2.5 then
-            kickFrame.timerText:SetTextColor(1, 0.4, 0.4, 1)
-        elseif rem <= 6.0 then
-            kickFrame.timerText:SetTextColor(1, 0.9, 0.3, 1)
-        else
-            kickFrame.timerText:SetTextColor(1, 1, 1, 1)
+            -- Color transition: Red (< 2.5s) -> Yellow (< 6s) -> White
+            if rem <= 2.5 then
+                kickFrame.timerText:SetTextColor(1, 0.4, 0.4, 1)
+            elseif rem <= 6.0 then
+                kickFrame.timerText:SetTextColor(1, 0.9, 0.3, 1)
+            else
+                kickFrame.timerText:SetTextColor(1, 1, 1, 1)
+            end
         end
         kickFrame.timerText:Show()
     else
+        timerKey = nil
         kickFrame.timerText:Hide()
     end
 end
@@ -709,16 +745,9 @@ local function OnUpdate()
     -- In WoW 12.0 / Retail, when execution is tainted (e.g. TargetNearestEnemy),
     -- notInterruptible is a <secret boolean>. Any boolean test (if, or, and, not) on it raises:
     -- "attempt to perform boolean test on local 'notInterruptible' (a secret boolean value, while execution tainted by 'OxedHub')"
-    local isShielded = false
-    local isPlainBool = false
-    local okTest = pcall(function()
-        if notInterruptible then
-            isShielded = true
-        end
-        isPlainBool = true
-    end)
+    local okTest, isShielded = pcall(TruthTest, notInterruptible)
 
-    if okTest and isPlainBool then
+    if okTest then
         -- notInterruptible is a normal un-tainted boolean
         castNotInterruptible = isShielded
         local okShield, visualShield = pcall(CastbarShielded)
@@ -733,22 +762,15 @@ local function OnUpdate()
     end
 
     -- Important spell detection
+    -- A spell's "important" flag does not change, so ask once per spellID.
     isImportantCast = false
     if (db.highlightImportant or db.importantOnly) and spellID and not IsSecret(spellID) then
-        pcall(function()
-            if C_Spell and C_Spell.IsSpellImportant then
-                local okImp, imp = pcall(C_Spell.IsSpellImportant, spellID)
-                if okImp and not IsSecret(imp) then
-                    local isPlain = false
-                    pcall(function()
-                        if imp then isPlain = true end
-                    end)
-                    if isPlain then
-                        isImportantCast = true
-                    end
-                end
-            end
-        end)
+        if spellID ~= importantSpell then
+            local okImp, imp = pcall(ReadImportant, spellID)
+            importantSpell = spellID
+            importantCached = okImp and imp or false
+        end
+        isImportantCast = importantCached
     end
 
     if db.importantOnly and not isImportantCast then
@@ -878,7 +900,7 @@ local function OnUpdate()
             kickFrame.icon:SetVertexColor(0.7, 0.7, 0.7, 0.8)
             kickFrame.iconDesat:SetAlpha(1)
             kickFrame.label:SetTextColor(0.4, 0.7, 1, 1)
-            kickFrame.label:SetText(string.format("%.1fs", remCD))
+            kickFrame.label:SetFormattedText("%.1fs", remCD)
             if kickFrame.pulseAnim then kickFrame.pulseAnim:Stop() end
             if kickFrame.procAnim then kickFrame.procAnim:Stop() end
             if kickFrame.glow then kickFrame.glow:Hide() end

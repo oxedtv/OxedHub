@@ -152,9 +152,11 @@ end
 function SS:PreloadMatNames()
     for _, mat in pairs(SS.MATS) do
         if mat.id and mat.id > 0 then
-            if C_Item.RequestLoadItemDataByID then
+            if C_Item and C_Item.RequestLoadItemDataByID then
                 C_Item.RequestLoadItemDataByID(mat.id)
-            else
+            elseif C_Item and C_Item.GetItemInfo then
+                C_Item.GetItemInfo(mat.id)
+            elseif GetItemInfo then
                 GetItemInfo(mat.id)
             end
         end

@@ -426,7 +426,12 @@ local function BuildSpellMap()
     local function Step()
         local last = math.min(#ids, index + CHUNK - 1)
         for i = index, last do
-            local _, spellID = GetItemSpell(ids[i])
+            local _, spellID
+            if C_Item and C_Item.GetItemSpell then
+                _, spellID = C_Item.GetItemSpell(ids[i])
+            elseif GetItemSpell then
+                _, spellID = GetItemSpell(ids[i])
+            end
             if spellID then map[spellID] = ids[i] end
         end
         index = last + 1

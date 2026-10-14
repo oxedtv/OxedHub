@@ -1339,8 +1339,10 @@ function ActionHub:RefreshTab()
                 else
                     currentSlot.type = "item"
                     currentSlot.id = itemID
-                    currentSlot.icon = C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(itemID) or GetItemIcon(itemID)
-                    currentSlot.label = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID) or GetItemInfo(itemID) or tostring(itemID)
+                    local getItemIcon = (C_Item and C_Item.GetItemIconByID) or GetItemIcon
+                    local getItemInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+                    currentSlot.icon = (getItemIcon and getItemIcon(itemID))
+                    currentSlot.label = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID)) or (getItemInfo and getItemInfo(itemID)) or tostring(itemID)
                 end
             elseif infoType == "mount" then
                 local mountID = info1

@@ -141,7 +141,8 @@ local function GetDirectToyDisplay(itemID)
         icon = C_Item.GetItemIconByID(itemID)
     end
     if not icon then
-        local _, _, _, _, instantIcon = GetItemInfoInstant(itemID)
+        local getItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+        local instantIcon = getItemInfoInstant and select(5, getItemInfoInstant(itemID))
         icon = instantIcon
     end
 
@@ -1421,10 +1422,16 @@ function OxedRingEditor:RefreshPickerList()
                 local itemID = info and info.itemID or nil
                 if itemID and not seenIDs[itemID] then
                     seenIDs[itemID] = true
-                    local itemName, _, _, _, _, itemType, itemSubType, _, _, itemIcon = GetItemInfo(itemID)
+                    local getItemInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+                    local itemName, itemType, itemSubType, itemIcon
+                    if getItemInfo then
+                        local n, _, _, _, _, t, st, _, _, ic = getItemInfo(itemID)
+                        itemName, itemType, itemSubType, itemIcon = n, t, st, ic
+                    end
                     if itemType == "Consumable" then
                         local cat = itemSubType or "Other"
-                        local count = GetItemCount(itemID) or 0
+                        local getItemCount = (C_Item and C_Item.GetItemCount) or GetItemCount
+                        local count = (getItemCount and getItemCount(itemID)) or 0
                         table.insert(items, {
                             type = "item",
                             id = itemID,

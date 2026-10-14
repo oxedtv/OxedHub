@@ -330,8 +330,12 @@ local function GetToyIconTexture(itemID)
         end
     end
 
-    local _, _, _, _, instantIcon = GetItemInfoInstant(itemID)
-    return instantIcon
+    local getItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if getItemInfoInstant then
+        local _, _, _, _, instantIcon = getItemInfoInstant(itemID)
+        return instantIcon
+    end
+    return nil
 end
 
 function Toys:GetToyCooldown(itemID)

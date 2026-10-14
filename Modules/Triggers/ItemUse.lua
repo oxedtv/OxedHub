@@ -24,7 +24,12 @@ local TRINKET_SLOTS = { 13, 14 }
 -- The spell an item casts, or nil for an item with no use effect.
 local function ItemSpellID(itemID)
     if not itemID then return nil end
-    local _, spellID = GetItemSpell(itemID)
+    local _, spellID
+    if C_Item and C_Item.GetItemSpell then
+        _, spellID = C_Item.GetItemSpell(itemID)
+    elseif GetItemSpell then
+        _, spellID = GetItemSpell(itemID)
+    end
     return spellID
 end
 
@@ -47,8 +52,10 @@ end
 -- database can come back empty for an item the client has not cached, and
 -- "not loaded yet" must never be mistaken for "no".
 local function IsPotion(itemID)
-    if not itemID or not GetItemInfoInstant then return false, false end
-    local _, _, _, _, _, classID, subClassID = GetItemInfoInstant(itemID)
+    if not itemID then return false, false end
+    local getItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if not getItemInfoInstant then return false, false end
+    local _, _, _, _, _, classID, subClassID = getItemInfoInstant(itemID)
     if not classID then return false, false end
     -- Consumable, and one of the drinkable subclasses. Flasks and phials are
     -- included: people call them potions and expect them to count.
@@ -394,7 +401,8 @@ local function BuildItemPicker(frame, trigger, yOffset, entries, emptyText, belo
         -- Shifted right to clear the tick box now sitting at the left edge.
         icon:SetPoint("LEFT", toggle, "RIGHT", 2, 0)
         icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        local _, _, _, _, itemIcon = GetItemInfoInstant(entry.itemID)
+        local getItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+        local itemIcon = getItemInfoInstant and select(5, getItemInfoInstant(entry.itemID))
         icon:SetTexture(itemIcon or "Interface\\Icons\\INV_Misc_QuestionMark")
 
         local text = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
