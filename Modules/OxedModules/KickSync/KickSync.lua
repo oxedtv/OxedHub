@@ -618,37 +618,10 @@ local function ShowOptions()
         btnRow:SetSize(460, 30)
         btnRow:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
 
-        local keyWinBtn = CreateFrame("Button", nil, btnRow, "UIPanelButtonTemplate")
-        keyWinBtn:SetSize(145, 24)
-        keyWinBtn:SetPoint("LEFT", btnRow, "LEFT", 0, 0)
-        keyWinBtn:SetText("Keystones Window")
-        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(keyWinBtn) end
-        keyWinBtn:SetScript("OnClick", function()
-            local KL = OxedHub.KickSyncKeystones
-            if KL then
-                KL:ToggleWindow()
-            else
-                AnnounceKeystones()
-            end
-        end)
-
-        local annKeyBtn = CreateFrame("Button", nil, btnRow, "UIPanelButtonTemplate")
-        annKeyBtn:SetSize(145, 24)
-        annKeyBtn:SetPoint("LEFT", keyWinBtn, "RIGHT", 6, 0)
-        annKeyBtn:SetText("Announce Keystones")
-        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(annKeyBtn) end
-        annKeyBtn:SetScript("OnClick", function()
-            local KL = OxedHub.KickSyncKeystones
-            if KL then
-                KL:AnnounceToChat()
-            else
-                AnnounceKeystones()
-            end
-        end)
-
+        -- The keystone buttons moved to MythicLooter's options.
         local previewBtn = CreateFrame("Button", nil, btnRow, "UIPanelButtonTemplate")
         previewBtn:SetSize(120, 24)
-        previewBtn:SetPoint("LEFT", annKeyBtn, "RIGHT", 6, 0)
+        previewBtn:SetPoint("LEFT", btnRow, "LEFT", 0, 0)
         previewBtn:SetText("Preview Bars")
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(previewBtn) end
         previewBtn:SetScript("OnClick", function()
@@ -660,7 +633,7 @@ local function ShowOptions()
         local UF = OxedHub.KickSyncUnitFrames
         local providerName = UF and UF:GetDetectedProviderName() or "Blizzard Compact Party"
         w:AddNote("|cff888888Detected Unit Frames: |cffffffff" .. providerName .. "|r")
-        w:AddNote("Commands: /kicksync or /ksync (options), /kskeys (keystones window), /kskey (announce keys).")
+        w:AddNote("Commands: /kicksync or /ksync (options). Keystone list and announce: in MythicLooter's options, or /ksync keys and /ksync announce.")
     end
 
     optionsWindow:Show()

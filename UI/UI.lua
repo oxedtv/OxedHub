@@ -1301,12 +1301,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.11)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.12)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.11")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.12")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1372,11 +1372,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  New: MythicLooter, full M+, Raid & Delve loot browser by spec and slot.",
-        "•  New: KickSync, party interrupt tracker & polished Party Keystones window.",
-        "•  New: SmartMisdirect, 1-click Hunter / Rogue priority macro generator.",
-        "•  Auto Queue: integrated Movable LFG Eye with live preview & scaling.",
-        "•  KickBar: taint-safe execution & unified OxedHub stone styling.",
+        "•  Fixed: Party Keystones now shows keys of party members from other realms.",
+        "•  MythicLooter: dungeons & raids in one list-and-detail view, in stone.",
+        "•  Lighter ActionHub bars and Bloodlust trigger in long fights.",
+        "•  Boss Track & Boss Timers: no more freeze on a pull's first ability.",
+        "•  /oxprofile: Lua memory per addon in the performance report.",
         "•  Grab either pack from CurseForge:",
     }
 

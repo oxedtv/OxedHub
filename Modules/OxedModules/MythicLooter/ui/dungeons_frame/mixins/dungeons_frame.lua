@@ -2,14 +2,29 @@ local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; Addon
 
 local DB = KeystoneLoot.DB;
 local Query = KeystoneLoot.Query;
+local PickerView = KeystoneLoot.PickerView;
+
+-- One dungeon at a time: the season's dungeons on the left, the chosen one
+-- on the right with every item it drops (see picker_view.lua). No teleport
+-- here: the banner is the name and the count only.
 
 KeystoneLootDungeonsFrameMixin = {};
 
-function KeystoneLootDungeonsFrameMixin:OnLoad()
-    self.Inset.Bg:SetAlpha(0.75);
-    self.Inset.Bg:SetAtlas("UI-Frame-Dragonflight-BackgroundTile");
+local function GetSelectedId(dungeons)
+    local selected = DB:Get("ui.selectedDungeon");
+    for _, dungeon in ipairs(dungeons) do
+        if (dungeon.challengeModeId == selected) then
+            return selected;
+        end
+    end
+    return dungeons[1] and dungeons[1].challengeModeId;
+end
 
-    self.entryPool = CreateFramePool("Frame", self.Container, "KeystoneLootEntryFrameTemplate");
+function KeystoneLootDungeonsFrameMixin:OnLoad()
+    -- The old list's backdrop and border are not used by this layout.
+    self.Inset:Hide();
+    self.BorderFrame:Hide();
+    PickerView.Setup(self);
 end
 
 function KeystoneLootDungeonsFrameMixin:Init()
@@ -26,28 +41,21 @@ function KeystoneLootDungeonsFrameMixin:Init()
     DB:AddObserver("filters.weaponTypes", OnChanged);
     DB:AddObserver("ui.selectedCharacterKey", OnChanged);
     DB:AddObserver("ui.selectedTab", OnChanged);
+    DB:AddObserver("ui.selectedDungeon", OnChanged);
     DB:AddObserver("settings.highlighting.*", OnChanged);
     DB:AddObserver("settings.hideOtherItems", OnChanged);
     DB:AddObserver("settings.wideMode", OnChanged);
     DB:AddObserver("settings.multiSlotFilter", OnChanged);
     DB:AddObserver("settings.slotName", OnChanged);
     DB:AddObserver("voidcore", function()
-        for Frame in self.entryPool:EnumerateActive() do
-            for _, Button in Frame.IconScrollBox:EnumerateFrames() do
-                Button:UpdateVoidcoreIcon();
-            end
-        end
+        PickerView.EachItemButton(self, function(button) button:UpdateVoidcoreIcon(); end);
     end);
 
     self:Refresh();
 end
 
 function KeystoneLootDungeonsFrameMixin:RefreshOwnedIcons()
-    for Frame in self.entryPool:EnumerateActive() do
-        for _, Button in Frame.IconScrollBox:EnumerateFrames() do
-            Button:UpdateOwnedIcon();
-        end
-    end
+    PickerView.EachItemButton(self, function(button) button:UpdateOwnedIcon(); end);
 end
 
 function KeystoneLootDungeonsFrameMixin:RefreshSize()
@@ -59,39 +67,39 @@ end
 
 function KeystoneLootDungeonsFrameMixin:OnShow()
     -- Update cooldowns for teleport buttons in case they were on cooldown when the frame was hidden.
-    for Frame in self.entryPool:EnumerateActive() do
-        Frame.TeleportButton:UpdateCooldown();
-    end
+    PickerView.UpdateTeleportCooldown(self);
 end
 
 function KeystoneLootDungeonsFrameMixin:Refresh()
-    self.entryPool:ReleaseAll();
-
-    self:SetWidth(DB:Get("settings.wideMode") and 728 or 500);
-
-    local height = 0;
-    height = height + 60; -- margin top
-    height = height + 4;  -- padding top
-
     local dungeons = Query:GetDungeons();
-    local numDungeons = #dungeons;
+    local selectedId = GetSelectedId(dungeons);
 
-    for index = 1, numDungeons do
-        local dungeon = dungeons[index];
-        local isLastEntry = index == numDungeons;
-        local lootTable = Query:GetDungeonItems(dungeon.challengeModeId);
-
-        height = height + (not isLastEntry and 54 or 53); -- entry height
-
-        local Frame = self.entryPool:Acquire();
-        Frame:Init(index, dungeon, lootTable, isLastEntry);
-        Frame:Show();
+    local rows, chosen, items = {}, nil, {};
+    for _, dungeon in ipairs(dungeons) do
+        local name, _, _, texture = C_ChallengeMode.GetMapUIInfo(dungeon.challengeModeId);
+        local loot = Query:GetDungeonItems(dungeon.challengeModeId);
+        rows[#rows + 1] = {
+            key = dungeon.challengeModeId, name = name, icon = texture, count = #loot,
+        };
+        if (dungeon.challengeModeId == selectedId) then
+            chosen, items = dungeon, loot;
+        end
     end
 
-    height = height + 4;  -- padding bottom
-    height = height + 24; -- margin bottom
+    PickerView.Render(self, {
+        width = DB:Get("settings.wideMode") and 760 or 600,
+        rows = rows,
+        selected = selectedId,
+        onSelect = function(key) DB:Set("ui.selectedDungeon", key); end,
+        banner = chosen and function(banner)
+            -- A one-item stand-in: an empty table draws the banner greyed
+            -- out as "no loot", and Init pads whatever it is given.
+            banner:Init(1, chosen, { { itemId = 0 } }, true);
+        end or nil,
+        subtitle = (#items == 1 and "1 item" or (#items .. " items")) .. " for your filters",
+        noIcon = true,
+        items = items,
+    });
 
-    self:SetHeight(height);
-    self.Container:Layout();
     self:RefreshSize();
 end

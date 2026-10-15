@@ -273,11 +273,21 @@ local function LayoutBar(bar, index)
     end
 end
 
+local ShowState
+
 local function Restyle()
     if not anchor then return end
     anchor:SetScale(settings.scale or 1)
     anchor:SetSize(settings.width, settings.height)
     for index, bar in ipairs(bars) do LayoutBar(bar, index) end
+    ShowState()
+end
+
+-- What the ticker starting or stopping changes, and nothing else. Starting
+-- it used to lay out every bar again, in the frame a pull's first ability
+-- arrived.
+ShowState = function()
+    if not anchor then return end
     local editing = not settings.locked and settings.enabled and OptionsOpen()
     anchor.hint:SetShown(editing)
     anchor.text:SetShown(editing)
@@ -355,14 +365,14 @@ local function Tick()
 
     if not any then
         StopTicker()
-        Restyle()
+        ShowState()
     end
 end
 
 local function StartTicker()
     if ticker or not active then return end
     ticker = C_Timer.NewTicker(TICK, Tick)
-    Restyle()
+    ShowState()
 end
 
 Engine:AddListener({

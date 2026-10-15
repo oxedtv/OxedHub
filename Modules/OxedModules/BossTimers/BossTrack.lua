@@ -194,8 +194,12 @@ local function AlertIcon(i)
     return icon
 end
 
+local ShowState
+local showFrames = {}
+
 local function Restyle()
     if not track then return end
+    showFrames[1], showFrames[2] = track, iconAnchor
     -- Settings changed: every track icon draws itself again on the next tick.
     for _, icon in ipairs(trackIcons) do icon.ev = nil end
     idleUntil = 0
@@ -237,10 +241,20 @@ local function Restyle()
     end
     iconAnchor:SetSize(settings.iconSize, settings.iconSize)
 
+    ShowState()
+end
+
+-- Only what the ticker starting or stopping changes: shown or not, and the
+-- drag hints. ⚠ Starting the ticker used to run the whole of Restyle above,
+-- a SetFont per alert icon among it, on the frame the first ability of a
+-- pull arrived -- one 19 ms frame at every boss pull.
+ShowState = function()
+    if not track then return end
+    showFrames[1], showFrames[2] = track, iconAnchor
     local editing = settings.enabled and not settings.locked and OptionsOpen()
     track:SetShown(active and settings.track and (editing or ticker ~= nil))
     iconAnchor:SetShown(active and settings.icons)
-    for _, frame in ipairs({ track, iconAnchor }) do
+    for _, frame in ipairs(showFrames) do
         frame.hint:SetShown(editing)
         frame.hintText:SetShown(editing)
         frame:EnableMouse(editing)
@@ -324,8 +338,11 @@ local function Tick()
                 shown = shown + 1
                 local icon = AlertIcon(shown)
                 if not icon.styled then
+                    -- Only this new icon, not every frame the module has.
                     icon.styled = true
-                    Restyle()
+                    local font = GameFontNormalHuge and GameFontNormalHuge:GetFont() or STANDARD_TEXT_FONT
+                    icon:SetSize(settings.iconSize, settings.iconSize)
+                    icon.count:SetFont(font, math.floor(settings.iconSize * 0.5), "THICKOUTLINE")
                 end
                 icon.tex:SetTexture(ev.icon)
                 icon.count:SetText(tostring(math.ceil(ev.trackLeft)))
@@ -350,7 +367,7 @@ local function Tick()
 
     if not any then
         StopTicker()
-        Restyle()
+        ShowState()
         return
     end
 
@@ -376,7 +393,7 @@ end
 local function StartTicker()
     if ticker or not active then return end
     ticker = C_Timer.NewTicker(TICK, Tick)
-    Restyle()
+    ShowState()
 end
 
 Engine:AddListener({

@@ -50,7 +50,14 @@ local depth = 0
 local SPIKE_LOG = 100
 local spikes = {}
 
-local session = { startedAt = nil, stoppedAt = nil, frames = 0, hitches = 0, causes = {} }
+local session = { startedAt = nil, stoppedAt = nil, frames = 0, hitches = 0, causes = {},
+    -- Lua memory of every addon together, in KB: where it began, its highest,
+    -- and how often and how much the collector cleared.
+    memStart = nil, memPeak = 0, collections = 0, collectedKB = 0 }
+
+-- Each addon's memory when the recording began (name -> KB), so the report
+-- can say who grew. Only measured outside combat; see MeasureAddonMemory.
+local memAtStart = nil
 
 -- Rolling one-second figures for the mini window.
 local live = {
@@ -497,6 +504,54 @@ function Profiler:AddonAverages(limit)
     return rows
 end
 
+-- ── Who holds the memory ────────────────────────────────────────────────────
+-- The seconds around a spike show every addon's Lua memory together, and in
+-- a long session that was 2 GB with nothing to say whose. The game will say
+-- per addon, but only after UpdateAddOnMemoryUsage, which walks the whole Lua
+-- heap: tens of milliseconds, more on a big heap. So it is asked only when
+-- the player is not fighting, and only at the edges -- when a recording
+-- starts, when a report is built, when the session is saved -- never per
+-- frame. name -> KB, or nil when it could not be asked.
+local function MeasureAddonMemory()
+    if InCombatLockdown() then return nil end
+    local update = UpdateAddOnMemoryUsage or (C_AddOns and C_AddOns.UpdateAddOnMemoryUsage)
+    local get = GetAddOnMemoryUsage or (C_AddOns and C_AddOns.GetAddOnMemoryUsage)
+    if not (update and get) then return nil end
+    if not pcall(update) then return nil end
+    local list = {}
+    for _, name in ipairs(LoadedAddons()) do
+        local ok, kb = pcall(get, name)
+        if ok and type(kb) == "number" then list[name] = kb end
+    end
+    return list
+end
+
+-- The largest holders, most first, each with its growth since the start when
+-- that is known. OxedHub is always listed, wherever it falls.
+function Profiler:AddonMemory(limit)
+    local now = MeasureAddonMemory()
+    if not now then return nil end
+    local rows = {}
+    for name, kb in pairs(now) do
+        local before = memAtStart and memAtStart[name]
+        rows[#rows + 1] = { name = name, kb = kb, grew = before and (kb - before) or nil }
+    end
+    table.sort(rows, function(a, b) return a.kb > b.kb end)
+    limit = limit or 10
+    local kept, haveOurs = {}, false
+    for i, row in ipairs(rows) do
+        if i <= limit then
+            kept[#kept + 1] = row
+            if row.name == addonName then haveOurs = true end
+        elseif row.name == addonName and not haveOurs then
+            kept[#kept + 1] = row
+            haveOurs = true
+        end
+    end
+    kept.at = time()
+    return kept
+end
+
 -- ── Which events came in ────────────────────────────────────────────────────
 -- A frame that hears every event, while recording only. It writes each name
 -- into a flat list and does nothing else; counting happens on a long frame,
@@ -800,6 +855,11 @@ local function OnFrame(_, elapsed)
     local alloc = mem - lastMem
     -- Lua memory going down means the collector ran during this frame.
     local collected = mem < lastMem - 64
+    if collected then
+        session.collections = session.collections + 1
+        session.collectedKB = session.collectedKB + (lastMem - mem)
+    end
+    if mem > session.memPeak then session.memPeak = mem end
     lastMem = mem
 
     -- An error inside a timed call skips its Finish; the frame boundary is
@@ -865,6 +925,12 @@ ourFrame:SetScript("OnEvent", function(_, event, loaded)
         if OxedHubDB.profiler.fromLogin then Profiler:Start() end
     elseif event == "PLAYER_ENTERING_WORLD" or event == "LOADING_SCREEN_DISABLED" then
         graceUntil = GetTime() + GRACE_SECS
+        -- A recording started at login measures who holds what here, once
+        -- every addon has loaded (behind the loading screen, where the walk
+        -- over the heap is not felt).
+        if active and not memAtStart and event == "PLAYER_ENTERING_WORLD" then
+            memAtStart = MeasureAddonMemory()
+        end
     elseif event == "PLAYER_LOGOUT" then
         -- /reload and logging out both land here, and this is the last moment
         -- anything can be written to saved variables. A recording kept only in
@@ -963,6 +1029,12 @@ function Profiler:Start()
     ringCount = 0
     wipe(waitingAfter)
     lastMem = collectgarbage("count")
+    session.memStart = session.memStart or lastMem
+    -- Who held what at the start. Only the first start of a session: a
+    -- pause and resume keeps the original figures to compare against.
+    -- Started from login: the other addons are not loaded yet, and the
+    -- first PLAYER_ENTERING_WORLD measures instead.
+    if not memAtStart and IsLoggedIn and IsLoggedIn() then memAtStart = MeasureAddonMemory() end
     depth = 0
     cur.n, cur.over, prev.n, prev.over = 0, 0, 0, 0
     cur.spike, prev.spike = nil, nil
@@ -988,6 +1060,9 @@ function Profiler:Reset()
     session.stoppedAt = nil
     session.frames, session.hitches = 0, 0
     wipe(session.causes)
+    session.memStart = active and collectgarbage("count") or nil
+    session.memPeak, session.collections, session.collectedKB = 0, 0, 0
+    memAtStart = active and MeasureAddonMemory() or nil
     wipe(clusters)
     wipe(waitingAfter)
     ringCount = 0
@@ -1080,6 +1155,10 @@ function Profiler:SaveSessionToHistory()
         causes = CopyTable and CopyTable(session.causes) or session.causes,
         addonAverages = Profiler:AddonAverages(8),
         clusters = ClusterRows(),
+        memStart = session.memStart, memPeak = session.memPeak,
+        memEnd = collectgarbage("count"),
+        collections = session.collections, collectedKB = session.collectedKB,
+        addonMemory = Profiler:AddonMemory(10),
     })
     while #history > HISTORY_KEEP do table.remove(history) end
 end
@@ -1144,7 +1223,9 @@ function Profiler:GetSession()
     local view = self:GetView()
     if view then
         return { startedAt = view.startedAt, stoppedAt = view.endedAt,
-            frames = view.frames or 0, hitches = view.hitches or 0, causes = view.causes or {} }
+            frames = view.frames or 0, hitches = view.hitches or 0, causes = view.causes or {},
+            memStart = view.memStart, memPeak = view.memPeak or 0, memEnd = view.memEnd,
+            collections = view.collections or 0, collectedKB = view.collectedKB or 0 }
     end
     return session
 end
@@ -1282,6 +1363,33 @@ function Profiler:BuildReport()
         end
         add("")
     end
+
+    -- Lua memory: how big the heap got, how often the collector paused to
+    -- clear it, and who holds it. A big heap makes every collection longer.
+    if s.memStart then
+        local nowKB = view and s.memEnd or collectgarbage("count")
+        add(("Lua memory, every addon together: %.0f MB at the start, %.0f MB at most, %.0f MB at the end")
+            :format(s.memStart / 1024, math.max(s.memPeak or 0, nowKB or 0) / 1024, (nowKB or 0) / 1024))
+        add(("  the collector cleared memory %d times, %.0f MB in all")
+            :format(s.collections or 0, (s.collectedKB or 0) / 1024))
+    end
+    local holders
+    if view then
+        holders = view.addonMemory
+    else
+        holders = self:AddonMemory(10)
+    end
+    if holders and #holders > 0 then
+        add(("Lua memory held, by addon (measured %s; growth since the recording began)")
+            :format(holders.at and date("%H:%M", holders.at) or "at the end"))
+        for _, row in ipairs(holders) do
+            add(("  %8.1f MB  %s%s"):format(row.kb / 1024,
+                row.grew and ("%+8.1f MB  "):format(row.grew / 1024) or "             ", row.name))
+        end
+    elseif not view and InCombatLockdown() then
+        add("Lua memory held, by addon: not measured in combat (build the report again after the fight)")
+    end
+    if s.memStart or (holders and #holders > 0) then add("") end
 
     -- Where OxedHub's own time went, by feature, with each one's share.
     -- Nested calls are not counted twice, so the shares add up to the whole.

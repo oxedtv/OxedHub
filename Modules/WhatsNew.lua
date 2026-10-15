@@ -16,6 +16,7 @@ OxedHub.WhatsNew = WhatsNew
 
 local KIND_COLORS = {
     ADDED   = "ff40ff40",
+    NEW     = "ff40ff40",   -- 2.4.10 wrote NEW; it showed grey without this
     CHANGED = "ffffd100",
     FIXED   = "ff40c0ff",
 }
@@ -24,6 +25,20 @@ local KIND_COLORS = {
 -- are shown, so an update that skips a version still explains everything that
 -- changed in between.
 WhatsNew.RELEASES = {
+    {
+        version = "2.4.12",
+        important = true,
+        lines = {
+            { "FIXED", "Party Keystones: keys of party members from other realms now show. They were thrown away before, so a group from the finder usually listed only your own key." },
+            { "FIXED", "Party Keystones: your key is sent again a few seconds later when the game refuses an addon message (in a fight inside an instance), instead of being lost." },
+            { "CHANGED", "Party Keystones: the Keystones Window and Announce Keystones buttons moved to MythicLooter's options. /ksync keys and /ksync announce still work." },
+            { "CHANGED", "MythicLooter: dungeons and raids in one list-and-detail view, in OxedHub's own stone frame." },
+            { "CHANGED", "Lighter ActionHub bars: a cooldown ending redraws its node once, not four times, and the global cooldown no longer redraws every node twice a second in a fight." },
+            { "CHANGED", "Lighter Bloodlust trigger: far less memory churn while Sated is up. Potion & trinket and Prey hunt triggers also do less work in a fight." },
+            { "CHANGED", "Boss Track and Boss Timers: no more short freeze on the first ability of a pull." },
+            { "ADDED", "Performance recorder (/oxprofile): the report now shows Lua memory (start, peak, end, how often the game cleaned it up) and how much each addon holds, with growth since recording began." },
+        },
+    },
     {
         version = "2.4.11",
         important = false,

@@ -138,16 +138,33 @@ local CLEAR_AFTER_MISSES = 8    -- 8 x 0.25s = two seconds of nothing
 -- No source of lust can land again this soon, so anything inside the window is
 -- the same one being seen twice. A last line of defence behind the miss count.
 local MIN_REFIRE = 25
+
+-- ⚠ While the lust or its Sated is up and the last read found it, ask at
+-- most once a HELD_RECHECK. Each read the aura list cannot answer (in combat
+-- it never can) is a fresh aura table from the game, 1.5 KB, and the ticker
+-- plus every aura change asked four or more times a second for the whole ten
+-- minutes of Sated: 54 MB in two hours, the largest garbage line in
+-- /oxprofile. Nothing new can land while Sated is up. The first empty read
+-- drops back to every read, so CLEAR_AFTER_MISSES counts at the old pace
+-- and the buff is still let go about two seconds after it really ends.
+local HELD_RECHECK = 1.0
+local lastHeldRead = 0
+
 local function CheckLust()
     -- Nothing to fire into until the profile is loaded.
     if not (OxedHub.db and OxedHub.db.profile) then return end
     if not Wanted() then return end
 
-    local current = GetActiveLustBuff()
     local now = GetTime()
+    if activeBuff and missedReads == 0 and (now - lastHeldRead) < HELD_RECHECK then
+        return
+    end
+
+    local current = GetActiveLustBuff()
 
     if current then
         missedReads = 0
+        lastHeldRead = now
     end
 
     if current and not activeBuff then
@@ -197,6 +214,14 @@ local function StopPolling()
     end
 end
 
+-- Named, not a new function at the end of every fight.
+local function StopAfterFight()
+    if not InCombatLockdown() then
+        StopPolling()
+        CheckLust()
+    end
+end
+
 watcher:RegisterUnitEvent("UNIT_AURA", "player")
 watcher:RegisterEvent("PLAYER_REGEN_DISABLED")
 watcher:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -217,12 +242,7 @@ watcher:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_REGEN_ENABLED" then
         -- Keep polling briefly: lust often outlives the pull, and stopping dead
         -- on combat end would leave activeBuff stale for the next fight.
-        C_Timer.After(5, function()
-            if not InCombatLockdown() then
-                StopPolling()
-                CheckLust()
-            end
-        end)
+        C_Timer.After(5, StopAfterFight)
         return
     end
 

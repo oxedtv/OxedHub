@@ -458,12 +458,20 @@ end
 -- touching one throws.  issecretvalue() is the supported way to ask before
 -- reading; it is only present on clients that have the restriction, hence the
 -- existence check.
+-- Spells known to bank no charges. Most nodes are such spells, and asking
+-- the game anyway handed back a fresh table per node per pass. Forgotten
+-- when talents or spells change (see variantReset below), since a talent can
+-- add a charge.
+local noCharges = {}
+
 local function UpdateChargeCount(btn, spellID, style)
     local shown = nil
 
-    if spellID and C_Spell and C_Spell.GetSpellCharges then
+    if spellID and not noCharges[spellID] and C_Spell and C_Spell.GetSpellCharges then
         local ok, info = pcall(C_Spell.GetSpellCharges, spellID)
-        if ok and type(info) == "table" then
+        if ok and info == nil then
+            noCharges[spellID] = true
+        elseif ok and type(info) == "table" then
             local cur, max = info.currentCharges, info.maxCharges
             local secret = issecretvalue
                 and (issecretvalue(cur) or issecretvalue(max))
@@ -472,6 +480,8 @@ local function UpdateChargeCount(btn, spellID, style)
                 -- Only worth drawing when the spell actually banks charges.
                 if cur and max and max > 1 then
                     shown = cur
+                elseif max then
+                    noCharges[spellID] = true
                 end
             end
         end
@@ -910,8 +920,25 @@ local function SlotSpellIDRaw(slot)
         return nil
 end
 
+-- A macro's spell is asked for at most once a second, like its item above:
+-- the lookup goes through GetMacroItem, whose item link is a new string on
+-- every call, and each cooldown pass asked once per macro node.
+local macroSpells = setmetatable({}, { __mode = "k" })   -- slot -> { id, at }
+
 function GetSlotSpellID(slot)
     if not slot or not slot.id then return nil end
+    if slot.type == "macro" then
+        local now = GetTime()
+        local known = macroSpells[slot]
+        if known and now - known.at < 1 then return known.id or nil end
+        if not known then
+            known = {}
+            macroSpells[slot] = known
+        end
+        local ok, spellID = pcall(SlotSpellIDRaw, slot)
+        known.id, known.at = ok and spellID or false, now
+        return known.id or nil
+    end
     local ok, spellID = pcall(SlotSpellIDRaw, slot)
     return ok and spellID or nil
 end
@@ -960,7 +987,10 @@ for _, event in ipairs({ "SPELLS_CHANGED", "PLAYER_TALENT_UPDATE", "TRAIT_CONFIG
         "PLAYER_SPECIALIZATION_CHANGED" }) do
     pcall(variantReset.RegisterEvent, variantReset, event)
 end
-variantReset:SetScript("OnEvent", function() wipe(spellVariants) end)
+variantReset:SetScript("OnEvent", function()
+    wipe(spellVariants)
+    wipe(noCharges)
+end)
 
 local function IsSpellProcced(spellID)
     if not spellID then return false end
@@ -1520,6 +1550,8 @@ local function UpdateNodeCooldown(btn)
     local hub = (btn.slotHubIndex and ActionHub:GetHubDB(btn.slotHubIndex))
         or ActionHub:GetActiveHubDB()
     local hideGCD = not (hub and hub.showGlobalCooldown == true)
+    -- A cooldown event naming no spell redraws these at once (NodeIsLive).
+    btn._ohShowsGCD = not hideGCD
 
     local isReady = true
     if type(mixData) == "table" and mixData.slots and toyMode ~= "direct" then
@@ -2041,7 +2073,24 @@ local lastItemPass = 0
 -- most casts, and a hub of toys had every one read again each time.
 local ITEM_NODES = { item = true, emote = true, macro = true }
 local lastFullPass = 0
-local FULL_GAP = 0.5          -- the least time between two passes over everything
+local FULL_GAP = 0.5          -- the least time between two passes for an unnamed event
+-- ⚠ An item's swipe can show up to a second late when it was used from
+-- somewhere other than its node (a click on the node looks at once). The bag
+-- event behind this pass fires on most casts: 6936 passes at 0.5 ms in two
+-- hours at half a second.
+local ITEM_GAP = 1.0
+-- ⚠ Every node, at most every EVERY_NODE_GAP. A cooldown event that names no
+-- spell is nearly always the global cooldown, which most hubs do not draw;
+-- redrawing every node for each was 1.7 ms and 6 KB (one cooldown table per
+-- spell node), twice a second for a whole fight. In between, only the nodes
+-- it can change are redrawn: a swipe running, a node not drawn yet, a hub
+-- that shows the global cooldown. A spell's own cooldown starting names the
+-- spell and is drawn on the next frame as before; the pass over every node
+-- still follows within EVERY_NODE_GAP, for anything the game left unnamed.
+local EVERY_NODE_GAP = 2.0
+local lastEveryNode = 0
+local everyNodeOwed = false
+local queuedDue = nil         -- when the later Flush already queued will run
 
 local function IsSecretValue(value)
     return issecretvalue and issecretvalue(value) or false
@@ -2073,6 +2122,25 @@ local UpdateAll = Named("ActionHub: cooldowns, every node", function()
     ActionHub:UpdateWidgetCooldowns()
 end)
 
+-- The nodes a cooldown event without a spell can change before the next pass
+-- over every node (see EVERY_NODE_GAP).
+local function NodeIsLive(btn)
+    if btn._ohAnswers == nil or btn._ohShowsGCD then return true end
+    local cd1, cd2 = btn.cooldown1, btn.cooldown2
+    return (cd1 and cd1:IsShown()) or (cd2 and cd2:IsShown()) or false
+end
+
+local UpdateLive = Named("ActionHub: cooldowns, running swipes", function()
+    for _, w in ipairs(ActionHub.widgets or {}) do
+        for _, btn in ipairs((w and w.buttons) or {}) do
+            if btn and btn.slotData and btn:IsVisible() and NodeIsLive(btn) then
+                local ok, err = pcall(UpdateNodeCooldown, btn)
+                if not ok then CDDebug("node update failed: " .. tostring(err)) end
+            end
+        end
+    end
+end)
+
 local UpdateItems = Named("ActionHub: cooldowns, item nodes", function()
     for _, w in ipairs(ActionHub.widgets or {}) do
         for _, btn in ipairs((w and w.buttons) or {}) do
@@ -2085,47 +2153,96 @@ local UpdateItems = Named("ActionHub: cooldowns, item nodes", function()
     end
 end)
 
-local function Flush()
+local Flush
+
+-- Two queues: the next frame, for events, and one later run for a gap being
+-- waited out.
+-- ⚠ Kept apart so a spell event is still drawn on the next frame while a
+-- Flush waits out a two-second gap, and so a fight's stream of events does
+-- not stack up one delayed timer each: a later run is only queued when it
+-- is due sooner than the one already waiting. A second run in flight is
+-- harmless; every pass in Flush is gated by its own gap.
+local function FlushSoon()
     cooldownQueued = false
+    Flush()
+end
+local function FlushLater()
+    if queuedDue and GetTime() >= queuedDue - 0.01 then queuedDue = nil end
+    Flush()
+end
+local function FlushIn(wait, now)
+    if wait <= 0 then
+        if cooldownQueued then return end
+        cooldownQueued = true
+        C_Timer.After(0, FlushSoon)
+        return
+    end
+    local due = now + wait
+    if queuedDue and queuedDue <= due + 0.01 then return end
+    queuedDue = due
+    C_Timer.After(wait, FlushLater)
+end
+
+Flush = function()
     if not (OxedHub.ActionHub and OxedHub.db) then return end
+    local now = GetTime()
 
     if next(pendingSpells) then
         UpdateSome(pendingSpells)
         wipe(pendingSpells)
     end
 
-    -- A full pass coming anyway covers the items too.
-    -- ⚠ And no more often than FULL_GAP, the same as a full pass. Without it
-    -- the item pass ran on every BAG_UPDATE_COOLDOWN, which fires on most
-    -- casts: 1387 passes at 1.5 ms in half an hour, on a hub of toys.
-    if pendingItems and pendingAll then
-        pendingItems = false
-    elseif pendingItems then
-        local now = GetTime()
-        local wait = FULL_GAP - (now - lastItemPass)
-        if wait <= 0 then
-            pendingItems = false
-            lastItemPass = now
-            UpdateItems()
-        elseif not cooldownQueued then
-            cooldownQueued = true
-            C_Timer.After(wait, Flush)
-        end
-    end
-
+    -- An event with no spell named: the nodes it can change now, every node
+    -- within EVERY_NODE_GAP.
+    local liveNow = false
     if pendingAll then
-        local now = GetTime()
         local wait = FULL_GAP - (now - lastFullPass)
         if wait <= 0 then
             pendingAll = false
             lastFullPass = now
-            UpdateAll()
-        elseif not cooldownQueued then
+            everyNodeOwed = true
+            liveNow = true
+        else
             -- Too soon after the last one: the rest of the burst folds into a
             -- single pass when the gap is up.
-            cooldownQueued = true
-            C_Timer.After(wait, Flush)
+            FlushIn(wait, now)
         end
+    end
+
+    local everyNodeNow = false
+    if everyNodeOwed then
+        local wait = EVERY_NODE_GAP - (now - lastEveryNode)
+        if wait <= 0 then
+            everyNodeOwed = false
+            lastEveryNode = now
+            everyNodeNow = true
+        else
+            FlushIn(wait, now)
+        end
+    end
+
+    -- A pass over every node covers the items too.
+    -- ⚠ And no more often than ITEM_GAP. Without it the item pass ran on
+    -- every BAG_UPDATE_COOLDOWN, which fires on most casts: 1387 passes at
+    -- 1.5 ms in half an hour, on a hub of toys.
+    if pendingItems and everyNodeNow then
+        pendingItems = false
+        lastItemPass = now
+    elseif pendingItems then
+        local wait = ITEM_GAP - (now - lastItemPass)
+        if wait <= 0 then
+            pendingItems = false
+            lastItemPass = now
+            UpdateItems()
+        else
+            FlushIn(wait, now)
+        end
+    end
+
+    if everyNodeNow then
+        UpdateAll()
+    elseif liveNow then
+        UpdateLive()
     end
 end
 
@@ -2138,9 +2255,7 @@ cooldownEventFrame:SetScript("OnEvent", function(_, event, spellID)
     else
         pendingAll = true
     end
-    if cooldownQueued then return end
-    cooldownQueued = true
-    C_Timer.After(0, Flush)
+    FlushIn(0, GetTime())
 end)
 
 local REFRESH_DELAYS = { 0.05, 0.2, 0.5, 1.0 }
@@ -2194,6 +2309,39 @@ function ActionHub:QueueNodeRefresh(btn)
     for _, delay in ipairs(NODE_REFRESH_DELAYS) do
         C_Timer.After(delay, look)
     end
+end
+
+-- ⚠ A sweep ending is one look, gathered over the frame. OnCooldownDone used
+-- to go through QueueNodeRefresh, the after-a-click path: a look now and three
+-- more over the next second, for every node whose sweep ended. With the global
+-- cooldown on show, every node's sweep ends together on every press: 110 703
+-- of those timers in two hours, the second-largest line in /oxprofile. A sweep
+-- that has ended needs no late retries; the cooldown events still redraw the
+-- node if the game says something new.
+-- Two sets used in turn: redrawing a node can clear its swipe, and a node
+-- ending again while the set is walked must land in the other one (adding a
+-- key to a table being walked by pairs is an error).
+local endedNodes, endedSpare = {}, {}
+local endedQueued = false
+local function RunEndedSweeps()
+    endedQueued = false
+    local walking = endedNodes
+    endedNodes, endedSpare = endedSpare, walking
+    for btn in pairs(walking) do
+        if btn.slotData and btn:IsVisible() then
+            local ok, err = pcall(UpdateNodeCooldown, btn)
+            if not ok then CDDebug("node update failed: " .. tostring(err)) end
+        end
+    end
+    wipe(walking)
+end
+
+function ActionHub:QueueSweepEnded(btn)
+    if not btn then return end
+    endedNodes[btn] = true
+    if endedQueued then return end
+    endedQueued = true
+    C_Timer.After(0, RunEndedSweeps)
 end
 
 function ActionHub:QueueCooldownRefresh()

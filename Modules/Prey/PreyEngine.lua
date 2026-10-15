@@ -910,6 +910,13 @@ local function RunAuraPass()
     PreyEngine:UpdateActiveHunt()
 end
 
+local WIDGET_GAP = 0.25
+local widgetQueued = false
+local function RunWidgetPass()
+    widgetQueued = false
+    PreyEngine:UpdateActiveHunt()
+end
+
 PreyEngine:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         self:HookAndConfigureBlizzardWidget()
@@ -1014,6 +1021,18 @@ PreyEngine:SetScript("OnEvent", function(self, event, arg1, arg2)
         if not auraQueued then
             auraQueued = true
             C_Timer.After(AURA_GAP, RunAuraPass)
+        end
+        return
+    end
+
+    -- ⚠ Folded too. UPDATE_UI_WIDGET fires for every widget in the world --
+    -- dungeon and scenario bars included -- and each ran the whole hunt
+    -- lookup: 12 270 passes and 8.7 MB of garbage in two hours. The pass
+    -- reads the widget as it is, so the last of a burst is all it needs.
+    if event == "UPDATE_UI_WIDGET" then
+        if not widgetQueued then
+            widgetQueued = true
+            C_Timer.After(WIDGET_GAP, RunWidgetPass)
         end
         return
     end

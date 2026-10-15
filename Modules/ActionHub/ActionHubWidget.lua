@@ -2383,7 +2383,9 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
         -- The moment a sweep ends, look at this node again: that is when it
         -- turns ready. The game times the sweep itself, so nothing has to
         -- watch it on a ticker.
-        local function CooldownEnded() ActionHub:QueueNodeRefresh(btn) end
+        -- One look, folded with every other node ending this frame (the
+        -- global cooldown ends on all of them at once).
+        local function CooldownEnded() ActionHub:QueueSweepEnded(btn) end
         cd1:HookScript("OnCooldownDone", CooldownEnded)
         cd2:HookScript("OnCooldownDone", CooldownEnded)
 

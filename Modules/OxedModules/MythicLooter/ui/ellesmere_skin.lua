@@ -53,6 +53,10 @@ local function SkinMenu(Menu)
 end
 
 local function SkinRaidBlocks(Frame)
+    -- The raids tab no longer has blocks (see picker_view.lua).
+    if (not Frame.blockPool) then
+        return;
+    end
     for Block in Frame.blockPool:EnumerateActive() do
         skin.Inset(Block.Inset);
         skin.FadeRegions(Block.BorderFrame);

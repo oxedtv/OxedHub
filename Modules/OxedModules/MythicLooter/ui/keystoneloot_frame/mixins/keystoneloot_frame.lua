@@ -28,13 +28,10 @@ function KeystoneLootFrameMixin:OnLoad()
     self:SetPortraitToAsset("Interface\\Icons\\INV_Relics_Hourglass_02");
     self:SetTitle(string.format(L['%s (%s Season %d)'], AddonName, KeystoneLoot.Config.expansionName, KeystoneLoot.Config.seasonNumber));
 
-    local website = string.format(L["Import BIS items from %s"], ACCOUNT_WIDE_FONT_COLOR:WrapTextInColorCode(WEBSITE_URL));
-
-    self.FooterText:SetText("Made with LOVE in Germany - " .. website);
-
-    self.FooterButton:SetScript("OnClick", function()
-        CopyPopup:Show("https://" .. WEBSITE_URL);
-    end);
+    -- No footer line: the tabs end at the window's edge.
+    self.FooterText:SetText("");
+    self.FooterText:Hide();
+    self.FooterButton:Hide();
 
     table.insert(UISpecialFrames, self:GetName());
 end

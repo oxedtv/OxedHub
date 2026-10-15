@@ -66,6 +66,34 @@ local function ShowOptions()
 
         optionsWindow.cursorY = optionsWindow.cursorY - 32
 
+        -- The party keystone list. It lives in KickSync's file
+        -- (KickSyncKeystones.lua) and works whether KickSync is on or not.
+        local btnKeys = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
+        btnKeys:SetSize(200, 24)
+        btnKeys:SetPoint("TOPLEFT", optionsWindow, "TOPLEFT", 20, optionsWindow.cursorY - 2)
+        btnKeys:SetText("Keystones Window")
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
+            OxedHub.UI:ApplyRedButtonStyle(btnKeys)
+        end
+        btnKeys:SetScript("OnClick", function()
+            local KL = OxedHub.KickSyncKeystones
+            if KL and KL.ToggleWindow then KL:ToggleWindow() end
+        end)
+
+        local btnAnnounce = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
+        btnAnnounce:SetSize(200, 24)
+        btnAnnounce:SetPoint("LEFT", btnKeys, "RIGHT", 10, 0)
+        btnAnnounce:SetText("Announce Keystones")
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
+            OxedHub.UI:ApplyRedButtonStyle(btnAnnounce)
+        end
+        btnAnnounce:SetScript("OnClick", function()
+            local KL = OxedHub.KickSyncKeystones
+            if KL and KL.AnnounceToChat then KL:AnnounceToChat() end
+        end)
+
+        optionsWindow.cursorY = optionsWindow.cursorY - 32
+
         -- Helper for DB checkboxes
         local function AddDBCheckbox(getVal, setVal, label, tooltip)
             local box = CreateFrame("CheckButton", nil, optionsWindow, "UICheckButtonTemplate")
@@ -228,7 +256,7 @@ local function RegisterModule()
         author   = "Oxed",
         category = "groups",
         keywords = { "mythiclooter", "keystoneloot", "m+", "loot", "dungeon", "raid", "bis", "vault", "item" },
-        desc     = "Full Mythic+ & Raid loot overview, Best-in-Slot planner, drop reminders, vault tracker, and keystone tooltips.",
+        desc     = "Mythic+ & raid loot browser with a Best-in-Slot planner, drop reminders and keystone tooltips.",
         icon     = "Interface\\Icons\\INV_Relics_Hourglass_02",
 
         defaults = {

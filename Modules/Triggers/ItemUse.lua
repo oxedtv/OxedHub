@@ -709,11 +709,19 @@ procWatcher:SetScript("OnEvent", function(_, event, _, _, spellID)
     if event == "UNIT_SPELLCAST_SUCCEEDED" then
         -- Note which trinket was used by hand, so its cooldown starting is not
         -- also reported as a proc a fraction of a second later.
-        local cast = tonumber(spellID)
+        -- Every cast arrives here: nothing to note without a trinket rule,
+        -- and the two slots are read directly rather than into a new list.
+        if not (OxedHub.Core and OxedHub.Core.HasEnabledTrigger
+            and OxedHub.Core:HasEnabledTrigger("ITEM_TRINKET")) then
+            return
+        end
+        local cast = (type(spellID) == "number" and not (issecretvalue and issecretvalue(spellID)))
+            and spellID or nil
         if cast then
-            for _, entry in ipairs(EquippedTrinkets()) do
-                if tonumber(ItemSpellID(entry.itemID)) == cast then
-                    recentUse[entry.itemID] = GetTime()
+            for _, slot in ipairs(TRINKET_SLOTS) do
+                local itemID = GetInventoryItemID("player", slot)
+                if itemID and tonumber(ItemSpellID(itemID)) == cast then
+                    recentUse[itemID] = GetTime()
                 end
             end
         end
@@ -728,11 +736,21 @@ procWatcher:SetScript("OnEvent", function(_, event, _, _, spellID)
     end
 
     -- ⚠ The cooldown events fire in bursts, several a frame in combat (5500 in
-    -- twenty minutes). One scan a tenth of a second after the first of a burst
-    -- sees the burst's end state; the events after it only find it queued.
+    -- twenty minutes). One scan a moment after the first of a burst sees the
+    -- burst's end state; the events after it only find it queued.
+    -- A quarter of a second: at a tenth it was still 19 000 scans in two
+    -- hours, and a proc sound a quarter second after the proc is not heard
+    -- as late.
     if not scanQueued then
+        -- Nobody listening: no timer at all, only the state marked stale
+        -- (what RunTrinketScan would have done a moment later).
+        if not (OxedHub.Core and OxedHub.Core.HasEnabledTrigger
+            and OxedHub.Core:HasEnabledTrigger("ITEM_TRINKET")) then
+            stateStale = true
+            return
+        end
         scanQueued = true
-        C_Timer.After(0.1, RunTrinketScan)
+        C_Timer.After(0.25, RunTrinketScan)
     end
 end)
 

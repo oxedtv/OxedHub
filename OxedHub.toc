@@ -2,7 +2,7 @@
 ## Title: Oxed Hub
 ## Notes: Unified interface for sounds, animations, emotes, chat messages, and toys based on in-game events
 ## Author: https://customwowaddon.com/
-## Version: 2.4.11
+## Version: 2.4.12
 ## SavedVariables: OxedHubDB, KeystoneLootDB
 ## SavedVariablesPerCharacter: KeystoneLootCharDB
 ## OptionalDeps: OxedHub_MemePack, OxedHub_GamingPack, OxedHub_CustomMedia
@@ -237,6 +237,7 @@ Modules\OxedModules\MythicLooter\ui\templates\mixins\icon_button.lua
 Modules\OxedModules\MythicLooter\ui\templates\mixins\entry_frame.lua
 Modules\OxedModules\MythicLooter\ui\templates\mixins\teleport_button.lua
 Modules\OxedModules\MythicLooter\ui\templates\templates.xml
+Modules\OxedModules\MythicLooter\ui\picker_view.lua
 Modules\OxedModules\MythicLooter\ui\dungeons_frame\mixins\dungeons_frame.lua
 Modules\OxedModules\MythicLooter\ui\dungeons_frame\dungeons_frame.xml
 Modules\OxedModules\MythicLooter\ui\raids_frame\mixins\block_frame.lua
@@ -271,6 +272,7 @@ Modules\OxedModules\MythicLooter\ui\keystoneloot_frame\mixins\settings_dropdown.
 Modules\OxedModules\MythicLooter\ui\keystoneloot_frame\mixins\keystoneloot_frame.lua
 Modules\OxedModules\MythicLooter\ui\keystoneloot_frame\keystoneloot_frame.xml
 Modules\OxedModules\MythicLooter\ui\bootstrap.lua
+Modules\OxedModules\MythicLooter\ui\oxedhub_skin.lua
 Modules\Rings\OxedRing.lua
 Modules\Rings\OxedRingEditor.lua
 Modules\Search.lua
