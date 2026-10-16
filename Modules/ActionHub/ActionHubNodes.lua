@@ -25,14 +25,19 @@ local ipairs = ipairs
 local pairs = pairs
 local type = type
 
+local itemSpells = {}
 local function SafeGetItemSpell(itemID)
     if not itemID then return nil end
+    local cached = itemSpells[itemID]
+    if cached then return nil, cached end
+    local name, sid
     if C_Item and C_Item.GetItemSpell then
-        return C_Item.GetItemSpell(itemID)
+        name, sid = C_Item.GetItemSpell(itemID)
     elseif GetItemSpell then
-        return GetItemSpell(itemID)
+        name, sid = GetItemSpell(itemID)
     end
-    return nil
+    if sid then itemSpells[itemID] = sid end
+    return name, sid
 end
 
 local function SafeGetItemInfoInstant(item)
@@ -246,14 +251,25 @@ local function ReadableLength(info)
     return length
 end
 
+local gcdCheckAt = -1
+local gcdCheckVal = nil
+
 local function GlobalCooldownRunning()
     if not (C_Spell and C_Spell.GetSpellCooldown) then return nil end
+    local now = GetTime()
+    if gcdCheckAt == now then return gcdCheckVal end
+    gcdCheckAt = now
     local ok, gcd = pcall(C_Spell.GetSpellCooldown, GCD_SPELL)
-    if not ok or type(gcd) ~= "table" then return nil end
+    if not ok or type(gcd) ~= "table" or gcd.isActive == nil then
+        gcdCheckVal = nil
+        return nil
+    end
     -- isActive is documented as never secret.
-    if gcd.isActive == nil then return nil end
-    return gcd.isActive == true
+    gcdCheckVal = (gcd.isActive == true)
+    return gcdCheckVal
 end
+
+local baseCooldowns = {}
 
 local function IsGlobalCooldownOnly(spellID, info)
     if not spellID then return false end
@@ -261,10 +277,14 @@ local function IsGlobalCooldownOnly(spellID, info)
     local length = ReadableLength(info)
     if length then return length <= GCD_LONGEST end
 
-    local baseMs = 0
-    if GetSpellBaseCooldown then
-        local ok, b = pcall(GetSpellBaseCooldown, spellID)
-        if ok and type(b) == "number" then baseMs = b end
+    local baseMs = baseCooldowns[spellID]
+    if baseMs == nil then
+        baseMs = 0
+        if GetSpellBaseCooldown then
+            local ok, b = pcall(GetSpellBaseCooldown, spellID)
+            if ok and type(b) == "number" then baseMs = b end
+        end
+        baseCooldowns[spellID] = baseMs
     end
 
     -- No cooldown of its own: anything active is the GCD.
@@ -322,15 +342,25 @@ local function PaintSlotCooldown(cdFrame, spellID, ignoreGCD)
         end
         if active then
             local start, length = PlainNumber(info.startTime), PlainNumber(info.duration)
-            if start and length and cdFrame._ohStart == start and cdFrame._ohLength == length
-                and cdFrame._ohSpell == spellID and SwipeRunning(cdFrame) then
-                return true
+            local castAt = lastCastAt[spellID]
+            if not cdFrame._ohForceRefresh and cdFrame._ohSpell == spellID and cdFrame:IsShown() then
+                if start and length then
+                    if cdFrame._ohStart == start and cdFrame._ohLength == length and SwipeRunning(cdFrame) then
+                        return true
+                    end
+                elseif ignoreGCD and cdFrame._ohCastAt == castAt then
+                    -- Secret values in combat on a background poll where the spell was not re-cast
+                    -- or flagged by a spell cooldown event: keep the existing DurationObject swipe.
+                    return true
+                end
             end
+            cdFrame._ohForceRefresh = nil
             local okDur, durObj = pcall(C_Spell.GetSpellCooldownDuration, spellID)
             if okDur and durObj then
                 local okSet = pcall(cdFrame.SetCooldownFromDurationObject, cdFrame, durObj)
                 if okSet then
                     cdFrame._ohStart, cdFrame._ohLength, cdFrame._ohSpell = start, length, spellID
+                    cdFrame._ohCastAt = castAt
                     cdFrame._ohItem = nil
                     cdFrame:Show()
                     return true
@@ -339,7 +369,8 @@ local function PaintSlotCooldown(cdFrame, spellID, ignoreGCD)
         end
     end
 
-    cdFrame._ohStart, cdFrame._ohLength, cdFrame._ohSpell = nil, nil, nil
+    cdFrame._ohForceRefresh = nil
+    cdFrame._ohStart, cdFrame._ohLength, cdFrame._ohSpell, cdFrame._ohCastAt = nil, nil, nil, nil
     cdFrame._ohItem = nil
     -- Already clear: nothing to clear again.
     if not cdFrame:IsShown() then return false end
@@ -449,7 +480,7 @@ local function PaintNodeCooldown(cdFrame, slot, spellID, ignoreGCD)
         local painted = PaintItemCooldown(cdFrame, itemID, ignoreGCD)
         if painted ~= nil then return painted end
     end
-    return PaintSlotCooldown(cdFrame, spellID, ignoreGCD)
+    return PaintSlotCooldown(cdFrame, spellID or GetSlotSpellID(slot), ignoreGCD)
 end
 
 -- Show how many charges a spell has left, like the stock bars do.
@@ -701,16 +732,24 @@ end
 -- tell, so anything we don't understand keeps its normal look.
 -- The body runs inside pcall, but as a named function: an anonymous one
 -- here was a fresh closure on every call, for every node, twice a second.
+local mountSpells = {}
+local mountCollectedUsable = {}
+
 local function SlotUsableRaw(slot)
         if not slot then return true end
         local id = slot.id
         if not id then return true end
 
         if slot.type == "mount" then
-            local spellID, collectionUsable
-            if C_MountJournal and C_MountJournal.GetMountInfoByID then
+            local spellID = mountSpells[id]
+            local collectionUsable = mountCollectedUsable[id]
+            if spellID == nil and C_MountJournal and C_MountJournal.GetMountInfoByID then
                 local _, sid, _, _, isUsable = C_MountJournal.GetMountInfoByID(id)
                 spellID, collectionUsable = sid, isUsable
+                if sid then
+                    mountSpells[id] = sid
+                    mountCollectedUsable[id] = isUsable
+                end
             end
 
             -- The journal's isUsable only covers "do you own and can you ride
@@ -868,16 +907,12 @@ local function SlotSpellIDRaw(slot)
         if slot.type == "spell" then
             return slot.id
         end
-        if slot.type == "mount" then
-            if C_MountJournal and C_MountJournal.GetMountInfoByID then
-                local _, sid = C_MountJournal.GetMountInfoByID(slot.id)
+        if slot.type == "toy" or slot.type == "item" then
+            if type(slot.id) == "number" then
+                local _, sid = SafeGetItemSpell(slot.id)
                 return sid
             end
             return nil
-        end
-        if slot.type == "toy" or slot.type == "item" then
-            local _, sid = SafeGetItemSpell(slot.id)
-            return sid
         end
         -- A macro has no cooldown of its own; whatever it casts does. Without
         -- this branch a macro node simply never painted a swirl, because this
@@ -927,7 +962,20 @@ local macroSpells = setmetatable({}, { __mode = "k" })   -- slot -> { id, at }
 
 function GetSlotSpellID(slot)
     if not slot or not slot.id then return nil end
-    if slot.type == "macro" then
+    local st = slot.type
+    if st == "spell" then
+        return tonumber(slot.id)
+    end
+    if st == "mount" or st == "emote" or st == "marker" or st == "targetmarker" or st == "ping" or st == "module" then
+        return nil
+    end
+    if st == "toy" or st == "item" then
+        local numId = tonumber(slot.id)
+        if not numId then return nil end
+        local _, sid = SafeGetItemSpell(numId)
+        return sid
+    end
+    if st == "macro" then
         local now = GetTime()
         local known = macroSpells[slot]
         if known and now - known.at < 1 then return known.id or nil end
@@ -990,6 +1038,7 @@ end
 variantReset:SetScript("OnEvent", function()
     wipe(spellVariants)
     wipe(noCharges)
+    wipe(baseCooldowns)
 end)
 
 local function IsSpellProcced(spellID)
@@ -1503,6 +1552,15 @@ local function GetActionHubToyMacroText(slot)
     return ""
 end
 
+local NO_COOLDOWN_KINDS = {
+    mount = true,
+    marker = true,
+    targetmarker = true,
+    ping = true,
+    module = true,
+}
+local EMPTY_ANSWERS = {}
+
 -- One node's cooldown, charges, dimming and glows. A named function run
 -- through pcall, so one bad slot cannot stop the rest of the pass, and so the
 -- pass does not build a new closure for every node it touches.
@@ -1510,28 +1568,54 @@ local function UpdateNodeCooldown(btn)
     local slot = btn.slotData
     if not slot then return end
 
+    local firstDraw = (btn._ohInitSlot ~= slot)
+    if not firstDraw and NO_COOLDOWN_KINDS[slot.type] then
+        return
+    end
+
+    local hub = (btn.slotHubIndex and ActionHub:GetHubDB(btn.slotHubIndex))
+        or ActionHub:GetActiveHubDB()
+
+    if firstDraw then
+        btn._ohInitSlot = slot
+        -- Dim icons that can't be used right now (e.g. a mount while
+        -- indoors / in a no-mount zone), like the default action bars.
+        -- Subsequent changes are driven by usabilityFrame and itemCountFrame.
+        ApplyUsabilityShading(btn, IsSlotUsable(slot))
+        UpdateItemCount(btn, slot, hub)
+
+        if NO_COOLDOWN_KINDS[slot.type] then
+            btn._ohSpell = nil
+            btn._ohAnswers = EMPTY_ANSWERS
+            btn._ohShowsGCD = false
+            if btn.cooldown1 and btn.cooldown1:IsShown() then btn.cooldown1:Hide() end
+            if btn.cooldown2 and btn.cooldown2:IsShown() then btn.cooldown2:Hide() end
+            if btn.chargeText then btn.chargeText:Hide() end
+            btn._ohCharge = nil
+            if btn._ohOnCooldown then
+                btn._ohOnCooldown = false
+                ApplyButtonColoring(btn)
+            end
+            ApplyReadyGlow(btn, true)
+            return
+        end
+    end
+
     -- Asked once per node. It used to be looked up four times over.
     local spellID = GetSlotSpellID(slot)
 
     -- What this node answers to: its spell and that spell's base and override
     -- forms, since the game's event may name any of them. Kept on the node so
     -- a cooldown event about one spell only touches the nodes that show it.
-    if btn._ohSpell ~= spellID then
+    if firstDraw or btn._ohSpell ~= spellID then
         btn._ohSpell = spellID
-        local answers = btn._ohAnswers or {}
+        local answers = (btn._ohAnswers and btn._ohAnswers ~= EMPTY_ANSWERS) and btn._ohAnswers or {}
         wipe(answers)
         if spellID then
             for _, id in ipairs(SpellVariants(spellID)) do answers[id] = true end
         end
         btn._ohAnswers = answers
     end
-
-    -- Dim icons that can't be used right now (e.g. a mount while
-    -- indoors / in a no-mount zone), like the default action bars.
-    ApplyUsabilityShading(btn, IsSlotUsable(slot))
-    -- Proc glows are left to their own events, coalesced above, and to the
-    -- ticker's once-a-second check. Asking here too meant up to eight
-    -- protected calls per node on every cooldown change.
 
     if not (btn.cooldown1 and btn.cooldown2) then return end
 
@@ -1546,9 +1630,20 @@ local function UpdateNodeCooldown(btn)
         end
     end
 
+    if slot.type == "emote" and not (type(mixData) == "table" and mixData.slots) then
+        btn._ohShowsGCD = false
+        if btn.cooldown1:IsShown() then btn.cooldown1:Hide() end
+        if btn.cooldown2:IsShown() then btn.cooldown2:Hide() end
+        if btn.chargeText then btn.chargeText:Hide() end
+        if btn._ohOnCooldown then
+            btn._ohOnCooldown = false
+            ApplyButtonColoring(btn)
+        end
+        ApplyReadyGlow(btn, true)
+        return
+    end
+
     -- Per-hub: keep the global cooldown off the nodes.
-    local hub = (btn.slotHubIndex and ActionHub:GetHubDB(btn.slotHubIndex))
-        or ActionHub:GetActiveHubDB()
     local hideGCD = not (hub and hub.showGlobalCooldown == true)
     -- A cooldown event naming no spell redraws these at once (NodeIsLive).
     btn._ohShowsGCD = not hideGCD
@@ -1558,7 +1653,7 @@ local function UpdateNodeCooldown(btn)
         local mixReady = false
         for i = 1, 2 do
             local cdFrame = i == 1 and btn.cooldown1 or btn.cooldown2
-            if PaintNodeCooldown(cdFrame, mixData.slots[i], GetSlotSpellID(mixData.slots[i]), hideGCD) then
+            if PaintNodeCooldown(cdFrame, mixData.slots[i], nil, hideGCD) then
                 StyleCooldownText(cdFrame, i == 1 and 7 or -7)
             else
                 mixReady = true
@@ -1576,8 +1671,12 @@ local function UpdateNodeCooldown(btn)
 
     -- Charge counter sits outside the branches above: a spell
     -- can bank charges whether or not a cooldown is running.
-    UpdateChargeCount(btn, spellID, hub and hub.style)
-    UpdateItemCount(btn, slot, hub)
+    if slot.type == "spell" or slot.type == "macro" or slot.type == "trigger" then
+        UpdateChargeCount(btn, spellID, hub and hub.style)
+    elseif btn.chargeText then
+        btn.chargeText:Hide()
+        btn._ohCharge = nil
+    end
 
     local onCooldown = not isReady
     if btn._ohOnCooldown ~= onCooldown then
@@ -1633,15 +1732,15 @@ function ActionHub:UpdateRunningCooldowns()
     end
 end
 
--- includeToys: a toy's usability only changes with the place (indoors,
--- a zone, mounting up), not with the spell-usable stream that arrives several
--- times a second. A hub full of toys asked every one of them on each.
+-- includeToys: a toy's or mount's usability only changes with the place (indoors,
+-- a zone, mounting up, entering/leaving combat), not with the spell-usable stream
+-- that arrives several times a second.
 function ActionHub:UpdateUsability(includeToys)
     for _, w in ipairs(self.widgets or {}) do
         for _, btn in ipairs((w and w.buttons) or {}) do
             local slot = btn and btn.slotData
             if slot and USABILITY_KINDS[slot.type] and btn:IsVisible()
-                and (includeToys ~= false or slot.type ~= "toy") then
+                and (includeToys ~= false or (slot.type ~= "toy" and slot.type ~= "mount")) then
                 ApplyUsabilityShading(btn, IsSlotUsable(slot))
             end
         end
@@ -1659,6 +1758,8 @@ usabilityFrame:RegisterEvent("ZONE_CHANGED")
 usabilityFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 usabilityFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 usabilityFrame:RegisterEvent("PLAYER_MOUNT_DISPLAY_CHANGED")
+usabilityFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+usabilityFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 -- One pass per frame at most. SPELL_UPDATE_USABLE arrives in bursts during a
 -- fight -- several for a single button press -- and each used to walk every node
 -- on every hub. The recorder counted forty thousand of those passes in an hour.
@@ -2087,7 +2188,7 @@ local ITEM_GAP = 1.0
 -- that shows the global cooldown. A spell's own cooldown starting names the
 -- spell and is drawn on the next frame as before; the pass over every node
 -- still follows within EVERY_NODE_GAP, for anything the game left unnamed.
-local EVERY_NODE_GAP = 2.0
+local EVERY_NODE_GAP = 5.0
 local lastEveryNode = 0
 local everyNodeOwed = false
 local queuedDue = nil         -- when the later Flush already queued will run
@@ -2108,6 +2209,8 @@ local UpdateSome = Named("ActionHub: cooldowns, changed spells only", function(s
             if answers and btn.slotData and btn:IsVisible() then
                 for spellID in pairs(spells) do
                     if answers[spellID] then
+                        if btn.cooldown1 then btn.cooldown1._ohForceRefresh = true end
+                        if btn.cooldown2 then btn.cooldown2._ohForceRefresh = true end
                         local ok, err = pcall(UpdateNodeCooldown, btn)
                         if not ok then CDDebug("node update failed: " .. tostring(err)) end
                         break
@@ -2266,8 +2369,12 @@ local AFTER_LOADING = { 0.5, 1.5, 3, 6 }
 function ActionHub:ForgetCooldowns()
     for _, w in ipairs(self.widgets or {}) do
         for _, btn in ipairs((w and w.buttons) or {}) do
-            for _, cd in ipairs({ btn.cooldown1, btn.cooldown2 }) do
-                if cd then cd._ohStart, cd._ohLength, cd._ohSpell = nil, nil, nil end
+            btn._ohInitSlot = nil
+            if btn.cooldown1 then
+                btn.cooldown1._ohStart, btn.cooldown1._ohLength, btn.cooldown1._ohSpell, btn.cooldown1._ohCastAt = nil, nil, nil, nil
+            end
+            if btn.cooldown2 then
+                btn.cooldown2._ohStart, btn.cooldown2._ohLength, btn.cooldown2._ohSpell, btn.cooldown2._ohCastAt = nil, nil, nil, nil
             end
         end
     end
@@ -2299,6 +2406,8 @@ function ActionHub:QueueNodeRefresh(btn)
         -- Made once per node, so a press makes no new function.
         look = function()
             if btn.slotData and btn:IsVisible() then
+                if btn.cooldown1 then btn.cooldown1._ohForceRefresh = true end
+                if btn.cooldown2 then btn.cooldown2._ohForceRefresh = true end
                 local ok, err = pcall(UpdateNodeCooldown, btn)
                 if not ok then CDDebug("node update failed: " .. tostring(err)) end
             end

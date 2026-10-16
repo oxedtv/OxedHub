@@ -263,14 +263,26 @@ end
 
 -- ── Each tick ──────────────────────────────────────────────────────────────
 
+local wakeTimer
+local StartTicker
+
 local function StopTicker()
     if ticker then ticker:Cancel(); ticker = nil end
+    if wakeTimer then wakeTimer:Cancel(); wakeTimer = nil end
+end
+
+local function WakeFromIdle()
+    wakeTimer = nil
+    idleUntil = 0
+    if active and next(Engine:GetEvents()) then
+        StartTicker()
+    end
 end
 
 -- ⚠ Nothing to draw until the next ability reaches the track or its warning
 -- time: the ticker runs 20 times a second for the whole fight, and most of
--- that time every ability is still far away. Until then a tick returns at
--- once. A new event resets it.
+-- that time every ability is still far away. Until then a tick pauses the
+-- 20Hz ticker and schedules a single wake timer. A new event resets it.
 
 
 local list = {}
@@ -289,7 +301,9 @@ local function Tick()
             end
         end
     end
-    table.sort(list, BySoonest)
+    if #list > 1 then
+        table.sort(list, BySoonest)
+    end
 
     -- The track.
     local used = 0
@@ -344,15 +358,26 @@ local function Tick()
                     icon:SetSize(settings.iconSize, settings.iconSize)
                     icon.count:SetFont(font, math.floor(settings.iconSize * 0.5), "THICKOUTLINE")
                 end
-                icon.tex:SetTexture(ev.icon)
-                icon.count:SetText(tostring(math.ceil(ev.trackLeft)))
-                SetName(icon.name, ev)
-                icon:ClearAllPoints()
+                if icon.ev ~= ev then
+                    icon.ev = ev
+                    icon.tex:SetTexture(ev.icon)
+                    SetName(icon.name, ev)
+                end
+                local sec = math.ceil(ev.trackLeft)
+                if icon.sec ~= sec then
+                    icon.sec = sec
+                    icon.count:SetText(tostring(sec))
+                end
                 local step = (shown - 1) * (settings.iconSize + 22)
-                if settings.iconGrowUp then
-                    icon:SetPoint("BOTTOM", iconAnchor, "BOTTOM", 0, step)
-                else
-                    icon:SetPoint("TOP", iconAnchor, "TOP", 0, -step)
+                if icon.step ~= step or icon.growUp ~= settings.iconGrowUp then
+                    icon.step = step
+                    icon.growUp = settings.iconGrowUp
+                    icon:ClearAllPoints()
+                    if settings.iconGrowUp then
+                        icon:SetPoint("BOTTOM", iconAnchor, "BOTTOM", 0, step)
+                    else
+                        icon:SetPoint("TOP", iconAnchor, "TOP", 0, -step)
+                    end
                 end
                 icon.glow:SetShown(settings.iconGlow)
                 if settings.iconGlow and not icon.pulse:IsPlaying() then icon.pulse:Play() end
@@ -371,10 +396,11 @@ local function Tick()
         return
     end
 
-    -- Nothing on screen: sleep until the soonest ability is close enough.
+    -- Nothing on screen: pause the 20Hz ticker until the soonest ability is close enough.
     if used == 0 and shown == 0 then
         if not here then
-            idleUntil = GetTime() + 1
+            if ticker then ticker:Cancel(); ticker = nil end
+            if not wakeTimer then wakeTimer = C_Timer.NewTimer(1.0, WakeFromIdle) end
             return
         end
         local gap
@@ -386,11 +412,17 @@ local function Tick()
             local wait = ev.trackLeft - near
             if not gap or wait < gap then gap = wait end
         end
-        if gap and gap > 0.2 then idleUntil = GetTime() + math.min(gap - 0.1, 2) end
+        if gap and gap > 0.25 then
+            local sleepFor = math.min(gap - 0.1, 2.0)
+            if ticker then ticker:Cancel(); ticker = nil end
+            if wakeTimer then wakeTimer:Cancel() end
+            wakeTimer = C_Timer.NewTimer(sleepFor, WakeFromIdle)
+        end
     end
 end
 
-local function StartTicker()
+StartTicker = function()
+    if wakeTimer then wakeTimer:Cancel(); wakeTimer = nil end
     if ticker or not active then return end
     ticker = C_Timer.NewTicker(TICK, Tick)
     ShowState()

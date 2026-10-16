@@ -184,6 +184,45 @@ local function BlizzardInUse(plate, frame)
     return ok and parent == plate
 end
 
+local walkBest, walkBestWidth, walkRootPlate
+local WalkFrame
+
+local function WalkChildren(depth, okKids, ...)
+    if not okKids then return end
+    local n = select("#", ...)
+    for i = 1, n do
+        local child = select(i, ...)
+        -- ⚠ Aura buttons on a plate are forbidden objects: any method
+        -- call on one but IsForbidden is an error. Asked first, and the
+        -- type read inside pcall in case something else is too.
+        local forbidden = child.IsForbidden and child:IsForbidden()
+        local okType, isButton = false, true
+        if not forbidden then
+            okType, isButton = pcall(child.IsObjectType, child, "Button")
+        end
+        if okType and not isButton and not child._oxThreat and child ~= walkRootPlate.UnitFrame
+            and Shown(child) ~= false then
+            if child:IsObjectType("StatusBar") then
+                local ok, width = pcall(child.GetWidth, child)
+                if ok and issecretvalue and issecretvalue(width) then
+                    if not walkBest then walkBest = child end
+                else
+                    width = ok and Plain(width) or 0
+                    if width > 20 and (not walkBestWidth or width > walkBestWidth) then
+                        walkBest, walkBestWidth = child, width
+                    end
+                end
+            end
+            WalkFrame(child, depth + 1)
+        end
+    end
+end
+
+WalkFrame = function(frame, depth)
+    if depth > 5 then return end
+    WalkChildren(depth, pcall(frame.GetChildren, frame))
+end
+
 local function FindForeignHealth(plate)
     local cached = foreignBar[plate]
     -- Platynator hands its plates from one nameplate to another, so the one
@@ -197,34 +236,10 @@ local function FindForeignHealth(plate)
     end
     foreignBar[plate] = nil
 
-    local best, bestWidth
-    local function Walk(frame, depth)
-        if depth > 5 then return end
-        local okKids, kids = pcall(function() return { frame:GetChildren() } end)
-        if not okKids then return end
-        for _, child in ipairs(kids) do
-            -- ⚠ Aura buttons on a plate are forbidden objects: any method
-            -- call on one but IsForbidden is an error. Asked first, and the
-            -- type read inside pcall in case something else is too.
-            local forbidden = child.IsForbidden and child:IsForbidden()
-            local okType, isButton = false, true
-            if not forbidden then
-                okType, isButton = pcall(child.IsObjectType, child, "Button")
-            end
-            if okType and not isButton and not child._oxThreat and child ~= plate.UnitFrame
-                and Shown(child) ~= false then
-                if child:IsObjectType("StatusBar") then
-                    local ok, width = pcall(child.GetWidth, child)
-                    width = ok and Plain(width) or 0
-                    if width > 20 and (not bestWidth or width > bestWidth) then
-                        best, bestWidth = child, width
-                    end
-                end
-                Walk(child, depth + 1)
-            end
-        end
-    end
-    Walk(plate, 1)
+    walkBest, walkBestWidth, walkRootPlate = nil, nil, plate
+    WalkFrame(plate, 1)
+    local best = walkBest
+    walkBest, walkBestWidth, walkRootPlate = nil, nil, nil
     foreignBar[plate] = best
     return best
 end
@@ -407,6 +422,7 @@ local function Release(unit)
     bar:Hide()
     bar:SetParent(UIParent)
     bar:ClearAllPoints()
+    bar.placedAnchor = nil
     bars[unit] = nil
     dirty[unit] = nil
     spareBars[#spareBars + 1] = bar
@@ -414,11 +430,6 @@ end
 
 -- ── The switch stack ────────────────────────────────────────────────────────
 -- Rebuilt only when the look changes: the steps, the texture, the flash point.
-
-local function StyleKey()
-    return ("%s|%s|%s|%s|%s"):format(tostring(settings.style), tostring(settings.smooth),
-        tostring(settings.texture), tostring(settings.warnAt), tostring(settings.rounded))
-end
 
 local function Mask(texture, mask, on)
     if not (texture and texture.AddMaskTexture) then return end
@@ -444,11 +455,18 @@ local function ApplyRounding(bar)
 end
 
 local function BuildSwitches(bar)
-    local key = StyleKey()
-    if bar.styleKey == key then return end
-    bar.styleKey = key
+    local sStyle = settings.style
+    local sSmooth = settings.smooth
+    local sTex = settings.texture
+    local sWarn = settings.warnAt
+    local sRound = settings.rounded
+    if bar.sStyle == sStyle and bar.sSmooth == sSmooth and bar.sTex == sTex
+        and bar.sWarn == sWarn and bar.sRound == sRound then
+        return
+    end
+    bar.sStyle, bar.sSmooth, bar.sTex, bar.sWarn, bar.sRound = sStyle, sSmooth, sTex, sWarn, sRound
 
-    local texture = TEXTURES[settings.texture] or TEXTURES.game
+    local texture = TEXTURES[sTex] or TEXTURES.game
     local steps = Steps()
     bar:SetStatusBarTexture(texture)
     bar:SetStatusBarColor(steps.base[1], steps.base[2], steps.base[3])
@@ -472,7 +490,7 @@ local function BuildSwitches(bar)
     for index = #steps.list + 1, #bar.switches do bar.switches[index]:Hide() end
     bar.switchCount = #steps.list
 
-    local warnAt = tonumber(settings.warnAt) or 80
+    local warnAt = tonumber(sWarn) or 80
     bar.flash:SetMinMaxValues(warnAt - EDGE, warnAt)
 
     ApplyRounding(bar)
@@ -485,29 +503,50 @@ local function Place(bar, unit)
     local anchor = AnchorFor(plate)
     if not anchor then return false end
 
-    bar:SetParent(anchor)
-    bar:SetFrameLevel((anchor:GetFrameLevel() or 1) + 2)
-    bar:ClearAllPoints()
-
     local offset = tonumber(settings.offsetY) or -3
     local width = tonumber(settings.width) or 0
-    if width > 0 then
-        bar:SetPoint("TOP", anchor, "BOTTOM", 0, offset)
-        bar:SetWidth(width)
-    else
-        bar:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, offset)
-        bar:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, offset)
-    end
-    bar:SetHeight(math.max(3, tonumber(settings.height) or 9))
-    bar:SetAlpha(tonumber(settings.alpha) or 1)
+    local height = math.max(3, tonumber(settings.height) or 9)
+    local alpha = tonumber(settings.alpha) or 1
+    local size = tonumber(settings.textSize) or 10
+    local showText = settings.showText == true
+    local anchorLevel = (anchor:GetFrameLevel() or 1) + 2
 
-    local font, _, flags = bar.text:GetFont()
-    if font then
-        local size = tonumber(settings.textSize) or 10
-        bar.text:SetFont(font, size, flags)
-        bar.holder:SetFont(font, size, flags)
+    if bar.placedAnchor ~= anchor or bar.placedOffset ~= offset or bar.placedWidth ~= width then
+        bar.placedAnchor, bar.placedOffset, bar.placedWidth = anchor, offset, width
+        bar:SetParent(anchor)
+        bar:ClearAllPoints()
+        if width > 0 then
+            bar:SetPoint("TOP", anchor, "BOTTOM", 0, offset)
+            bar:SetWidth(width)
+        else
+            bar:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, offset)
+            bar:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, offset)
+        end
     end
-    bar.text:SetShown(settings.showText == true)
+    if bar.placedLevel ~= anchorLevel then
+        bar.placedLevel = anchorLevel
+        bar:SetFrameLevel(anchorLevel)
+    end
+    if bar.placedHeight ~= height then
+        bar.placedHeight = height
+        bar:SetHeight(height)
+    end
+    if bar.placedAlpha ~= alpha then
+        bar.placedAlpha = alpha
+        bar:SetAlpha(alpha)
+    end
+    if bar.placedTextSize ~= size then
+        local font, _, flags = bar.text:GetFont()
+        if font then
+            bar.placedTextSize = size
+            bar.text:SetFont(font, size, flags)
+            bar.holder:SetFont(font, size, flags)
+        end
+    end
+    if bar.placedShowText ~= showText then
+        bar.placedShowText = showText
+        bar.text:SetShown(showText)
+    end
 
     if settings.glow then EnsureGlow(bar, plate) end
     BuildSwitches(bar)
@@ -536,9 +575,16 @@ local function Known(...)
     return value and true or false
 end
 
+local targetTokenCache = {}
+local classHexCache = {}
+
 local function HolderName(unit)
     if not settings.showName then return nil end
-    local target = unit .. "target"
+    local target = targetTokenCache[unit]
+    if not target then
+        target = unit .. "target"
+        targetTokenCache[unit] = target
+    end
     if Known(UnitExists, target) ~= true then return nil end
     if Known(UnitIsUnit, target, "player") ~= false then return nil end
 
@@ -547,9 +593,18 @@ local function HolderName(unit)
 
     local okClass, _, class = pcall(UnitClass, target)
     if not okClass or IsSecret(class) then class = nil end
-    local colour = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
-    if colour and colour.GenerateHexColor then
-        return ("|c%s%s|r"):format(colour:GenerateHexColor(), name)
+    if class then
+        local prefix = classHexCache[class]
+        if not prefix then
+            local colour = RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+            if colour and colour.GenerateHexColor then
+                prefix = "|c" .. colour:GenerateHexColor()
+                classHexCache[class] = prefix
+            end
+        end
+        if prefix then
+            return prefix .. name .. "|r"
+        end
     end
     return name
 end

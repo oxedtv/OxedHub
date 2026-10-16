@@ -1090,7 +1090,7 @@ function Toys:ShowToyBoxesTab(parentPanel)
         -- Drag Target Hint Label
         local hintText = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         hintText:SetPoint("TOPLEFT", boxTitle, "BOTTOMLEFT", 0, -4)
-        hintText:SetText("|cFF88AAFF* Drag to reorder or into a box. Right-click: link. Shift+right-click: always show. Shift+click [x]: delete.|r")
+        hintText:SetText("|cFF88AAFF* Press Unlock first, then drag to reorder or into a box. Right-click: link. Shift+right-click: always show. Shift+click [x]: delete.|r")
 
         -- Scrollable Grid for Toys with MinimalScrollBar
         local gridScroll = CreateFrame("ScrollFrame", "$parent_GridScroll", content, "UIPanelScrollFrameTemplate")
@@ -1431,9 +1431,9 @@ function Toys:RefreshToyBoxesUI()
 
     content.boxTitle:SetText(currentBox.name)
     content.boxCount:SetText(string.format("(%d toys)", #(currentBox.toys or {})))
-    content.editBoxBtn:SetShown(currentBox.id ~= "all" and currentBox.id ~= "mixes")
-    content.delBoxBtn:SetShown(currentBox.id ~= "favorites" and currentBox.id ~= "all" and currentBox.id ~= "mixes")
-    content.hideBoxBtn:SetShown(currentBox.id ~= "favorites" and currentBox.id ~= "all" and currentBox.id ~= "mixes")
+    content.editBoxBtn:SetShown(currentBox.id ~= "all" and currentBox.id ~= "unsorted" and currentBox.id ~= "mixes")
+    content.delBoxBtn:SetShown(currentBox.id ~= "favorites" and currentBox.id ~= "all" and currentBox.id ~= "unsorted" and currentBox.id ~= "mixes")
+    content.hideBoxBtn:SetShown(currentBox.id ~= "favorites" and currentBox.id ~= "all" and currentBox.id ~= "unsorted" and currentBox.id ~= "mixes")
 
     -- Lay the header row out right to left over the buttons that are actually
     -- showing. Four of the seven come and go with the selected box, and static
@@ -1814,7 +1814,7 @@ function Toys:RefreshToyBoxesUI()
         end
 
         -- Red [X] badge only shown if unlocked AND not in "All Toys"
-        local canDelete = (selectedBoxId ~= "all") and (not cfg.isLocked)
+        local canDelete = (selectedBoxId ~= "all") and (selectedBoxId ~= "unsorted") and (not cfg.isLocked)
             and not isWish
         btn.removeBtn:SetShown(canDelete)
 

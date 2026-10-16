@@ -1377,7 +1377,7 @@ end
 -- ── Minimap Button ──────────────────────────────────────────────────────────
 
 local function MMTooltip(tt)
-    tt:AddLine("|cffffd100Gold World Quests|r")
+    tt:AddLine("|cffffd100Oxed Gold World Quests|r")
     tt:AddLine("Left-click: Show / hide tracker window", 1, 1, 1)
     tt:AddLine("Right-click: Open options window", 1, 1, 1)
     tt:AddLine("Drag: Move minimap icon", 1, 1, 1)
@@ -1713,7 +1713,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "goldwq",
         name     = "Gold World Quests",
-        version  = "1.0.0",
+        version  = "1.0.1",
+        updated  = 20261016.99,  -- Oxed in the minimap tooltip
         author   = "Marcus / Oxed",
         category = "quests",
         keywords = { "gold", "wq", "world quest", "caches", "special assignment", "tomtom", "route" },

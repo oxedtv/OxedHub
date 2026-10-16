@@ -551,14 +551,31 @@ local SIZE_PX = { [0] = 32, [1] = 48, [2] = 64, [3] = 96, [4] = 128 }
 local DELTA_CVAR = { instant = 0, normal = 0.001, late = 0.005 }
 
 local pointerPx = 32   -- the pointer's size now, read when it may have changed
+local cachedScreenHeight = 768
+local cachedUIScale = 1
+local activeSparks = {}
+local lastRootAlpha, lastHaloX, lastHaloY, lastHaloSize, lastHaloRot
+local lastHaloR, lastHaloG, lastHaloB, lastHaloA
+local lastShadowX, lastShadowY, lastShadowAlpha
+local lastSteerX, lastSteerY, lastSteerSize
+local sparkStepAccum = 0
+local SPARK_STEP = 0.020   -- 50 Hz particle simulation step; pointer itself stays at native FPS
+
+local function RefreshDisplayMetrics()
+    local h = ScreenHeightPx()
+    cachedScreenHeight = (h and h > 0) and h or 768
+    cachedUIScale = (UIParent and UIParent:GetEffectiveScale()) or 1
+    if cachedUIScale <= 0 then cachedUIScale = 1 end
+end
 
 local function ReadPointerPx()
+    RefreshDisplayMetrics()
     local value = tonumber(GetCVar and GetCVar("cursorSizePreferred"))
     if value and SIZE_PX[value] then
         pointerPx = SIZE_PX[value]
     else
         -- Automatic: the game grows the pointer with the screen's height.
-        local height = ScreenHeightPx()
+        local height = cachedScreenHeight
         local steps = height and math.floor(height / 1080 + 0.25) or 1
         pointerPx = SIZE_PX[math.max(0, math.min(4, steps - 1))] or 32
     end
@@ -609,16 +626,12 @@ end
 -- real 32 pixel pointer on most screens, and the hand seemed to change size
 -- the moment the copy took over. This turns real pixels into UI units.
 local function PixelsToUI(px)
-    local height = ScreenHeightPx()
-    if not height or height <= 0 then height = 768 end
-    return px * 768 / height / UIParent:GetEffectiveScale()
+    return px * 768 / cachedScreenHeight / cachedUIScale
 end
 
 -- The same for the cursor position's own units, which are the UI's at scale 1.
 local function PixelsToCursor(px)
-    local height = ScreenHeightPx()
-    if not height or height <= 0 then height = 768 end
-    return px * 768 / height
+    return px * 768 / cachedScreenHeight
 end
 
 local function Anchor(cx, cy, scale)
@@ -636,11 +649,29 @@ end
 
 local haloAlphaScale = 1
 
+local function ClearAllSparks()
+    for index = 1, #sparks do
+        local spark = sparks[index]
+        spark.layer, spark.shape, spark.active = nil, nil, nil
+        if spark.rotated then
+            spark:SetRotation(0)
+            spark.rotated = nil
+        end
+        spark:Hide()
+    end
+    wipe(activeSparks)
+end
+
 local function RestyleAll()
     if not root then return end
+    RefreshDisplayMetrics()
     local theme = CurrentTheme()
 
     halo:SetSize(settings.haloSize, settings.haloSize)
+    lastHaloSize = settings.haloSize
+    lastHaloX, lastHaloY, lastHaloRot = nil, nil, nil
+    lastHaloR, lastHaloG, lastHaloB, lastHaloA = nil, nil, nil, nil
+    lastSteerX, lastSteerY, lastSteerSize = nil, nil, nil
     -- The player's pick for this theme; each theme starts on its own shape.
     haloAlphaScale = ApplyShape(halo, settings.haloShape or theme.halo or "glow")
     halo:SetBlendMode(theme.blend or "ADD")
@@ -648,15 +679,12 @@ local function RestyleAll()
 
     shadow:SetSize(settings.shadowSize, settings.shadowSize)
     shadow:SetShown(settings.shadow)
+    lastShadowX, lastShadowY, lastShadowAlpha = nil, nil, nil
+    lastRootAlpha = nil
 
     -- Sparks are shaped when they are dropped, since each layer has its own
     -- look; here they are only put out. They are made on demand, per layer.
-    for index = 1, #sparks do
-        local spark = sparks[index]
-        spark.layer, spark.shape = nil, nil
-        spark:SetRotation(0)
-        spark:Hide()
-    end
+    ClearAllSparks()
     for _, layer in ipairs(LayersOf(theme)) do layer.acc, layer.timer = 0, 0 end
     for _, bolt in ipairs(bolts) do HideBolt(bolt) end
     for index = 1, MAX_ECHOES do
@@ -739,8 +767,7 @@ local function Ripple(x, y)
 
     local r, g, b = SparkColour(CurrentTheme(), 0)
     ring:SetVertexColor(r, g, b, 1)
-    ring:ClearAllPoints()
-    ring:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
+    ring:SetPoint("CENTER", root, "BOTTOMLEFT", x, y)
     ring:Show()
     ring.anim:Stop()
     ring.anim:Play()
@@ -826,11 +853,12 @@ local function DropBolt(layer, x, y, now)
             local offset = (i < segments) and (random() * 2 - 1) * reach * 0.2 or 0
             local toX = x + (ex - x) * t + px * offset
             local toY = y + (ey - y) * t + py * offset
-            for _, piece in ipairs({ line, glow }) do
-                piece:SetStartPoint("BOTTOMLEFT", UIParent, fromX, fromY)
-                piece:SetEndPoint("BOTTOMLEFT", UIParent, toX, toY)
-                piece:Show()
-            end
+            line:SetStartPoint("BOTTOMLEFT", root, fromX, fromY)
+            line:SetEndPoint("BOTTOMLEFT", root, toX, toY)
+            line:Show()
+            glow:SetStartPoint("BOTTOMLEFT", root, fromX, fromY)
+            glow:SetEndPoint("BOTTOMLEFT", root, toX, toY)
+            glow:Show()
             -- Thinner toward the tip, like a real discharge.
             line:SetThickness(math.max(1, thickness * (1.2 - t * 0.6)))
             glow:SetThickness(thickness * 5)
@@ -879,6 +907,7 @@ local function DropSpark(layer, x, y, mvx, mvy, now)
     local spark = pool[slot]
     if not spark then
         spark = root:CreateTexture(nil, "ARTWORK")
+        spark:SetAlpha(1)
         pool[slot] = spark
         sparks[#sparks + 1] = spark   -- the flat list, for hiding everything
     end
@@ -888,7 +917,15 @@ local function DropSpark(layer, x, y, mvx, mvy, now)
         spark.alphaScale = ApplyShape(spark, shape)
         spark.shape = shape
     end
-    spark:SetBlendMode(layer.blend or "ADD")
+    local blend = layer.blend or "ADD"
+    if spark.blend ~= blend then
+        spark:SetBlendMode(blend)
+        spark.blend = blend
+    end
+    if not layer.spin and spark.rotated then
+        spark:SetRotation(0)
+        spark.rotated = nil
+    end
 
     local spread = layer.spread or 0
     local vx = (random() * 2 - 1) * spread
@@ -907,6 +944,7 @@ local function DropSpark(layer, x, y, mvx, mvy, now)
     if layer.lifeVar then life = life * (1 + (random() * 2 - 1) * layer.lifeVar) end
 
     spark.layer = layer
+    spark.slotIndex = slot
     spark.born, spark.life = now, life
     -- Scatter: dropped a few pixels off the path in a random direction, so a
     -- layer of small sparks reads as a cloud and not as a dotted line.
@@ -924,20 +962,30 @@ local function DropSpark(layer, x, y, mvx, mvy, now)
     spark.angle = random() * 6.28
     spark.sizeVar = 0.75 + random() * 0.5
     if layer.orbit then spark.dir = random() < 0.5 and 1 or -1 end
-    spark:ClearAllPoints()
-    spark:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
-    spark:SetAlpha(0)
-    spark:Show()
+    spark.lastPx, spark.lastPy = x, y
+    spark:SetPoint("CENTER", root, "BOTTOMLEFT", x, y)
+    spark:SetVertexColor(1, 1, 1, 0)
+    if not spark.active then
+        spark.active = true
+        activeSparks[#activeSparks + 1] = spark
+        spark:Show()
+    end
 end
 
--- Moves, colours and sizes one live spark; hides it once it has burnt out.
+-- Moves, colours and sizes one live spark; returns false once it has burnt out.
 local function UpdateSpark(spark, elapsed, now, baseSize, index)
     local layer = spark.layer
+    if not layer then
+        spark:Hide()
+        spark.active = nil
+        return false
+    end
     local age = (now - spark.born) / spark.life
-    if age >= 1 or not layer then
+    if age >= 1 then
         spark:Hide()
         spark.layer = nil
-        return
+        spark.active = nil
+        return false
     end
 
     -- Circling the resting pointer: out along a spiral, around it as it goes.
@@ -948,19 +996,23 @@ local function UpdateSpark(spark, elapsed, now, baseSize, index)
             + math.sin(age * 12 + spark.phase) * (layer.wobble or 0)
         local px = curX + math.cos(angle) * radius
         local py = curY + math.sin(angle) * radius
-        spark:ClearAllPoints()
-        spark:SetPoint("CENTER", UIParent, "BOTTOMLEFT", px, py)
+        if math.abs(px - (spark.lastPx or 0)) > 0.25 or math.abs(py - (spark.lastPy or 0)) > 0.25 then
+            spark.lastPx, spark.lastPy = px, py
+            spark:SetPoint("CENTER", root, "BOTTOMLEFT", px, py)
+        end
 
         local alpha = math.sin(age * math.pi) * (layer.alpha or 0.9) * (spark.alphaScale or 1)
         if layer.flicker then alpha = alpha * (1 - layer.flicker * random()) end
         local r, g, b = StopsColour(layer.stops, age, index * 0.04)
-        spark:SetVertexColor(r, g, b, 1)
-        spark:SetAlpha(alpha)
+        spark:SetVertexColor(r, g, b, alpha)
 
         local s0, s1 = layer.size0 or 1, layer.size1 or 0.4
         local size = baseSize * spark.sizeVar * (s0 + (s1 - s0) * age)
-        spark:SetSize(size, size)
-        return
+        if math.abs(size - (spark.lastSize or 0)) > 0.4 then
+            spark.lastSize = size
+            spark:SetSize(size, size)
+        end
+        return true
     end
 
     -- Buoyancy speeds a flame up as it rises; gravity pulls debris down;
@@ -982,7 +1034,8 @@ local function UpdateSpark(spark, elapsed, now, baseSize, index)
     if awayX * awayX + awayY * awayY > MAX_TRAVEL * MAX_TRAVEL then
         spark:Hide()
         spark.layer = nil
-        return
+        spark.active = nil
+        return false
     end
 
     local px, py = spark.x, spark.y
@@ -993,9 +1046,14 @@ local function UpdateSpark(spark, elapsed, now, baseSize, index)
         px = px + (random() * 2 - 1) * layer.jitter
         py = py + (random() * 2 - 1) * layer.jitter
     end
-    spark:ClearAllPoints()
-    spark:SetPoint("CENTER", UIParent, "BOTTOMLEFT", px, py)
-    if layer.spin then spark:SetRotation(spark.angle + age * layer.spin * 6.28) end
+    if math.abs(px - (spark.lastPx or 0)) > 0.25 or math.abs(py - (spark.lastPy or 0)) > 0.25 then
+        spark.lastPx, spark.lastPy = px, py
+        spark:SetPoint("CENTER", root, "BOTTOMLEFT", px, py)
+    end
+    if layer.spin then
+        spark:SetRotation(spark.angle + age * layer.spin * 6.28)
+        spark.rotated = true
+    end
 
     -- Alpha: fades out, or for smoke swells in and out again after a delay.
     local alpha
@@ -1013,12 +1071,15 @@ local function UpdateSpark(spark, elapsed, now, baseSize, index)
     if layer.flicker then alpha = alpha * (1 - layer.flicker * random()) end
 
     local r, g, b = StopsColour(layer.stops, age, index * 0.04)
-    spark:SetVertexColor(r, g, b, 1)
-    spark:SetAlpha(alpha)
+    spark:SetVertexColor(r, g, b, alpha)
 
     local s0, s1 = layer.size0 or 1, layer.size1 or 0.4
     local size = baseSize * spark.sizeVar * (s0 + (s1 - s0) * age)
-    spark:SetSize(size, size)
+    if math.abs(size - (spark.lastSize or 0)) > 0.4 then
+        spark.lastSize = size
+        spark:SetSize(size, size)
+    end
+    return true
 end
 
 -- ── Pointer trails ──────────────────────────────────────────────────────────
@@ -1065,8 +1126,7 @@ local function UpdateEchoes(echo, tipX, tipY, now)
         -- A copy sitting on the pointer adds nothing; it is left hidden, so
         -- a resting mouse shows one arrow, the real one.
         if x and ((x - tipX) ^ 2 + (y - tipY) ^ 2) > 4 then
-            texture:ClearAllPoints()
-            texture:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
+            texture:SetPoint("TOPLEFT", root, "BOTTOMLEFT", x, y)
             texture:SetSize(size, size)
             texture:SetAlpha(0.95 - index * (0.6 / count))
             texture:Show()
@@ -1077,20 +1137,21 @@ local function UpdateEchoes(echo, tipX, tipY, now)
 end
 
 local function OnUpdate(_, elapsed)
-    local scale = UIParent:GetEffectiveScale()
+    local scale = cachedUIScale
     local cx, cy = GetCursorPosition()
     local tipX, tipY = cx / scale, cy / scale
     local x, y = Anchor(cx, cy, scale)
     curX, curY = x, y
     local now = GetTime()
     local theme = CurrentTheme()
+    local mouselooking = IsMouselooking and IsMouselooking() or false
 
     local dx, dy = x - lastX, y - lastY
     local moved = (dx * dx + dy * dy) > 0.25
     if moved then lastMoveAt = now end
 
     -- Shake to find.
-    if settings.shake and elapsed > 0 then
+    if settings.shake and moved and elapsed > 0 then
         local speed = math.abs(dx) / elapsed
         local direction = dx > 0 and 1 or (dx < 0 and -1 or 0)
         if speed > SHAKE_SPEED and direction ~= 0 and direction ~= lastDirection then
@@ -1114,79 +1175,114 @@ local function OnUpdate(_, elapsed)
     -- While the right button turns the camera the game hides its pointer. With
     -- "Show the pointer while turning the camera" off, everything here hides
     -- with it, the way it is without the module: no arrow, no glow, no trail.
-    if not settings.steering and IsMouselooking and IsMouselooking() then alpha = 0 end
-    root:SetAlpha(alpha)
+    if not settings.steering and mouselooking then alpha = 0 end
+    if alpha ~= lastRootAlpha then
+        lastRootAlpha = alpha
+        root:SetAlpha(alpha)
+    end
+    if alpha <= 0 then
+        if #activeSparks > 0 then ClearAllSparks() end
+        lastX, lastY = x, y
+        wasSteering = false
+        return
+    end
+
+    sparkStepAccum = sparkStepAccum + elapsed
+    local doStep = sparkStepAccum >= SPARK_STEP
+    local stepDt = sparkStepAccum
+    if doStep then sparkStepAccum = 0 end
 
     -- Halo, flaring up after a shake, flickering for themes that do.
     if settings.halo then
-        local size = settings.haloSize * (theme.haloScale or 1)
-        if now < flareUntil then
-            local left = (flareUntil - now) / 0.7
-            size = size * (1 + 2.2 * left)
+        if x ~= lastHaloX or y ~= lastHaloY then
+            lastHaloX, lastHaloY = x, y
+            halo:SetPoint("CENTER", root, "BOTTOMLEFT", x, y)
         end
-        local flicker = theme.flicker or 0
-        local strength = 1
-        if flicker > 0 then
-            strength = 1 - flicker * 0.5 * (0.5 + 0.5 * math.sin(now * 23) * math.sin(now * 7.3))
+        local flaring = now < flareUntil
+        if flaring or lastHaloSize == nil or doStep then
+            local size = settings.haloSize * (theme.haloScale or 1)
+            if flaring then
+                local left = (flareUntil - now) / 0.7
+                size = size * (1 + 2.2 * left)
+            end
+            if math.abs(size - (lastHaloSize or 0)) > 0.1 then
+                lastHaloSize = size
+                halo:SetSize(size, size)
+            end
+            local flicker = theme.flicker or 0
+            local strength = 1
+            if flicker > 0 then
+                strength = 1 - flicker * 0.5 * (0.5 + 0.5 * math.sin(now * 23) * math.sin(now * 7.3))
+            end
+            local r, g, b = HaloColour(theme)
+            local a = (settings.haloAlpha or 0.85) * haloAlphaScale * strength
+            if r ~= lastHaloR or g ~= lastHaloG or b ~= lastHaloB or math.abs(a - (lastHaloA or -1)) > 0.005 then
+                lastHaloR, lastHaloG, lastHaloB, lastHaloA = r, g, b, a
+                halo:SetVertexColor(r, g, b, a)
+            end
+            local rot = theme.spin and (now * theme.spin * 0.5) or 0
+            if rot ~= lastHaloRot then
+                lastHaloRot = rot
+                halo:SetRotation(rot)
+            end
         end
-        halo:SetSize(size, size)
-        halo:ClearAllPoints()
-        halo:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
-        local r, g, b = HaloColour(theme)
-        halo:SetVertexColor(r, g, b, (settings.haloAlpha or 0.85) * haloAlphaScale * strength)
-        if theme.spin then halo:SetRotation(now * theme.spin * 0.5) else halo:SetRotation(0) end
     end
 
     if settings.shadow then
-        shadow:ClearAllPoints()
-        shadow:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
-        shadow:SetAlpha(settings.shadowAlpha or 0.35)
+        if x ~= lastShadowX or y ~= lastShadowY then
+            lastShadowX, lastShadowY = x, y
+            shadow:SetPoint("CENTER", root, "BOTTOMLEFT", x, y)
+        end
+        local sAlpha = settings.shadowAlpha or 0.35
+        if sAlpha ~= lastShadowAlpha then
+            lastShadowAlpha = sAlpha
+            shadow:SetAlpha(sAlpha)
+        end
     end
 
     -- Steering: the game hides the pointer, so show its arrow where it froze.
-    local steering = settings.steering and IsMouselooking and IsMouselooking()
+    local steering = settings.steering and mouselooking
     if steering then
-        -- Sized like the real pointer, then by the player's own scale.
         local size = PixelsToUI(pointerPx) * (tonumber(settings.steerScale) or 1)
-        local style = settings.steerStyle
-        local strength = tonumber(settings.steerAlpha) or 1
+        if not wasSteering or tipX ~= lastSteerX or tipY ~= lastSteerY or size ~= lastSteerSize then
+            lastSteerX, lastSteerY, lastSteerSize = tipX, tipY, size
+            local style = settings.steerStyle
+            local strength = tonumber(settings.steerAlpha) or 1
 
-        arrow:ClearAllPoints()
-        -- The arrow's tip is its top-left corner, same as the real pointer.
-        arrow:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", tipX, tipY)
-        arrow:SetSize(size, size)
-        if style == "glow" then
-            arrow:Hide()
-        else
-            -- Ghost: a pale, see-through copy, so it reads as "the pointer
-            -- will come back here" rather than as a live pointer.
-            arrow:SetDesaturated(style == "ghost")
-            if style == "ghost" then
-                arrow:SetVertexColor(0.8, 0.9, 1, strength * 0.55)
+            arrow:SetPoint("TOPLEFT", root, "BOTTOMLEFT", tipX, tipY)
+            arrow:SetSize(size, size)
+            if style == "glow" then
+                arrow:Hide()
             else
-                arrow:SetVertexColor(1, 1, 1, strength)
+                arrow:SetDesaturated(style == "ghost")
+                if style == "ghost" then
+                    arrow:SetVertexColor(0.8, 0.9, 1, strength * 0.55)
+                else
+                    arrow:SetVertexColor(1, 1, 1, strength)
+                end
+                arrow:Show()
             end
-            arrow:Show()
-        end
 
-        if settings.steerGlow or style == "glow" then
-            local r, g, b = HaloColour(theme)
-            arrow.glow:ClearAllPoints()
-            arrow.glow:SetPoint("CENTER", UIParent, "BOTTOMLEFT", tipX + size * 0.3, tipY - size * 0.35)
-            arrow.glow:SetSize(size * 2.2, size * 2.2)
-            arrow.glow:SetVertexColor(r, g, b, strength * (style == "glow" and 0.9 or 0.5))
-            arrow.glow:Show()
-        else
-            arrow.glow:Hide()
+            if settings.steerGlow or style == "glow" then
+                local r, g, b = HaloColour(theme)
+                arrow.glow:SetPoint("CENTER", root, "BOTTOMLEFT", tipX + size * 0.3, tipY - size * 0.35)
+                arrow.glow:SetSize(size * 2.2, size * 2.2)
+                arrow.glow:SetVertexColor(r, g, b, strength * (style == "glow" and 0.9 or 0.5))
+                arrow.glow:Show()
+            else
+                arrow.glow:Hide()
+            end
         end
-    elseif arrow:IsShown() or arrow.glow:IsShown() then
+    elseif wasSteering then
         arrow:Hide()
         arrow.glow:Hide()
     end
 
     -- Windows 95 pointer trails, following the tip itself.
     if theme.echo and settings.trail and not steering then
-        UpdateEchoes(theme.echo, tipX, tipY, now)
+        if moved or doStep then
+            UpdateEchoes(theme.echo, tipX, tipY, now)
+        end
     elseif echoes[1] and echoes[1]:IsShown() then
         HideEchoes()
     end
@@ -1194,109 +1290,90 @@ local function OnUpdate(_, elapsed)
     -- Trail: drop sparks along the path, spaced so a still mouse leaves no
     -- pile of dots behind it.
     if settings.trail then
-        -- Trail length scales how thick every layer is: 14 is the design.
-        local length = math.max(4, math.min(60, tonumber(settings.trailLength) or 14))
-        -- ⚠ Trail density thickens the trail; it must not turn it into a line.
-        -- Unbounded, 44 on the slider packed every layer three times tighter:
-        -- rings overlapped into a tube and sparks lay edge to edge as a solid
-        -- streak. So it is capped, accents (rings, bolts) ignore it, and no
-        -- layer is ever laid closer than half the spacing it was drawn for.
-        local density = math.min(1.6, length / 14)
-        local distance = math.sqrt(dx * dx + dy * dy)
-        local mvx = elapsed > 0 and dx / elapsed or 0
-        local mvy = elapsed > 0 and dy / elapsed or 0
-        local speed = math.sqrt(mvx * mvx + mvy * mvy)
-        if speed > 900 then
-            local keep = 900 / speed
-            mvx, mvy = mvx * keep, mvy * keep
-        end
-        -- A jump across the screen (a loading screen, the pointer coming
-        -- back from steering) is not a path to fill with fire.
-        -- ⚠ A jump is not a path to fill: a long frame, a loading screen, or
-        -- the pointer coming back from steering somewhere else entirely.
-        -- Those laid a straight row of sparks across the screen, far from the
-        -- pointer, which then had nothing left to move them.
-        local jumped = distance > 200 or elapsed > 0.1 or steering or wasSteering
-
-        for _, layer in ipairs(LayersOf(theme)) do
-            if layer.step then
-                -- The simple themes: a spark every so often while moving.
-                layer.timer = (layer.timer or 0) + elapsed
-                local life = layer.life or math.max(0.1, tonumber(settings.trailLife) or 0.4)
-                if moved and not jumped and layer.timer >= life / length then
-                    layer.timer = 0
-                    for _ = 1, layer.perDrop or 1 do
-                        DropSpark(layer, x, y, mvx * 0.15, mvy * 0.15, now)
-                    end
-                end
-            else
-                -- Burning in place, whether the mouse moves or not.
-                if layer.rate then
-                    local rateScale = layer.accent and 1 or density
-                    layer.timer = (layer.timer or 0) + elapsed * layer.rate * rateScale
-                    local count = 0
-                    while layer.timer >= 1 and count < 8 do
-                        layer.timer = layer.timer - 1
-                        count = count + 1
-                        DropSpark(layer, x + (random() * 2 - 1) * 3, y + (random() * 2 - 1) * 3, mvx, mvy, now)
-                    end
-                end
-                -- Laid along the path, filled in between this frame and the
-                -- last so a fast flick stays one unbroken streak.
-                if layer.spacing and moved and not jumped then
-                    local spacing = layer.accent and layer.spacing
-                        or math.max(layer.spacing * 0.5, layer.spacing / density)
-                    layer.acc = (layer.acc or 0) + distance
-                    local count = 0
-                    while layer.acc >= spacing and count < 24 do
-                        layer.acc = layer.acc - spacing
-                        count = count + 1
-                        local t = distance > 0 and math.min(1, layer.acc / distance) or 0
-                        DropSpark(layer, x - dx * t, y - dy * t, mvx, mvy, now)
-                    end
-                    -- ⚠ What the cap left over is dropped, not carried. Kept,
-                    -- it was laid next frame at t > 1: past the start of that
-                    -- frame's segment, in a straight line off the path. That
-                    -- was the soft, straight "sticks" beside a dense trail.
-                    if layer.acc > spacing then layer.acc = layer.acc % spacing end
-                end
+        if moved or doStep then
+            local length = math.max(4, math.min(60, tonumber(settings.trailLength) or 14))
+            local density = math.min(1.6, length / 14)
+            local distance = moved and math.sqrt(dx * dx + dy * dy) or 0
+            local mvx = (moved and elapsed > 0) and dx / elapsed or 0
+            local mvy = (moved and elapsed > 0) and dy / elapsed or 0
+            local speed = moved and math.sqrt(mvx * mvx + mvy * mvy) or 0
+            if speed > 900 then
+                local keep = 900 / speed
+                mvx, mvy = mvx * keep, mvy * keep
             end
-        end
+            local jumped = distance > 200 or elapsed > 0.1 or steering or wasSteering
 
-        -- At rest: sparks circle the pointer instead of trailing behind it.
-        if settings.idleSwirl and (now - lastMoveAt) > (tonumber(settings.swirlDelay) or 0.3) then
-            swirlTimer = swirlTimer + elapsed * 11 * density
-            local count = 0
-            while swirlTimer >= 1 and count < 4 do
-                swirlTimer = swirlTimer - 1
-                count = count + 1
-                DropSpark(SwirlLayer(theme), x, y, 0, 0, now)
-            end
-        else
-            swirlTimer = 0
-        end
-
-        UpdateBolts(now)
-
-        local baseSize = tonumber(settings.trailSize) or 14
-        for _, layer in ipairs(LayersOf(theme)) do
-            local pool = layer.pool
-            if pool then
-                for index = 1, POOL do
-                    local spark = pool[index]
-                    if spark and spark.layer then
-                        UpdateSpark(spark, elapsed, now, baseSize, index)
+            for _, layer in ipairs(LayersOf(theme)) do
+                if layer.step then
+                    layer.timer = (layer.timer or 0) + elapsed
+                    local life = layer.life or math.max(0.1, tonumber(settings.trailLife) or 0.4)
+                    if moved and not jumped and layer.timer >= life / length then
+                        layer.timer = 0
+                        for _ = 1, layer.perDrop or 1 do
+                            DropSpark(layer, x, y, mvx * 0.15, mvy * 0.15, now)
+                        end
+                    end
+                else
+                    -- Burning in place (only stepped at 50 Hz, and paused while mouselooking).
+                    if layer.rate and doStep and not mouselooking then
+                        local rateScale = layer.accent and 1 or density
+                        layer.timer = (layer.timer or 0) + stepDt * layer.rate * rateScale
+                        local count = 0
+                        while layer.timer >= 1 and count < 6 do
+                            layer.timer = layer.timer - 1
+                            count = count + 1
+                            DropSpark(layer, x + (random() * 2 - 1) * 3, y + (random() * 2 - 1) * 3, mvx, mvy, now)
+                        end
+                    end
+                    -- Laid along the path, filled in between this frame and the last.
+                    if layer.spacing and moved and not jumped then
+                        local spacing = layer.accent and layer.spacing
+                            or math.max(layer.spacing * 0.5, layer.spacing / density)
+                        layer.acc = (layer.acc or 0) + distance
+                        local count = 0
+                        while layer.acc >= spacing and count < 24 do
+                            layer.acc = layer.acc - spacing
+                            count = count + 1
+                            local t = distance > 0 and math.min(1, layer.acc / distance) or 0
+                            DropSpark(layer, x - dx * t, y - dy * t, mvx, mvy, now)
+                        end
+                        if layer.acc > spacing then layer.acc = layer.acc % spacing end
                     end
                 end
             end
+
+            -- At rest: sparks circle the pointer instead of trailing behind it.
+            if doStep and not mouselooking and settings.idleSwirl and (now - lastMoveAt) > (tonumber(settings.swirlDelay) or 0.3) then
+                swirlTimer = swirlTimer + stepDt * 11 * density
+                local count = 0
+                while swirlTimer >= 1 and count < 3 do
+                    swirlTimer = swirlTimer - 1
+                    count = count + 1
+                    DropSpark(SwirlLayer(theme), x, y, 0, 0, now)
+                end
+            elseif moved or mouselooking then
+                swirlTimer = 0
+            end
         end
 
-        -- ⚠ A safety net. A spark left over from another theme, or from a
-        -- pool no longer in use, has nobody to age it and would hang on
-        -- screen for ever. Anything shown without a live layer goes here.
-        for index = 1, #sparks do
-            local spark = sparks[index]
-            if spark:IsShown() and not spark.layer then spark:Hide() end
+        if doStep then
+            if #bolts > 0 then UpdateBolts(now) end
+
+            local n = #activeSparks
+            if n > 0 then
+                local baseSize = tonumber(settings.trailSize) or 14
+                local i = 1
+                while i <= n do
+                    local spark = activeSparks[i]
+                    if UpdateSpark(spark, stepDt, now, baseSize, spark.slotIndex or i) then
+                        i = i + 1
+                    else
+                        activeSparks[i] = activeSparks[n]
+                        activeSparks[n] = nil
+                        n = n - 1
+                    end
+                end
+            end
         end
     end
 
@@ -1318,19 +1395,16 @@ local function ApplyVisibility()
     if show and not root:IsShown() then
         -- Start from where the pointer is now: where it was last seen may be
         -- an hour and a continent away.
-        local scale = UIParent:GetEffectiveScale()
+        RefreshDisplayMetrics()
         local cx, cy = GetCursorPosition()
-        lastX, lastY = Anchor(cx, cy, scale)
+        lastX, lastY = Anchor(cx, cy, cachedUIScale)
         wasSteering = true
     end
     root:SetShown(show)
     if not show then
         -- Put out, and disowned: a spark that comes back later would carry on
         -- from an age set before the module was switched off.
-        for _, spark in ipairs(sparks) do
-            spark.layer = nil
-            spark:Hide()
-        end
+        ClearAllSparks()
         for _, bolt in ipairs(bolts) do HideBolt(bolt) end
         if arrow then arrow:Hide() arrow.glow:Hide() end
         HideEchoes()
@@ -1342,10 +1416,13 @@ watcher:SetScript("OnEvent", function(_, event, cvar)
         if cvar == "cursorSizePreferred" or cvar == "CURSOR_SIZE_PREFERRED" then ReadPointerPx() end
         return
     end
+    if event == "DISPLAY_SIZE_CHANGED" or event == "UI_SCALE_CHANGED" then
+        ReadPointerPx()
+        return
+    end
     if event == "GLOBAL_MOUSE_DOWN" then
-        local scale = UIParent:GetEffectiveScale()
         local cx, cy = GetCursorPosition()
-        Ripple(Anchor(cx, cy, scale))
+        Ripple(Anchor(cx, cy, cachedUIScale))
         return
     end
     ApplyVisibility()
@@ -1356,6 +1433,8 @@ local function Start()
     ApplyGamePointer()
     RestyleAll()
     pcall(watcher.RegisterEvent, watcher, "CVAR_UPDATE")
+    pcall(watcher.RegisterEvent, watcher, "DISPLAY_SIZE_CHANGED")
+    pcall(watcher.RegisterEvent, watcher, "UI_SCALE_CHANGED")
     root:SetScript("OnUpdate", OnUpdate)
     watcher:RegisterEvent("PLAYER_REGEN_DISABLED")
     watcher:RegisterEvent("PLAYER_REGEN_ENABLED")

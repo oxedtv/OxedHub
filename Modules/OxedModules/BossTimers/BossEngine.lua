@@ -295,26 +295,48 @@ end
 
 -- Time left for an event, from the game when it says, else from endsAt.
 function Engine:TimeLeft(ev)
-    if ev.test or ev.custom then return ev.endsAt - GetTime() end
-    if C_EncounterTimeline and C_EncounterTimeline.GetEventTimeRemaining then
-        local ok, left = pcall(C_EncounterTimeline.GetEventTimeRemaining, ev.id)
-        left = ok and Plain(left) or nil
-        if left then
-            ev.endsAt = GetTime() + left
-            return left
+    local now = GetTime()
+    if ev._leftAt and (now - ev._leftAt) < 0.04 then
+        return ev._leftVal
+    end
+    local left
+    if ev.test or ev.custom then
+        left = ev.endsAt - now
+    else
+        if C_EncounterTimeline and C_EncounterTimeline.GetEventTimeRemaining then
+            local ok, rem = pcall(C_EncounterTimeline.GetEventTimeRemaining, ev.id)
+            rem = ok and Plain(rem) or nil
+            if rem then
+                ev.endsAt = now + rem
+                left = rem
+            end
+        end
+        if not left then
+            left = ev.endsAt - now
         end
     end
-    return ev.endsAt - GetTime()
+    ev._leftAt = now
+    ev._leftVal = left
+    if left < -0.5 and events[ev.id] == ev then
+        RemoveEvent(ev.id)
+    end
+    return left
 end
 
 -- False while the game has the event paused, finished or cancelled.
 function Engine:IsActive(ev)
     if ev.test or ev.custom then return true end
     if not (C_EncounterTimeline and C_EncounterTimeline.GetEventState) then return true end
+    local now = GetTime()
+    if ev._activeAt and (now - ev._activeAt) < 0.04 then
+        return ev._activeVal
+    end
     local ok, state = pcall(C_EncounterTimeline.GetEventState, ev.id)
     state = ok and Plain(state) or nil
-    if state == nil then return true end
-    return state == STATE_ACTIVE
+    local active = (state == nil) or (state == STATE_ACTIVE)
+    ev._activeAt = now
+    ev._activeVal = active
+    return active
 end
 
 function Engine:GetEvents()

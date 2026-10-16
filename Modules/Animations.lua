@@ -2442,12 +2442,11 @@ function Animations:Play(animationIdOrName, customPosData)
         return
     end
     
-    -- Clone anim to prevent mutating global table
-    local playData = {}
-    for k, v in pairs(anim) do playData[k] = v end
-    playData.id = id
-
     if customPosData and customPosData.useCustomPosition then
+        -- Clone anim only when overriding custom position/size fields
+        local playData = {}
+        for k, v in pairs(anim) do playData[k] = v end
+        playData.id = id
         playData.useCustomPosition = true
         playData.customPositionX = customPosData.x
         playData.customPositionY = customPosData.y
@@ -2457,9 +2456,11 @@ function Animations:Play(animationIdOrName, customPosData)
             playData.displayWidth = customPosData.displayWidth
             playData.displayHeight = customPosData.displayHeight
         end
+        self:PlayAnimationDirect(playData)
+    else
+        anim.id = anim.id or id
+        self:PlayAnimationDirect(anim)
     end
-
-    self:PlayAnimationDirect(playData)
 end
 
 -- Set animation frame texture coordinates (supports rectangular grids)
@@ -2500,6 +2501,7 @@ function Animations:AcquireAnimationFrame()
     for _, frame in ipairs(self.animationPool) do
         if not frame.isActive then
             frame.isActive = true
+            self:StartStuckFrameSweeper()
             return frame
         end
     end
@@ -2547,10 +2549,19 @@ function Animations:StartStuckFrameSweeper()
         if not pool then return end
 
         local now = GetTime()
+        local anyActive = false
         for _, frame in ipairs(pool) do
-            if frame.isActive and frame.deadline and now > frame.deadline then
-                Animations:ReleaseAnimationFrame(frame)
+            if frame.isActive then
+                if frame.deadline and now > frame.deadline then
+                    Animations:ReleaseAnimationFrame(frame)
+                else
+                    anyActive = true
+                end
             end
+        end
+        if not anyActive and Animations.stuckSweeper then
+            Animations.stuckSweeper:Cancel()
+            Animations.stuckSweeper = nil
         end
     end)
 end
@@ -2597,13 +2608,14 @@ function Animations:PlayAnimationDirect(animData)
     -- Setup looping
     local loopCount = animData.loopCount or 1
     if loopCount < 1 then loopCount = 1 end
-    local maxLoops = loopCount
-    local currentLoop = 1
+    frame.maxLoops = loopCount
+    frame.currentLoop = 1
 
     local maxFrames = animData.frameCount
     if animData.playSequence and #animData.playSequence > 0 then
         maxFrames = #animData.playSequence
     end
+    frame.maxFrames = maxFrames
 
     -- Create animation ticker
     local fps = animData.fps or 24
@@ -2614,30 +2626,39 @@ function Animations:PlayAnimationDirect(animData)
     -- callback, or the ticker's iteration budget running out without the
     -- release branch being reached. The sweeper below uses this deadline to
     -- clean up regardless of why the tick never came.
-    frame.deadline = GetTime() + ((maxLoops * maxFrames) / fps) + 2
+    frame.deadline = GetTime() + ((loopCount * maxFrames) / fps) + 2
 
-    frame.timer = C_Timer.NewTicker(1/fps, function()
-        frame.currentFrame = frame.currentFrame + 1
-        if frame.currentFrame >= maxFrames then
-            -- End of one loop iteration
-            if currentLoop >= maxLoops then
-                -- All loops done
+    if not frame.tickStep then
+        frame.tickStep = function()
+            local ad = frame.animData
+            if not ad then
                 Animations:ReleaseAnimationFrame(frame)
-                -- Auto-hide preview overlay if showing for this animation
-                if Animations.positionFrame and Animations.positionFrame._previewOnlyMode
-                   and Animations.positionFrame._previewOnlyAnimId == animData.id then
-                    Animations:HidePreviewOverlay()
+                return
+            end
+            frame.currentFrame = frame.currentFrame + 1
+            if frame.currentFrame >= frame.maxFrames then
+                -- End of one loop iteration
+                if frame.currentLoop >= frame.maxLoops then
+                    -- All loops done
+                    Animations:ReleaseAnimationFrame(frame)
+                    -- Auto-hide preview overlay if showing for this animation
+                    if Animations.positionFrame and Animations.positionFrame._previewOnlyMode
+                       and Animations.positionFrame._previewOnlyAnimId == ad.id then
+                        Animations:HidePreviewOverlay()
+                    end
+                else
+                    -- Start next loop
+                    frame.currentLoop = frame.currentLoop + 1
+                    frame.currentFrame = 0
+                    Animations:SetAnimationFrame(frame, 0, ad)
                 end
             else
-                -- Start next loop
-                currentLoop = currentLoop + 1
-                frame.currentFrame = 0
-                Animations:SetAnimationFrame(frame, 0, animData)
+                Animations:SetAnimationFrame(frame, frame.currentFrame, ad)
             end
-        else
-            Animations:SetAnimationFrame(frame, frame.currentFrame, animData)
         end
-    end, maxLoops * maxFrames)
+    end
+
+    frame.timer = C_Timer.NewTicker(1/fps, frame.tickStep, loopCount * maxFrames)
 end
 
 -- Is this animation on screen right now?

@@ -329,39 +329,61 @@ local function Tick()
 
     local shown = 0
     if settings.showBars then
-        table.sort(sorted, BySoonest)
+        if #sorted > 1 then
+            table.sort(sorted, BySoonest)
+        end
         for i = 1, math.min(#sorted, settings.maxBars) do
             local ev = sorted[i]
             local bar = bars[i] or CreateBar(i)
             if not bar.laidOut then LayoutBar(bar, i); bar.laidOut = true end
             local own = AbilitySettings(ev)
-            bar:SetMinMaxValues(0, ev.duration > 0 and ev.duration or 1)
-            bar:SetValue(ev.left)
-            -- An unrecognised event's name and icon may be secret: handed over
-            -- as they are, never tested with "or".
-            if own and own.text and own.text ~= "" then
-                bar.name:SetText(own.text)
-            else
-                bar.name:SetText(ev.name)
+            if bar.ev ~= ev then
+                bar.ev = ev
+                bar.timeKey = nil
+                bar.warnState = nil
+                bar:SetMinMaxValues(0, ev.duration > 0 and ev.duration or 1)
+                -- An unrecognised event's name and icon may be secret: handed over
+                -- as they are, never tested with "or".
+                if own and own.text and own.text ~= "" then
+                    bar.name:SetText(own.text)
+                else
+                    bar.name:SetText(ev.name)
+                end
+                bar.icon:SetTexture(ev.icon)
             end
-            bar.icon:SetTexture(ev.icon)
-            bar.time:SetText(ev.left < settings.decimalsUnder and ("%.1f"):format(ev.left)
-                or ("%d"):format(ev.left))
+            bar:SetValue(ev.left)
+            local isSubSec = ev.left < settings.decimalsUnder
+            local timeKey = isSubSec and math.floor(ev.left * 10) or (1000 + math.floor(ev.left))
+            if bar.timeKey ~= timeKey then
+                bar.timeKey = timeKey
+                if isSubSec then
+                    bar.time:SetFormattedText("%.1f", ev.left)
+                else
+                    bar.time:SetFormattedText("%d", ev.left)
+                end
+            end
             local warnAt = (own and own.warnAt) or settings.warnAt
-            local colours = settings.colours
-            local colour = (settings.colourByKind and ev.ability and colours[ev.ability.kind])
-                or colours.other
-            if settings.warnColour and ev.left <= warnAt then
-                local wc = colours.warn
-                bar:SetStatusBarColor(wc[1], wc[2], wc[3])
-            else
-                bar:SetStatusBarColor(colour[1], colour[2], colour[3])
+            local isWarn = settings.warnColour and ev.left <= warnAt or false
+            if bar.warnState ~= isWarn then
+                bar.warnState = isWarn
+                local colours = settings.colours
+                if isWarn then
+                    local wc = colours.warn
+                    bar:SetStatusBarColor(wc[1], wc[2], wc[3])
+                else
+                    local colour = (settings.colourByKind and ev.ability and colours[ev.ability.kind])
+                        or colours.other
+                    bar:SetStatusBarColor(colour[1], colour[2], colour[3])
+                end
             end
             bar:Show()
             shown = i
         end
     end
-    for i = shown + 1, #bars do bars[i]:Hide() end
+    for i = shown + 1, #bars do
+        bars[i]:Hide()
+        bars[i].ev = nil
+    end
 
     if not any then
         StopTicker()
@@ -378,7 +400,10 @@ end
 Engine:AddListener({
     OnEventAdded = function() StartTicker() end,
     OnEncounterEnd = function()
-        for _, bar in ipairs(bars) do bar:Hide() end
+        for _, bar in ipairs(bars) do
+            bar:Hide()
+            bar.ev = nil
+        end
     end,
 })
 

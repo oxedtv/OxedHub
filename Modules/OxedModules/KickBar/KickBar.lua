@@ -136,6 +136,8 @@ local timerKey = nil        -- last cast-timer text shown, to skip SetText
 local ALMOST_READY_THRESHOLD = 2.0
 local readyCheckedAt = 0
 local readyCached = false
+local interruptBaseMs = 0
+local readyEndAt = 0
 local cooldownPainted = false
 local shownState = nil
 local watchTicker = nil
@@ -243,76 +245,88 @@ local function FindInterruptSpell()
         else
             interruptHasRange = true
         end
+        interruptBaseMs = 0
+        if GetSpellBaseCooldown then
+            local ok, value = pcall(GetSpellBaseCooldown, found)
+            if ok and type(value) == "number" then interruptBaseMs = value end
+        end
     end
 end
 
 -- ── Cooldown & Readiness Evaluation ─────────────────────────────────────────
 
-local function IsGlobalCooldownOnly(spellID)
-    local baseMs = 0
-    if GetSpellBaseCooldown then
-        local ok, value = pcall(GetSpellBaseCooldown, spellID)
-        if ok and type(value) == "number" then baseMs = value end
-    end
-    if baseMs <= 1500 then return true end
+local function IsGlobalCooldownOnly()
+    if interruptBaseMs <= 1500 then return true end
     if not lastInterruptAt then return true end
-    return (GetTime() - lastInterruptAt) > (baseMs / 1000)
+    return (GetTime() - lastInterruptAt) > (interruptBaseMs / 1000)
 end
 
-local function ReadCooldownActive(spellID)
+local function ReadCooldownState(spellID)
     local info = C_Spell.GetSpellCooldown(spellID)
-    if type(info) ~= "table" then return nil end
+    if type(info) ~= "table" then return nil, 0 end
+    local start = info.startTime
+    local duration = info.duration
+    local endAt = 0
+    if not IsSecret(start) and not IsSecret(duration)
+        and type(start) == "number" and type(duration) == "number"
+        and start > 0 and duration > 1.5 then
+        endAt = start + duration
+    end
     local active = info.isActive
-    if IsSecret(active) then return nil end
-    return active and true or false
-end
-
-local function CooldownActive(spellID)
-    local ok, active = pcall(ReadCooldownActive, spellID)
-    if ok then return active end
-    return nil
+    if not IsSecret(active) and active ~= nil then
+        local isAct = active and true or false
+        if isAct and IsGlobalCooldownOnly() then isAct = false end
+        return not isAct, endAt
+    end
+    if not IsSecret(start) and not IsSecret(duration)
+        and type(start) == "number" and type(duration) == "number" then
+        return (start == 0 or duration == 0 or duration <= 1.5), endAt
+    end
+    return nil, 0
 end
 
 local function ReadyFromNumbers(start, duration)
-    if IsSecret(start) or IsSecret(duration) then return true end
-    if type(start) ~= "number" or type(duration) ~= "number" then return true end
-    if start == 0 or duration == 0 then return true end
-    return duration <= 1.5
+    if IsSecret(start) or IsSecret(duration) then return true, 0 end
+    if type(start) ~= "number" or type(duration) ~= "number" then return true, 0 end
+    if start == 0 or duration == 0 or duration <= 1.5 then return true, 0 end
+    return false, start + duration
 end
 
-local function ReadRemainingCD(spellID)
-    local start, duration = GetSpellCooldownCompat(spellID)
-    if IsSecret(start) or IsSecret(duration) then return 0 end
-    if type(start) ~= "number" or type(duration) ~= "number" then return 0 end
-    if start == 0 or duration <= 1.5 then return 0 end
-    local left = (start + duration) - GetTime()
-    if left > 0 then return left end
-    return 0
-end
-
-local function GetRemainingCD(spellID)
-    if not spellID or IsSecret(spellID) then return 0 end
-    local ok, rem = pcall(ReadRemainingCD, spellID)
-    if ok and type(rem) == "number" then return rem end
-    return 0
-end
-
-local function IsInterruptReady()
-    if not interruptSpellID then return false end
+local function RefreshInterruptCooldown()
+    if not interruptSpellID then
+        readyCached = false
+        readyEndAt = 0
+        return
+    end
 
     if C_Spell and C_Spell.GetSpellCooldown then
-        local ok, active = pcall(CooldownActive, interruptSpellID)
-        if ok and active ~= nil then
-            if active and IsGlobalCooldownOnly(interruptSpellID) then active = false end
-            return not active
+        local ok, ready, endAt = pcall(ReadCooldownState, interruptSpellID)
+        if ok and ready ~= nil then
+            readyCached = ready
+            readyEndAt = ready and 0 or (endAt or 0)
+            return
         end
     end
 
     local start, duration = GetSpellCooldownCompat(interruptSpellID)
-    local ok, ready = pcall(ReadyFromNumbers, start, duration)
-    if ok then return ready end
+    local ok, ready, endAt = pcall(ReadyFromNumbers, start, duration)
+    if ok then
+        readyCached = ready
+        readyEndAt = endAt or 0
+        return
+    end
 
-    return false
+    readyCached = false
+    readyEndAt = 0
+end
+
+local function ApplyNumericCooldown(cdFrame, start, duration)
+    if duration and duration > 1.5 then
+        cdFrame:SetCooldown(start, duration)
+        cdFrame:Show()
+    else
+        cdFrame:Hide()
+    end
 end
 
 local function PaintCooldown(cdFrame)
@@ -329,14 +343,7 @@ local function PaintCooldown(cdFrame)
     end
 
     local start, duration = GetSpellCooldownCompat(interruptSpellID)
-    local ok = pcall(function()
-        if duration and duration > 1.5 then
-            cdFrame:SetCooldown(start, duration)
-            cdFrame:Show()
-        else
-            cdFrame:Hide()
-        end
-    end)
+    local ok = pcall(ApplyNumericCooldown, cdFrame, start, duration)
     if not ok then cdFrame:Hide() end
 end
 
@@ -397,29 +404,13 @@ end
 local function ReadHostileCast(unit)
     if not unit or not UnitCanAttack("player", unit) then return nil end
 
-    local name, notInterruptible, spellID, duration
-    name, _, _, _, _, _, _, notInterruptible, spellID = UnitCastingInfo(unit)
-    if type(name) ~= "nil" then
-        if UnitCastingDuration then duration = UnitCastingDuration(unit) end
-    else
-        local numEmpowerStages
-        name, _, _, _, _, _, notInterruptible, spellID, _, numEmpowerStages = UnitChannelInfo(unit)
+    local name, _, _, _, endTime, _, _, notInterruptible, spellID = UnitCastingInfo(unit)
+    if type(name) == "nil" then
+        name, _, _, _, endTime, _, notInterruptible, spellID = UnitChannelInfo(unit)
         if type(name) == "nil" then return nil end
-        if numEmpowerStages and UnitEmpoweredChannelDuration and not IsSecret(numEmpowerStages) then
-            local okN, empowered = pcall(TruthTest, type(numEmpowerStages) == "number" and numEmpowerStages > 0)
-            if okN and empowered then
-                local okD, d = pcall(UnitEmpoweredChannelDuration, unit, true)
-                if okD then duration = d end
-            end
-        end
-        if not duration and UnitChannelDuration then
-            local okD, d = pcall(UnitChannelDuration, unit)
-            if okD then duration = d end
-        end
     end
 
-    if type(name) == "nil" then return nil end
-    return name, notInterruptible, spellID, duration
+    return name, notInterruptible, spellID, endTime
 end
 
 -- ── Frame Construction with FlipBook & Dual Layer ──────────────────────────
@@ -636,11 +627,7 @@ local function PositionFrame()
     end
 end
 
-local function ReadCastRemaining(unit)
-    local _, _, _, _, _, endTime = UnitCastingInfo(unit)
-    if not endTime then
-        _, _, _, _, _, endTime = UnitChannelInfo(unit)
-    end
+local function CalcCastRemaining(endTime)
     if endTime then
         return (endTime / 1000) - GetTime()
     end
@@ -654,14 +641,14 @@ local function ReadImportant(spellID)
     return imp and true or false
 end
 
-local function UpdateCastTimer(unit)
+local function UpdateCastTimer(endTime)
     local db = KickBarDB or DEFAULTS
     if not db.showCastTimer or not kickFrame.timerText then
         if kickFrame.timerText then kickFrame.timerText:Hide() end
         return
     end
 
-    local ok, rem = pcall(ReadCastRemaining, unit)
+    local ok, rem = pcall(CalcCastRemaining, endTime)
 
     if ok and rem and type(rem) == "number" and rem > 0 then
         -- Tenths under 10 s, whole seconds above; only touch the font
@@ -735,7 +722,7 @@ local function OnUpdate()
     end
     currentCastUnit = unit
 
-    local castName, notInterruptible, spellID, durObj = ReadHostileCast(unit)
+    local castName, notInterruptible, spellID, castEndTime = ReadHostileCast(unit)
     if type(castName) == "nil" then
         Sleep()
         return
@@ -782,10 +769,10 @@ local function OnUpdate()
     local now = GetTime()
     if now - readyCheckedAt >= READY_GAP then
         readyCheckedAt = now
-        readyCached = IsInterruptReady()
+        RefreshInterruptCooldown()
     end
     local isReady = readyCached
-    local remCD = not isReady and GetRemainingCD(interruptSpellID) or 0
+    local remCD = (not isReady and readyEndAt > now) and (readyEndAt - now) or 0
     local isAlmostReady = not isReady and db.showAlmostReady and (remCD <= ALMOST_READY_THRESHOLD) and (remCD > 0)
 
     if not isReady and not isAlmostReady and not db.showOnCD then
@@ -922,12 +909,14 @@ local function OnUpdate()
                 PaintCooldown(kickFrame.cooldown)
             end
         end
+    elseif state == 3 then
+        kickFrame.label:SetFormattedText("%.1fs", remCD)
     end
 
     if isReady then cooldownPainted = false end
 
     -- Update Cast Countdown Timer
-    UpdateCastTimer(unit)
+    UpdateCastTimer(castEndTime)
 
     kickFrame.label:SetShown(db.showLabel ~= false)
     ShowKick()
@@ -961,15 +950,8 @@ local function Wake()
 
     local unit = GetActiveCastUnit()
     if unit then
-        local hasCast = false
-        pcall(function()
-            local c1 = UnitCastingInfo(unit)
-            local c2 = UnitChannelInfo(unit)
-            if type(c1) ~= "nil" or type(c2) ~= "nil" then
-                hasCast = true
-            end
-        end)
-        if hasCast then
+        local ok, hasCast = pcall(HasCast, unit)
+        if ok and hasCast then
             StartWatch()
             return
         end

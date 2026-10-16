@@ -128,37 +128,32 @@ local function HasConfiguredAura(trigger)
     -- game is still asked when the list does not have the spell.
     local Core = OxedHub.Core
     local active = Core and Core.activeSpellIDs
-    for _, sid in ipairs(GetConfiguredSpellIDs(trigger)) do
-        if active and active[sid] then return true, sid end
+    local ids = GetConfiguredSpellIDs(trigger)
+    if active then
+        for i = 1, #ids do
+            local sid = ids[i]
+            if active[sid] then return true, sid end
+        end
+        -- Outside combat, once Core's aura scanner has primed activeSpellIDs,
+        -- it already holds every helpful and harmful player aura.
+        if Core.auraScanPrimed and not InCombatLockdown() then
+            return false, nil
+        end
     end
-    for _, sid in ipairs(GetConfiguredSpellIDs(trigger)) do
-        -- The direct lookup newer clients answer for a known spell id, also
-        -- for buffs other players put on you (Power Infusion and the like).
-        if C_UnitAuras.GetUnitAuraBySpellID then
-            local ok, aura = pcall(C_UnitAuras.GetUnitAuraBySpellID, "player", sid)
+    local getPlayerAura = C_UnitAuras.GetPlayerAuraBySpellID
+    local getUnitAura = not getPlayerAura and (C_UnitAuras.GetUnitAuraBySpellID or C_UnitAuras.GetAuraDataBySpellID)
+    for i = 1, #ids do
+        local sid = ids[i]
+        if getPlayerAura then
+            local ok, aura = pcall(getPlayerAura, sid)
             if ok and aura then
                 return true, sid
             end
-        end
-        if C_UnitAuras.GetAuraDataBySpellID then
-            local ok, aura = pcall(C_UnitAuras.GetAuraDataBySpellID, "player", sid)
+        elseif getUnitAura then
+            local ok, aura = pcall(getUnitAura, "player", sid)
             if ok and aura then
                 return true, sid
             end
-        end
-        if C_UnitAuras.GetPlayerAuraBySpellID then
-            local ok, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, sid)
-            if ok and aura then
-                return true, sid
-            end
-        end
-
-        -- Fallback: use the taint-free spell ID presence set built by Core's
-        -- aura scanner.  This works even in combat where all aura data is
-        -- secret and the native WoW APIs above return nil.
-        local Core = OxedHub.Core
-        if Core and Core.activeSpellIDs and Core.activeSpellIDs[sid] then
-            return true, sid
         end
     end
     return false, nil
@@ -305,49 +300,73 @@ end
 -- log in doesn't spam), matching the DiGua BloodlustDetector pattern.
 local NO_CONDITIONS = {}   -- shared, read only: not a new table per trigger per check
 
+local function HasAnySelfAuraTrigger()
+    local Core = OxedHub.Core
+    if Core and Core.HasEnabledTrigger then
+        return Core:HasEnabledTrigger("SELF_AURA") or Core:HasEnabledTrigger("UNIT_AURA")
+    end
+    local profile = OxedHub.db and OxedHub.db.profile
+    return profile and profile.triggers ~= nil
+end
+
+local selfAuraEventData = {}
+
 local function EvaluateSelfAuraTriggers(initial)
+    if not initial and not HasAnySelfAuraTrigger() then return end
     local profile = OxedHub.db and OxedHub.db.profile
     if not profile or not profile.triggers then return end
 
+    local anyWatched = false
     for id, trigger in pairs(profile.triggers) do
-        local isSelfAura = (trigger.event == "SELF_AURA")
-        local isUnitAuraLust = (trigger.event == "UNIT_AURA" and IsLustTrigger(trigger))
-        if (isSelfAura or isUnitAuraLust) and trigger.enabled then
-            local present, matchedSid = HasConfiguredAura(trigger)
-            local was = selfAuraPresent[id]
+        if trigger.enabled then
+            local isSelfAura = (trigger.event == "SELF_AURA")
+            local isUnitAuraLust = (not isSelfAura and trigger.event == "UNIT_AURA" and IsLustTrigger(trigger))
+            if isSelfAura or isUnitAuraLust then
+                anyWatched = true
+                local present, matchedSid = HasConfiguredAura(trigger)
+                local was = selfAuraPresent[id]
 
-            local c = trigger.conditions or NO_CONDITIONS
-            if initial then
-                selfAuraPresent[id] = present or nil
-            elseif present and not was then
-                -- gained. Fire unless the trigger is in "lost only" mode.
-                selfAuraPresent[id] = true
-                local fireOnGained = c.onBoth or not c.onLost
-                if OxedHub.debug then print("|cff00ffff[OxedHub-Debug]|r SELF_AURA GAINED:", trigger.name or id, "spell", tostring(matchedSid), "fire:", tostring(fireOnGained)) end
-                if fireOnGained and Triggers:CheckZoneRestrictions(trigger.zones) then
-                    Triggers:ExecuteTrigger(trigger, { spellID = matchedSid, isLost = false })
-                end
-            elseif not present and was then
-                -- lost
-                selfAuraPresent[id] = nil
-                CancelLoop(id, trigger)
-                if OxedHub.debug then print("|cff00ffff[OxedHub-Debug]|r SELF_AURA LOST:", trigger.name or id) end
-                if (c.onLost or c.onBoth) and Triggers:CheckZoneRestrictions(trigger.zones) then
-                    local sid = GetConfiguredSpellIDs(trigger)[1]
-                    Triggers:ExecuteTrigger(trigger, { spellID = sid, isLost = true })
+                local c = trigger.conditions or NO_CONDITIONS
+                if initial then
+                    selfAuraPresent[id] = present or nil
+                elseif present and not was then
+                    -- gained. Fire unless the trigger is in "lost only" mode.
+                    selfAuraPresent[id] = true
+                    local fireOnGained = c.onBoth or not c.onLost
+                    if OxedHub.debug then print("|cff00ffff[OxedHub-Debug]|r SELF_AURA GAINED:", trigger.name or id, "spell", tostring(matchedSid), "fire:", tostring(fireOnGained)) end
+                    if fireOnGained and Triggers:CheckZoneRestrictions(trigger.zones) then
+                        selfAuraEventData.spellID = matchedSid
+                        selfAuraEventData.isLost = false
+                        Triggers:ExecuteTrigger(trigger, selfAuraEventData)
+                    end
+                elseif not present and was then
+                    -- lost
+                    selfAuraPresent[id] = nil
+                    CancelLoop(id, trigger)
+                    if OxedHub.debug then print("|cff00ffff[OxedHub-Debug]|r SELF_AURA LOST:", trigger.name or id) end
+                    if (c.onLost or c.onBoth) and Triggers:CheckZoneRestrictions(trigger.zones) then
+                        local sid = GetConfiguredSpellIDs(trigger)[1]
+                        selfAuraEventData.spellID = sid
+                        selfAuraEventData.isLost = true
+                        Triggers:ExecuteTrigger(trigger, selfAuraEventData)
+                    end
                 end
             end
         end
     end
+    return anyWatched
 end
 
 local selfAuraTicker = nil
 local function EvaluateChanges()
-    EvaluateSelfAuraTriggers(false)
+    if not EvaluateSelfAuraTriggers(false) and selfAuraTicker then
+        selfAuraTicker:Cancel()
+        selfAuraTicker = nil
+    end
 end
 
 local function StartSelfAuraPolling()
-    if selfAuraTicker then return end
+    if selfAuraTicker or not HasAnySelfAuraTrigger() then return end
     selfAuraTicker = C_Timer.NewTicker(0.25, EvaluateChanges)
 end
 
@@ -663,7 +682,7 @@ monitor:SetScript("OnEvent", function(_, event)
         -- has finished its ScanUnitAuras and updated Core.activeSpellIDs.
         -- Once per frame, however many aura events the frame brought, and
         -- with a function made once rather than one per event.
-        if not evaluateQueued then
+        if not evaluateQueued and HasAnySelfAuraTrigger() then
             evaluateQueued = true
             C_Timer.After(0, EvaluateQueued)
         end

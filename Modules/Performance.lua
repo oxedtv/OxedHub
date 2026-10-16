@@ -41,6 +41,9 @@ end
 
 -- ── Rows ────────────────────────────────────────────────────────────────────
 
+local NUM_COLS = 7
+local WIDTHS = { 66, 68, 58, 54, 58, 66 }
+
 local function GetRow(index)
     local row = window.rows[index]
     if row then return row end
@@ -54,9 +57,9 @@ local function GetRow(index)
     highlight:Hide()
 
     row.cols = {}
-    for i = 1, 5 do
+    for i = 1, NUM_COLS do
         local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        fs:SetJustifyH(i == 5 and "LEFT" or "RIGHT")
+        fs:SetJustifyH(i == NUM_COLS and "LEFT" or "RIGHT")
         fs:SetWordWrap(false)
         row.cols[i] = fs
     end
@@ -74,20 +77,28 @@ local function GetRow(index)
     return row
 end
 
--- Column layout shared by the header and every row: four numbers, then a name
--- taking the rest of the width.
-local WIDTHS = { 80, 70, 70, 80 }
-local function LayoutColumns(parentRow, cols)
+-- Column layout shared by the header and every row: six numbers on Top (four on Spikes),
+-- then a name taking the rest of the width.
+local SPIKE_WIDTHS = { 80, 70, 70, 80 }
+local function LayoutColumns(parentRow, cols, isSpikes)
     local x = 0
-    for i = 1, 4 do
+    local widths = isSpikes and SPIKE_WIDTHS or WIDTHS
+    local numCount = #widths
+    for i = 1, NUM_COLS - 1 do
         cols[i]:ClearAllPoints()
-        cols[i]:SetPoint("LEFT", parentRow, "LEFT", x, 0)
-        cols[i]:SetWidth(WIDTHS[i])
-        x = x + WIDTHS[i] + 6
+        if i <= numCount then
+            cols[i]:SetPoint("LEFT", parentRow, "LEFT", x, 0)
+            cols[i]:SetWidth(widths[i])
+            cols[i]:Show()
+            x = x + widths[i] + 6
+        else
+            cols[i]:Hide()
+        end
     end
-    cols[5]:ClearAllPoints()
-    cols[5]:SetPoint("LEFT", parentRow, "LEFT", x + 6, 0)
-    cols[5]:SetPoint("RIGHT", parentRow, "RIGHT", -4, 0)
+    cols[NUM_COLS]:ClearAllPoints()
+    cols[NUM_COLS]:SetPoint("LEFT", parentRow, "LEFT", x + 6, 0)
+    cols[NUM_COLS]:SetPoint("RIGHT", parentRow, "RIGHT", -4, 0)
+    cols[NUM_COLS]:Show()
 end
 
 local function PlaceRows(count)
@@ -99,10 +110,12 @@ end
 -- ── Tab: Top ────────────────────────────────────────────────────────────────
 
 local SORTS = {
-    { key = "total", header = "Total ms" },
-    { key = "max",   header = "Slowest" },
-    { key = "count", header = "Calls" },
-    { key = "avg",   header = "Average" },
+    { key = "total",       header = "Total ms" },
+    { key = "combatTotal", header = "Combat ms" },
+    { key = "max",         header = "Slowest" },
+    { key = "count",       header = "Calls" },
+    { key = "avg",         header = "Average" },
+    { key = "alloc",       header = "Alloc KB" },
 }
 
 local function DrawTop()
@@ -112,17 +125,31 @@ local function DrawTop()
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", window.content, "TOPLEFT", 0, -(index - 1) * ROW_HEIGHT)
         row:SetPoint("TOPRIGHT", window.content, "TOPRIGHT", 0, -(index - 1) * ROW_HEIGHT)
-        LayoutColumns(row, row.cols)
+        LayoutColumns(row, row.cols, false)
+        local cTotal = entry.combatTotal or 0
+        local alloc = entry.alloc or 0
         row.cols[1]:SetText(("%s%.1f|r"):format(MsColour(entry.total / 20), entry.total))
-        row.cols[2]:SetText(("%s%.2f|r"):format(MsColour(entry.max), entry.max))
-        row.cols[3]:SetText(tostring(entry.count))
-        row.cols[4]:SetText(("%s%.3f|r"):format(MsColour(entry.avg), entry.avg))
-        row.cols[5]:SetText(entry.label)
+        row.cols[2]:SetText(cTotal > 0 and ("%s%.1f|r"):format(MsColour(cTotal / 15), cTotal) or "|cff6666660.0|r")
+        row.cols[3]:SetText(("%s%.2f|r"):format(MsColour(entry.max), entry.max))
+        row.cols[4]:SetText(tostring(entry.count))
+        row.cols[5]:SetText(("%s%.3f|r"):format(MsColour(entry.avg), entry.avg))
+        row.cols[6]:SetText(alloc >= 1 and ("%.0f"):format(alloc) or "|cff6666660|r")
+        row.cols[7]:SetText(entry.label)
         row.tooltip = function(self)
             GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
             GameTooltip:SetText(entry.label, 1, 1, 1, 1, true)
             GameTooltip:AddLine(("%.1f ms in %d calls, %.3f ms each on average")
                 :format(entry.total, entry.count, entry.avg), 0.9, 0.9, 0.9)
+            if (entry.combatCount or 0) > 0 then
+                GameTooltip:AddLine(("In combat: %.1f ms in %d calls (avg %.3f ms, max %.2f ms)")
+                    :format(entry.combatTotal or 0, entry.combatCount or 0,
+                        entry.combatAvg or 0, entry.combatMax or 0), 1, 0.82, 0)
+            end
+            if (entry.alloc or 0) > 0 then
+                GameTooltip:AddLine(("Lua memory allocated: %.1f KB (%.2f KB/call, %.1f KB in combat)")
+                    :format(entry.alloc, entry.count > 0 and (entry.alloc / entry.count) or 0,
+                        entry.combatAlloc or 0), 0.7, 0.85, 1)
+            end
             GameTooltip:AddLine(("Slowest %.2f ms%s"):format(entry.max,
                 entry.maxAt and (" at " .. date("%H:%M:%S", entry.maxAt)) or ""), 0.9, 0.9, 0.9)
             GameTooltip:Show()
@@ -195,7 +222,7 @@ local function DrawSpikes()
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", window.content, "TOPLEFT", 0, -(count - 1) * ROW_HEIGHT)
         row:SetPoint("TOPRIGHT", window.content, "TOPRIGHT", 0, -(count - 1) * ROW_HEIGHT)
-        LayoutColumns(row, row.cols)
+        LayoutColumns(row, row.cols, true)
 
         local share = spike.frameMs > 0 and spike.oxedMs / spike.frameMs * 100 or 0
         local culprit = Profiler():SpikeCulprit(spike)
@@ -203,7 +230,7 @@ local function DrawSpikes()
         row.cols[2]:SetText(("%s%.0f|r"):format(MsColour(spike.frameMs / 3), spike.frameMs))
         row.cols[3]:SetText(("%s%.1f|r"):format(MsColour(spike.oxedMs), spike.oxedMs))
         row.cols[4]:SetText(("%.0f%%"):format(share))
-        row.cols[5]:SetText(culprit
+        row.cols[NUM_COLS]:SetText(culprit
             and ("%s  |cff9d9d9d%.1f ms|r"):format(culprit.label, culprit.ms)
             or "|cff9d9d9dnothing measured from OxedHub|r")
         row.tooltip = SpikeTooltip(spike)
@@ -217,17 +244,37 @@ end
 
 local function SetHeader()
     local h = window.header
+    local isSpikes = (window.tab == "spikes")
+    local widths = isSpikes and SPIKE_WIDTHS or WIDTHS
+    local x = 0
+    for i = 1, NUM_COLS - 1 do
+        local hit = h["hit" .. i]
+        hit:ClearAllPoints()
+        if i <= #widths then
+            hit:SetPoint("LEFT", h, "LEFT", x, 0)
+            hit:SetWidth(widths[i])
+            hit:Show()
+            x = x + widths[i] + 6
+        else
+            hit:Hide()
+        end
+    end
+    local lastHit = h["hit" .. NUM_COLS]
+    lastHit:ClearAllPoints()
+    lastHit:SetPoint("LEFT", h, "LEFT", x + 6, 0)
+    lastHit:SetPoint("RIGHT", h, "RIGHT", -4, 0)
+
     if window.tab == "top" then
         for i, sort in ipairs(SORTS) do
             h.cols[i]:SetText((window.sortKey == sort.key and "|cffffd100" or "|cffaaaaaa") .. sort.header .. "|r")
         end
-        h.cols[5]:SetText("|cffaaaaaaWhat  (click a column title to sort)|r")
+        h.cols[NUM_COLS]:SetText("|cffaaaaaaWhat  (click a column title to sort)|r")
     else
         h.cols[1]:SetText("|cffaaaaaaTime|r")
         h.cols[2]:SetText("|cffaaaaaaFrame ms|r")
         h.cols[3]:SetText("|cffaaaaaaOxedHub ms|r")
         h.cols[4]:SetText("|cffaaaaaaShare|r")
-        h.cols[5]:SetText("|cffaaaaaaSlowest part  (hover for everything that ran)|r")
+        h.cols[NUM_COLS]:SetText("|cffaaaaaaSlowest part  (hover for everything that ran)|r")
     end
 end
 
@@ -244,8 +291,12 @@ local function Refresh()
     else
         state = P:IsActive() and "|cff40ff40Recording|r" or "|cffff5555Stopped|r"
     end
-    window.status:SetText(("%s   %d s   %d frames   %d hitches   normal frame %.1f ms")
-        :format(state, length, s.frames, s.hitches, P:GetBaseline()))
+    local cSecs = s.combatSecs or 0
+    local combatText = cSecs >= 1
+        and ("   combat %.0fs (%.2f ms/s)"):format(cSecs, (s.combatOxedMs or 0) / cSecs)
+        or ""
+    window.status:SetText(("%s   %d s   %d frames   %d hitches   normal %.1f ms%s")
+        :format(state, length, s.frames, s.hitches, P:GetBaseline(), combatText))
 
     -- Which recording is on screen: the live one, or one saved at a reload.
     local history = P:GetHistory()
@@ -363,7 +414,7 @@ local function Build()
     local P = Profiler()
 
     window = CreateFrame("Frame", "OxedHubPerformanceWindow", UIParent, "BasicFrameTemplateWithInset")
-    window:SetSize(760, 520)
+    window:SetSize(820, 520)
     window:SetPoint("CENTER")
     window:SetFrameStrata("FULLSCREEN_DIALOG")
     window:SetFrameLevel(210)
@@ -464,22 +515,22 @@ local function Build()
         window.tabs[#window.tabs + 1] = tabButton
     end
 
-    -- Column titles. On the Top tab the four number columns sort the list.
+    -- Column titles. On the Top tab the six number columns sort the list.
     local header = CreateFrame("Frame", nil, window)
     header:SetHeight(ROW_HEIGHT)
     header:SetPoint("TOPLEFT", window, "TOPLEFT", 14, -84)
     header:SetPoint("TOPRIGHT", window, "TOPRIGHT", -34, -84)
     header.cols = {}
-    for i = 1, 5 do
+    for i = 1, NUM_COLS do
         local hit = CreateFrame("Button", nil, header)
         hit:SetHeight(ROW_HEIGHT)
         local fs = hit:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         fs:SetAllPoints()
-        fs:SetJustifyH(i == 5 and "LEFT" or "RIGHT")
+        fs:SetJustifyH(i == NUM_COLS and "LEFT" or "RIGHT")
         header.cols[i] = fs
-        if i <= 4 then
+        if i <= #SORTS then
             hit:SetScript("OnClick", function()
-                if window.tab == "top" then
+                if window.tab == "top" and SORTS[i] then
                     window.sortKey = SORTS[i].key
                     Refresh()
                 end
@@ -488,34 +539,25 @@ local function Build()
         hit.fs = fs
         header["hit" .. i] = hit
     end
-    -- Lay the clickable areas out on the same columns as the rows.
-    local x = 0
-    for i = 1, 4 do
-        header["hit" .. i]:SetPoint("LEFT", header, "LEFT", x, 0)
-        header["hit" .. i]:SetWidth(WIDTHS[i])
-        x = x + WIDTHS[i] + 6
-    end
-    header.hit5:SetPoint("LEFT", header, "LEFT", x + 6, 0)
-    header.hit5:SetPoint("RIGHT", header, "RIGHT", -4, 0)
     window.header = header
 
     local scroll = CreateFrame("ScrollFrame", "OxedHubPerformanceScroll", window, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
     scroll:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -34, 36)
     local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(700, 1)
+    content:SetSize(760, 1)
     scroll:SetScrollChild(content)
     window.scroll, window.content = scroll, content
 
     window.empty = content:CreateFontString(nil, "OVERLAY", "GameFontDisable")
     window.empty:SetPoint("TOPLEFT", content, "TOPLEFT", 4, -8)
-    window.empty:SetWidth(680)
+    window.empty:SetWidth(740)
     window.empty:SetJustifyH("LEFT")
     window.empty:SetText("Nothing recorded yet. Press Start, then play the way that lags -- the same fight, the same rotation -- and come back here.")
 
     local hint = window:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     hint:SetPoint("BOTTOMLEFT", window, "BOTTOMLEFT", 16, 14)
-    hint:SetText("Times are OxedHub's own work. A spike where OxedHub's share is small came from the game or another addon.")
+    hint:SetText("Times are OxedHub's own work. Click Combat ms or Alloc KB to find combat bottlenecks and garbage makers.")
 
     -- The numbers keep moving while recording; once a second is plenty to read.
     local elapsed = 0
@@ -579,7 +621,7 @@ local function UpdateMini()
     mini.dot:SetVertexColor(P:IsActive() and 0.25 or 1, P:IsActive() and 1 or 0.3, 0.25)
 
     if P:IsActive() then
-        mini.top.text:SetText(("|cff40ff40Recording|r   OxedHub %s%.2f ms/s|r   peak %s%.1f ms|r   %d fps")
+        mini.top.text:SetText(("|cff40ff40Rec|r  Oxed %s%.2f ms/s|r  peak %s%.1f ms|r  %d fps")
             :format(MsColour(live.msPerSecond), live.msPerSecond,
                 MsColour(live.peakFrameMs), live.peakFrameMs, fps + 0.5))
     else

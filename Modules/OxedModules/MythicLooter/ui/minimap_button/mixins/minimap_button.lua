@@ -94,7 +94,10 @@ function KeystoneLootMinimapButtonMixin:Init()
             local minimapTable = DB:Get("settings.minimap");
             LDBIcon:Register(AddonName, dataObject, minimapTable);
 
-            if (DB:Get("settings.minimap.hide")) then
+            -- Never while the OxedHub module is switched off (OnEnable shows it).
+            local mod = OxedHubDB and OxedHubDB.modules and OxedHubDB.modules.mythiclooter;
+            local moduleOff = type(mod) == "table" and mod.enabled == false;
+            if (DB:Get("settings.minimapButton.hide") or moduleOff) then
                 LDBIcon:Hide(AddonName);
             end
 
@@ -110,7 +113,8 @@ function KeystoneLootMinimapButtonMixin:Init()
         self:SetShown(enabled);
     end);
 
-    self:SetShown(DB:Get("settings.minimap.enabled"));
+    local mod = OxedHubDB and OxedHubDB.modules and OxedHubDB.modules.mythiclooter;
+    self:SetShown(DB:Get("settings.minimap.enabled") and not (type(mod) == "table" and mod.enabled == false));
     self:SetPoint(GetPosition(DB:Get("settings.minimap.degrees"), 5));
 end
 
@@ -128,7 +132,7 @@ end
 
 function KeystoneLootMinimapButtonMixin:OnEnter()
     GameTooltip:SetOwner(self, "ANCHOR_LEFT");
-    GameTooltip:SetText(AddonName, 1, 1, 1);
+    GameTooltip:SetText("Oxed " .. AddonName, 1, 1, 1);
     GameTooltip:AddLine(L["Left click: Open overview"]);
     GameTooltip:Show();
 end

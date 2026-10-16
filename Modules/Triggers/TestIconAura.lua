@@ -218,6 +218,10 @@ local function CancelLoop(triggerId, trigger)
 end
 
 local function EvaluateTestAuraTriggers(initial)
+    if not initial and OxedHub.Core and OxedHub.Core.HasEnabledTrigger
+        and not OxedHub.Core:HasEnabledTrigger("TEST_ICON_AURA") then
+        return
+    end
     local profile = OxedHub.db and OxedHub.db.profile
     if not profile or not profile.triggers then return end
 

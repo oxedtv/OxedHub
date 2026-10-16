@@ -25,6 +25,7 @@ local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -
 
 local DEFAULTS = {
     enabled       = false,  -- off until the player switches it on
+    minimapButton = true,  -- its own icon on the minimap while switched on
     showHearth    = true,
     showClass     = true,
     showPortals   = true,
@@ -43,6 +44,7 @@ local DEFAULTS = {
     spiralRound   = true,   -- round icons (both layouts; the key keeps its old name)
     buttonRound   = false,  -- the main button round instead of square
     perArm        = 25,     -- icons in one arm before the group starts another beside it
+    spiralPattern = "rings", -- preset shape of the spiral, see PATTERNS
 
     -- One direction per group, kept as flat keys. A table here would be copied
     -- by reference into every character's settings and shared by accident.
@@ -150,10 +152,14 @@ end
 
 -- ── Building the list ───────────────────────────────────────────────────────
 
+-- Put-away teleports never reach the screen; only the All teleports list
+-- gathers them, since that is where they are switched back on.
+local includeHidden = false
+
 local function AddEntry(list, entry)
     if not entry.name then return end     -- not cached yet; returns next refresh
     entry.hidden = IsHidden(entry.kind, entry.id)
-    if entry.hidden and not settings.showHidden then return end
+    if entry.hidden and not includeHidden then return end
     list[#list + 1] = entry
 end
 
@@ -515,14 +521,33 @@ local function PointCount(groupKey)
     return math.max(BEND_MIN, math.min(BEND_MAX, math.floor(n)))
 end
 
+-- Preset shapes. Rings packs every icon in circles round the button, the
+-- tightest of them, so a big collection stays within easy reach of the mouse;
+-- the others are arms with a preset bend (fan: all arms upward).
+local PATTERNS = {
+    rings    = { rings = true },
+    galaxy   = { curl = CURL_DEFAULT },
+    sunburst = { curl = 0 },
+    whirl    = { curl = 2.2 },
+    fan      = { curl = 0.35, fan = true },
+}
+
+local function Pattern()
+    return PATTERNS[settings and settings.spiralPattern] or PATTERNS.galaxy
+end
+
 local function ArmAngle(groupKey, index, total)
     local saved = tonumber(settings["arm_" .. groupKey])
     if saved then return saved end
+    if Pattern().fan then
+        if total <= 1 then return 90 end
+        return 165 - (index - 1) * 150 / (total - 1)
+    end
     return (index - 1) * 360 / math.max(1, total) + 90
 end
 
 local function ArmCurl(groupKey)
-    return tonumber(settings["curl_" .. groupKey]) or CURL_DEFAULT
+    return tonumber(settings["curl_" .. groupKey]) or Pattern().curl or CURL_DEFAULT
 end
 
 -- A point set by hand, or nil. Flat keys, pt_<group>_<n>x / y.
@@ -907,6 +932,11 @@ local function SetArmEditing(on)
     editingArms = on and true or false
     OxedHub._tpEditingArms = editingArms
     if editingArms and settings.layout ~= "spiral" then settings.layout = "spiral" end
+    -- Rings have no arms to edit.
+    if editingArms and Pattern().rings then
+        settings.spiralPattern = "galaxy"
+        if optionsWindow and optionsWindow.patternButton then optionsWindow.patternButton.Refresh() end
+    end
     Render()
     PlaceHandles()
 end
@@ -945,6 +975,55 @@ RenderSpiral = function(groups, size)
     local besideStep = (step / start) * 1.05
     local count, reach = 0, 0
 
+    local function Place(entry, x, y)
+        count = count + 1
+        local button = spiral.buttons[count] or CreateButton(spiral, count)
+        button:SetSize(size, size)
+        button:ClearAllPoints()
+        button:SetPoint("CENTER", spiral, "CENTER", x, y)
+        button.entry = entry
+        button.icon:SetTexture(entry.icon or 134400)
+        button.icon:SetDesaturated(entry.hidden == true)
+        SetRound(button, round)
+        SetAction(button, entry)
+        PaintCooldown(button, entry)
+        button:Show()
+        -- While the arms are edited the icons are only a picture of the
+        -- shape: no click may cast one, and they are dimmed to show it.
+        -- (Editing is out of combat only, so a secure button may change.)
+        button:EnableMouse(true)
+        if editingArms then
+            -- Carried to another arm, never cast.
+            button:SetAttribute("type1", nil)
+            if not button.carryHooked then
+                button.carryHooked = true
+                button:RegisterForDrag("LeftButton")
+                button:SetScript("OnDragStart", function(self) StartCarry(self) end)
+                button:SetScript("OnDragStop", function() DropCarry() end)
+            end
+        end
+        button:SetAlpha(editingArms and 0.55 or 1)
+        local r = math.sqrt(x * x + y * y)
+        if r > reach then reach = r end
+    end
+
+    -- Rings: circle after circle, each as full as its length allows, groups
+    -- one after another clockwise from the top. No arms, so no handles.
+    if Pattern().rings and not editingArms then
+        wipe(armPaths)
+        local r, slot = start, 0
+        for _, groupKey in ipairs(visible) do
+            for _, entry in ipairs(groups[groupKey]) do
+                local capacity = math.max(6, math.floor(2 * math.pi * r / step))
+                local theta = math.pi / 2 - slot * 2 * math.pi / capacity
+                Place(entry, r * math.cos(theta), r * math.sin(theta))
+                slot = slot + 1
+                if slot >= capacity then slot, r = 0, r + step end
+            end
+        end
+        visible = {}
+    end
+
     for armIndex, groupKey in ipairs(visible) do
         local list = groups[groupKey]
         local a = math.rad(ArmAngle(groupKey, armIndex, #visible))
@@ -969,36 +1048,7 @@ RenderSpiral = function(groups, size)
                 Smooth(subPath, polyline)
             end
             local x, y = PointAlong(polyline, along)
-
-            count = count + 1
-            local button = spiral.buttons[count] or CreateButton(spiral, count)
-            button:SetSize(size, size)
-            button:ClearAllPoints()
-            button:SetPoint("CENTER", spiral, "CENTER", x, y)
-            button.entry = entry
-            button.icon:SetTexture(entry.icon or 134400)
-            button.icon:SetDesaturated(entry.hidden == true)
-            SetRound(button, round)
-            SetAction(button, entry)
-            PaintCooldown(button, entry)
-            button:Show()
-            -- While the arms are edited the icons are only a picture of the
-            -- shape: no click may cast one, and they are dimmed to show it.
-            -- (Editing is out of combat only, so a secure button may change.)
-            button:EnableMouse(true)
-            if editingArms then
-                -- Carried to another arm, never cast.
-                button:SetAttribute("type1", nil)
-                if not button.carryHooked then
-                    button.carryHooked = true
-                    button:RegisterForDrag("LeftButton")
-                    button:SetScript("OnDragStart", function(self) StartCarry(self) end)
-                    button:SetScript("OnDragStop", function() DropCarry() end)
-                end
-            end
-            button:SetAlpha(editingArms and 0.55 or 1)
-            local r = math.sqrt(x * x + y * y)
-            if r > reach then reach = r end
+            Place(entry, x, y)
         end
         for n = 2, #path do
             local p = path[n]
@@ -1025,6 +1075,22 @@ RenderSpiral = function(groups, size)
     end
 end
 
+
+local OPPOSITE = { left = "right", right = "left", up = "down", down = "up" }
+
+-- Free space from each side of the button to the screen's edge, in the
+-- strips' own units (both are children of UIParent). Nil before it is placed.
+local function SpaceAround()
+    if not anchor then return nil end
+    local l, r, t, b = anchor:GetLeft(), anchor:GetRight(), anchor:GetTop(), anchor:GetBottom()
+    if not (l and r and t and b) then return nil end
+    local k = anchor:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    local w, h = UIParent:GetWidth(), UIParent:GetHeight()
+    return {
+        left = l * k - 4, right = w - r * k - 4,
+        down = b * k - 4, up = h - t * k - 4,
+    }
+end
 
 function Render()
     if InCombatLockdown() then return end
@@ -1127,6 +1193,20 @@ function Render()
             -- another. Stacking them across it instead is what sent them off
             -- sideways: two groups sent down ended up side by side rather than
             -- one below the other.
+            --
+            -- ⚠ Strips are clamped to the screen, so one that runs past the
+            -- edge is pushed back over the button and covers it. A strip with
+            -- no room its own way goes the opposite way when that has room
+            -- (or more of it than its own).
+            local along = vertical and strip:GetHeight() or strip:GetWidth()
+            local room = SpaceAround()
+            if room and used[direction] + along > room[direction] then
+                local other = OPPOSITE[direction]
+                if used[other] + along <= room[other]
+                    or room[other] - used[other] > room[direction] - used[direction] then
+                    direction = other
+                end
+            end
             local offset = used[direction]
             strip:ClearAllPoints()
             if direction == "left" then
@@ -1525,10 +1605,9 @@ end
 local function GatherAll()
     wipe(listEntries)
     -- Hidden ones too: this list is where they are switched back on.
-    local was = settings.showHidden
-    settings.showHidden = true
+    includeHidden = true
     local ok, groups = pcall(CollectEntries)
-    settings.showHidden = was
+    includeHidden = false
     if not ok or type(groups) ~= "table" then return 0, 0 end
     ApplyMoves(groups)
 
@@ -1821,12 +1900,32 @@ local function ShowTeleportList()
     listWindow:SetShown(not listWindow:IsShown())
 end
 
+-- Its own minimap icon, made the first time it is needed (after binding).
+local minimapIcon
+local function MinimapIcon()
+    if minimapIcon or not settings then return minimapIcon end
+    local API = OxedHub.ModuleAPI
+    minimapIcon = API and API.MinimapButton and API:MinimapButton({
+        key = "teleports", label = "Teleports", icon = "Interface\\Icons\\Spell_Arcane_PortalDalaran", config = settings,
+        hint = "Click: your teleports. Right-click: options.",
+        onClick = function(mouse)
+            if mouse == "RightButton" then
+                local mod = API:GetModule("teleports")
+                if mod and mod.OnOptionsShow then mod:OnOptionsShow() end
+            else
+                Toggle()
+            end
+        end,
+    })
+    return minimapIcon
+end
+
 local function ShowOptions()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("Teleports", 460, 780)
+        optionsWindow = API:CreateOptionsWindow("Teleports", 460, 770)
         local w = optionsWindow
 
         -- Untick a group to hide it; the arrows say which way it comes out.
@@ -1841,9 +1940,11 @@ local function ShowOptions()
         w:AddCheckbox(settings, "closeOnLeave", "Fold away when the mouse leaves")
         w:AddCheckbox(settings, "showButton", "Show the button on screen", nil, ApplyButton)
         w:AddCheckbox(settings, "lockButton", "Lock the button in place")
-        w:AddCheckbox(settings, "showHidden", "Show the ones you put away",
-            "Right-clicking an icon puts it away. Tick this to see them again, greyed out, and right-click one to bring it back.", Render)
 
+        w:AddCheckbox(settings, "minimapButton", "Show minimap button", nil, function()
+            local icon = MinimapIcon()
+            if icon then icon:Apply(settings.enabled == true) end
+        end)
         w:AddChoice(settings, "layout", "Layout", {
             { value = "rows", text = "A row per group" },
             { value = "spiral", text = "Spiral around the button" },
@@ -1851,39 +1952,48 @@ local function ShowOptions()
             ShowLayoutControls(w)
             if opened then Render() end
         end)
+        -- AddChoice and AddSlider hand back only the control; their caption
+        -- is found by its text so it hides along with it.
+        local function SpiralOnlyCaption(prefix)
+            for _, region in ipairs({ w:GetRegions() }) do
+                local text = region.GetText and region:GetObjectType() == "FontString" and region:GetText()
+                if type(text) == "string" and text:sub(1, #prefix) == prefix then
+                    table.insert(w.spiralOnly, region)
+                end
+            end
+        end
+
+        w.patternButton = w:AddChoice(settings, "spiralPattern", "Spiral pattern", {
+            { value = "rings",    text = "Rings (compact)" },
+            { value = "galaxy",   text = "Galaxy" },
+            { value = "sunburst", text = "Sunburst" },
+            { value = "whirl",    text = "Whirlpool" },
+            { value = "fan",      text = "Fan upward" },
+        }, function(value)
+            if InCombatLockdown() then return end
+            if editingArms then SetArmEditing(false) end
+            -- A preset replaces arms shaped by hand.
+            if not (PATTERNS[value] and PATTERNS[value].rings) then
+                for _, groupKey in ipairs(OxedHub.TeleportsData.GROUP_ORDER) do
+                    ResetGroupShape(groupKey)
+                end
+            end
+            if opened then Render() end
+        end)
+        table.insert(w.spiralOnly, w.patternButton)
+        SpiralOnlyCaption("Spiral pattern")
+
         w:HookScript("OnShow", function() ShowLayoutControls(w) end)
         w:AddCheckbox(settings, "buttonRound", "Round main button", nil, ApplyButton)
         w:AddCheckbox(settings, "spiralRound", "Round teleport icons", nil, function()
             if opened then Render() end
         end)
 
-        -- See how a big collection looks: copies of your own teleports.
         local all = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         all:SetSize(308, 22)
         all:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
         all:SetText("All teleports: show, hide, move")
         all:SetScript("OnClick", ShowTeleportList)
-        w.cursorY = w.cursorY - 30
-
-        local sim = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
-        sim:SetSize(150, 22)
-        sim:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        sim:SetText("Simulate +100")
-        sim:SetScript("OnClick", function()
-            if InCombatLockdown() then return end
-            simulated = simulated + 100
-            print(("|cff00ff00OxedHub:|r Teleports: simulating %d extra icons (copies of yours, not saved)."):format(simulated))
-            if opened then Render() else OpenAll() end
-        end)
-        local clear = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
-        clear:SetSize(150, 22)
-        clear:SetPoint("LEFT", sim, "RIGHT", 8, 0)
-        clear:SetText("Clear simulation")
-        clear:SetScript("OnClick", function()
-            if InCombatLockdown() then return end
-            simulated = 0
-            if opened then Render() end
-        end)
         w.cursorY = w.cursorY - 30
 
         -- The visual editor: a coloured handle at the end of each arm.
@@ -1915,9 +2025,10 @@ local function ShowOptions()
             if editingArms then SetArmEditing(false) end
         end)
 
-        w:AddSlider(settings, "perArm", "Icons per arm", 5, 80, 1, "%s: %d", function()
+        table.insert(w.spiralOnly, w:AddSlider(settings, "perArm", "Icons per arm", 5, 80, 1, "%s: %d", function()
             if opened and not InCombatLockdown() then Render() end
-        end)
+        end))
+        SpiralOnlyCaption("Icons per arm")
 
         AddSizeSlider(w, "iconSize", "Icon size", function()
             if opened then Render() end
@@ -1949,8 +2060,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "teleports",
         name     = "Teleports",
-        version  = "1.4.2",
-        updated  = 20261016.9,   -- All teleports list in the grey module frame
+        version  = "1.6.0",
+        updated  = 20261016.99,  -- Minimap button
         author   = "Oxed",
         category = "quests",
         keywords = { "teleport", "portal", "hearthstone", "travel", "mage", "wormhole", "toy", "death gate" },
@@ -1964,10 +2075,13 @@ loginFrame:SetScript("OnEvent", function(self)
 
         OnEnable = function(_, config)
             settings = config
+            local icon = MinimapIcon()
+            if icon then icon:Apply(true) end
             Start()
         end,
 
         OnDisable = function()
+            if minimapIcon then minimapIcon:Apply(false) end
             Stop()
         end,
     })

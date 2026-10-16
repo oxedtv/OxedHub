@@ -1759,6 +1759,13 @@ local auraPrimed = false        -- a full scan has filled the cache
 local auraStringKeys = false    -- the last full scan keyed an aura by name or spell
 local trailingQueued = false
 
+local function SecretSpellToNumber(id)
+    return tonumber(tostring(id))
+end
+
+local auraEventData = {}
+local auraLostEventData = { isLost = true }
+
 -- One aura, compared with the record the cache holds under the same key.
 -- Writes the record into `into` and fires the rule event for a new aura,
 -- more stacks or a refresh. Returns the key used.
@@ -1773,27 +1780,39 @@ local function ApplyAura(aura, prefix, into, auraCache, spellCache)
 
     if not instanceId then return nil end
 
+    local plainInstance = not CheckSecretValue(instanceId)
+    local existing = plainInstance and auraCache[instanceId] or nil
+
     local realSpellID = nil
-    if not CheckSecretValue(spellId) then
+    local spellInfo = nil
+    if existing and existing.realSpellID then
+        realSpellID = existing.realSpellID
+    elseif not CheckSecretValue(spellId) then
         realSpellID = spellId
-    else
-        local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellId)
-        if info and info.spellID and not CheckSecretValue(info.spellID) then
-            realSpellID = info.spellID
+    elseif spellId ~= nil then
+        spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellId)
+        if spellInfo and spellInfo.spellID and not CheckSecretValue(spellInfo.spellID) then
+            realSpellID = spellInfo.spellID
         end
     end
 
-    -- If name is secret, try to resolve it using C_Spell (which accepts secret spellIds)
+    -- If name is secret, reuse existing resolved name or resolve once via C_Spell
     if CheckSecretValue(name) then
-        local cachedName = realSpellID and spellCache[realSpellID] or nil
-        if cachedName then
-            name = cachedName
+        if existing and existing.name and not CheckSecretValue(existing.name) then
+            name = existing.name
         else
-            local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellId)
-            if spellInfo and spellInfo.name then
-                name = spellInfo.name
-                if realSpellID then
-                    pcall(rawset, spellCache, realSpellID, name)
+            local cachedName = realSpellID and spellCache[realSpellID] or nil
+            if cachedName then
+                name = cachedName
+            else
+                if not spellInfo and spellId ~= nil then
+                    spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellId)
+                end
+                if spellInfo and spellInfo.name then
+                    name = spellInfo.name
+                    if realSpellID then
+                        pcall(rawset, spellCache, realSpellID, name)
+                    end
                 end
             end
         end
@@ -1810,7 +1829,7 @@ local function ApplyAura(aura, prefix, into, auraCache, spellCache)
     -- debuffs together, and costs no string. The string keys below are only
     -- for a secret instance number.
     local key
-    if instanceId ~= nil and not CheckSecretValue(instanceId) then
+    if plainInstance then
         key = instanceId
     elseif realSpellID ~= nil then
         key = (prefix or "") .. "sp_" .. tostring(realSpellID)
@@ -1827,7 +1846,7 @@ local function ApplyAura(aura, prefix, into, auraCache, spellCache)
     -- over. applications and expirationTime can be secret; comparing one is
     -- the error, so a secret on either side counts as "no change" and a new
     -- aura still fires as new.
-    local old = auraCache[key]
+    local old = existing or auraCache[key]
     local isNewAura = not old
     local isStackIncrease = false
     local isRefreshed = false
@@ -1845,52 +1864,63 @@ local function ApplyAura(aura, prefix, into, auraCache, spellCache)
     -- The record from the last scan is reused: a table per aura per scan was
     -- most of this function's garbage.
     local record = type(old) == "table" and old or {}
-    record.name = name
-    record.id = realSpellID or spellId
+    local finalId = realSpellID or spellId
+    if isNewAura or record.id ~= finalId then
+        record.id = finalId
+        record.realSpellID = realSpellID
+        if realSpellID then
+            record.plainId = realSpellID
+        elseif finalId ~= nil then
+            local okP, numId = pcall(SecretSpellToNumber, finalId)
+            record.plainId = (okP and numId) or nil
+        else
+            record.plainId = nil
+        end
+    end
+    if isNewAura or record.name ~= name then
+        record.name = name
+        record.food = FoodKindOf(name)
+    end
     record.applications = applications
     record.expirationTime = expirationTime
     record.instanceId = instanceId
-    -- Food / Well Fed, with each name's words looked up once.
-    record.food = FoodKindOf(name)
     into[key] = record
 
-    if isNewAura and record.food > 0 then
+    if isNewAura and (record.food or 0) > 0 then
         table.insert(auraBuffer_FoodNew, name)
     end
 
-    if isNewAura or isStackIncrease or isRefreshed then
+    if (isNewAura or isStackIncrease or isRefreshed) and Core:HasEnabledTrigger("UNIT_AURA") then
         if OxedHub.debug then
             if isNewAura then
-                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Gained: %s (ID: %s)", tostring(name), tostring(realSpellID or spellId)))
+                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Gained: %s (ID: %s)", tostring(name), tostring(finalId)))
             elseif isStackIncrease then
-                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Stack Increased: %s (ID: %s) to %d", tostring(name), tostring(realSpellID or spellId), applications))
+                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Stack Increased: %s (ID: %s) to %d", tostring(name), tostring(finalId), applications))
             else
-                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Refreshed: %s (ID: %s)", tostring(name), tostring(realSpellID or spellId)))
+                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Refreshed: %s (ID: %s)", tostring(name), tostring(finalId)))
             end
         end
-        OxedHub.Triggers:ProcessEvent("UNIT_AURA", {
-            spellName = name,
-            spellID = realSpellID or spellId,
-            icon = aura.icon,
-            duration = aura.duration,
-            expirationTime = aura.expirationTime,
-            applications = applications,
-            isLost = false,
-        })
+        auraEventData.spellName = name
+        auraEventData.spellID = finalId
+        auraEventData.icon = aura.icon
+        auraEventData.duration = aura.duration
+        auraEventData.expirationTime = aura.expirationTime
+        auraEventData.applications = applications
+        auraEventData.isLost = false
+        OxedHub.Triggers:ProcessEvent("UNIT_AURA", auraEventData)
     end
     return key
 end
 
 local function FireAuraLost(data)
     if type(data) ~= "table" or not data.name then return end
+    if not Core:HasEnabledTrigger("UNIT_AURA") then return end
     if OxedHub.debug then
         print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Lost: %s (ID: %s)", tostring(data.name), tostring(data.id)))
     end
-    OxedHub.Triggers:ProcessEvent("UNIT_AURA", {
-        spellName = data.name,
-        spellID = data.id,
-        isLost = true,
-    })
+    auraLostEventData.spellName = data.name
+    auraLostEventData.spellID = data.id
+    OxedHub.Triggers:ProcessEvent("UNIT_AURA", auraLostEventData)
 end
 
 -- Built from the cache once it is up to date: the taint-free spell id set
@@ -1907,13 +1937,9 @@ local function Publish(auraCache, now)
     local isEatingNow, hasWellFedNow = false, false
     for _, record in pairs(auraCache) do
         if type(record) == "table" then
-            local id = record.id
-            if id ~= nil then
-                if not CheckSecretValue(id) then
-                    build[id] = true
-                else
-                    pcall(AddSecretSpellID, build, id)
-                end
+            local pid = record.plainId
+            if pid then
+                build[pid] = true
             end
             local food = record.food or 0
             if food % 2 == FOOD_EATING then isEatingNow = true end
@@ -2242,6 +2268,11 @@ function Core:OnSpellCastStart(unit, castGUID, spellID)
     })
 end
 
+local ITEM_CAST_EVENTS = { "ITEM_TRINKET", "ITEM_POTION" }
+local castEventData = {}
+local interruptCastEventData = {}
+local raidToolEventData = {}
+
 -- Spell cast succeeded handler
 function Core:OnSpellCastSucceeded(unit, castGUID, spellID)
     if unit ~= "player" and unit ~= "pet" then return end
@@ -2264,11 +2295,16 @@ function Core:OnSpellCastSucceeded(unit, castGUID, spellID)
         self:ArmCooldownReady(spellID)
     end
 
-    if unit == "player" and spellID then
-        local name = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(spellID)
-        if name then
-            if not Core.spellCache then Core.spellCache = {} end
-            Core.spellCache[spellID] = name
+    local castName
+    if spellID then
+        if not Core.spellCache then Core.spellCache = {} end
+        castName = Core.spellCache[spellID]
+        if not castName and C_Spell and C_Spell.GetSpellName then
+            local okName, name = pcall(C_Spell.GetSpellName, spellID)
+            if okName and name then
+                castName = name
+                Core.spellCache[spellID] = name
+            end
         end
     end
     
@@ -2306,19 +2342,17 @@ function Core:OnSpellCastSucceeded(unit, castGUID, spellID)
                     OxedHub.Animations:PlayCooldownProgress(spellID)
                 end
 
-                OxedHub.Triggers:ProcessEvent("INTERRUPT_USED", {
-                    spellID = spellID,
-                    unit = unit,
-                    result = "cast",
-                })
+                interruptCastEventData.spellID = spellID
+                interruptCastEventData.unit = unit
+                interruptCastEventData.result = "cast"
+                OxedHub.Triggers:ProcessEvent("INTERRUPT_USED", interruptCastEventData)
                 -- Schedule fail check after timeout (0.6s)
                 C_Timer.After(INTERRUPT_RESULT_TIMEOUT, function()
                     if pendingInterrupt and pendingInterrupt.seq == mySeq then
-                        OxedHub.Triggers:ProcessEvent("INTERRUPT_USED", {
-                            spellID = spellID,
-                            unit = unit,
-                            result = "failed",
-                        })
+                        interruptCastEventData.spellID = spellID
+                        interruptCastEventData.unit = unit
+                        interruptCastEventData.result = "failed"
+                        OxedHub.Triggers:ProcessEvent("INTERRUPT_USED", interruptCastEventData)
                         pendingInterrupt = nil
                     end
                 end)
@@ -2331,10 +2365,9 @@ function Core:OnSpellCastSucceeded(unit, castGUID, spellID)
     if wantsRaidTool then
         for _, toolID in ipairs(OxedHub.CONFIG.RAID_TOOL_SPELLS) do
             if spellID == toolID then
-                OxedHub.Triggers:ProcessEvent("RAID_TOOL", {
-                    spellID = spellID,
-                    unit = unit,
-                })
+                raidToolEventData.spellID = spellID
+                raidToolEventData.unit = unit
+                OxedHub.Triggers:ProcessEvent("RAID_TOOL", raidToolEventData)
                 break
             end
         end
@@ -2376,22 +2409,16 @@ function Core:OnSpellCastSucceeded(unit, castGUID, spellID)
         return
     end
 
+    castEventData.spellID = spellID
+    castEventData.spellName = castName
+    castEventData.unit = unit
+
     if wantsSpellcast then
         -- Pass the name too: spells often exist under several ids (Avenging
         -- Wrath is 31884 on the player but 231895 in the spell database), so an
         -- id-only comparison misses. Triggers:ShouldTrigger falls back to
         -- matching on name when the ids differ.
-        local castName
-        if C_Spell and C_Spell.GetSpellName then
-            local okName, name = pcall(C_Spell.GetSpellName, spellID)
-            if okName then castName = name end
-        end
-
-        OxedHub.Triggers:ProcessEvent("UNIT_SPELLCAST_SUCCEEDED", {
-            spellID = spellID,
-            spellName = castName,
-            unit = unit,
-        })
+        OxedHub.Triggers:ProcessEvent("UNIT_SPELLCAST_SUCCEEDED", castEventData)
     end
 
     -- Potions and trinkets ride on the same cast.
@@ -2402,14 +2429,11 @@ function Core:OnSpellCastSucceeded(unit, castGUID, spellID)
     --
     -- Sent only for the player: a trinket going off on the target is not the
     -- player's trinket.
-    if unit == "player" then
-        for _, itemEvent in ipairs({ "ITEM_TRINKET", "ITEM_POTION" }) do
+    if unit == "player" and wantsItem then
+        for i = 1, #ITEM_CAST_EVENTS do
+            local itemEvent = ITEM_CAST_EVENTS[i]
             if self:HasEnabledTrigger(itemEvent) then
-                OxedHub.Triggers:ProcessEvent(itemEvent, {
-                    spellID = spellID,
-                    spellName = castName,
-                    unit = unit,
-                })
+                OxedHub.Triggers:ProcessEvent(itemEvent, castEventData)
             end
         end
     end

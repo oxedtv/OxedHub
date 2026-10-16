@@ -35,6 +35,13 @@ local active = false
 -- Per name: calls, total and longest time, and when the longest happened.
 local stats = {}
 
+-- Total game events seen while recording (event -> count) and in combat.
+local eventTotals = {}
+local eventCombatTotals = {}
+
+-- Baseline C_AddOnProfiler over-budget frame counts at the start of recording.
+local overBudgetAtStart = nil
+
 -- The calls made since the last frame tick, in the order they began, with how
 -- deep each one sat inside another. Parallel arrays rather than a table per
 -- call: a busy frame makes hundreds of calls, and a table each would feed the
@@ -50,10 +57,15 @@ local depth = 0
 local SPIKE_LOG = 100
 local spikes = {}
 
-local session = { startedAt = nil, stoppedAt = nil, frames = 0, hitches = 0, causes = {},
+local session = {
+    startedAt = nil, stoppedAt = nil, frames = 0, hitches = 0, causes = {},
     -- Lua memory of every addon together, in KB: where it began, its highest,
     -- and how often and how much the collector cleared.
-    memStart = nil, memPeak = 0, collections = 0, collectedKB = 0 }
+    memStart = nil, memPeak = 0, collections = 0, collectedKB = 0, totalAllocKB = 0,
+    -- Combat-specific slice so town idle time does not dilute raid/M+ numbers.
+    combatSecs = 0, combatFrames = 0, combatHitches = 0,
+    combatOxedMs = 0, combatAllocKB = 0,
+}
 
 -- Each addon's memory when the recording began (name -> KB), so the report
 -- can say who grew. Only measured outside combat; see MeasureAddonMemory.
@@ -61,8 +73,8 @@ local memAtStart = nil
 
 -- Rolling one-second figures for the mini window.
 local live = {
-    msPerSecond = 0, peakFrameMs = 0, worstFrame = 0,
-    accum = 0, peakAccum = 0, worstFrameAccum = 0, startedAt = 0,
+    msPerSecond = 0, peakFrameMs = 0, worstFrame = 0, kbPerSecond = 0,
+    accum = 0, peakAccum = 0, worstFrameAccum = 0, allocAccum = 0, startedAt = 0,
     framesAccum = 0, hitchAccum = 0,
 }
 
@@ -71,7 +83,10 @@ local live = {
 local function Record(label, ms, kb, topLevel)
     local s = stats[label]
     if not s then
-        s = { count = 0, total = 0, max = 0, alloc = 0, own = 0 }
+        s = {
+            count = 0, total = 0, max = 0, alloc = 0, own = 0,
+            combatCount = 0, combatTotal = 0, combatMax = 0, combatAlloc = 0, combatOwn = 0,
+        }
         stats[label] = s
     end
     s.count = s.count + 1
@@ -87,6 +102,13 @@ local function Record(label, ms, kb, topLevel)
     if ms > s.max then
         s.max = ms
         s.maxAt = time()
+    end
+    if InCombatLockdown() then
+        s.combatCount = (s.combatCount or 0) + 1
+        s.combatTotal = (s.combatTotal or 0) + ms
+        if topLevel then s.combatOwn = (s.combatOwn or 0) + ms end
+        if kb and kb > 0 then s.combatAlloc = (s.combatAlloc or 0) + kb end
+        if ms > (s.combatMax or 0) then s.combatMax = ms end
     end
 end
 
@@ -192,6 +214,8 @@ local FEATURES = {
     ["Execution.lua"] = "Trigger actions",
     ["SpellProc.lua"] = "Proc trigger",
     ["SelfAura.lua"] = "My Buff trigger",
+    ["TestIconAura.lua"] = "Icon Aura trigger",
+    ["CooldownReady.lua"] = "Cooldown Ready trigger",
     ["Aura.lua"] = "Aura trigger",
     ["BasicAuraTracker.lua"] = "Aura tracker",
     ["Bloodlust.lua"] = "Bloodlust trigger",
@@ -239,6 +263,16 @@ local FEATURES = {
     ["ModuleAPI.lua"] = "Modules page",
     ["ErrorJournal.lua"] = "Error journal",
     ["KickBar.lua"] = "KickBar",
+    ["BossEngine.lua"] = "BossEngine",
+    ["BossTimers.lua"] = "BossTimers",
+    ["BossTrack.lua"] = "BossTrack",
+    ["BossAlerts.lua"] = "BossAlerts",
+    ["BossHealth.lua"] = "BossHealth",
+    ["TrashTimers.lua"] = "TrashTimers",
+    ["BuffReminder.lua"] = "BuffReminder",
+    ["BuffReminderData.lua"] = "BuffReminder",
+    ["PartyInterrupts.lua"] = "PartyInterrupts",
+    ["Teleports.lua"] = "Teleports",
     ["ChatFilter.lua"] = "Chat Filter",
     ["CopyChat.lua"] = "Copy Chat",
     ["Attributes.lua"] = "Attributes",
@@ -254,11 +288,14 @@ local EVENT_WORDS = {
     UNIT_AURA = "buff or debuff changed",
     UNIT_SPELLCAST_SUCCEEDED = "spell cast",
     UNIT_SPELLCAST_START = "cast started",
+    UNIT_SPELLCAST_CHANNEL_START = "channel started",
+    UNIT_SPELLCAST_CHANNEL_STOP = "channel stopped",
     UNIT_SPELLCAST_INTERRUPTED = "cast interrupted",
     SPELL_ACTIVATION_OVERLAY_SHOW = "proc glow shown",
     SPELL_ACTIVATION_OVERLAY_HIDE = "proc glow ended",
     SPELL_UPDATE_USABLE = "spell became usable",
     SPELL_UPDATE_COOLDOWN = "spell cooldowns",
+    SPELL_UPDATE_CHARGES = "spell charges",
     ACTIONBAR_UPDATE_COOLDOWN = "action bar cooldowns",
     BAG_UPDATE_DELAYED = "bags changed",
     UPDATE_UI_WIDGET = "on-screen widget update",
@@ -270,12 +307,18 @@ local EVENT_WORDS = {
     PLAYER_REGEN_DISABLED = "entered combat",
     PLAYER_REGEN_ENABLED = "left combat",
     PLAYER_TARGET_CHANGED = "target changed",
+    PLAYER_FOCUS_CHANGED = "focus changed",
     NAME_PLATE_UNIT_ADDED = "nameplate appeared",
     NAME_PLATE_UNIT_REMOVED = "nameplate removed",
     GROUP_ROSTER_UPDATE = "group changed",
     MERCHANT_SHOW = "vendor opened",
     BANKFRAME_OPENED = "bank opened",
     GOSSIP_SHOW = "NPC menu opened",
+    ENCOUNTER_START = "boss pull",
+    ENCOUNTER_END = "boss end",
+    ENCOUNTER_TIMELINE_EVENT_ADDED = "timeline event added",
+    ENCOUNTER_TIMELINE_EVENT_STATE_CHANGED = "timeline state changed",
+    ENCOUNTER_TIMELINE_EVENT_REMOVED = "timeline event removed",
 }
 
 -- "Prey hunt tracker -- on-screen widget update  [PreyEngine.lua:900]"
@@ -295,6 +338,7 @@ Profiler.Describe = Describe
 -- While recording, each callback is named after the line that created it.
 -- Nothing global is replaced: other addons, and Blizzard's own code, keep the
 -- real C_Timer, so no one else's calls pass through OxedHub.
+local loading = true
 local proxy
 function Profiler:TimerProxy()
     if proxy then return proxy end
@@ -309,8 +353,9 @@ function Profiler:TimerProxy()
     -- once; a new function each time is still named each time.
     local wrappedTimers = setmetatable({}, { __mode = "k" })
 
-    local function Named(fn, kind)
-        if not active or type(fn) ~= "function" then return fn end
+    local function Named(fn, kind, alwaysWrap)
+        if type(fn) ~= "function" then return fn end
+        if not (active or loading or alwaysWrap) then return fn end
         local wrapped = wrappedTimers[fn]
         if not wrapped then
             wrapped = Profiler:Wrap(Describe(CallerLabel(4), kind), fn)
@@ -320,48 +365,35 @@ function Profiler:TimerProxy()
     end
 
     proxy.After = function(seconds, fn)
-        return real.After(seconds, Named(fn, "Timer"))
+        return real.After(seconds, Named(fn, "Timer", false))
     end
     proxy.NewTimer = function(seconds, fn)
-        return real.NewTimer(seconds, Named(fn, "Timer"))
+        return real.NewTimer(seconds, Named(fn, "Timer", false))
     end
+    -- Tickers may be started before the player clicks Record and keep running
+    -- into the recording, so NewTicker always wraps its callback.
     proxy.NewTicker = function(seconds, fn, iterations)
-        return real.NewTicker(seconds, Named(fn, "Ticker"), iterations)
+        return real.NewTicker(seconds, Named(fn, "Ticker", true), iterations)
     end
     return proxy
 end
 
 -- ── Script handlers ─────────────────────────────────────────────────────────
 -- OnUpdate and OnEvent handlers set by OxedHub code are named after the line
--- that set them, by watching SetScript on the frame types OxedHub uses.
---
--- Only while OxedHub is loading, or while recording. At load, every handler in
--- the addon is set, and naming them then means a later Start already covers
--- them; after load, SetScript calls from other addons are ignored at the cost
--- of one flag check.
+-- that set them, by watching SetScript and HookScript on the frame types
+-- OxedHub uses.
 --
 -- Protected frames are never touched: replacing a secure frame's script from
 -- addon code would taint it. OnClick and the rest are left alone too, since
 -- some of OxedHub compares GetScript with its own functions for those.
 
-local loading = true
 local hooking = false
 local wrappedHandlers = setmetatable({}, { __mode = "k" })
 local ourFrame  -- the profiler's own frame, never wrapped
 
 local TIMED_SCRIPTS = { OnUpdate = true, OnEvent = true }
 
-local function OnSetScript(frame, script, handler)
-    if hooking or not (loading or active) then return end
-    if not TIMED_SCRIPTS[script] or type(handler) ~= "function" then return end
-    if wrappedHandlers[handler] or frame == ourFrame then return end
-    if frame.IsProtected and frame:IsProtected() then return end
-
-    local where = CallerLabel(3)
-    if not where then return end   -- not OxedHub's
-    -- The report window refreshing itself is not OxedHub's work to report.
-    if where:find("^Performance%.lua") then return end
-
+local function BuildTimedHandler(where, script, handler)
     local timed
     if script == "OnEvent" then
         -- Named per event, with the name built once per event rather than on
@@ -379,7 +411,21 @@ local function OnSetScript(frame, script, handler)
         timed = Profiler:Wrap(Describe(where, "every frame"), handler)
     end
     wrappedHandlers[timed] = true
+    return timed
+end
 
+local function OnSetScript(frame, script, handler)
+    if hooking or not (loading or active) then return end
+    if not TIMED_SCRIPTS[script] or type(handler) ~= "function" then return end
+    if wrappedHandlers[handler] or frame == ourFrame then return end
+    if frame.IsProtected and frame:IsProtected() then return end
+
+    local where = CallerLabel(3)
+    if not where then return end   -- not OxedHub's
+    -- The report window refreshing itself is not OxedHub's work to report.
+    if where:find("^Performance%.lua") then return end
+
+    local timed = BuildTimedHandler(where, script, handler)
     hooking = true
     frame:SetScript(script, timed)
     hooking = false
@@ -394,7 +440,7 @@ end
 -- hidden straight away, so none of them can ever take the mouse either.
 do
     local hooked = {}
-    for _, kind in ipairs({ "Frame", "Button", "CheckButton", "ScrollFrame", "StatusBar" }) do
+    for _, kind in ipairs({ "Frame", "Button", "CheckButton", "ScrollFrame", "StatusBar", "Cooldown" }) do
         local ok, sample = pcall(CreateFrame, kind)
         if ok and sample then
             sample:Hide()
@@ -497,11 +543,39 @@ function Profiler:AddonAverages(limit)
     local rows = {}
     for _, name in ipairs(LoadedAddons()) do
         local ms = Metric(name, "SessionAverageTime")
-        if ms and ms > 0.01 then rows[#rows + 1] = { name = name, ms = ms } end
+        local encMs = Metric(name, "EncounterAverageTime")
+        local peakMs = Metric(name, "PeakTime")
+        if ms and ms > 0.01 then
+            rows[#rows + 1] = { name = name, ms = ms, encounterMs = encMs, peakMs = peakMs }
+        end
     end
     table.sort(rows, function(a, b) return a.ms > b.ms end)
     for i = #rows, (limit or 8) + 1, -1 do rows[i] = nil end
     return rows
+end
+
+local function SnapshotOverBudget()
+    return {
+        over1  = Metric(addonName, "CountTimeOver1Ms") or 0,
+        over5  = Metric(addonName, "CountTimeOver5Ms") or 0,
+        over10 = Metric(addonName, "CountTimeOver10Ms") or 0,
+        over50 = Metric(addonName, "CountTimeOver50Ms") or 0,
+    }
+end
+
+function Profiler:EngineBreakdown()
+    local start = overBudgetAtStart or {}
+    local o1  = math.max(0, (Metric(addonName, "CountTimeOver1Ms") or 0) - (start.over1 or 0))
+    local o5  = math.max(0, (Metric(addonName, "CountTimeOver5Ms") or 0) - (start.over5 or 0))
+    local o10 = math.max(0, (Metric(addonName, "CountTimeOver10Ms") or 0) - (start.over10 or 0))
+    local o50 = math.max(0, (Metric(addonName, "CountTimeOver50Ms") or 0) - (start.over50 or 0))
+    return {
+        sessionAvg   = Metric(addonName, "SessionAverageTime"),
+        recentAvg    = Metric(addonName, "RecentAverageTime"),
+        encounterAvg = Metric(addonName, "EncounterAverageTime"),
+        peakTime     = Metric(addonName, "PeakTime"),
+        over1 = o1, over5 = o5, over10 = o10, over50 = o50,
+    }
 end
 
 -- ── Who holds the memory ────────────────────────────────────────────────────
@@ -565,6 +639,10 @@ local evCur, evPrev = { n = 0, over = 0 }, { n = 0, over = 0 }
 local eventSpy = CreateFrame("Frame")
 
 local function OnAnyEvent(_, event)
+    eventTotals[event] = (eventTotals[event] or 0) + 1
+    if InCombatLockdown() then
+        eventCombatTotals[event] = (eventCombatTotals[event] or 0) + 1
+    end
     local list = evCur
     local n = list.n + 1
     if n > EVENT_CAP then
@@ -578,6 +656,22 @@ end
 hooking = true
 eventSpy:SetScript("OnEvent", OnAnyEvent)
 hooking = false
+
+function Profiler:GetTopEventsSession(limit)
+    local view = self:GetView()
+    if view and view.topEvents then return view.topEvents end
+    local rows = {}
+    for event, count in pairs(eventTotals) do
+        rows[#rows + 1] = {
+            name = event,
+            count = count,
+            combatCount = eventCombatTotals[event] or 0,
+        }
+    end
+    table.sort(rows, function(a, b) return a.count > b.count end)
+    for i = #rows, (limit or 12) + 1, -1 do rows[i] = nil end
+    return rows
+end
 
 local function TopEvents(limit)
     local counts, order = {}, {}
@@ -853,6 +947,8 @@ local function OnFrame(_, elapsed)
 
     local mem = collectgarbage("count")
     local alloc = mem - lastMem
+    local posAlloc = alloc > 0 and alloc or 0
+    session.totalAllocKB = (session.totalAllocKB or 0) + posAlloc
     -- Lua memory going down means the collector ran during this frame.
     local collected = mem < lastMem - 64
     if collected then
@@ -872,9 +968,18 @@ local function OnFrame(_, elapsed)
     local curMs = TopLevelMs(cur)
     local heavy = curMs >= HEAVY_OXED_MS
 
+    if InCombatLockdown() then
+        session.combatSecs = (session.combatSecs or 0) + elapsed
+        session.combatFrames = (session.combatFrames or 0) + 1
+        session.combatOxedMs = (session.combatOxedMs or 0) + curMs
+        session.combatAllocKB = (session.combatAllocKB or 0) + posAlloc
+        if hitch then session.combatHitches = (session.combatHitches or 0) + 1 end
+    end
+
     -- The live figures the mini window shows: OxedHub's time over the last
     -- second, and the worst single frame of it.
     live.accum = live.accum + curMs
+    live.allocAccum = (live.allocAccum or 0) + posAlloc
     live.framesAccum = live.framesAccum + 1
     if hitch then live.hitchAccum = live.hitchAccum + 1 end
     if curMs > live.peakAccum then live.peakAccum = curMs end
@@ -882,10 +987,11 @@ local function OnFrame(_, elapsed)
     if now - live.startedAt >= 1 then
         local span = now - live.startedAt
         live.msPerSecond = live.accum / span
+        live.kbPerSecond = (live.allocAccum or 0) / span
         live.peakFrameMs = live.peakAccum
         live.worstFrame = live.worstFrameAccum
         PushSecond(now, live.framesAccum, span, live.worstFrameAccum, live.accum, mem, live.hitchAccum)
-        live.accum, live.peakAccum, live.worstFrameAccum, live.startedAt = 0, 0, 0, now
+        live.accum, live.allocAccum, live.peakAccum, live.worstFrameAccum, live.startedAt = 0, 0, 0, 0, now
         live.framesAccum, live.hitchAccum = 0, 0
     end
 
@@ -923,14 +1029,16 @@ ourFrame:SetScript("OnEvent", function(_, event, loaded)
         return
     end
     if event == "ADDON_LOADED" and loaded == addonName then
-        -- Every OxedHub file has run: handlers set from here on belong to
-        -- whoever sets them, so the hook only names them while recording.
-        loading = false
         OxedHubDB = OxedHubDB or {}
         OxedHubDB.profiler = OxedHubDB.profiler or {}
         if OxedHubDB.profiler.fromLogin then Profiler:Start() end
     elseif event == "PLAYER_ENTERING_WORLD" or event == "LOADING_SCREEN_DISABLED" then
         graceUntil = GetTime() + GRACE_SECS
+        -- Keep loading = true through PLAYER_LOGIN and initial PLAYER_ENTERING_WORLD
+        -- so scripts attached during login initialization are always wrapped.
+        if loading and event == "PLAYER_ENTERING_WORLD" then
+            C_Timer.After(1, function() loading = false end)
+        end
         -- A recording started at login measures who holds what here, once
         -- every addon has loaded (behind the loading screen, where the walk
         -- over the heap is not felt).
@@ -973,6 +1081,7 @@ local function Instrument()
         Profiler:WrapMethod(Core, "OnSpellCastStart", "Core: cast start")
         Profiler:WrapMethod(Core, "OnCombatLogEvent", "Core: combat log")
         Profiler:WrapMethod(Core, "UpdateCooldowns", "Core: cooldowns")
+        Profiler:WrapMethod(Core, "UpdateSingleCooldown", "Core: single cooldown")
         Profiler:WrapMethod(Core, "CheckMountState", "Core: mount state")
     end
 
@@ -1030,13 +1139,14 @@ function Profiler:Start()
     session.stoppedAt = nil
     local now = GetTime()
     warmUntil = now + WARMUP_SECS
-    live.accum, live.peakAccum, live.worstFrameAccum, live.startedAt = 0, 0, 0, now
-    live.msPerSecond, live.peakFrameMs, live.worstFrame = 0, 0, 0
+    live.accum, live.allocAccum, live.peakAccum, live.worstFrameAccum, live.startedAt = 0, 0, 0, 0, now
+    live.msPerSecond, live.kbPerSecond, live.peakFrameMs, live.worstFrame = 0, 0, 0, 0
     live.framesAccum, live.hitchAccum = 0, 0
     ringCount = 0
     wipe(waitingAfter)
     lastMem = collectgarbage("count")
     session.memStart = session.memStart or lastMem
+    overBudgetAtStart = overBudgetAtStart or SnapshotOverBudget()
     -- Who held what at the start. Only the first start of a session: a
     -- pause and resume keeps the original figures to compare against.
     -- Started from login: the other addons are not loaded yet, and the
@@ -1063,13 +1173,18 @@ function Profiler:Reset()
     self.viewIndex = nil
     wipe(stats)
     wipe(spikes)
+    wipe(eventTotals)
+    wipe(eventCombatTotals)
     session.startedAt = active and time() or nil
     session.stoppedAt = nil
     session.frames, session.hitches = 0, 0
+    session.combatSecs, session.combatFrames, session.combatHitches = 0, 0, 0
+    session.combatOxedMs, session.combatAllocKB, session.totalAllocKB = 0, 0, 0
     wipe(session.causes)
     session.memStart = active and collectgarbage("count") or nil
     session.memPeak, session.collections, session.collectedKB = 0, 0, 0
     memAtStart = active and MeasureAddonMemory() or nil
+    overBudgetAtStart = active and SnapshotOverBudget() or nil
     wipe(clusters)
     wipe(waitingAfter)
     ringCount = 0
@@ -1114,10 +1229,16 @@ end
 local function LiveTop()
     local list = {}
     for label, s in pairs(stats) do
+        local cCount = s.combatCount or 0
+        local cTotal = s.combatTotal or 0
         list[#list + 1] = {
             label = label, count = s.count, total = s.total, max = s.max,
             avg = s.count > 0 and s.total / s.count or 0, maxAt = s.maxAt,
             alloc = s.alloc or 0, own = s.own or 0,
+            combatCount = cCount, combatTotal = cTotal,
+            combatMax = s.combatMax or 0,
+            combatAvg = cCount > 0 and cTotal / cCount or 0,
+            combatAlloc = s.combatAlloc or 0, combatOwn = s.combatOwn or 0,
         }
     end
     return list
@@ -1163,9 +1284,14 @@ function Profiler:SaveSessionToHistory()
         character = (UnitName("player") or "?") .. "-" .. realm,
         startedAt = session.startedAt, endedAt = session.stoppedAt or time(),
         frames = session.frames, hitches = session.hitches, baseline = baselineMs,
+        combatSecs = session.combatSecs, combatFrames = session.combatFrames,
+        combatHitches = session.combatHitches, combatOxedMs = session.combatOxedMs,
+        combatAllocKB = session.combatAllocKB, totalAllocKB = session.totalAllocKB,
         top = keptTop, spikes = keptSpikes,
         causes = CopyTable and CopyTable(session.causes) or session.causes,
         addonAverages = Profiler:AddonAverages(8),
+        engineBreakdown = Profiler:EngineBreakdown(),
+        topEvents = Profiler:GetTopEventsSession(12),
         clusters = ClusterRows(),
         memStart = session.memStart, memPeak = session.memPeak,
         memEnd = collectgarbage("count"),
@@ -1198,17 +1324,23 @@ end
 -- Everything below answers for whichever recording is being viewed, so the
 -- window and the report work the same on a saved session as on the live one.
 
--- Totals as a list, sorted by "total", "max", "count" or "avg".
+-- Totals as a list, sorted by "total", "max", "count", "avg", "combatTotal" or "alloc".
 function Profiler:GetTop(sortKey)
     local view = self:GetView()
     local list
     if view then
         list = {}
         for i, row in ipairs(view.top or {}) do
+            local cCount = row.combatCount or 0
+            local cTotal = row.combatTotal or 0
             list[i] = {
                 label = row.label, count = row.count, total = row.total, max = row.max,
                 avg = (row.count or 0) > 0 and row.total / row.count or 0, maxAt = row.maxAt,
                 alloc = row.alloc or 0, own = row.own or 0,
+                combatCount = cCount, combatTotal = cTotal,
+                combatMax = row.combatMax or 0,
+                combatAvg = cCount > 0 and cTotal / cCount or 0,
+                combatAlloc = row.combatAlloc or 0, combatOwn = row.combatOwn or 0,
             }
         end
     else
@@ -1236,6 +1368,9 @@ function Profiler:GetSession()
     if view then
         return { startedAt = view.startedAt, stoppedAt = view.endedAt,
             frames = view.frames or 0, hitches = view.hitches or 0, causes = view.causes or {},
+            combatSecs = view.combatSecs or 0, combatFrames = view.combatFrames or 0,
+            combatHitches = view.combatHitches or 0, combatOxedMs = view.combatOxedMs or 0,
+            combatAllocKB = view.combatAllocKB or 0, totalAllocKB = view.totalAllocKB or 0,
             memStart = view.memStart, memPeak = view.memPeak or 0, memEnd = view.memEnd,
             collections = view.collections or 0, collectedKB = view.collectedKB or 0 }
     end
@@ -1289,25 +1424,29 @@ end
 -- OxedHub's own time by feature, largest first, each with its share. The
 -- answer to "what should be fixed first" in one list.
 function Profiler:ByFeature(rows)
-    local byName, total = {}, 0
+    local byName, total, combatTotal = {}, 0, 0
     for _, row in ipairs(rows) do
         local own = row.own or 0
-        if own > 0 then
+        local cOwn = row.combatOwn or 0
+        if own > 0 or cOwn > 0 then
             local name = FeatureOf(row.label)
             local entry = byName[name]
             if not entry then
-                entry = { name = name, ms = 0, alloc = 0 }
+                entry = { name = name, ms = 0, combatMs = 0, alloc = 0, combatAlloc = 0 }
                 byName[name] = entry
             end
             entry.ms = entry.ms + own
+            entry.combatMs = entry.combatMs + cOwn
             entry.alloc = entry.alloc + (row.alloc or 0)
+            entry.combatAlloc = entry.combatAlloc + (row.combatAlloc or 0)
             total = total + own
+            combatTotal = combatTotal + cOwn
         end
     end
     local list = {}
     for _, entry in pairs(byName) do list[#list + 1] = entry end
     table.sort(list, function(a, b) return a.ms > b.ms end)
-    return list, total
+    return list, total, combatTotal
 end
 
 -- Everything as plain text, for pasting into a message.
@@ -1331,6 +1470,31 @@ function Profiler:BuildReport()
             date("%H:%M", s.stoppedAt or time())))
     end
     add("")
+
+    -- Combat vs Out-of-Combat summary: separates combat pressure from idle time.
+    local cSecs = s.combatSecs or 0
+    local cFrames = s.combatFrames or 0
+    if cSecs > 0.5 and cFrames > 0 then
+        local cPct = length > 0 and (cSecs / length * 100) or 0
+        local cFps = cFrames / cSecs
+        local cOxedPerSec = (s.combatOxedMs or 0) / cSecs
+        local cOxedPerFrame = (s.combatOxedMs or 0) / cFrames
+        local cKbPerSec = (s.combatAllocKB or 0) / cSecs
+        local oocSecs = math.max(0, length - cSecs)
+        local oocFrames = math.max(0, (s.frames or 0) - cFrames)
+        add(("Combat slice: %.0f s in combat (%.0f%% of session), %d frames (%.0f fps), %d hitches in combat")
+            :format(cSecs, cPct, cFrames, cFps, s.combatHitches or 0))
+        add(("  In combat:     OxedHub %5.2f ms/s (%5.3f ms/frame)   All addons alloc %6.1f KB/s")
+            :format(cOxedPerSec, cOxedPerFrame, cKbPerSec))
+        if oocSecs > 1 and oocFrames > 0 then
+            local allTop, ownTotalAll = self:ByFeature(self:GetTop("total"))
+            local oocOxedMs = math.max(0, (ownTotalAll or 0) - (s.combatOxedMs or 0))
+            local oocAllocKB = math.max(0, (s.totalAllocKB or 0) - (s.combatAllocKB or 0))
+            add(("  Out of combat: OxedHub %5.2f ms/s (%5.3f ms/frame)   All addons alloc %6.1f KB/s")
+                :format(oocOxedMs / oocSecs, oocOxedMs / oocFrames, oocAllocKB / oocSecs))
+        end
+        add("")
+    end
 
     -- Why the frames were long, summed over the session: the first thing to
     -- read, since it says whether OxedHub, another addon or the game did it.
@@ -1372,8 +1536,31 @@ function Profiler:BuildReport()
     if averages and #averages > 0 then
         add("Addons, average per frame this session (the game's own figures)")
         for _, row in ipairs(averages) do
-            add(("  %6.2f ms  %s"):format(row.ms, row.name))
+            local extra = ""
+            if row.encounterMs and row.encounterMs > 0.005 then
+                extra = extra .. ("   encounter %.2f ms"):format(row.encounterMs)
+            end
+            if row.peakMs and row.peakMs > 0.5 then
+                extra = extra .. ("   peak %.1f ms"):format(row.peakMs)
+            end
+            add(("  %6.2f ms  %-24s%s"):format(row.ms, row.name, extra))
         end
+        add("")
+    end
+
+    -- Blizzard C_AddOnProfiler deep metrics for OxedHub + instrumentation coverage.
+    local features, ownTotal, combatOwnTotal = self:ByFeature(self:GetTop("total"))
+    local eng = view and view.engineBreakdown or (not view and self:EngineBreakdown()) or nil
+    if eng and eng.sessionAvg then
+        local gameTotalMs = eng.sessionAvg * (s.frames or 0)
+        local coveragePct = gameTotalMs > 0 and (ownTotal / gameTotalMs * 100) or 0
+        add("OxedHub engine metrics (Blizzard C_AddOnProfiler)")
+        add(("  Session avg: %.3f ms/frame   Encounter avg: %.3f ms/frame   Peak frame: %.2f ms")
+            :format(eng.sessionAvg or 0, eng.encounterAvg or 0, eng.peakTime or 0))
+        add(("  Frames over budget:  >1 ms: %d   >5 ms: %d   >10 ms: %d   >50 ms: %d")
+            :format(eng.over1 or 0, eng.over5 or 0, eng.over10 or 0, eng.over50 or 0))
+        add(("  Profiler coverage:   %.1f ms instrumented of %.1f ms game-attributed (%.0f%%; rest is C++ layout/textures)")
+            :format(ownTotal, gameTotalMs, coveragePct))
         add("")
     end
 
@@ -1406,14 +1593,15 @@ function Profiler:BuildReport()
 
     -- Where OxedHub's own time went, by feature, with each one's share.
     -- Nested calls are not counted twice, so the shares add up to the whole.
-    local features, ownTotal = self:ByFeature(self:GetTop("total"))
     if #features > 0 and ownTotal > 0 then
         local seconds = math.max(1, length)
-        add(("OxedHub by feature (%.1f ms a second of its own)"):format(ownTotal / seconds))
+        add(("OxedHub by feature (%.2f ms/s overall%s)"):format(
+            ownTotal / seconds,
+            cSecs > 0.5 and (", %.2f ms/s in combat"):format((combatOwnTotal or 0) / cSecs) or ""))
         for i, entry in ipairs(features) do
-            if i > 12 then break end
-            add(("  %5.1f%%  %8.1f ms  %8.0f KB  %s"):format(
-                entry.ms / ownTotal * 100, entry.ms, entry.alloc, entry.name))
+            if i > 14 then break end
+            add(("  %5.1f%%  %8.1f ms  (combat %7.1f ms)  %8.0f KB  %s"):format(
+                entry.ms / ownTotal * 100, entry.ms, entry.combatMs or 0, entry.alloc, entry.name))
         end
         add("")
     end
@@ -1426,14 +1614,27 @@ function Profiler:BuildReport()
     end
     add("")
 
+    local combatTop = self:GetTop("combatTotal")
+    if combatTop[1] and (combatTop[1].combatTotal or 0) > 0 then
+        add("Heaviest in combat")
+        for i, row in ipairs(combatTop) do
+            if i > 15 or (row.combatTotal or 0) <= 0 then break end
+            add(("  %8.1f ms  %6d calls  avg %6.2f  max %7.2f  %6.0f KB  %s")
+                :format(row.combatTotal, row.combatCount or 0, row.combatAvg or 0,
+                    row.combatMax or 0, row.combatAlloc or 0, row.label))
+        end
+        add("")
+    end
+
     -- Garbage: what the collector must clear later, in one pause.
     local garbage = self:GetTop("alloc")
     if garbage[1] and (garbage[1].alloc or 0) >= 1 then
         add("Most Lua memory made (feeds the garbage collector)")
         for i, row in ipairs(garbage) do
-            if i > 10 or (row.alloc or 0) < 1 then break end
-            add(("  %9.0f KB  %6d calls  %6.2f KB each  %s")
-                :format(row.alloc, row.count, row.count > 0 and row.alloc / row.count or 0, row.label))
+            if i > 12 or (row.alloc or 0) < 1 then break end
+            add(("  %9.0f KB  %6d calls  %6.2f KB each  (combat %6.0f KB)  %s")
+                :format(row.alloc, row.count, row.count > 0 and row.alloc / row.count or 0,
+                    row.combatAlloc or 0, row.label))
         end
         add("")
     end
@@ -1444,6 +1645,17 @@ function Profiler:BuildReport()
         add(("  %7.2f ms  %s"):format(row.max, row.label))
     end
     add("")
+
+    local topEvents = self:GetTopEventsSession(12)
+    if topEvents and #topEvents > 0 then
+        local seconds = math.max(1, length)
+        add("Noisiest game events this session")
+        for _, ev in ipairs(topEvents) do
+            add(("  %7d  (%5.1f/s, %6d in combat)  %s")
+                :format(ev.count, ev.count / seconds, ev.combatCount or 0, ev.name))
+        end
+        add("")
+    end
 
     add("Latest spikes")
     local first = math.max(1, #shownSpikes - 14)

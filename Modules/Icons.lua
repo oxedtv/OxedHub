@@ -101,6 +101,10 @@ local function AcquireIconFrame()
         fadeOut:SetOrder(3)
         
         ag:SetScript("OnFinished", function()
+            if frame.drainTicker then
+                frame.drainTicker:Cancel()
+                frame.drainTicker = nil
+            end
             frame:SetScript("OnUpdate", nil)
             frame:Hide()
             table.insert(iconPool, frame)
@@ -271,7 +275,11 @@ function Icons:PlayScreenIcon(spellID, posData, duration, expirationTime, isAura
         cdStart = expirationTime - duration
     end
     
-    -- Reset OnUpdate & timer text
+    -- Reset drain ticker & timer text
+    if frame.drainTicker then
+        frame.drainTicker:Cancel()
+        frame.drainTicker = nil
+    end
     frame:SetScript("OnUpdate", nil)
     frame.timerText:SetText("")
     
@@ -303,36 +311,39 @@ function Icons:PlayScreenIcon(spellID, posData, duration, expirationTime, isAura
         frame.expirationTime = expTime
         frame.baseSize = size
         
-        -- ⚠ Twenty times a second, not every frame. It formatted the timer and
-        -- resized the drain on every frame the icon was up (31 000 calls in
-        -- ten minutes at 150 fps); the eye cannot tell the difference, and
-        -- the text only changes when the tenth of a second does.
-        frame.drainWait = 0
+        -- ⚠ Ten times a second via a C_Timer ticker instead of a per-frame
+        -- OnUpdate (which fired 58,000 times in 25 minutes at ~145 fps).
         frame.drainTenths = nil
-        frame:SetScript("OnUpdate", function(self, elapsed)
-            self.drainWait = self.drainWait + elapsed
-            if self.drainWait < 0.05 then return end
-            self.drainWait = 0
-            local remaining = math.max(0, self.expirationTime - GetTime())
+        frame.lastClipH = nil
+        local function UpdateDrain()
+            local remaining = math.max(0, frame.expirationTime - GetTime())
             if remaining <= 0 then
-                self:SetScript("OnUpdate", nil)
-                self.timerText:SetText("")
-                self.clipFrame:SetHeight(0.1)
-                self.ag:Stop()
-                self:Hide()
+                if frame.drainTicker then
+                    frame.drainTicker:Cancel()
+                    frame.drainTicker = nil
+                end
+                frame.timerText:SetText("")
+                frame.clipFrame:SetHeight(0.1)
+                frame.ag:Stop()
+                frame:Hide()
                 return
             end
             
             local tenths = math.floor(remaining * 10)
-            if tenths ~= self.drainTenths then
-                self.drainTenths = tenths
-                self.timerText:SetText(string.format("%.1f", tenths / 10))
+            if tenths ~= frame.drainTenths then
+                frame.drainTenths = tenths
+                frame.timerText:SetFormattedText("%.1f", tenths / 10)
             end
             
-            local pct = remaining / self.totalDuration
-            local clipH = math.max(1, math.floor(pct * self.baseSize))
-            self.clipFrame:SetHeight(clipH)
-        end)
+            local pct = remaining / frame.totalDuration
+            local clipH = math.max(1, math.floor(pct * frame.baseSize))
+            if clipH ~= frame.lastClipH then
+                frame.lastClipH = clipH
+                frame.clipFrame:SetHeight(clipH)
+            end
+        end
+        UpdateDrain()
+        frame.drainTicker = C_Timer.NewTicker(0.1, UpdateDrain)
         
         frame.holdAnim:SetDuration(totalDur)
     else
@@ -351,6 +362,10 @@ function Icons:StopScreenIcon(spellID)
     for i = #activeIcons, 1, -1 do
         local frame = activeIcons[i]
         if frame.spellID == targetID then
+            if frame.drainTicker then
+                frame.drainTicker:Cancel()
+                frame.drainTicker = nil
+            end
             frame:SetScript("OnUpdate", nil)
             frame.ag:Stop()
             frame:Hide()
@@ -362,6 +377,10 @@ end
 
 function Icons:StopAll()
     for _, frame in ipairs(activeIcons) do
+        if frame.drainTicker then
+            frame.drainTicker:Cancel()
+            frame.drainTicker = nil
+        end
         frame:SetScript("OnUpdate", nil)
         frame.ag:Stop()
         frame:Hide()

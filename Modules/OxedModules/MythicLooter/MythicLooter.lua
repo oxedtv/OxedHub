@@ -26,6 +26,21 @@ local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer
 -- ── Options Window ──────────────────────────────────────────────────────────
 local optionsWindow
 
+-- The hourglass on the minimap: only while the module is on and the player
+-- wants it (settings.minimapButton.hide). With LibDBIcon -- which OxedHub
+-- ships, so the usual case -- the icon is the library's, not
+-- KeystoneLootMinimapButton, and has to be shown and hidden through it.
+local function ApplyMinimap(on)
+    local DB = MythicLooter.DB
+    local show = on and not (DB and DB:Get("settings.minimapButton.hide"))
+    local LDBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
+    if LDBIcon and LDBIcon:IsRegistered("MythicLooter") then
+        if show then LDBIcon:Show("MythicLooter") else LDBIcon:Hide("MythicLooter") end
+    elseif KeystoneLootMinimapButton then
+        KeystoneLootMinimapButton:SetShown(show and true or false)
+    end
+end
+
 local function ShowOptions()
     local API = OxedHub.ModuleAPI
     if not API then return end
@@ -148,9 +163,7 @@ local function ShowOptions()
                 local DB = MythicLooter.DB
                 if DB then
                     DB:Set("settings.minimapButton.hide", not val)
-                    if KeystoneLootMinimapButton then
-                        KeystoneLootMinimapButton:SetShown(val)
-                    end
+                    ApplyMinimap(true)
                 end
             end,
             "Show Minimap Button",
@@ -266,8 +279,8 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "mythiclooter",
         name     = "MythicLooter",
-        version  = "2.19.1",
-        updated  = 20261016.91,  -- no banner over the items, Keys tab without loot filters
+        version  = "2.19.2",
+        updated  = 20261016.99,  -- minimap icon hidden while the module is off
         author   = "Oxed",
         category = "groups",
         keywords = { "mythiclooter", "keystoneloot", "m+", "loot", "dungeon", "raid", "bis", "vault", "item" },
@@ -287,14 +300,12 @@ local function RegisterModule()
             -- the KickSync module, which is gone; MythicLooter starts it now.
             local KL = OxedHub.KickSyncKeystones
             if KL and KL.Initialize then KL:Initialize() end
-            if KeystoneLootMinimapButton and KeystoneLootDB and KeystoneLootDB.settings and not KeystoneLootDB.settings.minimapButton.hide then
-                KeystoneLootMinimapButton:Show()
-            end
+            ApplyMinimap(true)
         end,
 
         OnDisable = function()
             if KeystoneLootFrame then KeystoneLootFrame:Hide() end
-            if KeystoneLootMinimapButton then KeystoneLootMinimapButton:Hide() end
+            ApplyMinimap(false)
             if KeystoneLootReminderFrame then KeystoneLootReminderFrame:Hide() end
             if KeystoneLootDropNotificationFrame then KeystoneLootDropNotificationFrame:Hide() end
             if KeystoneLootMythicPlusNotificationFrame then KeystoneLootMythicPlusNotificationFrame:Hide() end

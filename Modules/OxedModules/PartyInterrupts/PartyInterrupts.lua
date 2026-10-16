@@ -223,12 +223,14 @@ end
 local cooldownQueued = false
 local function RunQueuedCooldown()
     cooldownQueued = false
+    if not (active and settings and settings.showOwn and WantedHere() and ownBar and ownSpell) then return end
     RefreshOwnCooldown()
 end
 local function QueueOwnCooldown()
     if cooldownQueued then return end
+    if not (active and settings and settings.showOwn and WantedHere() and ownBar and ownSpell) then return end
     cooldownQueued = true
-    C_Timer.After(0.15, RunQueuedCooldown)
+    C_Timer.After(0.25, RunQueuedCooldown)
 end
 
 -- Who and what the bar shows: on a spec, talent or pet change, not per cooldown.

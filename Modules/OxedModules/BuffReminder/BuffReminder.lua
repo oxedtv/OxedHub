@@ -218,7 +218,24 @@ local function FoodResult(aura)
     return true, expires - GetTime()
 end
 
-local function FindFood()
+local FOOD_CACHE_KEY = "_food"
+
+local function FindFoodUncached()
+    -- Check Core's auraCache first if primed: avoids allocating up to 40 aura tables.
+    local Core = OxedHub.Core
+    if Core and Core.auraScanPrimed and Core.auraCache then
+        local now = GetTime()
+        for _, r in pairs(Core.auraCache) do
+            if r.food then
+                local expires = r.expirationTime
+                if IsSecret(expires) or not expires or expires == 0 then return true, nil end
+                return true, expires - now
+            end
+        end
+        if not InCombatLockdown() then
+            return false
+        end
+    end
     if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return nil end
     -- By name first: one aura read instead of up to forty. Walking every buff
     -- made a fresh table for each one, on every refresh, and that was most of
@@ -239,6 +256,27 @@ local function FindFood()
         end
     end
     return false
+end
+
+local function FindFood()
+    local cache = auraCache["player"]
+    if not cache then
+        cache = {}
+        auraCache["player"] = cache
+    end
+    local known = cache[FOOD_CACHE_KEY]
+    if known ~= nil then
+        if known == 0 then return false end
+        if known == -1 then return true, nil end
+        return true, known - GetTime()
+    end
+    local found, left = FindFoodUncached()
+    if found == false then
+        cache[FOOD_CACHE_KEY] = 0
+    elseif found then
+        cache[FOOD_CACHE_KEY] = left and (GetTime() + left) or -1
+    end
+    return found, left
 end
 
 -- True when either weapon carries one of the enchant IDs; plus whether a
@@ -1164,17 +1202,29 @@ end
 local ACTION_KEYS = { "type", "type1", "spell1", "item1", "macrotext1", "unit1", "type2" }
 
 local function SetAction(button, record)
+    local kind, val
+    if settings.clickCast and record and not record.sample and not record.entry.noClick then
+        if record.macro then
+            kind, val = "macro", record.macro
+        elseif record.item then
+            kind, val = "item", record.item
+        elseif record.spell then
+            kind, val = "spell", record.spell
+        end
+    end
+    if button._actKind == kind and button._actVal == val then return end
+    button._actKind, button._actVal = kind, val
     for _, key in ipairs(ACTION_KEYS) do button:SetAttribute(key, nil) end
-    if not settings.clickCast or not record or record.sample or record.entry.noClick then return end
-    if record.macro then
+    if not kind then return end
+    if kind == "macro" then
         button:SetAttribute("type1", "macro")
-        button:SetAttribute("macrotext1", record.macro)
-    elseif record.item then
+        button:SetAttribute("macrotext1", val)
+    elseif kind == "item" then
         button:SetAttribute("type1", "item")
-        button:SetAttribute("item1", "item:" .. record.item)
-    elseif record.spell then
+        button:SetAttribute("item1", "item:" .. val)
+    elseif kind == "spell" then
         button:SetAttribute("type1", "spell")
-        button:SetAttribute("spell1", record.spell)
+        button:SetAttribute("spell1", val)
         button:SetAttribute("unit1", "player")
     end
 end
@@ -1337,8 +1387,12 @@ local function MarkGroupDirty()
     C_Timer.After(GROUP_DELAY, RunGroupRefresh)
 end
 
+local GROUP_UNIT_SET = {}
+for i = 1, 40 do GROUP_UNIT_SET["raid" .. i] = true end
+for i = 1, 4 do GROUP_UNIT_SET["party" .. i] = true end
+
 local function IsGroupUnit(unit)
-    return type(unit) == "string" and (unit:find("^party") or unit:find("^raid")) ~= nil
+    return unit ~= nil and GROUP_UNIT_SET[unit] == true
 end
 
 -- ── Events ──────────────────────────────────────────────────────────────────
@@ -1352,22 +1406,33 @@ local EVENTS = {
     "UPDATE_INVENTORY_DURABILITY", "PET_STABLE_UPDATE", "PET_BAR_UPDATE", "PLAYER_LEVEL_UP",
 }
 
+local combatAurasDirty = false
+
 watcher:SetScript("OnEvent", function(_, event, unit)
     if event == "UNIT_AURA" then
         -- Nameplates, the target and the rest: not ours to track, dropped
         -- before anything else (this event arrives a million times a session).
+        -- In combat the bar is hidden and never rebuilt, so defer cache wipes
+        -- until combat ends instead of wiping per-unit tables on every hit.
+        if InCombatLockdown() then
+            combatAurasDirty = true
+            return
+        end
         local own = unit == "player" or unit == "pet"
-        if not own and not IsGroupUnit(unit) then return end
-        -- Forgotten even in combat, so the answer after the fight is fresh;
-        -- the bar itself is hidden in combat and is not rebuilt then.
+        if not own and not GROUP_UNIT_SET[unit] then return end
         ForgetUnit(unit)
-        if InCombatLockdown() then return end
         if not own then
             MarkGroupDirty()
             return
         end
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        if combatAurasDirty then
+            combatAurasDirty = false
+            ForgetAllUnits()
+        end
     elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
         -- raid3 may be somebody else now.
+        combatAurasDirty = false
         ForgetAllUnits()
     elseif event == "READY_CHECK" then
         if settings.readyCheck then

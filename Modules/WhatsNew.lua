@@ -26,6 +26,23 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.14",
+        important = true,
+        lines = {
+            { "NEW", "Teleports: spiral patterns -- Rings (compact, the new default: everything close to the button), Galaxy, Sunburst, Whirlpool and Fan upward." },
+            { "NEW", "Teleports, Reputations and BubbleChat each get a minimap button (click to open, right-click for options), with a checkbox to hide it." },
+            { "NEW", "ToyBoxes: an Unsorted box with every toy you have not put in a box yet." },
+            { "NEW", "Reputations: Collapse all / Expand all for the expansion groups." },
+            { "CHANGED", "Faster and lighter in a fight: boss modules, KickBar, Party Interrupts, Threat Bar, ActionHub, aura triggers, icons and animations all do less work." },
+            { "CHANGED", "Teleports: a teleport set to Hidden leaves the screen instead of staying grey. Spiral-only settings show only in the spiral." },
+            { "CHANGED", "Minimap buttons say Oxed in their tooltip (Oxed Teleports, Oxed Reputations, ...)." },
+            { "CHANGED", "ToyBoxes: the hint says to press Unlock before dragging toys." },
+            { "FIXED", "Teleports: rows no longer cover the button when it sits near the edge of the screen; a row with no room opens the other way." },
+            { "FIXED", "MythicLooter: its minimap button no longer shows while the module is switched off, and its Show Minimap Button option works." },
+            { "FIXED", "Reputations: the character button no longer overlaps the list's top line." },
+        },
+    },
+    {
         version = "2.4.13",
         important = true,
         lines = {

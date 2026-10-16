@@ -219,6 +219,48 @@ function ModuleAPI:SetModuleEnabled(id, on)
     self:RefreshModulesTab()
 end
 
+-- A module's own minimap icon, through LibDBIcon (shipped in Lib\).
+--   opts = { key, label, icon, config, onClick(mouseButton), hint }
+-- config.minimap (position) is created here, after binding -- never put it in
+-- DEFAULTS. config.minimapButton == false is the player's "no icon".
+-- Returns a handle: handle:Apply(on) shows the icon only while `on` (the
+-- module is running) and the player wants it. Call it from OnEnable and
+-- OnDisable, and from the options checkbox. Nil when the library is missing.
+function ModuleAPI:MinimapButton(opts)
+    local LDB = LibStub and LibStub("LibDataBroker-1.1", true)
+    local DBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
+    if not (LDB and DBIcon and opts and opts.config) then return nil end
+    if type(opts.config.minimap) ~= "table" then opts.config.minimap = {} end
+
+    local name = "OxedHub_" .. opts.key
+    local obj = LDB:GetDataObjectByName(name) or LDB:NewDataObject(name, {
+        type = "launcher",
+        label = opts.label,
+        icon = opts.icon,
+        OnClick = function(_, mouse) if opts.onClick then opts.onClick(mouse) end end,
+        OnTooltipShow = function(tt)
+            tt:AddLine("Oxed " .. opts.label)
+            if opts.hint then tt:AddLine(opts.hint, 1, 1, 1) end
+            tt:AddLine("Drag to move it round the minimap.", 0.6, 0.6, 0.6)
+        end,
+    })
+    if not DBIcon:IsRegistered(name) then
+        -- Hidden until Apply says otherwise: nothing shows before OnEnable.
+        opts.config.minimap.hide = true
+        DBIcon:Register(name, obj, opts.config.minimap)
+    end
+
+    local handle = {}
+    function handle:Apply(on)
+        if on and opts.config.minimapButton ~= false then
+            DBIcon:Show(name)
+        else
+            DBIcon:Hide(name)
+        end
+    end
+    return handle
+end
+
 function ModuleAPI:GetAllModules()
     return self.modules
 end

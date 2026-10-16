@@ -24,6 +24,7 @@ local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -
 
 local DEFAULTS = {
     enabled      = false,   -- off until the player switches it on
+    minimapButton = true,  -- its own icon on the minimap while switched on
 
     hideFinished = false,   -- hide what cannot go further (paragon still shows)
     showOthers   = true,    -- the best of the other characters on each row
@@ -372,7 +373,7 @@ end
 
 local W, H = 660, 540
 local ROW_H = 22
-local LIST_TOP = 78
+local LIST_TOP = 84
 local NAME_W = 210
 local OTHER_W = 150
 
@@ -778,6 +779,7 @@ Draw = function()
     window.summary:SetFormattedText("%d reputations   |cffffd100%d|r finished%s%s", total, finished,
         ready > 0 and ("   |cffb380ff%d paragon %s ready|r"):format(ready, ready == 1 and "cache" or "caches") or "",
         viewKey and ("   |cffff9933saved %s|r"):format(Ago(viewed.seen)) or "")
+    if window.fold then window.fold.Refresh() end
     if window.picker then
         window.picker:SetText(("|c%s%s|r"):format(ClassHex(viewed.class), viewed.name or "?"))
     end
@@ -905,8 +907,8 @@ local function BuildWindow()
         Draw()
     end
     local picker = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
-    picker:SetSize(170, 22)
-    picker:SetPoint("TOPRIGHT", w, "TOPRIGHT", -34, -53)
+    picker:SetSize(140, 20)
+    picker:SetPoint("TOPRIGHT", w, "TOPRIGHT", -34, -55)
     picker:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     picker:SetScript("OnClick", function(self, mouse)
         if mouse == "RightButton" then return SetView(nil) end
@@ -941,8 +943,29 @@ local function BuildWindow()
     picker:SetScript("OnLeave", function() GameTooltip:Hide() end)
     w.picker = picker
 
+    -- Fold every expansion at once, or open them all again when all are folded.
+    local function AllFolded()
+        for _, known in pairs(settings.known) do
+            if known.g and not settings.collapsed[known.g] then return false end
+        end
+        return true
+    end
+    local fold = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+    fold:SetSize(84, 20)
+    fold:SetPoint("RIGHT", picker, "LEFT", -6, 0)
+    fold.Refresh = function() fold:SetText(AllFolded() and "Expand all" or "Collapse all") end
+    fold:SetScript("OnClick", function()
+        local open = AllFolded()
+        for _, known in pairs(settings.known) do
+            if known.g then settings.collapsed[known.g] = (not open) or nil end
+        end
+        offset = 0
+        Draw()
+    end)
+    w.fold = fold
+
     w.summary = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    w.summary:SetPoint("TOPLEFT", w, "TOPLEFT", 22, -58)
+    w.summary:SetPoint("TOPLEFT", w, "TOPLEFT", 22, -60)
     w.summary:SetJustifyH("LEFT")
 
     local line = w:CreateTexture(nil, "ARTWORK")
@@ -1099,6 +1122,26 @@ local function ForgetOthers()
     Draw()
 end
 
+-- Its own minimap icon, made the first time it is needed (after binding).
+local minimapIcon
+local function MinimapIcon()
+    if minimapIcon or not settings then return minimapIcon end
+    local API = OxedHub.ModuleAPI
+    minimapIcon = API and API.MinimapButton and API:MinimapButton({
+        key = "reputations", label = "Reputations", icon = "Interface\\Icons\\Achievement_Reputation_01", config = settings,
+        hint = "Click: the list. Right-click: options.",
+        onClick = function(mouse)
+            if mouse == "RightButton" then
+                local mod = API:GetModule("reputations")
+                if mod and mod.OnOptionsShow then mod:OnOptionsShow() end
+            else
+                ToggleWindow()
+            end
+        end,
+    })
+    return minimapIcon
+end
+
 local function ShowOptions()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
@@ -1131,6 +1174,10 @@ local function ShowOptions()
         end)
         o.cursorY = o.cursorY - 34
 
+        o:AddCheckbox(settings, "minimapButton", "Show minimap button", nil, function()
+            local icon = MinimapIcon()
+            if icon then icon:Apply(settings.enabled == true) end
+        end)
         o:AddNote("Each character's standings are saved when it logs in with this module on, so log in on your alts once for them to show.")
         o:AddNote("Type /oxrep to open the list.")
     end
@@ -1159,8 +1206,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "reputations",
         name     = "Reputations",
-        version  = "1.0.0",
-        updated  = 20261016.2,   -- new module
+        version  = "1.2.0",
+        updated  = 20261016.99,  -- Minimap button
         author   = "Oxed",
         category = "character",
         keywords = { "reputation", "rep", "renown", "paragon", "faction", "friendship", "warband", "alts" },
@@ -1178,11 +1225,14 @@ loginFrame:SetScript("OnEvent", function(self)
 
         OnEnable = function(_, config)
             settings = config
+            local icon = MinimapIcon()
+            if icon then icon:Apply(true) end
             EnsureTables(settings)
             Start()
         end,
 
         OnDisable = function()
+            if minimapIcon then minimapIcon:Apply(false) end
             Stop()
         end,
     })

@@ -234,8 +234,12 @@ end
 
 -- ── Each tick ──────────────────────────────────────────────────────────────
 
+local wakeTimer
+local StartTicker
+
 local function StopTicker()
     if ticker then ticker:Cancel(); ticker = nil end
+    if wakeTimer then wakeTimer:Cancel(); wakeTimer = nil end
 end
 
 local coming = {}
@@ -243,20 +247,29 @@ local coming = {}
 -- same as Boss Track: most ticks of a fight had nothing to show.
 local idleUntil = 0
 
+local function WakeFromIdle()
+    wakeTimer = nil
+    idleUntil = 0
+    if active and next(Engine:GetEvents()) then
+        StartTicker()
+    end
+end
+
 local function Tick()
     if GetTime() < idleUntil then return end
     wipe(coming)
     local any = false
     local here = WantedHere()
     local gap
+    local timers = OxedHubDB.modules.bosstimers
+    local defaultWarnAt = (timers and timers.warnAt) or 5
     for _, ev in pairs(Engine:GetEvents()) do
         any = true
         if here and Engine:IsActive(ev) and Wanted(ev) then
             local left = Engine:TimeLeft(ev)
             if left > 0 then
                 local own = Own(ev)
-                local timers = OxedHubDB.modules.bosstimers
-                local warnAt = (own and own.warnAt) or (timers and timers.warnAt) or 5
+                local warnAt = (own and own.warnAt) or defaultWarnAt
                 if settings.flash and not ev.flashed and left <= warnAt then
                     ev.flashed = true
                     Flash(DisplayName(ev) or "Ability coming")
@@ -273,7 +286,9 @@ local function Tick()
         end
     end
 
-    table.sort(coming, BySoonest)
+    if #coming > 1 then
+        table.sort(coming, BySoonest)
+    end
     local shown = 0
     for i = 1, math.min(#coming, settings.countRows) do
         local ev = coming[i]
@@ -286,9 +301,13 @@ local function Tick()
             local number = settings.countDecimals and ("%.1f"):format(left) or tostring(shownNumber)
             row:SetText((DisplayName(ev) or "Ability") .. "  " .. number)
         end
-        if left <= 1.5 then row:SetTextColor(1, 0.2, 0.15)
-        elseif left <= 3 then row:SetTextColor(1, 0.65, 0.1)
-        else row:SetTextColor(1, 0.9, 0.3) end
+        local colorTier = (left <= 1.5 and 1) or (left <= 3 and 2) or 3
+        if row.colorTier ~= colorTier then
+            row.colorTier = colorTier
+            if colorTier == 1 then row:SetTextColor(1, 0.2, 0.15)
+            elseif colorTier == 2 then row:SetTextColor(1, 0.65, 0.1)
+            else row:SetTextColor(1, 0.9, 0.3) end
+        end
         row:Show()
         shown = i
     end
@@ -300,14 +319,19 @@ local function Tick()
     end
     if shown == 0 then
         if not here then
-            idleUntil = GetTime() + 1
-        elseif gap and gap > 0.2 then
-            idleUntil = GetTime() + math.min(gap - 0.1, 2)
+            if ticker then ticker:Cancel(); ticker = nil end
+            if not wakeTimer then wakeTimer = C_Timer.NewTimer(1.0, WakeFromIdle) end
+        elseif gap and gap > 0.25 then
+            local sleepFor = math.min(gap - 0.1, 2.0)
+            if ticker then ticker:Cancel(); ticker = nil end
+            if wakeTimer then wakeTimer:Cancel() end
+            wakeTimer = C_Timer.NewTimer(sleepFor, WakeFromIdle)
         end
     end
 end
 
-local function StartTicker()
+StartTicker = function()
+    if wakeTimer then wakeTimer:Cancel(); wakeTimer = nil end
     if ticker or not active then return end
     ticker = C_Timer.NewTicker(TICK, Tick)
 end

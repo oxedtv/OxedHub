@@ -113,8 +113,8 @@ end
 function Toys:ReorderBox(draggedId, targetId, dropAfter)
     if not draggedId or not targetId or draggedId == targetId then return end
     -- These two are fixed positions, never part of the user order.
-    if draggedId == "all" or draggedId == "favorites" or draggedId == "mixes" then return end
-    if targetId == "all" or targetId == "favorites" or targetId == "mixes" then return end
+    if draggedId == "all" or draggedId == "unsorted" or draggedId == "favorites" or draggedId == "mixes" then return end
+    if targetId == "all" or targetId == "unsorted" or targetId == "favorites" or targetId == "mixes" then return end
 
     local order = self:GetBoxOrder()
 
@@ -135,7 +135,7 @@ function Toys:ReorderBox(draggedId, targetId, dropAfter)
     -- every drag quietly threw away the arrangement built by the previous one.
     local shown = {}
     for _, box in ipairs(self:GetToyBoxes()) do
-        if box.id ~= "all" and box.id ~= "favorites" and box.id ~= "mixes" then
+        if box.id ~= "all" and box.id ~= "unsorted" and box.id ~= "favorites" and box.id ~= "mixes" then
             table.insert(shown, box.id)
         end
     end
@@ -1088,6 +1088,12 @@ function Toys:GetToyBoxes()
         toys = allToys,
     })
 
+    -- Collected toys not yet put in any box. Gone once everything is sorted.
+    local unsorted = self:GetUnsortedToyIDs()
+    if #unsorted > 0 then
+        table.insert(boxes, { id = "unsorted", name = "Unsorted", icon = 134400, isUnsorted = true, toys = unsorted })
+    end
+
     -- Virtual box holding every saved mix. Mixes are not toys and live in their
     -- own table, so this box carries their names rather than toy IDs and the
     -- grid renders it differently -- see the isMixes branch in the UI.
@@ -1237,7 +1243,32 @@ function Toys:GetMixNames()
     return names
 end
 
+-- Collected toys in no box at all (Favorites counts as a box, hidden boxes
+-- too: the toy has a place, it is only out of sight).
+function Toys:GetUnsortedToyIDs()
+    local placed = {}
+    for _, id in ipairs(self:GetFavoriteToyIDs()) do placed[id] = true end
+    local saved = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxes
+    for id, box in pairs(saved or {}) do
+        if id ~= "favorites" and type(box.toys) == "table" then
+            for _, toyId in ipairs(box.toys) do placed[tonumber(toyId) or toyId] = true end
+        end
+    end
+    local list = {}
+    for _, id in ipairs(self:GetAllCollectedToyIDs()) do
+        if not placed[id] then list[#list + 1] = id end
+    end
+    return list
+end
+
+local function UnsortedBox(toys)
+    return { id = "unsorted", name = "Unsorted", icon = 134400, isUnsorted = true, toys = toys }
+end
+
 function Toys:GetToyBox(boxId)
+    if boxId == "unsorted" then
+        return UnsortedBox(self:GetUnsortedToyIDs())
+    end
     if boxId == "mixes" then
         local names = self:GetMixNames()
         if #names == 0 then return nil end
@@ -1303,7 +1334,7 @@ end
 
 -- Delete a toybox
 function Toys:DeleteToyBox(boxId)
-    if not boxId or boxId == "favorites" or boxId == "all" then return false, "Cannot delete this box." end
+    if not boxId or boxId == "favorites" or boxId == "all" or boxId == "unsorted" then return false, "Cannot delete this box." end
     self:EnsureToyBoxData()
 
     if OxedHub.db.profile.toyBoxes[boxId] then
@@ -1317,7 +1348,7 @@ end
 
 -- Rename a toybox or change its icon
 function Toys:RenameToyBox(boxId, newName, newIcon)
-    if boxId == "all" then return false end
+    if boxId == "all" or boxId == "unsorted" then return false end
     local box = self:GetToyBox(boxId)
     if not box then return false end
 
@@ -1342,7 +1373,7 @@ function Toys:AddToyToBox(boxId, toyId)
     -- The mixes box is rebuilt from the saved mixes on every read, so a write
     -- here would be discarded without a word.
     if boxId == "mixes" then return false, "The My Mixes list cannot be edited here." end
-    if boxId == "all" then return false end
+    if boxId == "all" or boxId == "unsorted" then return false end
     toyId = tonumber(toyId)
     if not toyId then return false, "Invalid toy ID." end
 
@@ -1386,7 +1417,7 @@ function Toys:InsertToyInBox(boxId, toyId, targetToyId)
     -- The mixes box is rebuilt from the saved mixes on every read, so a write
     -- here would be discarded without a word.
     if boxId == "mixes" then return false, "The My Mixes list cannot be edited here." end
-    if boxId == "all" then return false end
+    if boxId == "all" or boxId == "unsorted" then return false end
     local box = self:GetToyBox(boxId)
     if not box then return false end
     box.toys = box.toys or {}
@@ -1429,7 +1460,7 @@ function Toys:RemoveToyFromBox(boxId, toyId)
     -- The mixes box is rebuilt from the saved mixes on every read, so a write
     -- here would be discarded without a word.
     if boxId == "mixes" then return false, "The My Mixes list cannot be edited here." end
-    if boxId == "all" then return false end
+    if boxId == "all" or boxId == "unsorted" then return false end
     toyId = tonumber(toyId)
     if not toyId then return false end
 
@@ -1484,7 +1515,7 @@ function Toys:ReorderToyInBox(boxId, sourceToyId, targetToyId)
     -- The mixes box is rebuilt from the saved mixes on every read, so a write
     -- here would be discarded without a word.
     if boxId == "mixes" then return false, "The My Mixes list cannot be edited here." end
-    if boxId == "all" then return false end
+    if boxId == "all" or boxId == "unsorted" then return false end
     local box = self:GetToyBox(boxId)
     if not box or not box.toys then return false end
 

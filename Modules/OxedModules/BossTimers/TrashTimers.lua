@@ -88,7 +88,10 @@ local function Schedule(npc, spellID, info, seconds, turn)
     })
     timers[key] = C_Timer.NewTimer(seconds, function()
         timers[key] = nil
-        if not pulled[npc] then return end
+        if not pulled[npc] then
+            Engine:RemoveCustomEvent(key)
+            return
+        end
         local cds = info.cd
         local gap = cds and (cds[turn] or cds[#cds])
         if gap and gap > 0 then

@@ -141,9 +141,10 @@ local function Update()
             local bar = Bar(shown)
             pcall(FillHealth, bar, unit)
             bar.name:SetText(UnitName(unit))
-            bar.pct:SetText("")
             if settings.showText and UnitHealthPercent then
                 pcall(FillPercent, bar, unit)
+            else
+                bar.pct:SetText("")
             end
             if bar.encounter ~= encounter then
                 bar.encounter = encounter
@@ -155,13 +156,14 @@ local function Update()
     for i = shown + 1, #bars do bars[i]:Hide() end
     anchor:SetShown(shown > 0 or (settings.enabled and not settings.locked and OptionsOpen()))
     if shown == 0 and ticker then ticker:Cancel(); ticker = nil end
+    return shown > 0
 end
 
 local function Watch()
     if not active then return end
     Layout()
-    Update()
-    if not ticker then ticker = C_Timer.NewTicker(TICK, Update) end
+    local hasBoss = Update()
+    if hasBoss and not ticker then ticker = C_Timer.NewTicker(TICK, Update) end
 end
 
 eventFrame:SetScript("OnEvent", function() Watch() end)

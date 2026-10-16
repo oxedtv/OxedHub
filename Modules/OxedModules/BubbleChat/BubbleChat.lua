@@ -20,6 +20,7 @@ local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -
 
 local DEFAULTS = {
     enabled     = false,   -- off until the player switches it on
+    minimapButton = true,  -- its own icon on the minimap while switched on
 
     font        = "default",
     size        = 14,
@@ -413,6 +414,23 @@ local function ShowFontPicker(anchor)
     fontPicker:SetShown(not fontPicker:IsShown())
 end
 
+-- Its own minimap icon, made the first time it is needed (after binding).
+local minimapIcon
+local function MinimapIcon()
+    if minimapIcon or not settings then return minimapIcon end
+    local API = OxedHub.ModuleAPI
+    minimapIcon = API and API.MinimapButton and API:MinimapButton({
+        key = "bubblechat", label = "BubbleChat", icon = "Interface\\Icons\\INV_Misc_Note_06", config = settings,
+        hint = "Click: options.",
+        -- ShowOptions is defined below this, so through the module.
+        onClick = function()
+            local mod = API:GetModule("bubblechat")
+            if mod and mod.OnOptionsShow then mod:OnOptionsShow() end
+        end,
+    })
+    return minimapIcon
+end
+
 local function ShowOptions()
     local API = OxedHub.ModuleAPI
     if not (API and settings) then return end
@@ -470,6 +488,10 @@ local function ShowOptions()
         preview.text:SetTextColor(1, 1, 1, 1)
         o.cursorY = o.cursorY - 70
 
+        o:AddCheckbox(settings, "minimapButton", "Show minimap button", nil, function()
+            local icon = MinimapIcon()
+            if icon then icon:Apply(settings.enabled == true) end
+        end)
         o:AddNote("Inside instances the game does not let addons touch bubbles: the font applies there, the look and scale only in the open world. Your own bubble setting comes back when you leave, and when this module is switched off.")
         o:HookScript("OnShow", PaintPreview)
         optionsWindow = o
@@ -521,8 +543,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "bubblechat",
         name     = "BubbleChat",
-        version  = "1.0.0",
-        updated  = 20261016.1,   -- new module
+        version  = "1.1.0",
+        updated  = 20261016.99,  -- Minimap button
         author   = "Oxed",
         category = "chat",
         keywords = { "bubble", "chat bubble", "font", "say", "yell", "speech", "instance", "google fonts" },
@@ -536,10 +558,13 @@ loginFrame:SetScript("OnEvent", function(self)
 
         OnEnable = function(_, config)
             settings = config
+            local icon = MinimapIcon()
+            if icon then icon:Apply(true) end
             Start()
         end,
 
         OnDisable = function()
+            if minimapIcon then minimapIcon:Apply(false) end
             Stop()
         end,
     })

@@ -238,34 +238,7 @@ function ActionHub:CreateWidget(hubIndex)
     end)
 
     w.visibilityElapsed = 0
-    w:SetScript("OnUpdate", function(self, elapsed)
-        local hubDB = ActionHub:GetHubDB(self.hubIndex)
-        if hubDB and hubDB.onScreen
-            and (ActionHub:GetVisibilityMode(hubDB) ~= "always" or hubDB.hideMounted) then
-            self.visibilityElapsed = (self.visibilityElapsed or 0) + (elapsed or 0)
-            if self.visibilityElapsed >= 0.05 then
-                self.visibilityElapsed = 0
-                ActionHub:ApplyWidgetCombatVisibility(self, hubDB)
-            end
-
-            local currentAlpha = self:GetAlpha() or 1
-            local targetAlpha = self.combatTargetAlpha
-            if targetAlpha == nil then
-                targetAlpha = InCombatLockdown() and 0 or 1
-            end
-
-            local speed = self.combatFadeSpeed or 8
-            local step = math.min(1, (elapsed or 0) * speed)
-            local newAlpha = currentAlpha + (targetAlpha - currentAlpha) * step
-            if math.abs(targetAlpha - newAlpha) < 0.02 then
-                newAlpha = targetAlpha
-            end
-            ApplyWidgetVisualAlpha(self, newAlpha)
-        elseif self:GetAlpha() ~= 1 then
-            self.combatTargetAlpha = 1
-            ApplyWidgetVisualAlpha(self, 1)
-        end
-    end)
+    w._visualAlpha = 1
 
     w.buttons = {}
 
@@ -420,6 +393,25 @@ local function IsMouseOverActionHubWidget(w)
     return false
 end
 
+local function WidgetFadeOnUpdate(self, elapsed)
+    local targetAlpha = self.combatTargetAlpha
+    if targetAlpha == nil then
+        targetAlpha = 1
+    end
+    local currentAlpha = self._visualAlpha or self:GetAlpha() or 1
+    local speed = self.combatFadeSpeed or 8
+    local step = math.min(1, (elapsed or 0) * speed)
+    local newAlpha = currentAlpha + (targetAlpha - currentAlpha) * step
+    if math.abs(targetAlpha - newAlpha) < 0.02 then
+        newAlpha = targetAlpha
+    end
+    ApplyWidgetVisualAlpha(self, newAlpha)
+    if newAlpha == targetAlpha then
+        self._fadeScriptActive = false
+        self:SetScript("OnUpdate", nil)
+    end
+end
+
 function ActionHub:ApplyWidgetCombatVisibility(w, db)
     if not w or not db then
         return
@@ -436,39 +428,30 @@ function ActionHub:ApplyWidgetCombatVisibility(w, db)
     w.combatFadeSpeed = 8
 
     if not shouldHide then
-        w:SetAlpha(1)
-        if w.anchor then
-            w.anchor:SetAlpha(1)
+        if w._fadeScriptActive then
+            w._fadeScriptActive = false
+            w:SetScript("OnUpdate", nil)
         end
-        if w.buttons then
-            for _, btn in ipairs(w.buttons) do
-                if btn then
-                    btn:SetAlpha(1)
-                    if btn.splitIcon then
-                        btn.splitIcon:SetAlpha(1)
-                    end
-                    if btn.cooldown1 then
-                        btn.cooldown1:SetAlpha(1)
-                    end
-                    if btn.cooldown2 then
-                        btn.cooldown2:SetAlpha(1)
-                    end
-                end
-            end
+        ApplyWidgetVisualAlpha(w, 1)
+    elseif w._visualAlpha ~= targetAlpha then
+        if not w._fadeScriptActive then
+            w._fadeScriptActive = true
+            w:SetScript("OnUpdate", WidgetFadeOnUpdate)
         end
     end
 end
 
 ApplyWidgetVisualAlpha = function(w, alpha)
-    if not w then
+    if not w or w._visualAlpha == alpha then
         return
     end
+    w._visualAlpha = alpha
 
     w:SetAlpha(alpha)
 
     if w.anchor then
         w.anchor:SetAlpha(alpha)
-end
+    end
 
     if w.buttons then
         for _, btn in ipairs(w.buttons) do
@@ -2929,6 +2912,7 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
         end
     end
 
+    w._visualAlpha = nil
     self:ApplyWidgetCombatVisibility(w, db)
 
     if ActionHub.cooldownTicker then
