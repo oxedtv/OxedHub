@@ -144,23 +144,65 @@ warmup:SetScript("OnEvent", function(self)
         local frame = iconPool[1]
         local profile = OxedHub.db and OxedHub.db.profile
         if not (frame and profile and type(profile.triggers) == "table") then return end
-        frame.cd:SetSwipeTexture("Interface\\Cooldown\\swipe")
-        frame.cd:SetSwipeTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
-        local fonts = {}
+
+        -- ⚠ Drawn, not only set. A texture set on a hidden frame is not
+        -- loaded until it is first drawn, and the 2.4.12 report still showed
+        -- 5.7 ms on the first Anti-Magic Shell icon. So the warm frame is
+        -- shown, all but invisible, with one icon per frame -- the swipe,
+        -- the timer text at each size -- and taken out of the pool while it
+        -- does, so no cast can pick it up half way.
+        local textures, sizes = {}, {}
         for _, trigger in pairs(profile.triggers) do
             local actions = type(trigger) == "table" and trigger.enabled ~= false and trigger.actions
             if type(actions) == "table" and actions.showIcon then
                 local id = trigger.conditions and trigger.conditions.spellID
-                if id then frame.texture:SetTexture(ResolveIconTexture(id, actions.iconTextureType)) end
-                local size = actions.iconUseCustomPosition and (actions.iconSize or 64) or 64
-                local fontSize = math.max(12, math.floor(size * 0.32))
-                if not fonts[fontSize] then
-                    fonts[fontSize] = true
-                    frame.timerText:SetFont("Fonts\\2002.TTF", fontSize, "OUTLINE")
+                if id then
+                    local ok, texture = pcall(ResolveIconTexture, id, actions.iconTextureType)
+                    if ok and texture then textures[#textures + 1] = texture end
                 end
+                local size = actions.iconUseCustomPosition and (actions.iconSize or 64) or 64
+                sizes[math.max(12, math.floor(size * 0.32))] = true
             end
         end
-        frame.fontSize = nil   -- whichever size was loaded last; set again on use
+        local fontSizes = {}
+        for fontSize in pairs(sizes) do fontSizes[#fontSizes + 1] = fontSize end
+        if #textures == 0 and #fontSizes == 0 then return end
+
+        for i, pooled in ipairs(iconPool) do
+            if pooled == frame then table.remove(iconPool, i) break end
+        end
+        frame:ClearAllPoints()
+        frame:SetPoint("CENTER", UIParent, "CENTER", 0, 100)
+        frame:SetSize(64, 64)
+        frame:SetAlpha(0.01)
+        frame.cd:SetSwipeTexture("Interface\\Cooldown\\swipe")
+        frame.cd:Show()
+        pcall(frame.cd.SetCooldown, frame.cd, GetTime(), 30)
+        frame:Show()
+
+        local step = 0
+        local stepper = CreateFrame("Frame")
+        stepper:SetScript("OnUpdate", function(self)
+            step = step + 1
+            local texture = textures[step]
+            local fontSize = fontSizes[step]
+            if texture then frame.texture:SetTexture(texture) end
+            if fontSize then
+                frame.timerText:SetFont("Fonts\\2002.TTF", fontSize, "OUTLINE")
+                frame.timerText:SetText("0.0")
+            end
+            if step == 2 then frame.cd:SetSwipeTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+            -- One frame past the last, so the last one is drawn too.
+            if step > math.max(#textures, #fontSizes, 2) then
+                self:SetScript("OnUpdate", nil)
+                frame:Hide()
+                frame.cd:Hide()
+                frame.timerText:SetText("")
+                frame:SetAlpha(1)
+                frame.fontSize = nil   -- whichever size was loaded last; set again on use
+                table.insert(iconPool, frame)
+            end
+        end)
     end)
 end)
 

@@ -31,7 +31,7 @@ local function ShowOptions()
     if not API then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("MythicLooter", 460, 480)
+        optionsWindow = API:CreateOptionsWindow("MythicLooter", 460, 512)
 
         optionsWindow:AddNote("Full Mythic+ & Raid loot overview, Best-in-Slot planner, drop reminders, vault tracker, and keystone tooltips.")
 
@@ -90,6 +90,21 @@ local function ShowOptions()
         btnAnnounce:SetScript("OnClick", function()
             local KL = OxedHub.KickSyncKeystones
             if KL and KL.AnnounceToChat then KL:AnnounceToChat() end
+        end)
+
+        optionsWindow.cursorY = optionsWindow.cursorY - 32
+
+        -- The in-key enemy forces panel has its own window (run_tracker.lua).
+        local btnRun = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
+        btnRun:SetSize(200, 24)
+        btnRun:SetPoint("TOPLEFT", optionsWindow, "TOPLEFT", 20, optionsWindow.cursorY - 2)
+        btnRun:SetText("Run Tracker (forces %)")
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
+            OxedHub.UI:ApplyRedButtonStyle(btnRun)
+        end
+        btnRun:SetScript("OnClick", function()
+            local RT = OxedHub.MythicLooterRun
+            if RT and RT.ShowOptions then RT:ShowOptions() end
         end)
 
         optionsWindow.cursorY = optionsWindow.cursorY - 32
@@ -251,8 +266,8 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "mythiclooter",
         name     = "MythicLooter",
-        version  = "2.18.3",
-        updated  = 20261013.9,
+        version  = "2.19.1",
+        updated  = 20261016.91,  -- no banner over the items, Keys tab without loot filters
         author   = "Oxed",
         category = "groups",
         keywords = { "mythiclooter", "keystoneloot", "m+", "loot", "dungeon", "raid", "bis", "vault", "item" },
@@ -268,6 +283,10 @@ local function RegisterModule()
         end,
 
         OnEnable = function()
+            -- The party key sync (KickSyncKeystones.lua) used to be started by
+            -- the KickSync module, which is gone; MythicLooter starts it now.
+            local KL = OxedHub.KickSyncKeystones
+            if KL and KL.Initialize then KL:Initialize() end
             if KeystoneLootMinimapButton and KeystoneLootDB and KeystoneLootDB.settings and not KeystoneLootDB.settings.minimapButton.hide then
                 KeystoneLootMinimapButton:Show()
             end

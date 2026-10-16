@@ -122,7 +122,7 @@ local function OptionsButton(dropdown)
     StripRegions(dropdown);
     dropdown:SetSize(80, 22);
     dropdown:ClearAllPoints();
-    dropdown:SetPoint("TOPRIGHT", dropdown:GetParent(), "TOPRIGHT", -32, -6);
+    dropdown:SetPoint("TOPRIGHT", dropdown:GetParent(), "TOPRIGHT", -32, -3);
 
     local face = CreateFrame("Button", nil, dropdown, "UIPanelButtonTemplate");
     face:SetAllPoints(dropdown);

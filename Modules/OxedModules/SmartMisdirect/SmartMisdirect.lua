@@ -33,7 +33,6 @@ local eventWatcher = nil
 OxedHub.SmartMisdirect = OxedHub.SmartMisdirect or {}
 local SM = OxedHub.SmartMisdirect
 
-OxedHub.KickSyncMisdirect = SM
 
 -- ── Helpers ─────────────────────────────────────────────────────────────────
 

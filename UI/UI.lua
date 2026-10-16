@@ -502,6 +502,11 @@ function UI:CreateMainFrame()
         end
     end
     if frame.CloseButton then
+        -- ⚠ The template's close button sits far above its frame, and the "?"
+        -- and What's New buttons copy its level: the three showed through every
+        -- module options window (DIALOG 200, see ModuleAPI). Above this
+        -- window's own content (the sidebar is at 150), below those windows.
+        frame.CloseButton:SetFrameLevel(frame:GetFrameLevel() + 70)
         frame.CloseButton:ClearAllPoints()
         frame.CloseButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -1, -32) -- below the title art; the "?" and What's New buttons follow it
         frame.CloseButton:SetScript("OnClick", function()
@@ -1301,12 +1306,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.12)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.13)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.12")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.13")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1372,11 +1377,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  Fixed: Party Keystones now shows keys of party members from other realms.",
-        "•  MythicLooter: dungeons & raids in one list-and-detail view, in stone.",
-        "•  Lighter ActionHub bars and Bloodlust trigger in long fights.",
-        "•  Boss Track & Boss Timers: no more freeze on a pull's first ability.",
-        "•  /oxprofile: Lua memory per addon in the performance report.",
+        "•  New: BubbleChat, chat bubbles with your own font and look.",
+        "•  New: MythicLooter Run Tracker (forces %) and a Keys tab.",
+        "•  New: Teleports spiral, editable arms and an All teleports list.",
+        "•  KickSync removed; Smart Misdirect stands on its own.",
+        "•  Lighter aura triggers, no stutter on the first screen icon.",
         "•  Grab either pack from CurseForge:",
     }
 
@@ -1433,17 +1438,18 @@ function UI:CreateDashboardTab()
             local kickSyncBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
             kickSyncBtn:SetSize(120, 22)
             kickSyncBtn:SetPoint("LEFT", mythicBtn, "RIGHT", 8, 0)
-            kickSyncBtn:SetText("KickSync")
+            -- KickSync is gone; its party keystone list lives on in MythicLooter.
+            kickSyncBtn:SetText("Party Keys")
             kickSyncBtn:SetNormalFontObject("GameFontNormalSmall")
             if ApplyRedButtonStyle then ApplyRedButtonStyle(kickSyncBtn) end
             kickSyncBtn:SetScript("OnClick", function()
-                UI:ShowTab("Modules")
-                if UI.searchBox then UI.searchBox:SetText("kicksync") end
+                local KL = OxedHub.KickSyncKeystones
+                if KL and KL.ToggleWindow then KL:ToggleWindow() end
             end)
             kickSyncBtn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:AddLine("KickSync", 1, 0.82, 0)
-                GameTooltip:AddLine("Opens the Modules page on KickSync.", 1, 1, 1, true)
+                GameTooltip:AddLine("Party Keystones", 1, 0.82, 0)
+                GameTooltip:AddLine("Opens the list of your party's keys (also a tab in MythicLooter).", 1, 1, 1, true)
                 GameTooltip:Show()
             end)
             kickSyncBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)

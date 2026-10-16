@@ -188,6 +188,10 @@ local function DressBanner(banner, width, noIcon)
     banner.Text:SetWidth(width - textLeft - 16);
     banner.Text:SetFontObject("GameFontNormalHuge");
     banner.Text:SetTextColor(1, 0.82, 0);
+    -- The name is already on the chosen row of the list on the left; shown
+    -- here too it was the same words twice. Alpha, not Hide: the banner's
+    -- fill function sets and shows the text again.
+    banner.Text:SetAlpha(0);
 
     if (not banner.Subtitle) then
         local sub = banner:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall");
@@ -195,7 +199,7 @@ local function DressBanner(banner, width, noIcon)
         banner.Subtitle = sub;
     end
     banner.Subtitle:ClearAllPoints();
-    banner.Subtitle:SetPoint("BOTTOMLEFT", banner, "BOTTOMLEFT", textLeft, 16);
+    banner.Subtitle:SetPoint("LEFT", banner, "LEFT", textLeft, 0);
     banner.Subtitle:SetWidth(width - textLeft - 16);
 end
 
@@ -237,7 +241,11 @@ function PickerView.Render(frame, view)
     local rightWidth = width - rightLeft - PAD;
     local rightHeight = 0;
 
-    if (view.banner) then
+    -- No banner: the chosen place is already marked in the list on the left,
+    -- and the art strip above the items only repeated it. The items start
+    -- at the top. (Left in, switched off: SHOW_BANNER.)
+    local SHOW_BANNER = false;
+    if (SHOW_BANNER and view.banner) then
         local banner = frame.bannerPool:Acquire();
         banner:ClearAllPoints();
         banner:SetPoint("TOPLEFT", frame, "TOPLEFT", rightLeft, -(TOP_MARGIN + PAD));

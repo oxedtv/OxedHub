@@ -120,6 +120,7 @@ local lastSentStamp = nil       -- "mapID:level" last announced, to skip repeats
 local wasInGroup = false
 local rosterQueued = false
 local RefreshShown              -- defined below the window code
+local ApplyRaidVisibility       -- the list hides in a raid; defined with the window
 
 local function GetLib(name)
     if not LibStub then return nil end
@@ -379,6 +380,7 @@ local function OnRosterSettled()
         RequestKeys()
     end
     wasInGroup = inGroup
+    if ApplyRaidVisibility then ApplyRaidVisibility() end
     if RefreshShown then RefreshShown() end
 end
 
@@ -404,8 +406,15 @@ local listDirty = false   -- an update was asked for in combat
 local keysOptions = nil
 
 local function Config()
-    local db = OxedHubDB and OxedHubDB.modules and OxedHubDB.modules.kicksync
-    if type(db) ~= "table" then return KEY_DEFAULTS end
+    -- Still saved under "kicksync", where players' positions already are.
+    -- The KickSync module is gone, so nothing else makes the table now.
+    if not OxedHubDB then return KEY_DEFAULTS end
+    OxedHubDB.modules = OxedHubDB.modules or {}
+    local db = OxedHubDB.modules.kicksync
+    if type(db) ~= "table" then
+        db = {}
+        OxedHubDB.modules.kicksync = db
+    end
     for k, v in pairs(KEY_DEFAULTS) do
         if db[k] == nil then db[k] = v end
     end
@@ -704,6 +713,28 @@ end
 
 RefreshShown = function()
     if listWindow and listWindow:IsShown() then KL:UpdateListUI() end
+    -- MythicLooter's Keys tab shows the same keys.
+    if KL.onKeysChanged then pcall(KL.onKeysChanged) end
+end
+
+-- The party's keys for another view (MythicLooter's Keys tab): a fresh list,
+-- highest key first, each { name, class, level, mapID, dungeon, rating, port }.
+function KL:GetPartyKeys()
+    local own = GetOwnKeystone()
+    if own then partyKeys[own.name] = own end
+    MergeOpenRaid()
+    local list = {}
+    for _, data in pairs(partyKeys) do
+        local info = DUNGEON_INFO[data.mapID]
+        list[#list + 1] = {
+            name = data.name, class = data.class, level = data.level or 0,
+            mapID = data.mapID, dungeon = data.dungeon,
+            rating = RatingFor(data.name) or data.rating,
+            port = info and info.port or nil,
+        }
+    end
+    table.sort(list, function(a, b) return a.level > b.level end)
+    return list
 end
 
 -- The header's Sync button and the window opening: send ours, ask for theirs.
@@ -719,10 +750,34 @@ function KL:SyncNow(fromClick)
     end
 end
 
+-- A raid has no use for five party keys: the list hides there and comes
+-- back when the group is a party again (if the player had it open). The rows
+-- are secure buttons, so in combat this waits for the fight to end.
+ApplyRaidVisibility = function()
+    if not listWindow then return end
+    local db = OxedHubDB and OxedHubDB.modules and OxedHubDB.modules.kicksync
+    local wanted = type(db) == "table" and db.keysShown == true and not IsInRaid()
+    if listWindow:IsShown() == wanted then return end
+    if InCombatLockdown() then
+        listDirty = true
+        return
+    end
+    if wanted then
+        KL:UpdateListUI()
+        listWindow:Show()
+    else
+        listWindow:Hide()
+    end
+end
+
 function KL:ToggleWindow()
     KL:Initialize()
+    if IsInRaid() then
+        print("|cff9d5db8MythicLooter:|r the keystone list is for parties; it does not show in a raid.")
+        return
+    end
     if InCombatLockdown() then
-        print("|cff0091edKickSync:|r The keystone list opens after combat.")
+        print("|cff9d5db8MythicLooter:|r the keystone list opens after combat.")
         return
     end
     local w = EnsureListUI()
@@ -748,6 +803,7 @@ restoreFrame:SetScript("OnEvent", function(self)
         local db = OxedHubDB and OxedHubDB.modules and OxedHubDB.modules.kicksync
         if type(db) ~= "table" or db.keysShown ~= true then return end
         if listWindow and listWindow:IsShown() then return end
+        if IsInRaid() then return end
         if InCombatLockdown() then
             listDirty = true
             return
@@ -764,9 +820,10 @@ regenFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 regenFrame:SetScript("OnEvent", function()
     if listDirty then
         KL:UpdateListUI()
+        if ApplyRaidVisibility then ApplyRaidVisibility() end
         -- A reload in combat left the list waiting to come back.
         local db = OxedHubDB and OxedHubDB.modules and OxedHubDB.modules.kicksync
-        if type(db) == "table" and db.keysShown == true and listWindow and not listWindow:IsShown() then
+        if type(db) == "table" and db.keysShown == true and listWindow and not listWindow:IsShown() and not IsInRaid() then
             KL:Initialize()
             listWindow:Show()
         end
@@ -785,7 +842,7 @@ function KL:AnnounceToChat()
     end
 
     if #entries == 0 then
-        print("|cff0091edKickSync:|r No keystones found in group.")
+        print("|cff9d5db8MythicLooter:|r no keystones found in the group.")
         return
     end
 
@@ -794,7 +851,7 @@ function KL:AnnounceToChat()
     if chatTarget then
         SendChatMessage(out, chatTarget)
     else
-        print("|cff0091edKickSync Keys:|r " .. out)
+        print("|cff9d5db8MythicLooter|r (only you see this, you are not in a group): " .. out)
     end
 end
 
@@ -856,3 +913,11 @@ end
 
 -- Nothing starts at load: KickSync calls Initialize from OnEnable, and
 -- ToggleWindow calls it when the player opens the list.
+
+-- ── Commands ────────────────────────────────────────────────────────────────
+-- The same commands the KickSync module had, kept for the players who type
+-- them: /kskeys opens the list, /kskey announces.
+SLASH_OXEDHUBKEYSTONES1 = "/kskeys"
+SlashCmdList.OXEDHUBKEYSTONES = function() KL:ToggleWindow() end
+SLASH_OXEDHUBKEYANNOUNCE1 = "/kskey"
+SlashCmdList.OXEDHUBKEYANNOUNCE = function() KL:AnnounceToChat() end

@@ -26,9 +26,28 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.13",
+        important = true,
+        lines = {
+            { "NEW", "BubbleChat module (/oxbubble): chat bubbles with your own font (12 Google Fonts with Cyrillic, plus the game's), size, outline and look -- dark glass, OxedHub stone or text only -- and no bubbles in dungeons, raids, battlegrounds, arenas or delves if you like." },
+            { "NEW", "MythicLooter Run Tracker: the enemy forces panel in a key, how much is left before the next boss, what the pull is worth, each mob's share on its nameplate and tooltip, alerts when ready or when a boss is pulled short. Targets are learnt from your timed runs." },
+            { "NEW", "MythicLooter Keys tab: your party's keystones inside the loot window, with teleports, Sync and Announce. The floating list stays." },
+            { "NEW", "Teleports spiral: every group is its own arm around the button. Edit the arms -- drag their points, Shift-click to add a point, Ctrl-click to remove one -- and drag a teleport onto another arm to move it. Icons per arm, round icons, a round main button, and Simulate +100 to try a big collection." },
+            { "NEW", "Teleports: an All teleports list -- search, groups, Shown/Hidden, and Move to another group." },
+            { "CHANGED", "KickSync removed: Party Interrupts already does it. Smart Misdirect now works fully on its own. Party Keystones lives on in MythicLooter: /kskeys opens it, /kskey announces." },
+            { "CHANGED", "Party Keystones hides in a raid and comes back in a party." },
+            { "CHANGED", "MythicLooter: no banner over the items, and no loot filters on the Keys tab." },
+            { "CHANGED", "Lighter aura triggers: only the auras that changed are read, not every buff and debuff each time." },
+            { "FIXED", "The first screen icon of a session (Anti-Magic Shell and others) no longer stutters." },
+            { "FIXED", "The main window's close, ? and What's New buttons no longer show through module windows." },
+            { "FIXED", "Performance recorder: the realm name in saved sessions, and memory growth per addon when recording starts in a fight." },
+        },
+    },
+    {
         version = "2.4.12",
         important = true,
         lines = {
+            { "NEW", "Reputations module (/oxrep): every reputation, renown and friendship in one list grouped by expansion, with search. Built for alts: open any character's full list, click a faction to see every character's bar for it, and each row shows which alt is furthest along. It also says when a paragon cache is waiting (with an optional sound), and can track the faction you last gained reputation with." },
             { "FIXED", "Party Keystones: keys of party members from other realms now show. They were thrown away before, so a group from the finder usually listed only your own key." },
             { "FIXED", "Party Keystones: your key is sent again a few seconds later when the game refuses an addon message (in a fight inside an instance), instead of being lost." },
             { "CHANGED", "Party Keystones: the Keystones Window and Announce Keystones buttons moved to MythicLooter's options. /ksync keys and /ksync announce still work." },

@@ -916,6 +916,12 @@ ourFrame:SetScript("OnEvent", function(_, event, loaded)
     if event == "ADDON_LOADED" then addonNames = nil end
     if event == "ENCOUNTER_START" then inEncounter = true return end
     if event == "ENCOUNTER_END" then inEncounter = false return end
+    -- A recording started in a fight could not ask who holds the memory
+    -- (it walks the heap, never done in combat): asked once the fight ends.
+    if event == "PLAYER_REGEN_ENABLED" then
+        if active and not memAtStart then memAtStart = MeasureAddonMemory() end
+        return
+    end
     if event == "ADDON_LOADED" and loaded == addonName then
         -- Every OxedHub file has run: handlers set from here on belong to
         -- whoever sets them, so the hook only names them while recording.
@@ -945,6 +951,7 @@ ourFrame:RegisterEvent("LOADING_SCREEN_DISABLED")
 ourFrame:RegisterEvent("PLAYER_LOGOUT")
 ourFrame:RegisterEvent("ENCOUNTER_START")
 ourFrame:RegisterEvent("ENCOUNTER_END")
+ourFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 
 -- ── Methods worth naming ────────────────────────────────────────────────────
 -- Instrumented at login, once every module table exists. Names that come from
@@ -1144,7 +1151,12 @@ function Profiler:SaveSessionToHistory()
         }
     end
 
-    local realm = (GetNormalizedRealmName and GetNormalizedRealmName()) or ""
+    -- ⚠ At logout the normalised realm can come back empty ("Name-" in a
+    -- saved report); the plain realm name is the fallback.
+    local realm = GetNormalizedRealmName and GetNormalizedRealmName()
+    if type(realm) ~= "string" or realm == "" then
+        realm = (GetRealmName and GetRealmName()) or ""
+    end
     local history = History()
     table.insert(history, 1, {
         version = OxedHub.CONFIG and OxedHub.CONFIG.VERSION or "",
@@ -1261,6 +1273,7 @@ local FAMILIES = {
     { "^Chat: ", "Chat messages" },
     { "^Toy: ", "Toys" },
     { "^ActionHub: ", "ActionHub bars" },
+    { "^Reputations: ", "Reputations" },
 }
 
 local function FeatureOf(label)

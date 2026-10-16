@@ -1744,233 +1744,184 @@ function Core:ProcessFoodAuraOnly(now)
     foodAuraCache = currentFoodAuras
 end
 
--- UNIT_AURA handler (Throttled and Optimized)
+-- UNIT_AURA handler
+--
+-- ⚠ Two ways in. The event says which auras were added, changed and removed,
+-- and when it can be trusted only those are read: a handful of auras instead
+-- of every buff and debuff (eighty tables from the game, 0.2 ms, five times
+-- a second in a fight -- the largest line in /oxprofile). Anything unusual
+-- goes the old way, the full scan: a "full update", an instance number that
+-- is secret, a cache that some scan keyed by name, no full scan yet since
+-- login, or any read that fails. Both ways share ApplyAura and Publish, so a
+-- trigger fires the same either way.
 local lastAuraUpdate = 0
-function Core:OnUnitAura(unit)
-    if OxedHub.debug then print("[OxedHub-Debug] OnUnitAura called for unit:", unit) end
-    if unit ~= "player" then return end
+local auraPrimed = false        -- a full scan has filled the cache
+local auraStringKeys = false    -- the last full scan keyed an aura by name or spell
+local trailingQueued = false
 
-    -- Mount state is read from auras, so it has to be checked before the aura
-    -- trigger gates below: those return early, and a profile with only a MOUNT
-    -- trigger would never reach the check at the end of this function.
-    -- CheckMountState itself bails when no MOUNT trigger is enabled.
-    self:CheckMountState()
+-- One aura, compared with the record the cache holds under the same key.
+-- Writes the record into `into` and fires the rule event for a new aura,
+-- more stacks or a refresh. Returns the key used.
+local function ApplyAura(aura, prefix, into, auraCache, spellCache)
+    local name = aura.name
+    local spellId = aura.spellId
+    local instanceId = aura.auraInstanceID
 
-    local wantsUnitAura = self:HasEnabledTrigger("UNIT_AURA") or self:HasEnabledTrigger("SELF_AURA") or self:HasEnabledTrigger("BLOODLUST")
-    local wantsEatBuff = self:HasEnabledTrigger("EAT_BUFF")
-    if not wantsUnitAura and not wantsEatBuff then
-        return
+    if OxedHub.debug then
+        print("[OxedHub-Debug] Raw Aura:", tostring(name), "ID:", tostring(spellId), "isSecretID:", tostring(CheckSecretValue(spellId)), "isSecretName:", tostring(CheckSecretValue(name)))
     end
 
-    -- Throttle: Only process once per frame at most
-    local now = GetTime()
-    if now == lastAuraUpdate then return end
-    lastAuraUpdate = now
+    if not instanceId then return nil end
 
-    -- Fast path: if we only care about food/eating triggers, avoid the
-    -- heavyweight generic aura gained/lost engine entirely.
-    if wantsEatBuff and not wantsUnitAura then
-        self:ProcessFoodAuraOnly(now)
-        return
+    local realSpellID = nil
+    if not CheckSecretValue(spellId) then
+        realSpellID = spellId
+    else
+        local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellId)
+        if info and info.spellID and not CheckSecretValue(info.spellID) then
+            realSpellID = info.spellID
+        end
     end
 
-    if not Core.auraCache then Core.auraCache = {} end
-    if not Core.spellCache then Core.spellCache = {} end
+    -- If name is secret, try to resolve it using C_Spell (which accepts secret spellIds)
+    if CheckSecretValue(name) then
+        local cachedName = realSpellID and spellCache[realSpellID] or nil
+        if cachedName then
+            name = cachedName
+        else
+            local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellId)
+            if spellInfo and spellInfo.name then
+                name = spellInfo.name
+                if realSpellID then
+                    pcall(rawset, spellCache, realSpellID, name)
+                end
+            end
+        end
+    elseif realSpellID and name then
+        -- Update name cache for future secret lookups using primitive spellId
+        if spellCache[realSpellID] ~= name then
+            pcall(rawset, spellCache, realSpellID, name)
+        end
+    end
 
-    local auraCache = Core.auraCache
-    local spellCache = Core.spellCache
+    if not (name and (spellId or realSpellID)) then return nil end
 
-    -- Taint-free spell ID presence set: {[spellID_number] = true}
-    -- SelfAura.lua queries this to detect buffs even when WoW secret-taints
-    -- all aura data in combat.
-    -- Two sets used in turn rather than a new table per scan: this runs on
-    -- every aura change. Readers look Core.activeSpellIDs up each time, so
-    -- the set being refilled is never the one they are reading.
-    local activeSpellIDsBuild = Core._spareSpellIDs or {}
+    -- The aura's own instance number is unique on the unit, buffs and
+    -- debuffs together, and costs no string. The string keys below are only
+    -- for a secret instance number.
+    local key
+    if instanceId ~= nil and not CheckSecretValue(instanceId) then
+        key = instanceId
+    elseif realSpellID ~= nil then
+        key = (prefix or "") .. "sp_" .. tostring(realSpellID)
+    elseif name ~= nil and not CheckSecretValue(name) then
+        key = (prefix or "") .. "nm_" .. tostring(name)
+    else
+        key = (prefix or "") .. "idx_1"
+    end
+
+    local applications = aura.applications or 0
+    local expirationTime = aura.expirationTime or 0
+
+    -- Compared with what the last scan saw before that record is written
+    -- over. applications and expirationTime can be secret; comparing one is
+    -- the error, so a secret on either side counts as "no change" and a new
+    -- aura still fires as new.
+    local old = auraCache[key]
+    local isNewAura = not old
+    local isStackIncrease = false
+    local isRefreshed = false
+    if type(old) == "table" then
+        local oldApps = old.applications or 0
+        local oldExp = old.expirationTime or 0
+        if not CheckSecretValue(applications) and not CheckSecretValue(oldApps) then
+            isStackIncrease = applications > oldApps
+        end
+        if not CheckSecretValue(expirationTime) and not CheckSecretValue(oldExp) then
+            isRefreshed = expirationTime > oldExp + 0.5
+        end
+    end
+
+    -- The record from the last scan is reused: a table per aura per scan was
+    -- most of this function's garbage.
+    local record = type(old) == "table" and old or {}
+    record.name = name
+    record.id = realSpellID or spellId
+    record.applications = applications
+    record.expirationTime = expirationTime
+    record.instanceId = instanceId
+    -- Food / Well Fed, with each name's words looked up once.
+    record.food = FoodKindOf(name)
+    into[key] = record
+
+    if isNewAura and record.food > 0 then
+        table.insert(auraBuffer_FoodNew, name)
+    end
+
+    if isNewAura or isStackIncrease or isRefreshed then
+        if OxedHub.debug then
+            if isNewAura then
+                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Gained: %s (ID: %s)", tostring(name), tostring(realSpellID or spellId)))
+            elseif isStackIncrease then
+                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Stack Increased: %s (ID: %s) to %d", tostring(name), tostring(realSpellID or spellId), applications))
+            else
+                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Refreshed: %s (ID: %s)", tostring(name), tostring(realSpellID or spellId)))
+            end
+        end
+        OxedHub.Triggers:ProcessEvent("UNIT_AURA", {
+            spellName = name,
+            spellID = realSpellID or spellId,
+            icon = aura.icon,
+            duration = aura.duration,
+            expirationTime = aura.expirationTime,
+            applications = applications,
+            isLost = false,
+        })
+    end
+    return key
+end
+
+local function FireAuraLost(data)
+    if type(data) ~= "table" or not data.name then return end
+    if OxedHub.debug then
+        print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Lost: %s (ID: %s)", tostring(data.name), tostring(data.id)))
+    end
+    OxedHub.Triggers:ProcessEvent("UNIT_AURA", {
+        spellName = data.name,
+        spellID = data.id,
+        isLost = true,
+    })
+end
+
+-- Built from the cache once it is up to date: the taint-free spell id set
+-- (SelfAura, Bloodlust and others read Core.activeSpellIDs) and whether you
+-- are eating or well fed, then the food rule events.
+local function Publish(auraCache, now)
+    -- Two sets used in turn rather than a new table per scan. Readers look
+    -- Core.activeSpellIDs up each time, so the set being refilled is never
+    -- the one they are reading.
+    local build = Core._spareSpellIDs or {}
     Core._spareSpellIDs = nil
-    wipe(activeSpellIDsBuild)
+    wipe(build)
 
-    -- Clear current state buffers
-    for k in pairs(auraBuffer_Current) do auraBuffer_Current[k] = nil end
-    for k in pairs(auraBuffer_FoodNew) do auraBuffer_FoodNew[k] = nil end
-
-    -- Scan buffs and debuffs
-    ScanUnitAuras("HELPFUL", auraBuffer_Buffs)
-    ScanUnitAuras("HARMFUL", auraBuffer_Debuffs)
-
-    -- Anti-flicker safety check
-    if #auraBuffer_Buffs == 0 and #auraBuffer_Debuffs == 0 and not UnitIsDeadOrGhost("player") and next(auraCache) ~= nil then
-        if OxedHub.debug then print("[OxedHub-Debug] Anti-flicker triggered, returning.") end
-        return
-    end
-
-    local isEatingNow = false
-    local hasWellFedNow = false
-
-    -- Helper to resolve names and update cache
-    local function ProcessAuraList(list, prefix)
-        for _, aura in ipairs(list) do
-            local name = aura.name
-            local spellId = aura.spellId
-            local instanceId = aura.auraInstanceID
-
-            if OxedHub.debug then
-                print("[OxedHub-Debug] Raw Aura:", tostring(name), "ID:", tostring(spellId), "isSecretID:", tostring(CheckSecretValue(spellId)), "isSecretName:", tostring(CheckSecretValue(name)))
-            end
-
-            if instanceId then
-                local realSpellID = nil
-                if not CheckSecretValue(spellId) then
-                    realSpellID = spellId
+    local isEatingNow, hasWellFedNow = false, false
+    for _, record in pairs(auraCache) do
+        if type(record) == "table" then
+            local id = record.id
+            if id ~= nil then
+                if not CheckSecretValue(id) then
+                    build[id] = true
                 else
-                    local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellId)
-                    if info and info.spellID and not CheckSecretValue(info.spellID) then
-                        realSpellID = info.spellID
-                    end
-                end
-
-                -- If name is secret, try to resolve it using C_Spell (which accepts secret spellIds)
-                if CheckSecretValue(name) then
-                    local cachedName = realSpellID and spellCache[realSpellID] or nil
-                    if cachedName then
-                        name = cachedName
-                    else
-                        local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellId)
-                        if spellInfo and spellInfo.name then
-                            name = spellInfo.name
-                            if realSpellID then
-                                pcall(rawset, spellCache, realSpellID, name)
-                            end
-                        end
-                    end
-                elseif realSpellID and name then
-                    -- Update name cache for future secret lookups using primitive spellId
-                    if spellCache[realSpellID] ~= name then
-                        pcall(rawset, spellCache, realSpellID, name)
-                    end
-                end
-
-                if name and (spellId or realSpellID) then
-                    -- The aura's own instance number is unique on the unit,
-                    -- buffs and debuffs together, and costs no string. The
-                    -- string keys below are only for a secret instance number.
-                    local key
-                    if instanceId ~= nil and not CheckSecretValue(instanceId) then
-                        key = instanceId
-                    elseif realSpellID ~= nil then
-                        key = (prefix or "") .. "sp_" .. tostring(realSpellID)
-                    elseif name ~= nil and not CheckSecretValue(name) then
-                        key = (prefix or "") .. "nm_" .. tostring(name)
-                    else
-                        key = (prefix or "") .. "idx_" .. tostring(_ or 1)
-                    end
-
-                    local applications = aura.applications or 0
-                    local expirationTime = aura.expirationTime or 0
-
-                    -- Compared with what the last scan saw before that record
-                    -- is written over. applications and expirationTime can be
-                    -- secret; comparing one is the error, so a secret on
-                    -- either side counts as "no change" and a new aura still
-                    -- fires as new.
-                    local old = auraCache[key]
-                    local isNewAura = not old
-                    local isStackIncrease = false
-                    local isRefreshed = false
-                    if type(old) == "table" then
-                        local oldApps = old.applications or 0
-                        local oldExp = old.expirationTime or 0
-                        if not CheckSecretValue(applications) and not CheckSecretValue(oldApps) then
-                            isStackIncrease = applications > oldApps
-                        end
-                        if not CheckSecretValue(expirationTime) and not CheckSecretValue(oldExp) then
-                            isRefreshed = expirationTime > oldExp + 0.5
-                        end
-                    end
-
-                    -- The record from the last scan is reused: a table per
-                    -- aura per scan was most of this function's garbage.
-                    local record = type(old) == "table" and old or {}
-                    record.name = name
-                    record.id = realSpellID or spellId
-                    record.applications = applications
-                    record.expirationTime = expirationTime
-                    record.instanceId = instanceId
-                    auraBuffer_Current[key] = record
-
-                    -- Build taint-free spell ID set: use the clean ID when
-                    -- available, otherwise extract from the secret value via
-                    -- tonumber(tostring()) inside pcall.
-                    if realSpellID then
-                        activeSpellIDsBuild[realSpellID] = true
-                    else
-                        pcall(AddSecretSpellID, activeSpellIDsBuild, spellId)
-                    end
-
-                    -- Food / Well Fed, with each name's words looked up once.
-                    local food = FoodKindOf(name)
-                    if food % 2 == FOOD_EATING then
-                        isEatingNow = true
-                        if isNewAura then table.insert(auraBuffer_FoodNew, name) end
-                    end
-                    if food >= FOOD_FED then
-                        hasWellFedNow = true
-                        if isNewAura then table.insert(auraBuffer_FoodNew, name) end
-                    end
-
-                    if isNewAura or isStackIncrease or isRefreshed then
-                        if OxedHub.debug then
-                            if isNewAura then
-                                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Gained: %s (ID: %s)", tostring(name), tostring(realSpellID or spellId)))
-                            elseif isStackIncrease then
-                                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Stack Increased: %s (ID: %s) to %d", tostring(name), tostring(realSpellID or spellId), applications))
-                            else
-                                print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Refreshed: %s (ID: %s)", tostring(name), tostring(realSpellID or spellId)))
-                            end
-                        end
-                        OxedHub.Triggers:ProcessEvent("UNIT_AURA", {
-                            spellName = name,
-                            spellID = realSpellID or spellId,
-                            icon = aura.icon,
-                            duration = aura.duration,
-                            expirationTime = aura.expirationTime,
-                            applications = applications,
-                            isLost = false,
-                        })
-                    end
+                    pcall(AddSecretSpellID, build, id)
                 end
             end
+            local food = record.food or 0
+            if food % 2 == FOOD_EATING then isEatingNow = true end
+            if food >= FOOD_FED then hasWellFedNow = true end
         end
     end
-
-    ProcessAuraList(auraBuffer_Buffs, "")
-    ProcessAuraList(auraBuffer_Debuffs, "d")
-
-    -- Detect lost auras
-    for key, data in pairs(auraCache) do
-        if not auraBuffer_Current[key] then
-            if type(data) == "table" and data.name then
-                if OxedHub.debug then
-                    print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Lost: %s (ID: %s)", tostring(data.name), tostring(data.id)))
-                end
-                OxedHub.Triggers:ProcessEvent("UNIT_AURA", {
-                    spellName = data.name,
-                    spellID = data.id,
-                    isLost = true,
-                })
-            end
-            auraCache[key] = nil
-        end
-    end
-
-    -- Finalize cache
-    for key, data in pairs(auraBuffer_Current) do
-        auraCache[key] = data
-    end
-
-    -- Publish taint-free spell ID presence set
     Core._spareSpellIDs = Core.activeSpellIDs
-    Core.activeSpellIDs = activeSpellIDsBuild
+    Core.activeSpellIDs = build
 
     -- Fire Food Start/Stop/Buff events
     if isEatingNow and not Core.wasEating then
@@ -1990,6 +1941,169 @@ function Core:OnUnitAura(unit)
             })
         end
     end
+end
+
+-- true when the event was handled from its own payload; false to scan all.
+local function ApplyAuraChanges(info, now)
+    if not auraPrimed or auraStringKeys or type(info) ~= "table" then return false end
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByAuraInstanceID) then return false end
+    local full = info.isFullUpdate
+    if CheckSecretValue(full) or full then return false end
+
+    local added, updated, removed = info.addedAuras, info.updatedAuraInstanceIDs, info.removedAuraInstanceIDs
+    -- Every instance number has to be plain, or none of it is used.
+    if removed then
+        for _, id in ipairs(removed) do
+            if id == nil or CheckSecretValue(id) then return false end
+        end
+    end
+    if updated then
+        for _, id in ipairs(updated) do
+            if id == nil or CheckSecretValue(id) then return false end
+        end
+    end
+    if added then
+        for _, aura in ipairs(added) do
+            if type(aura) ~= "table" or aura.auraInstanceID == nil or CheckSecretValue(aura.auraInstanceID) then
+                return false
+            end
+        end
+    end
+
+    local auraCache, spellCache = Core.auraCache, Core.spellCache
+    wipe(auraBuffer_FoodNew)
+    local needFull = false
+
+    if removed then
+        for _, id in ipairs(removed) do
+            local data = auraCache[id]
+            if data then
+                auraCache[id] = nil
+                FireAuraLost(data)
+            end
+        end
+    end
+    if updated then
+        for _, id in ipairs(updated) do
+            local ok, aura = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, "player", id)
+            if not ok then
+                needFull = true
+            elseif type(aura) == "table" then
+                local okApply, key = pcall(ApplyAura, aura, "", auraCache, auraCache, spellCache)
+                if not okApply or (key ~= nil and type(key) ~= "number") then needFull = true end
+            elseif auraCache[id] then
+                -- Changed and already gone.
+                local data = auraCache[id]
+                auraCache[id] = nil
+                FireAuraLost(data)
+            end
+        end
+    end
+    if added then
+        for _, aura in ipairs(added) do
+            local okApply, key = pcall(ApplyAura, aura, "", auraCache, auraCache, spellCache)
+            if not okApply or (key ~= nil and type(key) ~= "number") then needFull = true end
+        end
+    end
+
+    if needFull then return false end
+    Publish(auraCache, now)
+    return true
+end
+
+local function RunTrailingAuraScan()
+    trailingQueued = false
+    Core:OnUnitAura("player")
+end
+
+function Core:OnUnitAura(unit, updateInfo)
+    if OxedHub.debug then print("[OxedHub-Debug] OnUnitAura called for unit:", unit) end
+    if unit ~= "player" then return end
+
+    -- Mount state is read from auras, so it has to be checked before the aura
+    -- trigger gates below: those return early, and a profile with only a MOUNT
+    -- trigger would never reach the check at the end of this function.
+    -- CheckMountState itself bails when no MOUNT trigger is enabled.
+    self:CheckMountState()
+
+    local wantsUnitAura = self:HasEnabledTrigger("UNIT_AURA") or self:HasEnabledTrigger("SELF_AURA") or self:HasEnabledTrigger("BLOODLUST")
+    local wantsEatBuff = self:HasEnabledTrigger("EAT_BUFF")
+    if not wantsUnitAura and not wantsEatBuff then
+        return
+    end
+
+    local now = GetTime()
+
+    -- Fast path: if we only care about food/eating triggers, avoid the
+    -- heavyweight generic aura gained/lost engine entirely.
+    if wantsEatBuff and not wantsUnitAura then
+        if now == lastAuraUpdate then return end
+        lastAuraUpdate = now
+        self:ProcessFoodAuraOnly(now)
+        return
+    end
+
+    if not Core.auraCache then Core.auraCache = {} end
+    if not Core.spellCache then Core.spellCache = {} end
+
+    -- Only what the event says changed, when that can be trusted.
+    if ApplyAuraChanges(updateInfo, now) then return end
+
+    -- ⚠ The full scan at most once a frame. A second event in the same frame
+    -- used to be dropped outright, and its change was not seen until the next
+    -- event; now it asks for one more scan on the next frame.
+    if now == lastAuraUpdate then
+        if not trailingQueued then
+            trailingQueued = true
+            C_Timer.After(0, RunTrailingAuraScan)
+        end
+        return
+    end
+    lastAuraUpdate = now
+
+    local auraCache = Core.auraCache
+    local spellCache = Core.spellCache
+
+    -- Clear current state buffers
+    for k in pairs(auraBuffer_Current) do auraBuffer_Current[k] = nil end
+    for k in pairs(auraBuffer_FoodNew) do auraBuffer_FoodNew[k] = nil end
+
+    -- Scan buffs and debuffs
+    ScanUnitAuras("HELPFUL", auraBuffer_Buffs)
+    ScanUnitAuras("HARMFUL", auraBuffer_Debuffs)
+
+    -- Anti-flicker safety check
+    if #auraBuffer_Buffs == 0 and #auraBuffer_Debuffs == 0 and not UnitIsDeadOrGhost("player") and next(auraCache) ~= nil then
+        if OxedHub.debug then print("[OxedHub-Debug] Anti-flicker triggered, returning.") end
+        return
+    end
+
+    local stringKeys = false
+    for _, aura in ipairs(auraBuffer_Buffs) do
+        local key = ApplyAura(aura, "", auraBuffer_Current, auraCache, spellCache)
+        if type(key) == "string" then stringKeys = true end
+    end
+    for _, aura in ipairs(auraBuffer_Debuffs) do
+        local key = ApplyAura(aura, "d", auraBuffer_Current, auraCache, spellCache)
+        if type(key) == "string" then stringKeys = true end
+    end
+
+    -- Detect lost auras
+    for key, data in pairs(auraCache) do
+        if not auraBuffer_Current[key] then
+            FireAuraLost(data)
+            auraCache[key] = nil
+        end
+    end
+
+    -- Finalize cache
+    for key, data in pairs(auraBuffer_Current) do
+        auraCache[key] = data
+    end
+    auraPrimed = true
+    auraStringKeys = stringKeys
+
+    Publish(auraCache, now)
 end
 
 -- Any loading screen: logging in, taking a portal, zoning into or out of an

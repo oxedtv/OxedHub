@@ -47,6 +47,13 @@ function KeystoneLootFrameMixin:InitializeTabSystem()
     self.RaidsFrame:Init();
     self.raidsTabId = self:AddNamedTab(RAIDS, self.RaidsFrame);
 
+    -- The party's keys (keys_tab.lua), for anyone who would rather not keep
+    -- the Party Keystones list on screen.
+    if (KeystoneLoot.KeysTab) then
+        self.KeysFrame = KeystoneLoot.KeysTab.Create(self, self.DungeonsFrame);
+        self.keysTabId = self:AddNamedTab("Keys", self.KeysFrame);
+    end
+
     self:SetTab(self.dungeonsTabId);
 end
 
@@ -176,7 +183,18 @@ function KeystoneLootFrameMixin:SetTab(tabId)
     TabSystemOwnerMixin.SetTab(self, tabId);
 
     local tabName = self:GetTabName(tabId);
-    DB:Set("ui.selectedTab", tabName);
+    -- The Keys tab has no loot: the loot views and the filters keep the
+    -- dungeons or raids they were on (they only know those two).
+    if (tabName ~= "keys") then
+        DB:Set("ui.selectedTab", tabName);
+    end
+
+    -- The loot filters mean nothing on the Keys tab, and they sat under its
+    -- Sync and Announce buttons.
+    local onKeys = (tabName == "keys");
+    for _, dropdown in ipairs({ self.SlotDropdown, self.ClassDropdown, self.ItemLevelDropdown, self.CharacterDropdown }) do
+        if (dropdown) then dropdown:SetShown(not onKeys); end
+    end
 
     self:RefreshSize(tabId);
 end
@@ -218,6 +236,11 @@ end
 
 function KeystoneLootFrameMixin:RefreshSize(tabId)
     local Frame = self:GetElementsForTab(tabId)[1];
+    -- The Keys tab takes the window's dungeons size, so switching to it does
+    -- not make the window jump.
+    if (Frame == self.KeysFrame and self.DungeonsFrame) then
+        Frame:SetSize(self.DungeonsFrame:GetSize());
+    end
     self:SetSize(Frame:GetSize());
 end
 
@@ -226,6 +249,8 @@ function KeystoneLootFrameMixin:GetTabName(tabId)
         return "dungeons";
     elseif (tabId == self.raidsTabId) then
         return "raids";
+    elseif (self.keysTabId and tabId == self.keysTabId) then
+        return "keys";
     end
 
     return "dungeons"; -- Fallback
