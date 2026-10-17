@@ -2,14 +2,14 @@ local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; Addon
 
 local L = KeystoneLoot.L;
 
-KeystoneLootCatalystIconMixin = {};
+OxMythicLooterCatalystIconMixin = {};
 
-function KeystoneLootCatalystIconMixin:OnEnter()
+function OxMythicLooterCatalystIconMixin:OnEnter()
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
     GameTooltip:SetText(L["The Catalyst"], HIGHLIGHT_FONT_COLOR:GetRGB());
     GameTooltip:Show();
 end
 
-function KeystoneLootCatalystIconMixin:OnLeave()
+function OxMythicLooterCatalystIconMixin:OnLeave()
     GameTooltip:Hide();
 end

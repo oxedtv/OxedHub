@@ -30,7 +30,7 @@ local WEAPON_TYPE_NAME = {
     twoHand = INVTYPE_2HWEAPON,
 };
 
-KeystoneLootSlotDropdownMixin = {};
+OxMythicLooterSlotDropdownMixin = {};
 
 local function GetSelectedSlots()
     local slotId = DB:Get("filters.slotId");
@@ -113,7 +113,7 @@ local function GetSlotName(slotId)
     return SLOTS[slotId + 1];
 end
 
-function KeystoneLootSlotDropdownMixin:Init()
+function OxMythicLooterSlotDropdownMixin:Init()
     self:SetSelectionText(function(selections)
         local slotId = DB:Get("filters.slotId");
 
@@ -312,7 +312,7 @@ function KeystoneLootSlotDropdownMixin:Init()
     end);
 end
 
-function KeystoneLootSlotDropdownMixin:SlotHasItems(slotId)
+function OxMythicLooterSlotDropdownMixin:SlotHasItems(slotId)
     local selectedTab = DB:Get("ui.selectedTab");
 
     if (selectedTab == "dungeons") then
@@ -322,7 +322,7 @@ function KeystoneLootSlotDropdownMixin:SlotHasItems(slotId)
     return Query:HasRaidSlotItems(slotId);
 end
 
-function KeystoneLootSlotDropdownMixin:GetWeaponTypes()
+function OxMythicLooterSlotDropdownMixin:GetWeaponTypes()
     local selectedTab = DB:Get("ui.selectedTab");
     local weaponTypes;
 

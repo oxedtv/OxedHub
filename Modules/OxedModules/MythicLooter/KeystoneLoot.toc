@@ -18,8 +18,8 @@
 ## Category-zhCN: 地下城和团队副本
 ## Category-zhTW: 地城與團隊
 ## OptionalDeps: LibStub, EllesmereUI
-## SavedVariables: KeystoneLootDB
-## SavedVariablesPerCharacter: KeystoneLootCharDB
+## SavedVariables: OxMythicLooterDB
+## SavedVariablesPerCharacter: OxMythicLooterCharDB
 
 # Libs
 libs/menu/MenuConstants.lua

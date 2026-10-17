@@ -337,14 +337,14 @@ local function SetCatalystTooltip(itemId, itemLink)
     GameTooltip:ProcessInfo(Info);
 end
 
-KeystoneLootLootIconButtonMixin = {};
+OxMythicLooterLootIconButtonMixin = {};
 
-function KeystoneLootLootIconButtonMixin:OnLoad()
+function OxMythicLooterLootIconButtonMixin:OnLoad()
     local file, height = self.Content.SlotText:GetFont();
     self.Content.SlotText:SetFont(file, height, "OUTLINE");
 end
 
-function KeystoneLootLootIconButtonMixin:Init(item)
+function OxMythicLooterLootIconButtonMixin:Init(item)
     self:SetEnabled(item.itemId ~= 0);
 
     self.itemId = item.itemId;
@@ -358,7 +358,7 @@ function KeystoneLootLootIconButtonMixin:Init(item)
     self:UpdateHighlight();
 end
 
-function KeystoneLootLootIconButtonMixin:UpdateSlotText()
+function OxMythicLooterLootIconButtonMixin:UpdateSlotText()
     if (not self:IsEnabled() or not DB:Get("settings.slotName")) then
         self.Content.SlotText:Hide();
         return;
@@ -376,7 +376,7 @@ function KeystoneLootLootIconButtonMixin:UpdateSlotText()
     self.Content.SlotText:Show();
 end
 
-function KeystoneLootLootIconButtonMixin:UpdateHighlight()
+function OxMythicLooterLootIconButtonMixin:UpdateHighlight()
     if (not self:IsEnabled()) then
         return;
     end
@@ -418,7 +418,7 @@ function KeystoneLootLootIconButtonMixin:UpdateHighlight()
     self:SetAlpha(highlighted and 1 or 0.6);
 end
 
-function KeystoneLootLootIconButtonMixin:UpdateFavoriteIcon()
+function OxMythicLooterLootIconButtonMixin:UpdateFavoriteIcon()
     if (not self:IsEnabled()) then
         self.Content.FavoriteIcon:Hide();
         return;
@@ -450,7 +450,7 @@ function KeystoneLootLootIconButtonMixin:UpdateFavoriteIcon()
     end
 end
 
-function KeystoneLootLootIconButtonMixin:UpdateOwnedIcon()
+function OxMythicLooterLootIconButtonMixin:UpdateOwnedIcon()
     local isOwned = self:IsEnabled() and IsOwnCharacterSelected() and Owned:HasTrack(self.itemId);
 
     self.Content.OwnedIcon:SetShown(isOwned);
@@ -459,7 +459,7 @@ function KeystoneLootLootIconButtonMixin:UpdateOwnedIcon()
     self.Content.SlotText:SetAlpha(isOwned and OWNED_TEXT_ALPHA or 1);
 end
 
-function KeystoneLootLootIconButtonMixin:UpdateVoidcoreIcon()
+function OxMythicLooterLootIconButtonMixin:UpdateVoidcoreIcon()
     if (not self:IsEnabled() or not Voidcore:IsEligible(self.itemId)) then
         self.Content.VoidcoreIcon:Hide();
         return;
@@ -472,7 +472,7 @@ function KeystoneLootLootIconButtonMixin:UpdateVoidcoreIcon()
     end
 end
 
-function KeystoneLootLootIconButtonMixin:OnEnter()
+function OxMythicLooterLootIconButtonMixin:OnEnter()
     if (not self:IsEnabled()) then
         return;
     end
@@ -487,7 +487,7 @@ function KeystoneLootLootIconButtonMixin:OnEnter()
 
     PreloadCopyItems(itemLink);
 
-    GameTooltip.KeystoneLootOwned = true;
+    GameTooltip.OxMythicLooterOwned = true;
 
     if (KeystoneLoot.CatalystDatabase[self.itemId]) then
         SetCatalystTooltip(self.itemId, itemLink);
@@ -510,12 +510,12 @@ function KeystoneLootLootIconButtonMixin:OnEnter()
     self:UpdateFavoriteIcon();
 end
 
-function KeystoneLootLootIconButtonMixin:OnLeave()
+function OxMythicLooterLootIconButtonMixin:OnLeave()
     if (not self:IsEnabled()) then
         return;
     end
 
-    GameTooltip.KeystoneLootOwned = nil;
+    GameTooltip.OxMythicLooterOwned = nil;
     GameTooltip:Hide();
     ResetCursor();
 
@@ -524,7 +524,7 @@ function KeystoneLootLootIconButtonMixin:OnLeave()
     self:UpdateFavoriteIcon();
 end
 
-function KeystoneLootLootIconButtonMixin:OnClick()
+function OxMythicLooterLootIconButtonMixin:OnClick()
     if (not self:IsEnabled()) then
         return;
     end
@@ -560,5 +560,5 @@ function KeystoneLootLootIconButtonMixin:OnClick()
     end
 
     GameTooltip:Hide();
-    KSLMenuUtil.CreateContextMenu(self, GenerateContextMenu, specId, sourceId, currentTier);
+    OxMLMenuUtil.CreateContextMenu(self, GenerateContextMenu, specId, sourceId, currentTier);
 end

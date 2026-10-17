@@ -9,9 +9,9 @@ local FRAME_HEADER_HEIGHT              = 60;
 local ROW_HEIGHT                       = 45;
 local FRAME_PADDING_BOTTOM             = 14;
 
-KeystoneLootDropNotificationFrameMixin = {};
+OxMythicLooterDropNotificationFrameMixin = {};
 
-function KeystoneLootDropNotificationFrameMixin:OnLoad()
+function OxMythicLooterDropNotificationFrameMixin:OnLoad()
     self:RegisterEvent("ENCOUNTER_LOOT_RECEIVED");
     self:RegisterForDrag("LeftButton");
 
@@ -23,28 +23,28 @@ function KeystoneLootDropNotificationFrameMixin:OnLoad()
     self.AddonLabel:SetText(AddonName);
 
     self.drops   = {};
-    self.rowPool = CreateFramePool("Button", self, "KeystoneLootDropNotificationRowTemplate");
+    self.rowPool = CreateFramePool("Button", self, "OxMythicLooterDropNotificationRowTemplate");
 end
 
-function KeystoneLootDropNotificationFrameMixin:OnShow()
+function OxMythicLooterDropNotificationFrameMixin:OnShow()
     PlaySound(SOUNDKIT.IG_QUEST_LOG_OPEN);
 end
 
-function KeystoneLootDropNotificationFrameMixin:OnHide()
+function OxMythicLooterDropNotificationFrameMixin:OnHide()
     table.wipe(self.drops);
     PlaySound(SOUNDKIT.IG_QUEST_LOG_CLOSE);
 end
 
-function KeystoneLootDropNotificationFrameMixin:OnDragStart()
+function OxMythicLooterDropNotificationFrameMixin:OnDragStart()
     self:StartMoving();
     self:SetUserPlaced(true);
 end
 
-function KeystoneLootDropNotificationFrameMixin:OnDragStop()
+function OxMythicLooterDropNotificationFrameMixin:OnDragStop()
     self:StopMovingOrSizing();
 end
 
-function KeystoneLootDropNotificationFrameMixin:OnEvent(event, ...)
+function OxMythicLooterDropNotificationFrameMixin:OnEvent(event, ...)
     local _, itemId, itemLink, _, playerName = ...;
 
     if (not DB:Get("settings.lootReminder.dropAlert")) then
@@ -91,7 +91,7 @@ function KeystoneLootDropNotificationFrameMixin:OnEvent(event, ...)
     end);
 end
 
-function KeystoneLootDropNotificationFrameMixin:Refresh()
+function OxMythicLooterDropNotificationFrameMixin:Refresh()
     self.rowPool:ReleaseAll();
 
     local PrevRow = nil;

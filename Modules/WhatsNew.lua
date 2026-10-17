@@ -26,6 +26,22 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.15",
+        important = true,
+        lines = {
+            { "NEW", "Buff Reminder: Preview fills the bar with sample icons (choose how many) in every state, to set size, spacing and position." },
+            { "NEW", "Buff Reminder: Ask for buffs. A group buff you cannot give yourself, missing while its class is in the group, shows an icon; a click asks for it in group chat. Write your own wording if you like." },
+            { "NEW", "Buff Reminder: Talents and gear. Pick a talent loadout and an equipment set per spec for the open world, dungeons, raids, delves and PvP; when another is in use, a click switches to it." },
+            { "NEW", "Buff Reminder: the food, flask, rune or oil you used last on a spec is offered first; optionally only that one. Low stacks show in red." },
+            { "NEW", "Buff Reminder: icon opacity, zoom, border and text size; group counts as \"3 missing\" or \"2/5\"; your own repair threshold." },
+            { "CHANGED", "Buff Reminder: group buffs count only the players they help (no Arcane Intellect nagging for warriors), and warlocks choose the demon offered first per content." },
+            { "CHANGED", "Options: choice buttons in every module open a dropdown list instead of stepping through one by one." },
+            { "CHANGED", "Buff Reminder: its option windows open one at a time beside the main window instead of piling up in the middle." },
+            { "FIXED", "MythicLooter no longer clashes with the KeystoneLoot addon: no more template and minimap errors when both are installed, even with the module off. Its saved settings start fresh." },
+            { "FIXED", "Buff Reminder: the \"running out means under\" slider now works (it was always 5 minutes), and the pet reminder no longer flashes right after you dismount." },
+        },
+    },
+    {
         version = "2.4.14",
         important = true,
         lines = {

@@ -4,9 +4,9 @@ local DB = KeystoneLoot.DB;
 local Character = KeystoneLoot.Character;
 local L = KeystoneLoot.L;
 
-KeystoneLootCharacterDropdownMixin = CreateFromMixins(KSLDropdownButtonMixin);
+OxMythicLooterCharacterDropdownMixin = CreateFromMixins(OxMLDropdownButtonMixin);
 
-function KeystoneLootCharacterDropdownMixin:Init()
+function OxMythicLooterCharacterDropdownMixin:Init()
     self:Refresh();
 
     self:SetupMenu(function(dropdown, rootDescription)
@@ -58,19 +58,19 @@ function KeystoneLootCharacterDropdownMixin:Init()
     DB:AddObserver("ui.selectedCharacterKey", function() self:Refresh(); end);
 end
 
-function KeystoneLootCharacterDropdownMixin:OnMouseDown()
+function OxMythicLooterCharacterDropdownMixin:OnMouseDown()
     self:GetNormalTexture():AdjustPointsOffset(1, -1);
     self:GetHighlightTexture():AdjustPointsOffset(1, -1);
     self.Indicator:AdjustPointsOffset(1, -1);
 end
 
-function KeystoneLootCharacterDropdownMixin:OnMouseUp()
+function OxMythicLooterCharacterDropdownMixin:OnMouseUp()
     self:GetNormalTexture():AdjustPointsOffset(-1, 1);
     self:GetHighlightTexture():AdjustPointsOffset(-1, 1);
     self.Indicator:AdjustPointsOffset(-1, 1);
 end
 
-function KeystoneLootCharacterDropdownMixin:Refresh()
+function OxMythicLooterCharacterDropdownMixin:Refresh()
     local info = Character:ParseKey(Character:GetSelectedKey());
     if (not info) then
         return;

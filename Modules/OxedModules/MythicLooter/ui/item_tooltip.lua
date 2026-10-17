@@ -57,7 +57,7 @@ local function OnTooltipSetItem(Tooltip)
         return;
     end
 
-    if (Tooltip.KeystoneLootOwned) then
+    if (Tooltip.OxMythicLooterOwned) then
         return;
     end
 

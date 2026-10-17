@@ -8,14 +8,14 @@ local ICON_SPACING               = 8;
 local ICON_TOP_OFFSET            = -90;
 local FRAME_BASE_HEIGHT          = 104;
 
-KeystoneLootCustomItemFrameMixin = {};
+OxMythicLooterCustomItemFrameMixin = {};
 
-function KeystoneLootCustomItemFrameMixin:OnLoad()
+function OxMythicLooterCustomItemFrameMixin:OnLoad()
     self.Border.Bg:SetTexture("Interface\\FrameGeneral\\UI-Background-Marble");
-    self.iconPool = CreateFramePool("Button", self, "KeystoneLootLootIconButtonTemplate");
+    self.iconPool = CreateFramePool("Button", self, "OxMythicLooterLootIconButtonTemplate");
 end
 
-function KeystoneLootCustomItemFrameMixin:Init()
+function OxMythicLooterCustomItemFrameMixin:Init()
     local function OnChanged()
         self:Refresh();
     end
@@ -28,13 +28,13 @@ function KeystoneLootCustomItemFrameMixin:Init()
     self:Refresh();
 end
 
-function KeystoneLootCustomItemFrameMixin:RefreshOwnedIcons()
+function OxMythicLooterCustomItemFrameMixin:RefreshOwnedIcons()
     for Icon in self.iconPool:EnumerateActive() do
         Icon:UpdateOwnedIcon();
     end
 end
 
-function KeystoneLootCustomItemFrameMixin:Refresh()
+function OxMythicLooterCustomItemFrameMixin:Refresh()
     self.iconPool:ReleaseAll();
 
     local items = Query:GetCustomItems();

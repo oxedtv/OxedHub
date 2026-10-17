@@ -1,13 +1,13 @@
 local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; AddonName = "MythicLooter";
 
-KeystoneLootMythicPlusNotificationCardMixin = CreateFromMixins(KeystoneLootTeleportButtonMixin);
+OxMythicLooterMythicPlusNotificationCardMixin = CreateFromMixins(OxMythicLooterTeleportButtonMixin);
 
-function KeystoneLootMythicPlusNotificationCardMixin:OnEnter()
-    KeystoneLootTeleportButtonMixin.OnEnter(self);
+function OxMythicLooterMythicPlusNotificationCardMixin:OnEnter()
+    OxMythicLooterTeleportButtonMixin.OnEnter(self);
     self.HighlightTexture:Show();
 end
 
-function KeystoneLootMythicPlusNotificationCardMixin:OnLeave()
-    KeystoneLootTeleportButtonMixin.OnLeave(self);
+function OxMythicLooterMythicPlusNotificationCardMixin:OnLeave()
+    OxMythicLooterTeleportButtonMixin.OnLeave(self);
     self.HighlightTexture:Hide();
 end

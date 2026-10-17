@@ -1,13 +1,13 @@
 local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; AddonName = "MythicLooter";
 
-KeystoneLootTeleportButtonMixin = {};
+OxMythicLooterTeleportButtonMixin = {};
 
-function KeystoneLootTeleportButtonMixin:OnLoad()
+function OxMythicLooterTeleportButtonMixin:OnLoad()
     self:Disable();
     self:RegisterForClicks("AnyUp", "AnyDown");
 end
 
-function KeystoneLootTeleportButtonMixin:Init(dungeon, texture)
+function OxMythicLooterTeleportButtonMixin:Init(dungeon, texture)
     local teleportSpellId = dungeon.teleportSpellId;
     if (type(teleportSpellId) == "function") then
         teleportSpellId = teleportSpellId();
@@ -36,7 +36,7 @@ function KeystoneLootTeleportButtonMixin:Init(dungeon, texture)
     self:Enable();
 end
 
-function KeystoneLootTeleportButtonMixin:OnEnter()
+function OxMythicLooterTeleportButtonMixin:OnEnter()
     if (not self:IsEnabled()) then
         return;
     end
@@ -58,7 +58,7 @@ function KeystoneLootTeleportButtonMixin:OnEnter()
     self.UpdateTooltip = self.OnEnter;
 end
 
-function KeystoneLootTeleportButtonMixin:OnLeave()
+function OxMythicLooterTeleportButtonMixin:OnLeave()
     if (not self:IsEnabled()) then
         return;
     end
@@ -67,7 +67,7 @@ function KeystoneLootTeleportButtonMixin:OnLeave()
     self.UpdateTooltip = nil;
 end
 
-function KeystoneLootTeleportButtonMixin:PreClick(button, isDown)
+function OxMythicLooterTeleportButtonMixin:PreClick(button, isDown)
     if (not self:IsEnabled()) then
         return;
     end
@@ -77,7 +77,7 @@ function KeystoneLootTeleportButtonMixin:PreClick(button, isDown)
     end
 end
 
-function KeystoneLootTeleportButtonMixin:OnEvent()
+function OxMythicLooterTeleportButtonMixin:OnEvent()
     self:UnregisterAllEvents();
     self:SetAttribute("type", "spell");
     self:SetAttribute("spell", self.teleportSpellId);
@@ -85,7 +85,7 @@ function KeystoneLootTeleportButtonMixin:OnEvent()
     self:UpdateCooldown();
 end
 
-function KeystoneLootTeleportButtonMixin:UpdateCooldown()
+function OxMythicLooterTeleportButtonMixin:UpdateCooldown()
     if (not self:IsEnabled()) then
         return;
     end

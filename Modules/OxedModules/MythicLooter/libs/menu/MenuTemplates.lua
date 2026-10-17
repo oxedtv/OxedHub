@@ -5,14 +5,14 @@ end;
 -- Blizzard_EnvironmentCleanup nils out CreateSecureDelegate before addons load
 local SetPropagateMouseMotionDelegate = SetPropagateMouseMotion;
 
-KSLMenuTemplates = {};
+OxMLMenuTemplates = {};
 
 --[[
 Secure print for debugging purposes only. Remember to comment out the call to DebugPrintSecure
 before committing.
 ]]
 local function DebugShouldPrint()
-	return KSLMenuConstants.PrintSecure;
+	return OxMLMenuConstants.PrintSecure;
 end
 
 local function DebugPrintSecure()
@@ -24,7 +24,7 @@ local function DebugPrintSecure()
 end
 
 local function CreateMenuElementDescription(template, initializer, data)
-	local elementDescription = KSLMenu.CreateMenuElementDescription();
+	local elementDescription = OxMLMenu.CreateMenuElementDescription();
 	elementDescription:SetData(data);
 	elementDescription:SetElementFactory(function(factory)
 		factory(template, initializer);
@@ -41,14 +41,14 @@ end
 
 local function GetCheckboxSoundKit(description)
 	if description:IsSelected() then
-		return KSLMenuVariants.GetCheckboxCheckSoundKit();
+		return OxMLMenuVariants.GetCheckboxCheckSoundKit();
 	else
-		return KSLMenuVariants.GetCheckboxUncheckSoundKit();
+		return OxMLMenuVariants.GetCheckboxUncheckSoundKit();
 	end
 end
 
 local function GetButtonSoundKit(description)
-	return KSLMenuVariants.GetButtonSoundKit();
+	return OxMLMenuVariants.GetButtonSoundKit();
 end
 
 --[[
@@ -56,20 +56,20 @@ Final initializer is called after all other initializers are called so that
 the recursion functions here can find any of the regions that were attached.
 ]]--
 local function ButtonFinalInitializer(button, description, menu)
-	KSLMenuTemplates.RecurseSetupFontString(button);
+	OxMLMenuTemplates.RecurseSetupFontString(button);
 
 	local enabled = description:IsEnabled();
 	button:SetEnabled(enabled);
 
-	KSLMenuTemplates.SetHierarchyEnabled(button, enabled);
+	OxMLMenuTemplates.SetHierarchyEnabled(button, enabled);
 end
 
 local function OnButtonEnable(button)
-	KSLMenuTemplates.SetHierarchyEnabled(button, true);
+	OxMLMenuTemplates.SetHierarchyEnabled(button, true);
 end
 
 local function OnButtonDisable(button)
-	KSLMenuTemplates.SetHierarchyEnabled(button, false);
+	OxMLMenuTemplates.SetHierarchyEnabled(button, false);
 end
 
 local function OnButtonClick(button, buttonName)
@@ -78,14 +78,14 @@ local function OnButtonClick(button, buttonName)
 		PlaySound(description:GetSoundKit());
 	end
 
-	description:Pick(KSLMenuInputContext.MouseButton, buttonName);
+	description:Pick(OxMLMenuInputContext.MouseButton, buttonName);
 
 	--securecallfunction(DebugPrintSecure);
 end
 
 local function ShowHighlight(button, description)
 	button.highlight:Show();
-	button.highlight:SetAlpha(description:IsEnabled() and 1 or KSLMenuVariants.DisabledHighlightOpacity);
+	button.highlight:SetAlpha(description:IsEnabled() and 1 or OxMLMenuVariants.DisabledHighlightOpacity);
 end
 
 local function OnButtonEnter(button, description)
@@ -98,10 +98,10 @@ end
 
 local function ButtonInitializer(button, description, menu)
 	if description:CanOpenSubmenu() then
-		KSLMenuVariants.CreateSubmenuArrow(button);
+		OxMLMenuVariants.CreateSubmenuArrow(button);
 	end
 
-	KSLMenuVariants.CreateHighlight(button);
+	OxMLMenuVariants.CreateHighlight(button);
 
 	--[[
 	Visibility cannot be automatically toggled on the HIGHLIGHT layer
@@ -119,7 +119,7 @@ local function ButtonInitializer(button, description, menu)
 	end
 
 	if description:ShouldPollEnabled() then
-		button:NewTicker(KSLMenuConstants.ElementPollFrequencySeconds, function()
+		button:NewTicker(OxMLMenuConstants.ElementPollFrequencySeconds, function()
 			button:SetEnabled(description:IsEnabled());
 		end);
 	end
@@ -136,7 +136,7 @@ local function CreateButtonDescription(data)
 	return elementDescription;
 end
 
-function KSLMenuTemplates.RecurseSetupFontString(frame)
+function OxMLMenuTemplates.RecurseSetupFontString(frame)
 	--[[
 	Applying the enabled state is deferred until all initializers are called so that any
 	construction or initialization of any regions is finished before we attempt to traverse
@@ -184,10 +184,10 @@ function KSLMenuTemplates.RecurseSetupFontString(frame)
 		end
 	end
 	CallFunctionWithVarArgAsParam(TrySetupFontString, frame:GetRegions());
-	CallFunctionWithVarArgAsParam(KSLMenuTemplates.RecurseSetupFontString, frame:GetChildren());
+	CallFunctionWithVarArgAsParam(OxMLMenuTemplates.RecurseSetupFontString, frame:GetChildren());
 end
 
-function KSLMenuTemplates.SetHierarchyEnabled(frame, enabled)
+function OxMLMenuTemplates.SetHierarchyEnabled(frame, enabled)
 	local function Recurse(frame)
 		if frame.noRecurseHierarchy then
 			return;
@@ -217,27 +217,27 @@ function KSLMenuTemplates.SetHierarchyEnabled(frame, enabled)
 	Recurse(frame);
 end
 
-function KSLMenuTemplates.CreateFrame(initializer, data)
+function OxMLMenuTemplates.CreateFrame(initializer, data)
 	return CreateMenuElementDescription("Frame", initializer, data);
 end
 
-function KSLMenuTemplates.CreateTemplate(template, initializer, data)
+function OxMLMenuTemplates.CreateTemplate(template, initializer, data)
 	return CreateMenuElementDescription(template, initializer, data);
 end
 
-function KSLMenuTemplates.CreateTitle(text)
+function OxMLMenuTemplates.CreateTitle(text)
 	local function Initializer(frame, description, menu)
-		local fontString = KSLMenuVariants.CreateFontString(frame);
+		local fontString = OxMLMenuVariants.CreateFontString(frame);
 		frame.fontString = fontString;
 		fontString:SetTextToFit(text);
 	end
 
-	return KSLMenuTemplates.CreateFrame(Initializer);
+	return OxMLMenuTemplates.CreateFrame(Initializer);
 end
 
-function KSLMenuTemplates.CreateButton(text, callback, data)
+function OxMLMenuTemplates.CreateButton(text, callback, data)
 	local function Initializer(button, description, menu)
-		local fontString = KSLMenuVariants.CreateFontString(button);
+		local fontString = OxMLMenuVariants.CreateFontString(button);
 		button.fontString = fontString;
 		fontString:SetTextToFit(text);
 	end
@@ -253,7 +253,7 @@ end
 Radio and checkbox textures both share a 2 texture setup where a second texture is created
 only if the data is selected.
 ]]
-function KSLMenuTemplates.CreateSelectionTextures(frame, isSelected, data, unselectedAtlas, selectedAtlas)
+function OxMLMenuTemplates.CreateSelectionTextures(frame, isSelected, data, unselectedAtlas, selectedAtlas)
 	local leftTexture1 = frame:AttachTexture();
 	frame.leftTexture1 = leftTexture1;
 	leftTexture1:SetAtlas(unselectedAtlas, TextureKitConstants.UseAtlasSize);
@@ -271,9 +271,9 @@ function KSLMenuTemplates.CreateSelectionTextures(frame, isSelected, data, unsel
 	return leftTexture1, leftTexture2;
 end
 
-function KSLMenuTemplates.CreateCheckbox(text, isSelected, onSelect, data)
+function OxMLMenuTemplates.CreateCheckbox(text, isSelected, onSelect, data)
 	local function Initializer(button, description, menu)
-		KSLMenuVariants.CreateCheckbox(text, button, isSelected, data);
+		OxMLMenuVariants.CreateCheckbox(text, button, isSelected, data);
 	end
 
 	local elementDescription = CreateButtonDescription(data);
@@ -281,13 +281,13 @@ function KSLMenuTemplates.CreateCheckbox(text, isSelected, onSelect, data)
 	elementDescription:AddInitializer(Initializer);
 	elementDescription:SetIsSelected(isSelected);
 	elementDescription:SetResponder(onSelect);
-	elementDescription:SetResponse(KSLMenuResponse.Refresh);
+	elementDescription:SetResponse(OxMLMenuResponse.Refresh);
 	return elementDescription;
 end
 
-function KSLMenuTemplates.CreateRadio(text, isSelected, onSelect, data)
+function OxMLMenuTemplates.CreateRadio(text, isSelected, onSelect, data)
 	local function Initializer(button, description, menu)
-		KSLMenuVariants.CreateRadio(text, button, isSelected, data);
+		OxMLMenuVariants.CreateRadio(text, button, isSelected, data);
 	end
 
 	local elementDescription = CreateButtonDescription(data);
@@ -299,8 +299,8 @@ function KSLMenuTemplates.CreateRadio(text, isSelected, onSelect, data)
 	return elementDescription;
 end
 
-function KSLMenuTemplates.CreateHighlightRadio(text, isSelected, onSelect, data, onEnter)
-	local optionDescription = CreateMenuElementDescription("KSLMenuDropdownHighlightRadioTemplate");
+function OxMLMenuTemplates.CreateHighlightRadio(text, isSelected, onSelect, data, onEnter)
+	local optionDescription = CreateMenuElementDescription("OxMLMenuDropdownHighlightRadioTemplate");
 
 	local truncated = false;
 
@@ -313,7 +313,7 @@ function KSLMenuTemplates.CreateHighlightRadio(text, isSelected, onSelect, data,
 		end
 
 		if truncated then
-			KSLMenuUtil.ShowTooltip(button, function(tooltip)
+			OxMLMenuUtil.ShowTooltip(button, function(tooltip)
 				GameTooltip_SetTitle(tooltip, text);
 			end);
 		end
@@ -331,12 +331,12 @@ function KSLMenuTemplates.CreateHighlightRadio(text, isSelected, onSelect, data,
 			button.Text:SetTextColor(VERY_LIGHT_GRAY_COLOR:GetRGB());
 		end
 
-		KSLMenuUtil.HideTooltip(button);
+		OxMLMenuUtil.HideTooltip(button);
 	end
 
 	optionDescription:AddInitializer(function(button, description, menu)
 		button:SetScript("OnClick", function(button, buttonName)
-			description:Pick(KSLMenuInputContext.MouseButton, buttonName);
+			description:Pick(OxMLMenuInputContext.MouseButton, buttonName);
 		end);
 
 		-- This button template is modified in Languages.lua to hide the text and display
@@ -372,25 +372,25 @@ function KSLMenuTemplates.CreateHighlightRadio(text, isSelected, onSelect, data,
 	return optionDescription;
 end
 
-function KSLMenuTemplates.CreateSpacer(extent)
+function OxMLMenuTemplates.CreateSpacer(extent)
 	local function Initializer(frame, description, menu)
 		frame:SetHeight(extent or 10);
 	end
 
-	return KSLMenuTemplates.CreateFrame(Initializer);
+	return OxMLMenuTemplates.CreateFrame(Initializer);
 end
 
-function KSLMenuTemplates.CreateDivider()
+function OxMLMenuTemplates.CreateDivider()
 	local function Initializer(frame, description, menu)
-		frame.divider = KSLMenuVariants.CreateDivider(frame);
+		frame.divider = OxMLMenuVariants.CreateDivider(frame);
 	end
 
-	return KSLMenuTemplates.CreateFrame(Initializer);
+	return OxMLMenuTemplates.CreateFrame(Initializer);
 end
 
-function KSLMenuTemplates.CreateColorSwatch(text, callback, colorInfo)
+function OxMLMenuTemplates.CreateColorSwatch(text, callback, colorInfo)
 	local function Initializer(frame, description, menu)
-		local fontString = KSLMenuVariants.CreateFontString(frame);
+		local fontString = OxMLMenuVariants.CreateFontString(frame);
 		frame.fontString = fontString;
 		frame.fontString:SetTextToFit(text);
 
@@ -410,11 +410,11 @@ end
 
 do
 	local function OnAutoHideButtonLeave(button)
-		KSLMenuUtil.HideTooltip(button);
+		OxMLMenuUtil.HideTooltip(button);
 	end
 
-	function KSLMenuTemplates.AttachAutoHideButton(parent, textureName)
-		local button = parent:AttachTemplate("KSLMenuAutoHideButtonTemplate");
+	function OxMLMenuTemplates.AttachAutoHideButton(parent, textureName)
+		local button = parent:AttachTemplate("OxMLMenuAutoHideButtonTemplate");
 		button:SetFrameStrata(parent:GetFrameStrata()); -- Machinery is broken.
 		button:Hide();
 
@@ -442,7 +442,7 @@ do
 	end
 end
 
-function KSLMenuTemplates.AttachBasicButton(parent, width, height)
+function OxMLMenuTemplates.AttachBasicButton(parent, width, height)
 	local button = parent:AttachFrame("Button");
 	button:SetFrameStrata(parent:GetFrameStrata()); -- Machinery is broken.
 
@@ -458,13 +458,13 @@ function KSLMenuTemplates.AttachBasicButton(parent, width, height)
 	return button;
 end
 
-function KSLMenuTemplates.AttachUtilityButton(parent, textureAsset, width, height)
-	local button = KSLMenuTemplates.AttachAutoHideButton(parent, textureAsset);
+function OxMLMenuTemplates.AttachUtilityButton(parent, textureAsset, width, height)
+	local button = OxMLMenuTemplates.AttachAutoHideButton(parent, textureAsset);
 	button:SetSize(width or 16, height or 16);
 	return button;
 end
 
-function KSLMenuTemplates.SetUtilityButtonClickHandler(button, handler)
+function OxMLMenuTemplates.SetUtilityButtonClickHandler(button, handler)
 	button:SetScript("OnClick", function(_b, mouseButton, _isDown)
 		if mouseButton == "LeftButton" then
 			handler();
@@ -472,37 +472,37 @@ function KSLMenuTemplates.SetUtilityButtonClickHandler(button, handler)
 	end);
 end
 
-function KSLMenuTemplates.SetUtilityButtonTooltipText(button, tooltipText)
-	KSLMenuUtil.HookTooltipScripts(button, function(tooltip)
+function OxMLMenuTemplates.SetUtilityButtonTooltipText(button, tooltipText)
+	OxMLMenuUtil.HookTooltipScripts(button, function(tooltip)
 		GameTooltip_SetTitle(tooltip, tooltipText);
 	end);
 end
 
-function KSLMenuTemplates.SetUtilityButtonLockedEnabledState(button, value)
+function OxMLMenuTemplates.SetUtilityButtonLockedEnabledState(button, value)
 	button.lockedEnabledState = value;
 end
 
-function KSLMenuTemplates.SetUtilityButtonAnchor(button, anchor, relativeTo)
+function OxMLMenuTemplates.SetUtilityButtonAnchor(button, anchor, relativeTo)
 	local point, _, relativePoint, x, y = anchor:Get();
 	button:SetPoint(point, relativeTo, relativePoint, x, y);
 end
 
-function KSLMenuTemplates.AttachAutoHideGearButton(parent)
-	return KSLMenuTemplates.AttachUtilityButton(parent, KSLMenuVariants.GearButtonTexture);
+function OxMLMenuTemplates.AttachAutoHideGearButton(parent)
+	return OxMLMenuTemplates.AttachUtilityButton(parent, OxMLMenuVariants.GearButtonTexture);
 end
 
-function KSLMenuTemplates.AttachAutoHideCancelButton(parent)
-	return KSLMenuTemplates.AttachUtilityButton(parent, KSLMenuVariants.CancelButtonTexture);
+function OxMLMenuTemplates.AttachAutoHideCancelButton(parent)
+	return OxMLMenuTemplates.AttachUtilityButton(parent, OxMLMenuVariants.CancelButtonTexture);
 end
 
-function KSLMenuTemplates.AttachNewFeatureFrame(parent)
+function OxMLMenuTemplates.AttachNewFeatureFrame(parent)
 	local newFeatureFrame = parent:AttachTemplate("NewFeatureLabelTemplate");
 
 	newFeatureFrame.noRecurseHierarchy = true;
 	return newFeatureFrame;
 end
 
-function KSLMenuTemplates.AttachTexture(parent, textureOrAtlas, point, pointX, pointY)
+function OxMLMenuTemplates.AttachTexture(parent, textureOrAtlas, point, pointX, pointY)
 	local iconTexture = parent:AttachTexture();
 	iconTexture:SetPoint(point or "RIGHT", pointX or 0, pointY or 0);
 
@@ -516,28 +516,28 @@ function KSLMenuTemplates.AttachTexture(parent, textureOrAtlas, point, pointX, p
 	return iconTexture;
 end
 
-KSLDropdownTextMixin = {};
+OxMLDropdownTextMixin = {};
 
-function KSLDropdownTextMixin:OnLoad()
+function OxMLDropdownTextMixin:OnLoad()
 	if self.text then
 		self:SetText(self.text);
 	end
 end
 
-function KSLDropdownTextMixin:GetText()
+function OxMLDropdownTextMixin:GetText()
 	return self.text;
 end
 
-function KSLDropdownTextMixin:SetText(text)
+function OxMLDropdownTextMixin:SetText(text)
 	self.text = text;
 	self:UpdateText();
 end
 
-function KSLDropdownTextMixin:GetUpdateText()
+function OxMLDropdownTextMixin:GetUpdateText()
 	return self.text;
 end
 
-function KSLDropdownTextMixin:UpdateText()
+function OxMLDropdownTextMixin:UpdateText()
 	self.Text:SetText(self:GetUpdateText());
 
 	if self.resizeToText then
@@ -559,49 +559,49 @@ function KSLDropdownTextMixin:UpdateText()
 	end
 end
 
-function KSLDropdownTextMixin:UpdateToMenuSelections(menuDescription, currentSelections)
+function OxMLDropdownTextMixin:UpdateToMenuSelections(menuDescription, currentSelections)
 	self:UpdateText();
 end
 
 --[[
-An initializer wrapping KSLDropdownButtonMixin.SetupMenu is not provided because in the vast majority of cases
+An initializer wrapping OxMLDropdownButtonMixin.SetupMenu is not provided because in the vast majority of cases
 the displayed text will reflect at least 1 selected option. SetDefaultText() should be used to provide text
 in the cases where no selection is possible.
 ]]--
-KSLDropdownSelectionTextMixin = CreateFromMixins(KSLDropdownTextMixin);
+OxMLDropdownSelectionTextMixin = CreateFromMixins(OxMLDropdownTextMixin);
 
 local function DefaultSelectionTranslator(selection)
-	return KSLMenuUtil.GetElementText(selection);
+	return OxMLMenuUtil.GetElementText(selection);
 end
 
-function KSLDropdownSelectionTextMixin:OnLoad()
-	KSLDropdownTextMixin.OnLoad(self);
+function OxMLDropdownSelectionTextMixin:OnLoad()
+	OxMLDropdownTextMixin.OnLoad(self);
 
 	self:SetSelectionTranslator(DefaultSelectionTranslator);
 end
 
-function KSLDropdownSelectionTextMixin:GetUpdateText()
+function OxMLDropdownSelectionTextMixin:GetUpdateText()
 	return self.text or self.defaultText;
 end
 
-function KSLDropdownSelectionTextMixin:GetDefaultText()
+function OxMLDropdownSelectionTextMixin:GetDefaultText()
 	return self.defaultText;
 end
 
-function KSLDropdownSelectionTextMixin:SetDefaultText(text)
+function OxMLDropdownSelectionTextMixin:SetDefaultText(text)
 	self.defaultText = text;
 	self:UpdateText();
 end
 
-function KSLDropdownSelectionTextMixin:SetSelectionTranslator(translator)
+function OxMLDropdownSelectionTextMixin:SetSelectionTranslator(translator)
 	self.selectionTranslator = translator;
 end
 
-function KSLDropdownSelectionTextMixin:SetSelectionText(selectionFunc)
+function OxMLDropdownSelectionTextMixin:SetSelectionText(selectionFunc)
 	self.selectionFunc = selectionFunc;
 end
 
-function KSLDropdownSelectionTextMixin:OverrideText(text)
+function OxMLDropdownSelectionTextMixin:OverrideText(text)
 	if not text then
 		return;
 	end
@@ -610,13 +610,13 @@ function KSLDropdownSelectionTextMixin:OverrideText(text)
 	self:SetText(text);
 end
 
-function KSLDropdownSelectionTextMixin:UpdateToMenuSelections(menuDescription, currentSelections)
+function OxMLDropdownSelectionTextMixin:UpdateToMenuSelections(menuDescription, currentSelections)
 	if self.disableSelectionText then
 		return;
 	end
 
 	if not currentSelections and menuDescription then
-		currentSelections = KSLMenuUtil.GetSelections(menuDescription);
+		currentSelections = OxMLMenuUtil.GetSelections(menuDescription);
 	end
 
 	local text = nil;
@@ -647,13 +647,13 @@ function KSLDropdownSelectionTextMixin:UpdateToMenuSelections(menuDescription, c
 	self:SetText(text or self.defaultText);
 end
 
-function KSLDropdownSelectionTextMixin:OnShow()
+function OxMLDropdownSelectionTextMixin:OnShow()
 	-- Will only cause a menu description to be generated if the generator was
 	-- assigned prior to the OnShow() being called.
 	self:GenerateMenu();
 end
 
-function KSLDropdownSelectionTextMixin:OnEnter()
+function OxMLDropdownSelectionTextMixin:OnEnter()
 	ButtonStateBehaviorMixin.OnEnter(self);
 
 	if self:ShouldShowTooltip() then
@@ -661,35 +661,35 @@ function KSLDropdownSelectionTextMixin:OnEnter()
 	end
 end
 
-function KSLDropdownSelectionTextMixin:ShouldShowTooltip()
+function OxMLDropdownSelectionTextMixin:ShouldShowTooltip()
 	return self.Text:IsTruncated() or self.tooltipFunc;
 end
 
-function KSLDropdownSelectionTextMixin:SetTooltip(tooltipFunc)
+function OxMLDropdownSelectionTextMixin:SetTooltip(tooltipFunc)
 	self.tooltipFunc = tooltipFunc;
 end
 
-function KSLDropdownSelectionTextMixin:ShowTooltip()
+function OxMLDropdownSelectionTextMixin:ShowTooltip()
 	if self.tooltipFunc then
-		KSLMenuUtil.ShowTooltip(self, self.tooltipFunc);
+		OxMLMenuUtil.ShowTooltip(self, self.tooltipFunc);
 	else
-		KSLMenuUtil.ShowTooltip(self, function(tooltip)
+		OxMLMenuUtil.ShowTooltip(self, function(tooltip)
 			GameTooltip_SetTitle(tooltip, self.Text:GetText());
 		end);
 	end
 end
 
-function KSLDropdownSelectionTextMixin:OnLeave()
+function OxMLDropdownSelectionTextMixin:OnLeave()
 	ButtonStateBehaviorMixin.OnLeave(self);
 
-	KSLMenuUtil.HideTooltip(self);
+	OxMLMenuUtil.HideTooltip(self);
 end
 
 -- Inherited by dropdown buttons that require the reset button behavior. The reset button
 -- needs to be defined/created prior to the OnLoad call.
-KSLDropdownFilterBehaviorMixin = {};
+OxMLDropdownFilterBehaviorMixin = {};
 
-function KSLDropdownFilterBehaviorMixin:OnLoad()
+function OxMLDropdownFilterBehaviorMixin:OnLoad()
 	self.ResetButton:SetScript("OnClick", function(button, buttonName, down)
 		if self.defaultCallback then
 			 self.defaultCallback();
@@ -701,73 +701,73 @@ function KSLDropdownFilterBehaviorMixin:OnLoad()
 	end);
 end
 
-function KSLDropdownFilterBehaviorMixin:OnShow()
+function OxMLDropdownFilterBehaviorMixin:OnShow()
 	self:ValidateResetState();
 end
 
 -- Callback to set all filters to default state.
-function KSLDropdownFilterBehaviorMixin:SetDefaultCallback(callback)
+function OxMLDropdownFilterBehaviorMixin:SetDefaultCallback(callback)
 	self.defaultCallback = callback;
 end
 
 -- Callback to return if the filters are in their default state.
-function KSLDropdownFilterBehaviorMixin:SetIsDefaultCallback(callback)
+function OxMLDropdownFilterBehaviorMixin:SetIsDefaultCallback(callback)
 	self.isDefaultCallback = callback;
 end
 
 -- Called in response to any menu option change.
-function KSLDropdownFilterBehaviorMixin:SetUpdateCallback(callback)
+function OxMLDropdownFilterBehaviorMixin:SetUpdateCallback(callback)
 	self.notifyUpdateCallback = callback;
 end
 
-function KSLDropdownFilterBehaviorMixin:NotifyUpdate(description)
+function OxMLDropdownFilterBehaviorMixin:NotifyUpdate(description)
 	if self.notifyUpdateCallback then
 		self.notifyUpdateCallback(description);
 	end
 end
 
-function KSLDropdownFilterBehaviorMixin:Reset()
+function OxMLDropdownFilterBehaviorMixin:Reset()
 	self.ResetButton:Hide();
 end
 
-function KSLDropdownFilterBehaviorMixin:ValidateResetState()
+function OxMLDropdownFilterBehaviorMixin:ValidateResetState()
 	if self.isDefaultCallback then
 		self.ResetButton:SetShown(not self.isDefaultCallback());
 	end
 end
 
 -- Call in derived
-function KSLDropdownFilterBehaviorMixin:OnMenuResponse(menu, description)
+function OxMLDropdownFilterBehaviorMixin:OnMenuResponse(menu, description)
 	self:ValidateResetState();
 	self:NotifyUpdate(description);
 end
 
 -- Call in derived
-function KSLDropdownFilterBehaviorMixin:OnMenuAssigned()
+function OxMLDropdownFilterBehaviorMixin:OnMenuAssigned()
 	self:ValidateResetState();
 end
 
-KSLFilterButtonMixin = CreateFromMixins(KSLDropdownFilterBehaviorMixin);
+OxMLFilterButtonMixin = CreateFromMixins(OxMLDropdownFilterBehaviorMixin);
 
-function KSLFilterButtonMixin:OnMenuResponse(menu, description)
-	KSLDropdownButtonMixin.OnMenuResponse(self, menu, description);
-	KSLDropdownFilterBehaviorMixin.OnMenuResponse(self, menu, description);
+function OxMLFilterButtonMixin:OnMenuResponse(menu, description)
+	OxMLDropdownButtonMixin.OnMenuResponse(self, menu, description);
+	OxMLDropdownFilterBehaviorMixin.OnMenuResponse(self, menu, description);
 end
 
-function KSLFilterButtonMixin:OnMenuAssigned()
-	KSLDropdownButtonMixin.OnMenuAssigned(self);
-	KSLDropdownFilterBehaviorMixin.OnMenuAssigned(self);
+function OxMLFilterButtonMixin:OnMenuAssigned()
+	OxMLDropdownButtonMixin.OnMenuAssigned(self);
+	OxMLDropdownFilterBehaviorMixin.OnMenuAssigned(self);
 end
 
-KSLStyle1DropdownMixin = CreateFromMixins(ButtonStateBehaviorMixin, KSLDropdownSelectionTextMixin);
+OxMLStyle1DropdownMixin = CreateFromMixins(ButtonStateBehaviorMixin, OxMLDropdownSelectionTextMixin);
 
-function KSLStyle1DropdownMixin:OnLoad()
-	KSLValidateIsDropdownButtonIntrinsic(self);
+function OxMLStyle1DropdownMixin:OnLoad()
+	OxMLValidateIsDropdownButtonIntrinsic(self);
 	ButtonStateBehaviorMixin.OnLoad(self);
-	KSLDropdownSelectionTextMixin.OnLoad(self);
+	OxMLDropdownSelectionTextMixin.OnLoad(self);
 end
 
-function KSLStyle1DropdownMixin:OnButtonStateChanged()
+function OxMLStyle1DropdownMixin:OnButtonStateChanged()
 	local enabled = self:IsEnabled();
 	if enabled then
 		self.Text:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB());
@@ -782,13 +782,13 @@ end
 The standard "filter" dropdown style. Its text does not reflect the selected option(s) and
 instead is generally initialized to fixed text.
 ]]--
-KSLStyle1FilterDropdownMixin = CreateFromMixins(ButtonStateBehaviorMixin, KSLDropdownTextMixin, KSLFilterButtonMixin);
+OxMLStyle1FilterDropdownMixin = CreateFromMixins(ButtonStateBehaviorMixin, OxMLDropdownTextMixin, OxMLFilterButtonMixin);
 
-function KSLStyle1FilterDropdownMixin:OnLoad()
-	KSLValidateIsDropdownButtonIntrinsic(self);
+function OxMLStyle1FilterDropdownMixin:OnLoad()
+	OxMLValidateIsDropdownButtonIntrinsic(self);
 	ButtonStateBehaviorMixin.OnLoad(self);
-	KSLDropdownTextMixin.OnLoad(self);
-	KSLFilterButtonMixin.OnLoad(self);
+	OxMLDropdownTextMixin.OnLoad(self);
+	OxMLFilterButtonMixin.OnLoad(self);
 
 	if self.baseFontObject then
 		self.Text:SetFontObject(self.baseFontObject);
@@ -800,34 +800,34 @@ function KSLStyle1FilterDropdownMixin:OnLoad()
 	self:SetDisplacedRegions(x, y, self.Text);
 end
 
-function KSLStyle1FilterDropdownMixin:GetBackgroundAtlas()
+function OxMLStyle1FilterDropdownMixin:GetBackgroundAtlas()
 	if self:IsEnabled() then
 		if self:IsDownOver() then
-			return KSLStyle1FilterDropdownStateDownOver;
+			return OxMLStyle1FilterDropdownStateDownOver;
 		elseif self:IsOver() then
-			return KSLStyle1FilterDropdownStateOver;
+			return OxMLStyle1FilterDropdownStateOver;
 		elseif self:IsDown() then
-			return KSLStyle1FilterDropdownStateDown;
+			return OxMLStyle1FilterDropdownStateDown;
 		elseif self:IsMenuOpen() then
-			return KSLStyle1FilterDropdownStateOpen;
+			return OxMLStyle1FilterDropdownStateOpen;
 		else
-			return KSLStyle1FilterDropdownStateEnabled;
+			return OxMLStyle1FilterDropdownStateEnabled;
 		end
 	end
-	return KSLStyle1FilterDropdownStateDisabled;
+	return OxMLStyle1FilterDropdownStateDisabled;
 end
 
-function KSLStyle1FilterDropdownMixin:OnButtonStateChanged()
+function OxMLStyle1FilterDropdownMixin:OnButtonStateChanged()
 	self.Background:SetAtlas(self:GetBackgroundAtlas(), TextureKitConstants.UseAtlasSize);
 end
 
-function KSLStyle1FilterDropdownMixin:OnEnable()
+function OxMLStyle1FilterDropdownMixin:OnEnable()
 	ButtonStateBehaviorMixin.OnEnable(self);
 
 	self.Text:SetFontObject(self.baseFontObject);
 end
 
-function KSLStyle1FilterDropdownMixin:OnDisable()
+function OxMLStyle1FilterDropdownMixin:OnDisable()
 	ButtonStateBehaviorMixin.OnDisable(self);
 
 	self.Text:SetFontObject(self.disableFontObject);
@@ -836,25 +836,25 @@ end
 --[[
 A special style used in Settings and Character Creation/Customization. Note that complex
 contents (color swatches, icons, etc.) are not defined here but are instead added as a child
-within this template. See "KSLStyle2DropdownTemplate" in Blizzard_CharacterCustomize.xml.
+within this template. See "OxMLStyle2DropdownTemplate" in Blizzard_CharacterCustomize.xml.
 ]]--
-KSLStyle2DropdownMixin = CreateFromMixins(ButtonStateBehaviorMixin, KSLDropdownSelectionTextMixin, KSLFilterButtonMixin);
+OxMLStyle2DropdownMixin = CreateFromMixins(ButtonStateBehaviorMixin, OxMLDropdownSelectionTextMixin, OxMLFilterButtonMixin);
 
-function KSLStyle2DropdownMixin:OnLoad()
+function OxMLStyle2DropdownMixin:OnLoad()
 	ButtonStateBehaviorMixin.OnLoad(self);
-	KSLDropdownSelectionTextMixin.OnLoad(self);
-	KSLFilterButtonMixin.OnLoad(self);
+	OxMLDropdownSelectionTextMixin.OnLoad(self);
+	OxMLFilterButtonMixin.OnLoad(self);
 
 	local x, y = 2, -1;
 	self:SetDisplacedRegions(x, y, self.Text);
 end
 
-function KSLStyle2DropdownMixin:OnShow()
-	KSLDropdownSelectionTextMixin.OnShow(self);
-	KSLFilterButtonMixin.OnShow(self);
+function OxMLStyle2DropdownMixin:OnShow()
+	OxMLDropdownSelectionTextMixin.OnShow(self);
+	OxMLFilterButtonMixin.OnShow(self);
 end
 
-function KSLStyle2DropdownMixin:GetBackgroundAtlas()
+function OxMLStyle2DropdownMixin:GetBackgroundAtlas()
 	if self:IsEnabled() then
 		if self:IsDownOver() then
 			return "common-dropdown-c-button-pressedhover-1";
@@ -872,7 +872,7 @@ function KSLStyle2DropdownMixin:GetBackgroundAtlas()
 	return "common-dropdown-c-button-disabled";
 end
 
-function KSLStyle2DropdownMixin:OnButtonStateChanged()
+function OxMLStyle2DropdownMixin:OnButtonStateChanged()
 	local enabled = self:IsEnabled();
 	if enabled then
 		self.Text:SetTextColor(NORMAL_FONT_COLOR:GetRGB());
@@ -886,29 +886,29 @@ function KSLStyle2DropdownMixin:OnButtonStateChanged()
 	self.Background:SetAtlas(self:GetBackgroundAtlas(), TextureKitConstants.UseAtlasSize);
 end
 
-function KSLStyle2DropdownMixin:OnMenuOpened(menu)
-	KSLDropdownButtonMixin.OnMenuOpened(self, menu);
+function OxMLStyle2DropdownMixin:OnMenuOpened(menu)
+	OxMLDropdownButtonMixin.OnMenuOpened(self, menu);
 
 	self:OnButtonStateChanged();
 end
 
-function KSLStyle2DropdownMixin:OnMenuClosed(menu, closeReason)
-	KSLDropdownButtonMixin.OnMenuClosed(self, menu, closeReason);
+function OxMLStyle2DropdownMixin:OnMenuClosed(menu, closeReason)
+	OxMLDropdownButtonMixin.OnMenuClosed(self, menu, closeReason);
 
 	self:OnButtonStateChanged();
 end
 
-KSLStyle1ArrowDropdownMixin = CreateFromMixins(ButtonStateBehaviorMixin);
+OxMLStyle1ArrowDropdownMixin = CreateFromMixins(ButtonStateBehaviorMixin);
 
-function KSLStyle1ArrowDropdownMixin:OnLoad()
-	KSLValidateIsDropdownButtonIntrinsic(self);
+function OxMLStyle1ArrowDropdownMixin:OnLoad()
+	OxMLValidateIsDropdownButtonIntrinsic(self);
 	ButtonStateBehaviorMixin.OnLoad(self);
-	KSLDropdownButtonMixin.OnLoad(self);
+	OxMLDropdownButtonMixin.OnLoad(self);
 end
 
-KSLMenuStyleMixin = {};
+OxMLMenuStyleMixin = {};
 
-function KSLMenuStyleMixin:Generate()
+function OxMLMenuStyleMixin:Generate()
 	local texture = self:AttachTexture();
 	texture:SetAllPoints();
 
@@ -925,7 +925,7 @@ do
 		bottom = 0,
 	};
 
-	function KSLMenuStyleMixin:GetInset()
+	function OxMLMenuStyleMixin:GetInset()
 		return inset;
 	end
 end
@@ -937,15 +937,15 @@ do
 		height = 0,
 	};
 
-	function KSLMenuStyleMixin:GetChildExtentPadding()
+	function OxMLMenuStyleMixin:GetChildExtentPadding()
 		return padding;
 	end
 end
 
 -- Test purposes only.
-KSLRandomColorStyleMenuMixin = CreateFromMixins(KSLMenuStyleMixin);
+OxMLRandomColorStyleMenuMixin = CreateFromMixins(OxMLMenuStyleMixin);
 
-function KSLRandomColorStyleMenuMixin:Generate()
+function OxMLRandomColorStyleMenuMixin:Generate()
 	local texture = self:AttachTexture();
 	texture:SetAllPoints();
 
@@ -954,18 +954,18 @@ function KSLRandomColorStyleMenuMixin:Generate()
 	texture:SetColorTexture(r, g, b, 1);
 end
 
-KSLBlackColorStyleMenuMixin = CreateFromMixins(KSLMenuStyleMixin);
+OxMLBlackColorStyleMenuMixin = CreateFromMixins(OxMLMenuStyleMixin);
 
-function KSLBlackColorStyleMenuMixin:Generate()
+function OxMLBlackColorStyleMenuMixin:Generate()
 	local texture = self:AttachTexture();
 	texture:SetAllPoints();
 
 	texture:SetColorTexture(0, 0, 0, 1);
 end
 
-KSLMenuStyle2Mixin = CreateFromMixins(KSLMenuStyleMixin);
+OxMLMenuStyle2Mixin = CreateFromMixins(OxMLMenuStyleMixin);
 
-function KSLMenuStyle2Mixin:Generate()
+function OxMLMenuStyle2Mixin:Generate()
 	local background = self:AttachTexture();
 	background:SetAtlas("common-dropdown-c-bg");
 	background:SetPoint("TOPLEFT", -17, 12);
@@ -981,22 +981,22 @@ do
 		bottom = 7,
 	};
 
-	function KSLMenuStyle2Mixin:GetInset()
+	function OxMLMenuStyle2Mixin:GetInset()
 		return inset;
 	end
 end
 
 -- Accompanies the style of WowStyle2Dropdown
-KSLStyle2IconButtonMixin = CreateFromMixins(ButtonStateBehaviorMixin);
+OxMLStyle2IconButtonMixin = CreateFromMixins(ButtonStateBehaviorMixin);
 
-function KSLStyle2IconButtonMixin:OnLoad()
+function OxMLStyle2IconButtonMixin:OnLoad()
 	self:OnButtonStateChanged();
 
 	local x, y = 2, -1;
 	self:SetDisplacedRegions(x, y, self.Icon);
 end
 
-function KSLStyle2IconButtonMixin:GetBackgroundAtlas()
+function OxMLStyle2IconButtonMixin:GetBackgroundAtlas()
 	if self:IsEnabled() then
 		if self:IsDownOver() then
 			return "common-dropdown-c-button-pressedhover-2";
@@ -1012,7 +1012,7 @@ function KSLStyle2IconButtonMixin:GetBackgroundAtlas()
 	return "common-dropdown-c-button-disabled";
 end
 
-function KSLStyle2IconButtonMixin:OnButtonStateChanged()
+function OxMLStyle2IconButtonMixin:OnButtonStateChanged()
 	self.Background:SetAtlas(self:GetBackgroundAtlas(), TextureKitConstants.UseAtlasSize);
 
 	local icon = self:IsEnabled() and self.normalAtlas or self.disabledAtlas;

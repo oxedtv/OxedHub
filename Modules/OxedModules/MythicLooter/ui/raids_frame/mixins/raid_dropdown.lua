@@ -2,9 +2,9 @@ local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; Addon
 
 local DB = KeystoneLoot.DB;
 
-KeystoneLootRaidDropdownMixin = CreateFromMixins(KSLDropdownButtonMixin);
+OxMythicLooterRaidDropdownMixin = CreateFromMixins(OxMLDropdownButtonMixin);
 
-function KeystoneLootRaidDropdownMixin:Init(raids)
+function OxMythicLooterRaidDropdownMixin:Init(raids)
     self.selectedIndex = 1;
 
     -- Set raid name
@@ -38,7 +38,7 @@ function KeystoneLootRaidDropdownMixin:Init(raids)
     end);
 end
 
-function KeystoneLootRaidDropdownMixin:SetText(text)
+function OxMythicLooterRaidDropdownMixin:SetText(text)
     self.Text:SetText(text);
 
     local raidIcon = 20;
@@ -46,7 +46,7 @@ function KeystoneLootRaidDropdownMixin:SetText(text)
     self:SetWidth(raidIcon + self.Text:GetWidth() + arrow);
 end
 
-function KeystoneLootRaidDropdownMixin:OnMouseDown()
+function OxMythicLooterRaidDropdownMixin:OnMouseDown()
     if (not self:IsEnabled()) then
         return;
     end
@@ -56,7 +56,7 @@ function KeystoneLootRaidDropdownMixin:OnMouseDown()
     self:GetHighlightTexture():AdjustPointsOffset(1, -1);
 end
 
-function KeystoneLootRaidDropdownMixin:OnMouseUp()
+function OxMythicLooterRaidDropdownMixin:OnMouseUp()
     if (not self:IsEnabled()) then
         return;
     end

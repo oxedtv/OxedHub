@@ -29,15 +29,15 @@ local optionsWindow
 -- The hourglass on the minimap: only while the module is on and the player
 -- wants it (settings.minimapButton.hide). With LibDBIcon -- which OxedHub
 -- ships, so the usual case -- the icon is the library's, not
--- KeystoneLootMinimapButton, and has to be shown and hidden through it.
+-- OxMythicLooterMinimapButton, and has to be shown and hidden through it.
 local function ApplyMinimap(on)
     local DB = MythicLooter.DB
     local show = on and not (DB and DB:Get("settings.minimapButton.hide"))
     local LDBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
     if LDBIcon and LDBIcon:IsRegistered("MythicLooter") then
         if show then LDBIcon:Show("MythicLooter") else LDBIcon:Hide("MythicLooter") end
-    elseif KeystoneLootMinimapButton then
-        KeystoneLootMinimapButton:SetShown(show and true or false)
+    elseif OxMythicLooterMinimapButton then
+        OxMythicLooterMinimapButton:SetShown(show and true or false)
     end
 end
 
@@ -59,8 +59,8 @@ local function ShowOptions()
             OxedHub.UI:ApplyRedButtonStyle(btnOpen)
         end
         btnOpen:SetScript("OnClick", function()
-            if KeystoneLootFrame then
-                KeystoneLootFrame:SetShown(not KeystoneLootFrame:IsShown())
+            if OxMythicLooterFrame then
+                OxMythicLooterFrame:SetShown(not OxMythicLooterFrame:IsShown())
             end
         end)
 
@@ -72,10 +72,10 @@ local function ShowOptions()
             OxedHub.UI:ApplyRedButtonStyle(btnReset)
         end
         btnReset:SetScript("OnClick", function()
-            if KeystoneLootFrame then
-                KeystoneLootFrame:ClearAllPoints()
-                KeystoneLootFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-                KeystoneLootFrame:Show()
+            if OxMythicLooterFrame then
+                OxMythicLooterFrame:ClearAllPoints()
+                OxMythicLooterFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+                OxMythicLooterFrame:Show()
             end
         end)
 
@@ -264,8 +264,8 @@ SlashCmdList["MYTHICLOOTER"] = function(msg)
     if cmd == "opt" or cmd == "options" or cmd == "config" or cmd == "settings" then
         ShowOptions()
     else
-        if KeystoneLootFrame then
-            KeystoneLootFrame:SetShown(not KeystoneLootFrame:IsShown())
+        if OxMythicLooterFrame then
+            OxMythicLooterFrame:SetShown(not OxMythicLooterFrame:IsShown())
         else
             print("|cff9d5db8MythicLooter|r: Loading frame...")
         end
@@ -279,8 +279,8 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "mythiclooter",
         name     = "MythicLooter",
-        version  = "2.19.2",
-        updated  = 20261016.99,  -- minimap icon hidden while the module is off
+        version  = "2.19.3",
+        updated  = 20261017.1,  -- no longer clashes with the standalone KeystoneLoot addon
         author   = "Oxed",
         category = "groups",
         keywords = { "mythiclooter", "keystoneloot", "m+", "loot", "dungeon", "raid", "bis", "vault", "item" },
@@ -304,11 +304,11 @@ local function RegisterModule()
         end,
 
         OnDisable = function()
-            if KeystoneLootFrame then KeystoneLootFrame:Hide() end
+            if OxMythicLooterFrame then OxMythicLooterFrame:Hide() end
             ApplyMinimap(false)
-            if KeystoneLootReminderFrame then KeystoneLootReminderFrame:Hide() end
-            if KeystoneLootDropNotificationFrame then KeystoneLootDropNotificationFrame:Hide() end
-            if KeystoneLootMythicPlusNotificationFrame then KeystoneLootMythicPlusNotificationFrame:Hide() end
+            if OxMythicLooterReminderFrame then OxMythicLooterReminderFrame:Hide() end
+            if OxMythicLooterDropNotificationFrame then OxMythicLooterDropNotificationFrame:Hide() end
+            if OxMythicLooterMythicPlusNotificationFrame then OxMythicLooterMythicPlusNotificationFrame:Hide() end
         end,
     })
 end

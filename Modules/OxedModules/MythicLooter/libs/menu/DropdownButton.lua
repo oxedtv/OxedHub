@@ -2,12 +2,12 @@ local function AssertIntrinsicMessage(frame)
 	return string.format("%s element is not a DropdownButton.", frame:GetDebugName());
 end
 
-function KSLIsDropdownButtonIntrinsic(frame)
+function OxMLIsDropdownButtonIntrinsic(frame)
 	return frame.intrinsic == "DropdownButton";
 end
 
-function KSLValidateIsDropdownButtonIntrinsic(frame)
-	assertsafe(KSLIsDropdownButtonIntrinsic(frame), AssertIntrinsicMessage, frame);
+function OxMLValidateIsDropdownButtonIntrinsic(frame)
+	assertsafe(OxMLIsDropdownButtonIntrinsic(frame), AssertIntrinsicMessage, frame);
 end
 
 --[[
@@ -24,7 +24,7 @@ local function CollectSelectionData(menuDescription)
 	local previousDescriptions = {};
 	local selections = {};
 
-	KSLMenuUtil.TraverseMenu(menuDescription, function(description)
+	OxMLMenuUtil.TraverseMenu(menuDescription, function(description)
 		if description:IsSelectionIgnored() then
 			return;
 		end
@@ -66,9 +66,9 @@ local function CollectSelectionData(menuDescription)
 	return previousRadio, nextRadio, selections;
 end
 
-KSLDropdownButtonMixin = CreateFromMixins(CallbackRegistryMixin);
+OxMLDropdownButtonMixin = CreateFromMixins(CallbackRegistryMixin);
 
-KSLDropdownButtonMixin:GenerateCallbackEvents(
+OxMLDropdownButtonMixin:GenerateCallbackEvents(
 	{
 		"OnUpdate",
 		"OnMenuOpen",
@@ -76,7 +76,7 @@ KSLDropdownButtonMixin:GenerateCallbackEvents(
 	}
 );
 
-function KSLDropdownButtonMixin:OnLoad_Intrinsic()
+function OxMLDropdownButtonMixin:OnLoad_Intrinsic()
 	CallbackRegistryMixin.OnLoad(self);
 
 	self:EnableMouseWheel(false);
@@ -91,13 +91,13 @@ function KSLDropdownButtonMixin:OnLoad_Intrinsic()
 	self:SetMenuAnchor(anchor);
 end
 
-function KSLDropdownButtonMixin:OnEnter_Intrinsic()
+function OxMLDropdownButtonMixin:OnEnter_Intrinsic()
 	if self.canOpenOnEnter then
 		self:OpenMenu();
 	end
 end
 
-function KSLDropdownButtonMixin:OnMouseDown_Intrinsic()
+function OxMLDropdownButtonMixin:OnMouseDown_Intrinsic()
 	if IsShiftKeyDown() then
 		return;
 	end
@@ -105,7 +105,7 @@ function KSLDropdownButtonMixin:OnMouseDown_Intrinsic()
 	self:SetMenuOpen(not self:IsMenuOpen());
 end
 
-function KSLDropdownButtonMixin:OpenMenu()
+function OxMLDropdownButtonMixin:OpenMenu()
 	if not self:IsEnabled() then
 		return;
 	end
@@ -121,7 +121,7 @@ function KSLDropdownButtonMixin:OpenMenu()
 		return;
 	end
 
-	local menu = KSLMenu.GetManager():OpenMenu(self, self.menuDescription, self.menuAnchor); 
+	local menu = OxMLMenu.GetManager():OpenMenu(self, self.menuDescription, self.menuAnchor); 
 	self.menu = menu;
 	if menu then
 		menu:SetClosedCallback(self.onMenuClosedCallback);
@@ -130,7 +130,7 @@ function KSLDropdownButtonMixin:OpenMenu()
 	end
 end
 
-function KSLDropdownButtonMixin:CloseMenu()
+function OxMLDropdownButtonMixin:CloseMenu()
 	if self.menu then
 		self.menu:Close();
 		self.menu = nil;
@@ -140,7 +140,7 @@ function KSLDropdownButtonMixin:CloseMenu()
 	self:SignalUpdate();
 end
 
-function KSLDropdownButtonMixin:SetMenuOpen(open)
+function OxMLDropdownButtonMixin:SetMenuOpen(open)
 	if open then
 		self:OpenMenu();
 	else
@@ -148,7 +148,7 @@ function KSLDropdownButtonMixin:SetMenuOpen(open)
 	end
 end
 
-function KSLDropdownButtonMixin:OnMouseWheel_Intrinsic(delta)
+function OxMLDropdownButtonMixin:OnMouseWheel_Intrinsic(delta)
 	if self.mouseWheelDisabledThisFrame then
 		return;
 	end
@@ -167,15 +167,15 @@ function KSLDropdownButtonMixin:OnMouseWheel_Intrinsic(delta)
 	self:Rotate(forward);
 end
 
-function KSLDropdownButtonMixin:SetMenuAnchor(anchor)
+function OxMLDropdownButtonMixin:SetMenuAnchor(anchor)
 	self.menuAnchor = anchor;
 end
 
-function KSLDropdownButtonMixin:HandlesGlobalMouseEvent(buttonName, event)
+function OxMLDropdownButtonMixin:HandlesGlobalMouseEvent(buttonName, event)
 	return event == "GLOBAL_MOUSE_DOWN" and buttonName == "LeftButton";
 end
 
-function KSLDropdownButtonMixin:RegisterMenu(menuDescription)
+function OxMLDropdownButtonMixin:RegisterMenu(menuDescription)
 	assert(type(menuDescription) == "table");
 	self.menuDescription = menuDescription;
 
@@ -207,7 +207,7 @@ end
 Used rarely to restore the dropdown to an uninitialized state. 
 This should generally be ignored in the API.
 ]]--
-function KSLDropdownButtonMixin:ClearMenuState()
+function OxMLDropdownButtonMixin:ClearMenuState()
 	self.menuDescription = nil;
 	self.menuGenerator = nil;
 
@@ -218,7 +218,7 @@ end
 Returns the menu description that was either explicitly assigned or generated. Will return
 nil if a description was never created.
 ]]--
-function KSLDropdownButtonMixin:GetMenuDescription()
+function OxMLDropdownButtonMixin:GetMenuDescription()
 	return self.menuDescription;
 end
 
@@ -226,7 +226,7 @@ end
 Returns the number of visible description elements in the root description. Will return
 false if a description was never created.
 ]]--
-function KSLDropdownButtonMixin:HasElements()
+function OxMLDropdownButtonMixin:HasElements()
 	return self.menuDescription and self.menuDescription:HasElements() or false;
 end
 
@@ -234,8 +234,8 @@ end
 The primary point of menu registration. Expects a generator function with the following signature:
 function(dropdown, rootDescription) ... end
 ]]--
-function KSLDropdownButtonMixin:SetupMenu(generator)
-	assert(type(generator) == "function", "KSLDropdownButtonMixin:SetupMenu(generator): argument is not a function.");
+function OxMLDropdownButtonMixin:SetupMenu(generator)
+	assert(type(generator) == "function", "OxMLDropdownButtonMixin:SetupMenu(generator): argument is not a function.");
 	self.menuGenerator = generator;
 		
 	--[[
@@ -249,10 +249,10 @@ function KSLDropdownButtonMixin:SetupMenu(generator)
 end
 
 local function PopulateDescription(self, menuGenerator, rootDescription)
-	KSLMenu.PopulateDescription(menuGenerator, self, rootDescription);
+	OxMLMenu.PopulateDescription(menuGenerator, self, rootDescription);
 end
 
-function KSLDropdownButtonMixin:GenerateMenu()
+function OxMLDropdownButtonMixin:GenerateMenu()
 	local menuGenerator = self.menuGenerator;
 	if not menuGenerator then
 		return;
@@ -263,31 +263,31 @@ function KSLDropdownButtonMixin:GenerateMenu()
 	self:RegisterMenu(rootDescription);
 end
 
-function KSLDropdownButtonMixin:CreateDefaultRootMenuDescription()
-	local menuMixin = self.menuMixin or KSLMenuVariants.GetDefaultMenuMixin();
+function OxMLDropdownButtonMixin:CreateDefaultRootMenuDescription()
+	local menuMixin = self.menuMixin or OxMLMenuVariants.GetDefaultMenuMixin();
 	return self:CreateRootDescription(menuMixin);
 end
 
-function KSLDropdownButtonMixin:CreateRootDescription(menuMixin)
-	return KSLMenuUtil.CreateRootMenuDescription(menuMixin);
+function OxMLDropdownButtonMixin:CreateRootDescription(menuMixin)
+	return OxMLMenuUtil.CreateRootMenuDescription(menuMixin);
 end
 
-function KSLDropdownButtonMixin:IsMenuOpen()
+function OxMLDropdownButtonMixin:IsMenuOpen()
 	return self.menu ~= nil;
 end
 
-function KSLDropdownButtonMixin:SignalUpdate()
+function OxMLDropdownButtonMixin:SignalUpdate()
 	--[[
 	The selection list is routed through the CBR and Update() function to avoid
 	multiple redundant traversals, particularly when the traversal list is quite large
 	such as it is in character customization.
 	]]--
 	local previousRadio, nextRadio, selections = CollectSelectionData(self:GetMenuDescription());
-	self:TriggerEvent(KSLDropdownButtonMixin.Event.OnUpdate, previousRadio, nextRadio, selections);
+	self:TriggerEvent(OxMLDropdownButtonMixin.Event.OnUpdate, previousRadio, nextRadio, selections);
 	self:UpdateSelections(selections);
 end
 
-function KSLDropdownButtonMixin:OnMenuResponse(menu, description)
+function OxMLDropdownButtonMixin:OnMenuResponse(menu, description)
 	--[[
 	A response may change the underlying data and require the root or child menus to be regenerated prior
 	to evaluating selected options. Because of the rarity of this scenario, this is opt-in behavior.
@@ -299,46 +299,46 @@ function KSLDropdownButtonMixin:OnMenuResponse(menu, description)
 	end
 end
 
-function KSLDropdownButtonMixin:EnableRegenerateOnResponse()
+function OxMLDropdownButtonMixin:EnableRegenerateOnResponse()
 	self.shouldRegenerateOnResponse = true;
 end
 
-function KSLDropdownButtonMixin:OnMenuAssigned()
+function OxMLDropdownButtonMixin:OnMenuAssigned()
 	self:SignalUpdate();
 end
 
-function KSLDropdownButtonMixin:OnMenuChanged()
+function OxMLDropdownButtonMixin:OnMenuChanged()
 	self:SignalUpdate();
 end
 
-function KSLDropdownButtonMixin:OnMenuOpened(menu)
-	PlaySound(KSLMenuVariants.GetDropdownOpenSoundKit());
+function OxMLDropdownButtonMixin:OnMenuOpened(menu)
+	PlaySound(OxMLMenuVariants.GetDropdownOpenSoundKit());
 
-	self:TriggerEvent(KSLDropdownButtonMixin.Event.OnMenuOpen, self);
+	self:TriggerEvent(OxMLDropdownButtonMixin.Event.OnMenuOpen, self);
 end
 
-function KSLDropdownButtonMixin:OnMenuClosed(menu, closeReason)
-	PlaySound(KSLMenuVariants.GetDropdownCloseSoundKit());
+function OxMLDropdownButtonMixin:OnMenuClosed(menu, closeReason)
+	PlaySound(OxMLMenuVariants.GetDropdownCloseSoundKit());
 
-	self:TriggerEvent(KSLDropdownButtonMixin.Event.OnMenuClose, self, menu, closeReason);
+	self:TriggerEvent(OxMLDropdownButtonMixin.Event.OnMenuClose, self, menu, closeReason);
 end
 
-function KSLDropdownButtonMixin:UpdateSelections(selections)
+function OxMLDropdownButtonMixin:UpdateSelections(selections)
 	self:UpdateToMenuSelections(self:GetMenuDescription(), selections);
 end
 
-function KSLDropdownButtonMixin:Update()
+function OxMLDropdownButtonMixin:Update()
 	self:SignalUpdate();
 end
 
-function KSLDropdownButtonMixin:UpdateToMenuSelections(menuDescription, selections)
+function OxMLDropdownButtonMixin:UpdateToMenuSelections(menuDescription, selections)
 	--[[
 	Should be implemented by the derivation if it needs to display selections. Some
 	dropdowns have a fixed text and do not need this.
 	]]--
 end
 
-function KSLDropdownButtonMixin:Pick(description, menuInputContext, menuInputButtonName)
+function OxMLDropdownButtonMixin:Pick(description, menuInputContext, menuInputButtonName)
 	if description then
 		local responded = description:Pick(menuInputContext, menuInputButtonName);
 		if responded then
@@ -350,7 +350,7 @@ function KSLDropdownButtonMixin:Pick(description, menuInputContext, menuInputBut
 end
 
 
-function KSLDropdownButtonMixin:Rotate(forward)
+function OxMLDropdownButtonMixin:Rotate(forward)
 	if forward then
 		self:Increment();
 	else
@@ -358,32 +358,32 @@ function KSLDropdownButtonMixin:Rotate(forward)
 	end
 end
 
-function KSLDropdownButtonMixin:HasAnyRadioDescriptions()
-	return KSLMenuUtil.TraverseMenu(self:GetMenuDescription(), function(description)
+function OxMLDropdownButtonMixin:HasAnyRadioDescriptions()
+	return OxMLMenuUtil.TraverseMenu(self:GetMenuDescription(), function(description)
 		return description:IsRadio();
 	end);
 end
 
-function KSLDropdownButtonMixin:Increment()
+function OxMLDropdownButtonMixin:Increment()
 	local previousRadio, nextRadio, selections = CollectSelectionData(self:GetMenuDescription());
-	self:Pick(nextRadio, KSLMenuInputContext.MouseWheel);
+	self:Pick(nextRadio, OxMLMenuInputContext.MouseWheel);
 end
 
-function KSLDropdownButtonMixin:Decrement()
+function OxMLDropdownButtonMixin:Decrement()
 	local previousRadio, nextRadio, selections = CollectSelectionData(self:GetMenuDescription())
-	self:Pick(previousRadio, KSLMenuInputContext.MouseWheel);
+	self:Pick(previousRadio, OxMLMenuInputContext.MouseWheel);
 end
 
-function KSLDropdownButtonMixin:CollectSelectionData()
+function OxMLDropdownButtonMixin:CollectSelectionData()
 	return CollectSelectionData(self:GetMenuDescription());
 end
 
-function KSLDropdownButtonMixin:GetSelectionData()
+function OxMLDropdownButtonMixin:GetSelectionData()
 	local data = CollectSelectionData(self:GetMenuDescription());
 	return data and data[1] or nil;
 end
 
-function KSLDropdownButtonMixin:HasStickyFocus()
+function OxMLDropdownButtonMixin:HasStickyFocus()
 	--[[ 
 	Allows controls to retain focus in case a menu option feeds informaton 
 	to a focused editbox at it's current caret position.
@@ -394,30 +394,30 @@ end
 -- Routes script calls to a dropdown button and causes the dropdown to respond
 -- as if it were actually pressed. If more scripts are required, feel free to add them;
 -- they'll only be invoked if the element defines the script for it.
-KSLDropdownButtonProxyMixin = {};
+OxMLDropdownButtonProxyMixin = {};
 
-function KSLDropdownButtonProxyMixin:GetRouteSibling()
+function OxMLDropdownButtonProxyMixin:GetRouteSibling()
 	return self:GetParent()[self.routeToSibling];
 end
 
-function KSLDropdownButtonProxyMixin:RouteScript(scriptName, ...)
+function OxMLDropdownButtonProxyMixin:RouteScript(scriptName, ...)
 	local button = self:GetRouteSibling();
 	button:GetScript(scriptName)(button, ...);
 end
 
-function KSLDropdownButtonProxyMixin:OnEnter(...)
+function OxMLDropdownButtonProxyMixin:OnEnter(...)
 	self:RouteScript("OnEnter", ...);
 end
 
-function KSLDropdownButtonProxyMixin:OnLeave(...)
+function OxMLDropdownButtonProxyMixin:OnLeave(...)
 	self:RouteScript("OnLeave", ...);
 end
 
-function KSLDropdownButtonProxyMixin:OnMouseDown(...)
+function OxMLDropdownButtonProxyMixin:OnMouseDown(...)
 	-- Send the OnMouseDown with the first argument replaced.
-	KSLDropdownButtonMixin.OnMouseDown_Intrinsic(self:GetRouteSibling(), select(2, ...));
+	OxMLDropdownButtonMixin.OnMouseDown_Intrinsic(self:GetRouteSibling(), select(2, ...));
 end
 
-function KSLDropdownButtonProxyMixin:HandlesGlobalMouseEvent(buttonName, event)
+function OxMLDropdownButtonProxyMixin:HandlesGlobalMouseEvent(buttonName, event)
 	return event == "GLOBAL_MOUSE_DOWN" and buttonName == "LeftButton";
 end

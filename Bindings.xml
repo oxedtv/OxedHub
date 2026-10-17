@@ -15,6 +15,6 @@
         OxedHub_AutoVendorToggleHovered()
     </Binding>
     <Binding name="KEYSTONELOOT_TOGGLE" category="OXEDHUB_CATEGORY" header="BINDING_HEADER_KEYSTONELOOT">
-        if KeystoneLootFrame then KeystoneLootFrame:SetShown(not KeystoneLootFrame:IsShown()) end
+        if OxMythicLooterFrame then OxMythicLooterFrame:SetShown(not OxMythicLooterFrame:IsShown()) end
     </Binding>
 </Bindings>

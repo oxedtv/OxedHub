@@ -2,9 +2,9 @@ local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; Addon
 
 local DB = KeystoneLoot.DB;
 
-KeystoneLootClassDropdownMixin = {};
+OxMythicLooterClassDropdownMixin = {};
 
-function KeystoneLootClassDropdownMixin:Init()
+function OxMythicLooterClassDropdownMixin:Init()
     self:SetSelectionText(function(selections)
         if (#selections == 0) then
             return CLASS;

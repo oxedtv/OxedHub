@@ -23,19 +23,19 @@ local trackedButtons = setmetatable({}, { __mode = "k" });
 
 local function SetTier(Button, tier)
     if (not tier or tier == 0) then
-        if (Button.KeystoneLootTierIcon) then
-            Button.KeystoneLootTierIcon:Hide();
+        if (Button.OxMythicLooterTierIcon) then
+            Button.OxMythicLooterTierIcon:Hide();
         end
 
         return;
     end
 
-    local Icon = Button.KeystoneLootTierIcon;
+    local Icon = Button.OxMythicLooterTierIcon;
     if (not Icon) then
         Icon = Button:CreateTexture(nil, "OVERLAY", nil, 5);
         Icon:SetSize(ICON_SIZE, ICON_SIZE);
 
-        Button.KeystoneLootTierIcon = Icon;
+        Button.OxMythicLooterTierIcon = Icon;
     end
 
     local point = DB:Get("settings.favoriteIcon");
@@ -54,8 +54,8 @@ local function UpdateByItemId(Button, itemId, characterKey)
         characterKey = Character:GetKey();
     end
 
-    Button.KeystoneLootItemId = itemId;
-    Button.KeystoneLootCharacterKey = characterKey;
+    Button.OxMythicLooterItemId = itemId;
+    Button.OxMythicLooterCharacterKey = characterKey;
 
     trackedButtons[Button] = itemId and true or nil;
 
@@ -356,7 +356,7 @@ end);
 local function RefreshTrackedButtons()
     for Button in pairs(trackedButtons) do
         if (Button:IsVisible()) then
-            UpdateByItemId(Button, Button.KeystoneLootItemId, Button.KeystoneLootCharacterKey);
+            UpdateByItemId(Button, Button.OxMythicLooterItemId, Button.OxMythicLooterCharacterKey);
         end
     end
 end

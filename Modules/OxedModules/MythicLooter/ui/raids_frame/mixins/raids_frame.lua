@@ -8,7 +8,7 @@ local PickerView = KeystoneLoot.PickerView;
 -- under the raid's name, the chosen boss on the right with its portrait and
 -- every item it drops (see picker_view.lua).
 
-KeystoneLootRaidsFrameMixin = {};
+OxMythicLooterRaidsFrameMixin = {};
 
 local function BossPortrait(bossId)
     local ok, _, _, _, displayID = pcall(EJ_GetCreatureInfo, 1, bossId);
@@ -35,15 +35,15 @@ local function SelectedBoss(raids)
     return first;
 end
 
-function KeystoneLootRaidsFrameMixin:OnLoad()
+function OxMythicLooterRaidsFrameMixin:OnLoad()
     PickerView.Setup(self);
 end
 
-function KeystoneLootRaidsFrameMixin:RefreshOwnedIcons()
+function OxMythicLooterRaidsFrameMixin:RefreshOwnedIcons()
     PickerView.EachItemButton(self, function(button) button:UpdateOwnedIcon(); end);
 end
 
-function KeystoneLootRaidsFrameMixin:RefreshSize()
+function OxMythicLooterRaidsFrameMixin:RefreshSize()
     local Parent = self:GetParent();
     if (Parent.raidsTabId) then
         Parent:RefreshSize(Parent.raidsTabId);
@@ -51,14 +51,14 @@ function KeystoneLootRaidsFrameMixin:RefreshSize()
 end
 
 -- Kept for the raid dropdown: choosing a raid picks its first boss.
-function KeystoneLootRaidsFrameMixin:SetRaid(raid)
+function OxMythicLooterRaidsFrameMixin:SetRaid(raid)
     local boss = raid and raid.bossList and raid.bossList[1];
     if (boss) then
         DB:Set("ui.selectedRaidBoss", boss.bossId);
     end
 end
 
-function KeystoneLootRaidsFrameMixin:Refresh()
+function OxMythicLooterRaidsFrameMixin:Refresh()
     local raids = Query:GetRaids();
     local selectedId = SelectedBoss(raids);
     local showRaidNames = #raids > 1;
@@ -107,7 +107,7 @@ function KeystoneLootRaidsFrameMixin:Refresh()
     self:RefreshSize();
 end
 
-function KeystoneLootRaidsFrameMixin:Init()
+function OxMythicLooterRaidsFrameMixin:Init()
     local function OnChanged()
         if (not self:IsShown()) then
             return;

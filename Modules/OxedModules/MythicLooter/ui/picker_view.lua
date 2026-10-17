@@ -145,11 +145,11 @@ function PickerView.Setup(frame)
 
     -- The banner is the old list's entry frame: its name, art and teleport
     -- button (dungeons) or boss portrait (raids) work as they always did.
-    frame.bannerPool = CreateFramePool("Frame", frame, "KeystoneLootEntryFrameTemplate");
+    frame.bannerPool = CreateFramePool("Frame", frame, "OxMythicLooterEntryFrameTemplate");
 
     local grid = CreateFrame("Frame", nil, frame);
     frame.PickerGrid = grid;
-    frame.itemPool = CreateFramePool("Button", grid, "KeystoneLootLootIconButtonTemplate");
+    frame.itemPool = CreateFramePool("Button", grid, "OxMythicLooterLootIconButtonTemplate");
 
     local empty = grid:CreateFontString(nil, "OVERLAY", "GameFontDisable");
     empty:SetPoint("TOP", grid, "TOP", 0, -24);

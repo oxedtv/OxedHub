@@ -3,9 +3,9 @@ local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; Addon
 local Upgrade = KeystoneLoot.Upgrade;
 local L = KeystoneLoot.L;
 
-KeystoneLootReminderIconMixin = {};
+OxMythicLooterReminderIconMixin = {};
 
-function KeystoneLootReminderIconMixin:Init(itemId, icon, isShared, players)
+function OxMythicLooterReminderIconMixin:Init(itemId, icon, isShared, players)
     self.itemId = itemId;
     self.players = players;
 
@@ -15,14 +15,14 @@ function KeystoneLootReminderIconMixin:Init(itemId, icon, isShared, players)
     self:Show();
 end
 
-function KeystoneLootReminderIconMixin:OnEnter()
+function OxMythicLooterReminderIconMixin:OnEnter()
     if (self:GetCenter() > GetScreenWidth() / 2) then
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT");
     else
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT");
     end
 
-    GameTooltip.KeystoneLootOwned = true;
+    GameTooltip.OxMythicLooterOwned = true;
     GameTooltip:SetHyperlink(Upgrade:BuildItemLink(self.itemId));
 
     if (self.players) then
@@ -35,8 +35,8 @@ function KeystoneLootReminderIconMixin:OnEnter()
     self.UpdateTooltip = self.OnEnter;
 end
 
-function KeystoneLootReminderIconMixin:OnLeave()
-    GameTooltip.KeystoneLootOwned = nil;
+function OxMythicLooterReminderIconMixin:OnLeave()
+    GameTooltip.OxMythicLooterOwned = nil;
     GameTooltip:Hide();
 
     self.UpdateTooltip = nil;

@@ -1,25 +1,25 @@
 --[[
-KSLMenuVariants functions are suitable to be overwritten for game specific implementations. Some
+OxMLMenuVariants functions are suitable to be overwritten for game specific implementations. Some
 implementations are here for reference despite being shared code.
 ]]--
 
-KSLMenuVariants = {};
+OxMLMenuVariants = {};
 
-KSLMenuVariants.GearButtonTexture = [[Interface\WorldMap\GEAR_64GREY]];
-KSLMenuVariants.GearButtonAnchor = CreateAnchor("RIGHT");
-KSLMenuVariants.CancelButtonTexture = [[Interface\Buttons\UI-GroupLoot-Pass-Up]];
-KSLMenuVariants.CancelButtonAnchor = CreateAnchor("RIGHT", nil, "LEFT", -3, 0);
+OxMLMenuVariants.GearButtonTexture = [[Interface\WorldMap\GEAR_64GREY]];
+OxMLMenuVariants.GearButtonAnchor = CreateAnchor("RIGHT");
+OxMLMenuVariants.CancelButtonTexture = [[Interface\Buttons\UI-GroupLoot-Pass-Up]];
+OxMLMenuVariants.CancelButtonAnchor = CreateAnchor("RIGHT", nil, "LEFT", -3, 0);
 
-KSLMenuVariants.DisabledHighlightOpacity = .4;
+OxMLMenuVariants.DisabledHighlightOpacity = .4;
 
-function KSLMenuVariants.CreateFontString(frame)
+function OxMLMenuVariants.CreateFontString(frame)
 	local fontString = frame:AttachFontString();
 	fontString:SetPoint("LEFT");
 	fontString:SetHeight(20);
 	return fontString;
 end
 
-function KSLMenuVariants.CreateDivider(frame)
+function OxMLMenuVariants.CreateDivider(frame)
 	local divider = frame:AttachTexture();
 	divider:SetPoint("LEFT");
 	divider:SetPoint("RIGHT");
@@ -28,7 +28,7 @@ function KSLMenuVariants.CreateDivider(frame)
 	return divider;
 end
 
-function KSLMenuVariants.CreateSubmenuArrow(frame)
+function OxMLMenuVariants.CreateSubmenuArrow(frame)
 	local arrow = frame:AttachTexture();
 	frame.arrow = arrow;
 	arrow:SetPoint("RIGHT");
@@ -38,7 +38,7 @@ function KSLMenuVariants.CreateSubmenuArrow(frame)
 	return arrow;
 end
 
-function KSLMenuVariants.CreateHighlight(frame)
+function OxMLMenuVariants.CreateHighlight(frame)
 	local highlight = frame:AttachTexture();
 	frame.highlight = highlight;
 	highlight:SetAllPoints();
@@ -49,23 +49,23 @@ function KSLMenuVariants.CreateHighlight(frame)
 	return highlight;
 end
 
-function KSLMenuVariants.GetCheckboxCheckSoundKit()
+function OxMLMenuVariants.GetCheckboxCheckSoundKit()
 	return SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON;
 end
 
-function KSLMenuVariants.GetCheckboxUncheckSoundKit()
+function OxMLMenuVariants.GetCheckboxUncheckSoundKit()
 	return SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF;
 end
 
-function KSLMenuVariants.GetButtonSoundKit()
+function OxMLMenuVariants.GetButtonSoundKit()
 	return SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON;
 end
 
-function KSLMenuVariants.GetDropdownOpenSoundKit()
+function OxMLMenuVariants.GetDropdownOpenSoundKit()
 	return SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON;
 end
 
-function KSLMenuVariants.GetDropdownCloseSoundKit()
+function OxMLMenuVariants.GetDropdownCloseSoundKit()
 	return SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF;
 end
 
@@ -73,10 +73,10 @@ local function GenerateError()
 	error("Requires implementation in game specific version of MenuVariants.lua");
 end
 
-function KSLMenuVariants.GetDefaultMenuMixin()
+function OxMLMenuVariants.GetDefaultMenuMixin()
 	GenerateError();
 end
 
-function KSLMenuVariants.GetDefaultContextMenuMixin()
+function OxMLMenuVariants.GetDefaultContextMenuMixin()
 	GenerateError();
 end

@@ -14,9 +14,9 @@ local WEBSITE_URL = "keystoneloot.io";
 
 local isResponsePaused = false;
 
-KeystoneLootFrameMixin = {};
+OxMythicLooterFrameMixin = {};
 
-function KeystoneLootFrameMixin:OnLoad()
+function OxMythicLooterFrameMixin:OnLoad()
     self:RegisterEvent("PLAYER_ENTERING_WORLD");
     self:RegisterEvent("BONUS_ROLL_RESULT");
     self:RegisterEvent("LFG_ROLE_CHECK_SHOW");
@@ -36,14 +36,14 @@ function KeystoneLootFrameMixin:OnLoad()
     table.insert(UISpecialFrames, self:GetName());
 end
 
-function KeystoneLootFrameMixin:InitializeTabSystem()
+function OxMythicLooterFrameMixin:InitializeTabSystem()
     self:SetTabSystem(self.TabSystem);
 
-    self.DungeonsFrame = CreateFrame("Frame", nil, self, "KeystoneLootDungeonsFrameTemplate");
+    self.DungeonsFrame = CreateFrame("Frame", nil, self, "OxMythicLooterDungeonsFrameTemplate");
     self.DungeonsFrame:Init();
     self.dungeonsTabId = self:AddNamedTab(DUNGEONS, self.DungeonsFrame);
 
-    self.RaidsFrame = CreateFrame("Frame", nil, self, "KeystoneLootRaidsFrameTemplate");
+    self.RaidsFrame = CreateFrame("Frame", nil, self, "OxMythicLooterRaidsFrameTemplate");
     self.RaidsFrame:Init();
     self.raidsTabId = self:AddNamedTab(RAIDS, self.RaidsFrame);
 
@@ -57,7 +57,7 @@ function KeystoneLootFrameMixin:InitializeTabSystem()
     self:SetTab(self.dungeonsTabId);
 end
 
-function KeystoneLootFrameMixin:OnEvent(event, ...)
+function OxMythicLooterFrameMixin:OnEvent(event, ...)
     if (event == "ACTIVE_TALENT_GROUP_CHANGED") then
         self:SyncSpecFilter();
         return;
@@ -131,7 +131,7 @@ function KeystoneLootFrameMixin:OnEvent(event, ...)
     self.SettingsDropdown:Init();
     self.CatalystFrame:Init();
     self.CustomItemFrame:Init();
-    KeystoneLootMinimapButton:Init();
+    OxMythicLooterMinimapButton:Init();
 
     KeystoneLoot.APIInternal.SetReady();
 
@@ -144,7 +144,7 @@ function KeystoneLootFrameMixin:OnEvent(event, ...)
     end);
 end
 
-function KeystoneLootFrameMixin:SyncSpecFilter()
+function OxMythicLooterFrameMixin:SyncSpecFilter()
     local currentClassId = Character:GetCurrentClassId();
 
     if (DB:Get("filters.classId") == currentClassId) then
@@ -153,13 +153,13 @@ function KeystoneLootFrameMixin:SyncSpecFilter()
     end
 end
 
-function KeystoneLootFrameMixin:InitOwnedCheck()
+function OxMythicLooterFrameMixin:InitOwnedCheck()
     DB:AddObserver("settings.ownedCheck", function()
         self:RefreshOwnedIcons();
     end);
 end
 
-function KeystoneLootFrameMixin:InitScale()
+function OxMythicLooterFrameMixin:InitScale()
     self:SetScale(DB:Get("settings.windowScale") / 100);
 
     DB:AddObserver("settings.windowScale", function(percent)
@@ -167,7 +167,7 @@ function KeystoneLootFrameMixin:InitScale()
     end);
 end
 
-function KeystoneLootFrameMixin:InitSpecFilter()
+function OxMythicLooterFrameMixin:InitSpecFilter()
     local currentClassId = Character:GetCurrentClassId();
     local currentSpecId = Character:GetCurrentSpecId();
 
@@ -179,7 +179,7 @@ function KeystoneLootFrameMixin:InitSpecFilter()
     end
 end
 
-function KeystoneLootFrameMixin:SetTab(tabId)
+function OxMythicLooterFrameMixin:SetTab(tabId)
     TabSystemOwnerMixin.SetTab(self, tabId);
 
     local tabName = self:GetTabName(tabId);
@@ -199,7 +199,7 @@ function KeystoneLootFrameMixin:SetTab(tabId)
     self:RefreshSize(tabId);
 end
 
-function KeystoneLootFrameMixin:RefreshOwnedIcons()
+function OxMythicLooterFrameMixin:RefreshOwnedIcons()
     Owned:RefreshTracks();
 
     for _, Frame in ipairs({ self.DungeonsFrame, self.RaidsFrame, self.CatalystFrame, self.CustomItemFrame }) do
@@ -207,7 +207,7 @@ function KeystoneLootFrameMixin:RefreshOwnedIcons()
     end
 end
 
-function KeystoneLootFrameMixin:OnShow()
+function OxMythicLooterFrameMixin:OnShow()
     PlaySound(SOUNDKIT.IG_QUEST_LIST_OPEN);
 
     self:RegisterEvent("BAG_UPDATE_DELAYED");
@@ -217,7 +217,7 @@ function KeystoneLootFrameMixin:OnShow()
     self:RefreshOwnedIcons();
 end
 
-function KeystoneLootFrameMixin:OnHide()
+function OxMythicLooterFrameMixin:OnHide()
     PlaySound(SOUNDKIT.IG_QUEST_LOG_CLOSE);
 
     self:UnregisterEvent("BAG_UPDATE_DELAYED");
@@ -225,16 +225,16 @@ function KeystoneLootFrameMixin:OnHide()
     self:UnregisterEvent("ITEM_DATA_LOAD_RESULT");
 end
 
-function KeystoneLootFrameMixin:OnDragStart()
+function OxMythicLooterFrameMixin:OnDragStart()
     self:StartMoving();
     self:SetUserPlaced(true);
 end
 
-function KeystoneLootFrameMixin:OnDragStop()
+function OxMythicLooterFrameMixin:OnDragStop()
     self:StopMovingOrSizing();
 end
 
-function KeystoneLootFrameMixin:RefreshSize(tabId)
+function OxMythicLooterFrameMixin:RefreshSize(tabId)
     local Frame = self:GetElementsForTab(tabId)[1];
     -- The Keys tab takes the window's dungeons size, so switching to it does
     -- not make the window jump.
@@ -244,7 +244,7 @@ function KeystoneLootFrameMixin:RefreshSize(tabId)
     self:SetSize(Frame:GetSize());
 end
 
-function KeystoneLootFrameMixin:GetTabName(tabId)
+function OxMythicLooterFrameMixin:GetTabName(tabId)
     if (tabId == self.dungeonsTabId) then
         return "dungeons";
     elseif (tabId == self.raidsTabId) then

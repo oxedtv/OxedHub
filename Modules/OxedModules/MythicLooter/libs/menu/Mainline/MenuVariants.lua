@@ -1,13 +1,13 @@
-function KSLMenuVariants.GetDefaultMenuMixin()
-	return KSLMenuStyle1Mixin;
+function OxMLMenuVariants.GetDefaultMenuMixin()
+	return OxMLMenuStyle1Mixin;
 end
 
-function KSLMenuVariants.GetDefaultContextMenuMixin()
-	return KSLMenuStyle1Mixin;
+function OxMLMenuVariants.GetDefaultContextMenuMixin()
+	return OxMLMenuStyle1Mixin;
 end
 
-function KSLMenuVariants.CreateCheckbox(text, frame, isSelected, data)
-	local leftTexture1, leftTexture2 = KSLMenuTemplates.CreateSelectionTextures(frame, isSelected, data, 
+function OxMLMenuVariants.CreateCheckbox(text, frame, isSelected, data)
+	local leftTexture1, leftTexture2 = OxMLMenuTemplates.CreateSelectionTextures(frame, isSelected, data, 
 		"common-dropdown-ticksquare", "common-dropdown-icon-checkmark-yellow");
 	leftTexture1:SetPoint("LEFT");
 	if leftTexture2 then
@@ -23,8 +23,8 @@ function KSLMenuVariants.CreateCheckbox(text, frame, isSelected, data)
 	return leftTexture1, leftTexture2;
 end
 
-function KSLMenuVariants.CreateRadio(text, frame, isSelected, data)
-	local leftTexture1, leftTexture2 = KSLMenuTemplates.CreateSelectionTextures(frame, isSelected, data, 
+function OxMLMenuVariants.CreateRadio(text, frame, isSelected, data)
+	local leftTexture1, leftTexture2 = OxMLMenuTemplates.CreateSelectionTextures(frame, isSelected, data, 
 		"common-dropdown-tickradial", "common-dropdown-icon-radialtick-yellow");
 	leftTexture1:SetPoint("LEFT", -3, 0);
 	if leftTexture2 then

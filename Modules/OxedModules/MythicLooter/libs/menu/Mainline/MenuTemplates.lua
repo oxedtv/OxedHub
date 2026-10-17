@@ -34,11 +34,11 @@ function GetKSLStyle1ArrowButtonShadowlessState(button)
 	return "common-dropdown-a-button-disabled-shadowless";
 end
 
-function KSLStyle1DropdownMixin:GetArrowAtlas()
+function OxMLStyle1DropdownMixin:GetArrowAtlas()
 	return GetKSLStyle1ArrowButtonState(self);
 end
 
-function KSLStyle1ArrowDropdownMixin:OnButtonStateChanged()
+function OxMLStyle1ArrowDropdownMixin:OnButtonStateChanged()
 	local atlas = nil;
 	if self.hasShadow then
 		atlas = GetKSLStyle1ArrowButtonState(self);
@@ -48,9 +48,9 @@ function KSLStyle1ArrowDropdownMixin:OnButtonStateChanged()
 	self.Arrow:SetAtlas(atlas, TextureKitConstants.UseAtlasSize);
 end
 
-KSLMenuStyle1Mixin = CreateFromMixins(KSLMenuStyleMixin);
+OxMLMenuStyle1Mixin = CreateFromMixins(OxMLMenuStyleMixin);
 
-function KSLMenuStyle1Mixin:Generate()
+function OxMLMenuStyle1Mixin:Generate()
 	local background = self:AttachTexture();
 	background:SetAtlas("common-dropdown-bg");
 
@@ -69,7 +69,7 @@ do
 		bottom = 15,
 	};
 
-	function KSLMenuStyle1Mixin:GetInset()
+	function OxMLMenuStyle1Mixin:GetInset()
 		return inset;
 	end
 end
@@ -81,7 +81,7 @@ do
 		height = 0, 
 	};
 
-	function KSLMenuStyle1Mixin:GetChildExtentPadding()
+	function OxMLMenuStyle1Mixin:GetChildExtentPadding()
 		return padding;
 	end
 end

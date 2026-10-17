@@ -3,20 +3,20 @@ local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; Addon
 local DB = KeystoneLoot.DB;
 local Query = KeystoneLoot.Query;
 
-KeystoneLootRaidBlockMixin = {};
+OxMythicLooterRaidBlockMixin = {};
 
-function KeystoneLootRaidBlockMixin:OnLoad()
+function OxMythicLooterRaidBlockMixin:OnLoad()
     self.Inset.Bg:SetAlpha(0.75);
     self.Inset.Bg:SetAtlas("UI-Frame-Dragonflight-BackgroundTile");
 
-    self.entryPool = CreateFramePool("Frame", self.Container, "KeystoneLootEntryFrameTemplate");
+    self.entryPool = CreateFramePool("Frame", self.Container, "OxMythicLooterEntryFrameTemplate");
 end
 
-function KeystoneLootRaidBlockMixin:SetTitle(name)
+function OxMythicLooterRaidBlockMixin:SetTitle(name)
     self.TitleText:SetText(name);
 end
 
-function KeystoneLootRaidBlockMixin:SetRaid(raid)
+function OxMythicLooterRaidBlockMixin:SetRaid(raid)
     self.entryPool:ReleaseAll();
 
     self:SetWidth(DB:Get("settings.wideMode") and 728 or 500);

@@ -10,9 +10,9 @@ local function BuildWhisperMessage(itemLink)
     return string.gsub(template, "{item}", itemLink);
 end
 
-KeystoneLootDropNotificationWhisperButtonMixin = {};
+OxMythicLooterDropNotificationWhisperButtonMixin = {};
 
-function KeystoneLootDropNotificationWhisperButtonMixin:OnClick()
+function OxMythicLooterDropNotificationWhisperButtonMixin:OnClick()
     local Parent     = self:GetParent();
     local playerName = Parent.PlayerName:GetText();
     local itemLink   = Parent.itemLink;
@@ -21,7 +21,7 @@ function KeystoneLootDropNotificationWhisperButtonMixin:OnClick()
     C_ChatInfo.SendChatMessage(message, "WHISPER", nil, playerName);
 end
 
-function KeystoneLootDropNotificationWhisperButtonMixin:OnEnter()
+function OxMythicLooterDropNotificationWhisperButtonMixin:OnEnter()
     local Parent     = self:GetParent();
     local itemLink   = Parent.itemLink;
     local message    = BuildWhisperMessage(itemLink);
@@ -38,6 +38,6 @@ function KeystoneLootDropNotificationWhisperButtonMixin:OnEnter()
     GameTooltip:Show();
 end
 
-function KeystoneLootDropNotificationWhisperButtonMixin:OnLeave()
+function OxMythicLooterDropNotificationWhisperButtonMixin:OnLeave()
     GameTooltip:Hide();
 end

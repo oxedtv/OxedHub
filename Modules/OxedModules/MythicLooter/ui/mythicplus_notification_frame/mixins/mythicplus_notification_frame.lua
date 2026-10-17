@@ -19,9 +19,9 @@ local ROLE_ATLAS                             = {
 
 local instanceIdToDungeon                    = {};
 
-KeystoneLootMythicPlusNotificationFrameMixin = {};
+OxMythicLooterMythicPlusNotificationFrameMixin = {};
 
-function KeystoneLootMythicPlusNotificationFrameMixin:OnLoad()
+function OxMythicLooterMythicPlusNotificationFrameMixin:OnLoad()
     self:RegisterEvent("LFG_LIST_APPLICATION_STATUS_UPDATED");
     self:RegisterEvent("LFG_LIST_ACTIVE_ENTRY_UPDATE");
     self:RegisterEvent("PLAYER_ENTERING_WORLD");
@@ -38,24 +38,24 @@ function KeystoneLootMythicPlusNotificationFrameMixin:OnLoad()
     end
 end
 
-function KeystoneLootMythicPlusNotificationFrameMixin:OnShow()
+function OxMythicLooterMythicPlusNotificationFrameMixin:OnShow()
     PlaySound(SOUNDKIT.IG_QUEST_LOG_OPEN);
 end
 
-function KeystoneLootMythicPlusNotificationFrameMixin:OnHide()
+function OxMythicLooterMythicPlusNotificationFrameMixin:OnHide()
     PlaySound(SOUNDKIT.IG_QUEST_LOG_CLOSE);
 end
 
-function KeystoneLootMythicPlusNotificationFrameMixin:OnDragStart()
+function OxMythicLooterMythicPlusNotificationFrameMixin:OnDragStart()
     self:StartMoving();
     self:SetUserPlaced(true);
 end
 
-function KeystoneLootMythicPlusNotificationFrameMixin:OnDragStop()
+function OxMythicLooterMythicPlusNotificationFrameMixin:OnDragStop()
     self:StopMovingOrSizing();
 end
 
-function KeystoneLootMythicPlusNotificationFrameMixin:OnEvent(event, ...)
+function OxMythicLooterMythicPlusNotificationFrameMixin:OnEvent(event, ...)
     if (event == "PLAYER_ENTERING_WORLD") then
         self:Hide();
         return;
@@ -135,7 +135,7 @@ function KeystoneLootMythicPlusNotificationFrameMixin:OnEvent(event, ...)
     end
 end
 
-function KeystoneLootMythicPlusNotificationFrameMixin:CheckActiveEntry()
+function OxMythicLooterMythicPlusNotificationFrameMixin:CheckActiveEntry()
     if (self.groupInfo or not DB:Get("settings.mythicPlusNotification.full")) then
         return;
     end
@@ -160,7 +160,7 @@ function KeystoneLootMythicPlusNotificationFrameMixin:CheckActiveEntry()
     self:RegisterEvent("GROUP_LEFT");
 end
 
-function KeystoneLootMythicPlusNotificationFrameMixin:HideJoinDialog()
+function OxMythicLooterMythicPlusNotificationFrameMixin:HideJoinDialog()
     local Dialog = LFGListInviteDialog;
 
     if (Dialog and Dialog:IsShown() and Dialog.informational and Dialog.resultID == self.suppressResultId) then
@@ -168,7 +168,7 @@ function KeystoneLootMythicPlusNotificationFrameMixin:HideJoinDialog()
     end
 end
 
-function KeystoneLootMythicPlusNotificationFrameMixin:CheckFullGroup()
+function OxMythicLooterMythicPlusNotificationFrameMixin:CheckFullGroup()
     local groupInfo = self.groupInfo;
     if (not groupInfo) then
         return;
@@ -188,7 +188,7 @@ function KeystoneLootMythicPlusNotificationFrameMixin:CheckFullGroup()
     end
 end
 
-function KeystoneLootMythicPlusNotificationFrameMixin:Open(instanceId, activityName, isFull)
+function OxMythicLooterMythicPlusNotificationFrameMixin:Open(instanceId, activityName, isFull)
     local dungeon = instanceIdToDungeon[instanceId];
     if (dungeon and Keystone:GetCurrentChallengeMapId() == dungeon.challengeModeId) then
         self.groupInfo = nil;
@@ -249,6 +249,6 @@ end
 
 EventUtil.ContinueOnAddOnLoaded("Blizzard_GroupFinder", function()
     hooksecurefunc("LFGListInviteDialog_Show", function(Dialog)
-        KeystoneLootMythicPlusNotificationFrame:HideJoinDialog();
+        OxMythicLooterMythicPlusNotificationFrame:HideJoinDialog();
     end);
 end);

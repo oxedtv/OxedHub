@@ -2,16 +2,16 @@ local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; Addon
 
 local DB = KeystoneLoot.DB;
 
-KeystoneLootEntryFrameMixin = {};
+OxMythicLooterEntryFrameMixin = {};
 
-function KeystoneLootEntryFrameMixin:OnLoad()
+function OxMythicLooterEntryFrameMixin:OnLoad()
     local top, bottom, left, right, spacing = 0, 0, 6, 6, 10;
     local view = CreateScrollBoxListLinearView(top, bottom, left, right, spacing);
 
     view:SetVirtualized(false);
     view:SetHorizontal(true);
     view:SetElementExtent(28);
-    view:SetElementInitializer("KeystoneLootLootIconButtonTemplate", function(Button, itemId)
+    view:SetElementInitializer("OxMythicLooterLootIconButtonTemplate", function(Button, itemId)
         Button:Init(itemId);
     end);
 
@@ -22,7 +22,7 @@ function KeystoneLootEntryFrameMixin:OnLoad()
     self.NextButton.Pulse:Play();
 end
 
-function KeystoneLootEntryFrameMixin:OnScroll(offset)
+function OxMythicLooterEntryFrameMixin:OnScroll(offset)
     local hasScrollableExtent = self.IconScrollBox:HasScrollableExtent();
     local showLeft = hasScrollableExtent and offset > ScrollBoxConstants.ScrollBegin;
     local showRight = hasScrollableExtent and offset < ScrollBoxConstants.ScrollEnd;
@@ -31,7 +31,7 @@ function KeystoneLootEntryFrameMixin:OnScroll(offset)
     self.NextButton:SetShown(showRight);
 end
 
-function KeystoneLootEntryFrameMixin:Init(index, instance, lootTable, isLastEntry)
+function OxMythicLooterEntryFrameMixin:Init(index, instance, lootTable, isLastEntry)
     local name, texture;
 
     if (instance.bossId) then

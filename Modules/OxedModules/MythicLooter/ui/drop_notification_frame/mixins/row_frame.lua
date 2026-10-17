@@ -2,9 +2,9 @@ local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; Addon
 
 local Favorites                      = KeystoneLoot.Favorites;
 
-KeystoneLootDropNotificationRowMixin = {};
+OxMythicLooterDropNotificationRowMixin = {};
 
-function KeystoneLootDropNotificationRowMixin:Init(drop)
+function OxMythicLooterDropNotificationRowMixin:Init(drop)
     self.itemLink = drop.itemLink;
 
     local _, _, _, _, icon = C_Item.GetItemInfoInstant(drop.itemId);
@@ -17,7 +17,7 @@ function KeystoneLootDropNotificationRowMixin:Init(drop)
     self.PlayerName:SetText(drop.playerName);
 end
 
-function KeystoneLootDropNotificationRowMixin:OnEnter()
+function OxMythicLooterDropNotificationRowMixin:OnEnter()
     self.HighlightTexture:Show();
 
     if (self:GetCenter() > GetScreenWidth() / 2) then
@@ -38,7 +38,7 @@ function KeystoneLootDropNotificationRowMixin:OnEnter()
     self.UpdateTooltip = self.OnEnter;
 end
 
-function KeystoneLootDropNotificationRowMixin:OnLeave()
+function OxMythicLooterDropNotificationRowMixin:OnLeave()
     self.HighlightTexture:Hide();
 
     GameTooltip:Hide();
@@ -47,7 +47,7 @@ function KeystoneLootDropNotificationRowMixin:OnLeave()
     self.UpdateTooltip = nil;
 end
 
-function KeystoneLootDropNotificationRowMixin:OnClick()
+function OxMythicLooterDropNotificationRowMixin:OnClick()
     if (IsModifierKeyDown()) then
         HandleModifiedItemClick(self.itemLink);
     end

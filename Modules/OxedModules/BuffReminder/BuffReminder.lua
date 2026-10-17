@@ -72,11 +72,30 @@ local DEFAULTS = {
     prefNonLethal = 0,
     rune_250 = 0, rune_251 = 0, rune_252 = 0,   -- death knight rune per spec, 0 = any
     ignoreTravelForm = true, -- no wrong-form reminder while travelling or mounted
+    -- Warlock: the demon whose icon comes first when the pet is missing.
+    demon_openWorld = 691, demon_dungeon = 691, demon_raid = 691, demon_pvp = 691,
+
+    benefitOnly   = true,   -- group buffs count only players they do something for
+    askBuffs      = true,   -- a group buff you lack from a class in the group: click asks for it
+    showLoadout   = true,   -- talents / gear set chosen for this content are not the ones in use
+    consumableMemory = true,-- the food / flask / oil you used last (per spec) comes first
+    oneConsumable = false,  -- only that first one, not every item you carry
+    lowStock      = 2,      -- an item count this low shows in red (0 = never)
+    -- Look
+    iconAlpha     = 100,    -- percent
+    iconZoom      = 8,      -- percent cut from each edge of the icon art
+    borderSize    = 1,      -- pixels of black border (0 = none)
+    textScale     = 100,    -- percent, for every text on the icons
+    missingCountOnly = true,-- group buffs: "3" missing, or "2/5" who have it
+    previewCount  = 12,     -- sample icons while previewing
+    -- Behaviour
+    repairBelow   = 25,     -- durability percent that asks for a repair
+    withoutItems  = true,   -- food / flask / oil show even when you carry none
+    askMessage    = "",     -- own wording for a request; {buff} is the buff ("" = the default)
+    -- Lists (customBuffs, lastTargets, lastUsed, loadouts, gearSets) are made
+    -- in BindSettings, never here.
 }
 
-local function ExpiringSeconds()
-    return (tonumber(settings and settings.expiringMinutes) or 5) * 60
-end
 local READY_CHECK_SECONDS = 30
 local REFRESH_DELAY = 0.3     -- events arrive in bursts; one rebuild per burst
 local TICK = 10               -- range and time-left change without events
@@ -85,12 +104,20 @@ local MAX_BUTTONS = 30
 local Data = OxedHub.BuffReminderData
 local settings
 local optionsWindow
+
+-- Below `local settings`: above it, `settings` would be a global and the
+-- "running out" slider would never be read.
+local function ExpiringSeconds()
+    return (tonumber(settings and settings.expiringMinutes) or 5) * 60
+end
 local watcher = CreateFrame("Frame")
 
 local bar, buttons = nil, {}
 local pending, ticker = false, nil
 local readyCheckUntil = 0
 local snoozed = {}            -- entry key -> GetTime() until which it stays hidden
+local askedAt = {}            -- entry key -> GetTime() of the last request sent in chat
+local petPauseUntil = 0       -- pet reminders wait until then after a dismount
 local MarkDirty               -- defined with Refresh, used by the click handlers
 
 -- ── Small safe readers ──────────────────────────────────────────────────────
@@ -122,6 +149,27 @@ local function CurrentSpecID()
     local index = GetSpecialization()
     if not index then return nil end
     return (GetSpecializationInfo(index))
+end
+
+local function InDelve()
+    local _, _, difficultyID = GetInstanceInfo()
+    return difficultyID == 208
+end
+
+-- Where the player is, in the words of the "Where it shows" options.
+local function ContentType()
+    local inInstance, instanceType = IsInInstance()
+    if not inInstance then return "openWorld" end
+    if instanceType == "party" then return "dungeon" end
+    if instanceType == "raid" then return "raid" end
+    if instanceType == "pvp" or instanceType == "arena" then return "pvp" end
+    if instanceType == "scenario" then return InDelve() and "delve" or "scenario" end
+    return "openWorld"
+end
+
+-- Per-spec choices are kept under the spec ID as a string ("0" before one is known).
+local function SpecKey(specID)
+    return tostring(specID or 0)
 end
 
 -- Looks for any of `ids` on `unit`.
@@ -361,6 +409,29 @@ local function Countable(unit)
     return true
 end
 
+-- A member's spec, when the game knows it (it does for anybody inspected,
+-- which most group frames do); nil otherwise.
+local function UnitSpecID(unit)
+    if unit == "player" then return CurrentSpecID() end
+    if not GetInspectSpecialization then return nil end
+    local ok, id = pcall(GetInspectSpecialization, unit)
+    if ok and not IsSecret(id) and type(id) == "number" and id > 0 then return id end
+    return nil
+end
+
+-- Does `entry` (a group buff) do anything for `unit`? The spec decides when
+-- known, else the class; unknown counts as yes, so nobody is left out.
+local function Benefits(entry, unit)
+    if not settings.benefitOnly then return true end
+    local specs = Data.BENEFIT_SPECS[entry.key]
+    if not specs then return true end
+    local spec = UnitSpecID(unit)
+    if spec then return specs[spec] == true end
+    local ok, _, class = pcall(UnitClass, unit)
+    if not ok or IsSecret(class) or type(class) ~= "string" then return true end
+    return Data.BENEFIT_CLASSES[entry.key][class] == true
+end
+
 -- ── Items in the bags ───────────────────────────────────────────────────────
 
 local function ItemCount(itemID)
@@ -375,19 +446,54 @@ end
 
 -- One record per item of this kind in the bags, best first, at most
 -- ITEMS_PER_KIND of them.
+-- The item of this kind you used last on this spec (see RememberItem).
+local function PreferredItem(kind)
+    if not settings.consumableMemory or type(settings.lastUsed) ~= "table" then return nil end
+    local mine = settings.lastUsed[SpecKey(CurrentSpecID())]
+    return type(mine) == "table" and mine[kind] or nil
+end
+
+-- One record per item of this kind in the bags, best first, at most
+-- ITEMS_PER_KIND of them. The one you used last on this spec comes first;
+-- with "only one" chosen it is the only one.
 local function CarriedItems(kind)
     local found = {}
+    local preferred = PreferredItem(kind)
+    local function Take(info, count)
+        found[#found + 1] = {
+            item = info.id, stack = count, label = info.label, badge = info.badge,
+            texture = ItemIcon(info.id), kind = kind,
+        }
+    end
+    if preferred then
+        for _, info in ipairs(Data.ITEMS[kind] or {}) do
+            if info.id == preferred then
+                local count = ItemCount(info.id)
+                if count > 0 then Take(info, count) end
+                break
+            end
+        end
+    end
+    local preferredTaken = #found > 0
+    local limit = settings.oneConsumable and 1 or Data.ITEMS_PER_KIND
     for _, info in ipairs(Data.ITEMS[kind] or {}) do
-        local count = ItemCount(info.id)
-        if count > 0 then
-            found[#found + 1] = {
-                item = info.id, stack = count, label = info.label, badge = info.badge,
-                texture = ItemIcon(info.id),
-            }
-            if #found >= Data.ITEMS_PER_KIND then break end
+        if #found >= limit then break end
+        if not (preferredTaken and info.id == preferred) then
+            local count = ItemCount(info.id)
+            if count > 0 then Take(info, count) end
         end
     end
     return found
+end
+
+-- Remembers a clicked food / flask / rune / oil for this spec. Fleeting
+-- flasks are not remembered: they would push the regular choice aside.
+local function RememberItem(record)
+    if not settings.consumableMemory or not record.item or not record.kind then return end
+    if record.badge == "F" then return end
+    local key = SpecKey(CurrentSpecID())
+    settings.lastUsed[key] = settings.lastUsed[key] or {}
+    settings.lastUsed[key][record.kind] = record.item
 end
 
 local function IsWeapon(slot)
@@ -407,6 +513,34 @@ local function GroupHasClass(wanted)
         end
     end
     return false
+end
+
+-- ── Asking the group ────────────────────────────────────────────────────────
+-- A click on an "ask" icon runs a one-line macro that says the request in
+-- group chat. Only ever on the player's own click, and once per ASK_COOLDOWN.
+
+local function ChatPrefix()
+    if LE_PARTY_CATEGORY_INSTANCE and IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then return "/i " end
+    if IsInRaid() then return "/raid " end
+    return "/p "
+end
+
+local function AskMacro(text)
+    return ChatPrefix() .. (text:gsub("[\r\n]", " "))
+end
+
+-- The request, in the player's own words when they wrote some. {buff} is
+-- replaced as plain text, so a "%" typed in the message cannot break it.
+local function AskText(buffName)
+    local text = settings.askMessage
+    if type(text) ~= "string" or strtrim(text) == "" then text = Data.ASK_MESSAGE end
+    if not text:find("{buff}", 1, true) then text = text .. " ({buff})" end
+    return (text:gsub("{buff}", function() return buffName end))
+end
+
+local function AskedRecently(key)
+    local at = askedAt[key]
+    return at ~= nil and GetTime() - at < Data.ASK_COOLDOWN
 end
 
 -- ── Deciding what to show ───────────────────────────────────────────────────
@@ -463,11 +597,12 @@ local function Needed(found, left)
 end
 
 local function EvaluateRaid(entry, out)
-    local missing, names, soonest = 0, nil, nil
+    local missing, total, names, soonest = 0, 0, nil, nil
     local units, count = GroupUnits()
     for i = 1, count do
         local unit = units[i]
-        if Countable(unit) then
+        if Countable(unit) and Benefits(entry, unit) then
+            total = total + 1
             local has, remaining = FindAuraCached(unit, entry.auras)
             if has == false then
                 missing = missing + 1
@@ -480,7 +615,7 @@ local function EvaluateRaid(entry, out)
     end
     local spell = CastSpellFor(entry)
     if missing > 0 then
-        Add(out, entry, { texture = SpellTexture(spell), count = missing, names = names, spell = spell })
+        Add(out, entry, { texture = SpellTexture(spell), count = missing, total = total, names = names, spell = spell })
     elseif settings.expiring and soonest and soonest < ExpiringSeconds() then
         Add(out, entry, { texture = SpellTexture(spell), timeLeft = soonest, spell = spell })
     end
@@ -493,6 +628,8 @@ end
 -- Missing pet: one icon per pet you can call, so the right one is one click.
 local function EvaluatePet(entry, specID, out)
     if UnitExists("pet") and not UnitIsDead("pet") then return end
+    -- The pet comes back on its own a moment after a dismount.
+    if GetTime() < petPauseUntil then return end
     local _, class = UnitClass("player")
 
     if class == "HUNTER" then
@@ -527,7 +664,21 @@ local function EvaluatePet(entry, specID, out)
                     Add(out, entry, SpellRecord(spellID, Data.DEMON_NAMES[spellID]))
                 end
             end
-            if #out > before then return end
+            if #out > before then
+                -- The demon chosen for this content first; Demonology's Felguard
+                -- before anything.
+                local content = ContentType()
+                local row = (content == "dungeon" or content == "scenario") and "dungeon"
+                    or (content == "raid" or content == "pvp") and content or "openWorld"
+                local want = specID == 266 and Data.FELGUARD or tonumber(settings["demon_" .. row])
+                for i = before + 1, #out do
+                    if out[i].spell == want then
+                        if i > before + 1 then table.insert(out, before + 1, table.remove(out, i)) end
+                        break
+                    end
+                end
+                return
+            end
         end
     end
 
@@ -550,7 +701,7 @@ local function EvaluateBuffItem(entry, out)
     local items = CarriedItems(entry.check)
     if #items == 0 then
         -- A rune you do not carry is not worth a reminder.
-        if entry.check == "rune" then return end
+        if entry.check == "rune" or not settings.withoutItems then return end
         local texture = entry.icon or SpellTexture(entry.auras and entry.auras[#entry.auras])
         Add(out, entry, { texture = texture, timeLeft = timeLeft })
         return
@@ -578,12 +729,12 @@ local function EvaluateOil(entry, out)
             local timeLeft = hand.has and left or nil
             items = items or CarriedItems("weaponOil")
             if #items == 0 then
-                Add(out, entry, { texture = GetInventoryItemTexture("player", hand.slot), label = hand.tag, timeLeft = timeLeft })
+                if settings.withoutItems then Add(out, entry, { texture = GetInventoryItemTexture("player", hand.slot), label = hand.tag, timeLeft = timeLeft }) end
             else
                 for _, info in ipairs(items) do
                     Add(out, entry, {
                         texture = info.texture, item = info.item, stack = info.stack, label = hand.tag,
-                        timeLeft = timeLeft, slot = hand.slot,
+                        timeLeft = timeLeft, slot = hand.slot, kind = "weaponOil",
                         macro = ("/use item:%d\n/use %d"):format(info.item, hand.slot),
                     })
                 end
@@ -605,6 +756,9 @@ local function EvaluateHealthstone(out, entry)
         elseif Known(Data.CREATE_HEALTHSTONE) then
             record.spell = Data.CREATE_HEALTHSTONE
         end
+    elseif settings.askBuffs and IsInGroup() and not AskedRecently(entry.key) then
+        record.macro = AskMacro(Data.ASK_HEALTHSTONE)
+        record.ask = true
     end
     Add(out, entry, record)
 end
@@ -620,7 +774,7 @@ local function EvaluateRepair(out, entry)
             if not worst or percent < worst then worst = percent end
         end
     end
-    if worst and worst < Data.REPAIR_BELOW then
+    if worst and worst < (tonumber(settings.repairBelow) or Data.REPAIR_BELOW) then
         Add(out, entry, { texture = REPAIR_ICON, label = ("%d%%"):format(worst) })
     end
 end
@@ -868,11 +1022,6 @@ local function EvaluatePassive(entry, out)
     end
 end
 
-local function InDelve()
-    local _, _, difficultyID = GetInstanceInfo()
-    return difficultyID == 208
-end
-
 local function EvaluateMageFood(entry, out)
     local index = GetSpecialization and GetSpecialization()
     local role = index and GetSpecializationRole and GetSpecializationRole(index)
@@ -881,7 +1030,128 @@ local function EvaluateMageFood(entry, out)
     Add(out, entry, { texture = entry.icon, stack = 0 })
 end
 
+-- A group buff another class gives, missing on you while one of that class
+-- is in the group: a click asks for it.
+local function EvaluateAsk(entry, out)
+    if not IsInGroup() or AskedRecently(entry.key) then return end
+    if not GroupHasClass(entry.class) or not Benefits(entry, "player") then return end
+    if FindAuraCached("player", entry.auras) ~= false then return end
+    local name = SpellName(entry.known) or Data.LABELS[entry.key] or entry.key
+    Add(out, entry, { texture = SpellTexture(entry.known), ask = true,
+        macro = AskMacro(AskText(name)) })
+end
+
+-- ── Talents and gear for this content ──────────────────────────────────────
+
+local function LoadoutContent()
+    local content = ContentType()
+    if content == "scenario" then return "dungeon" end
+    return content
+end
+
+-- The name chosen in Options for this spec and content, or nil.
+local function Chosen(store, specID)
+    local mine = type(settings[store]) == "table" and settings[store][SpecKey(specID)]
+    local name = type(mine) == "table" and mine[LoadoutContent()]
+    if type(name) == "string" and name ~= "" then return name end
+    return nil
+end
+
+-- The saved loadouts of a spec, as { name, configID } pairs.
+local function Loadouts(specID)
+    local list = {}
+    if not (specID and C_ClassTalents and C_ClassTalents.GetConfigIDsBySpecID and C_Traits) then return list end
+    local ok, ids = pcall(C_ClassTalents.GetConfigIDsBySpecID, specID)
+    if not ok or type(ids) ~= "table" then return list end
+    for _, id in ipairs(ids) do
+        local okInfo, info = pcall(C_Traits.GetConfigInfo, id)
+        if okInfo and info and type(info.name) == "string" then
+            list[#list + 1] = { name = info.name, configID = id }
+        end
+    end
+    return list
+end
+
+local function LoadoutID(specID, name)
+    for _, loadout in ipairs(Loadouts(specID)) do
+        if loadout.name == name then return loadout.configID end
+    end
+    return nil
+end
+
+-- Name of the loadout in use; false on an unsaved build; nil when unknown.
+local function ActiveLoadoutName(specID)
+    if not (C_ClassTalents and C_ClassTalents.GetLastSelectedSavedConfigID and C_Traits) then return nil end
+    local ok, id = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, specID)
+    if not ok then return nil end
+    if not id then return false end
+    local okInfo, info = pcall(C_Traits.GetConfigInfo, id)
+    if okInfo and info and type(info.name) == "string" then return info.name end
+    return nil
+end
+
+local function EvaluateTalents(entry, specID, out)
+    if not specID then return end
+    local want = Chosen("loadouts", specID)
+    if not want then return end
+    local active = ActiveLoadoutName(specID)
+    if active == nil or active == want then return end
+    -- A loadout deleted since it was chosen: nothing a click could load.
+    if not LoadoutID(specID, want) then return end
+    Add(out, entry, { texture = Data.LOADOUT_ICON, name = want, wrong = want, apply = "talents" })
+end
+
+local function EvaluateGear(entry, specID, out)
+    local want = Chosen("gearSets", specID)
+    if not want or not (C_EquipmentSet and C_EquipmentSet.GetEquipmentSetID) then return end
+    local setID = C_EquipmentSet.GetEquipmentSetID(want)
+    if not setID then return end
+    local _, icon, _, isEquipped = C_EquipmentSet.GetEquipmentSetInfo(setID)
+    if isEquipped then return end
+    Add(out, entry, { texture = icon or Data.GEAR_ICON, name = want, wrong = want,
+        apply = "gear", setID = setID })
+end
+
+-- A talent swap that has to cast ("Changing Talents") finishes later; the
+-- loadout is marked as the selected one when it does (TRAIT_CONFIG_UPDATED).
+local pendingLoadout
+
+local function MarkLoadoutSelected(specID, configID)
+    if C_ClassTalents.UpdateLastSelectedSavedConfigID then
+        pcall(C_ClassTalents.UpdateLastSelectedSavedConfigID, specID, configID)
+    end
+end
+
+-- A click on a talents or gear icon. Out of combat only (the caller checks).
+local function ApplyFix(record)
+    if record.apply == "gear" then
+        pcall(C_EquipmentSet.UseEquipmentSet, record.setID)
+    elseif record.apply == "talents" then
+        local specID = CurrentSpecID()
+        local configID = specID and LoadoutID(specID, record.wrong)
+        local loaded = false
+        if configID and C_ClassTalents.LoadConfig then
+            local ok, result = pcall(C_ClassTalents.LoadConfig, configID, true)
+            local codes = Enum.LoadConfigResult
+            if ok and result ~= nil and not (codes and result == codes.Error) then
+                loaded = true
+                if codes and result == codes.LoadInProgress then
+                    pendingLoadout = { specID = specID, configID = configID, untilTime = GetTime() + 10 }
+                else
+                    MarkLoadoutSelected(specID, configID)
+                end
+            end
+        end
+        if not loaded and PlayerSpellsUtil and PlayerSpellsUtil.OpenToClassTalentsTab then
+            PlayerSpellsUtil.OpenToClassTalentsTab()
+        end
+    end
+    MarkDirty()
+end
+
 local function Evaluate(entry, specID, inInstance, forced, out)
+    if entry.check == "talentLoadout" then return EvaluateTalents(entry, specID, out) end
+    if entry.check == "gearSet" then return EvaluateGear(entry, specID, out) end
     if entry.group == "raid" then return EvaluateRaid(entry, out) end
     if entry.group == "targeted" then return EvaluateTargeted(entry, out) end
     if entry.check == "pet" then return EvaluatePet(entry, specID, out) end
@@ -935,17 +1205,6 @@ local function Evaluate(entry, specID, inInstance, forced, out)
     if not Needed(found, left) then return end
     local spell = CastSpellFor(entry)
     Add(out, entry, { texture = SpellTexture(spell), spell = spell, timeLeft = found and left or nil })
-end
-
--- Where the player is, in the words of the "Where it shows" options.
-local function ContentType()
-    local inInstance, instanceType = IsInInstance()
-    if not inInstance then return "openWorld" end
-    if instanceType == "party" then return "dungeon" end
-    if instanceType == "raid" then return "raid" end
-    if instanceType == "pvp" or instanceType == "arena" then return "pvp" end
-    if instanceType == "scenario" then return InDelve() and "delve" or "scenario" end
-    return "openWorld"
 end
 
 -- Custom buffs become entries like the built-in ones, made once per spell.
@@ -1009,7 +1268,17 @@ local function Collect()
         end
     end
 
+    Run(Data.LOADOUT, settings.showLoadout, false)
     Run(Data.RAID, settings.showRaid, true)
+    -- Group buffs you cannot give yourself, asked for with a click.
+    if settings.askBuffs and groupAllowed then
+        for _, entry in ipairs(Data.RAID) do
+            if #list >= MAX_BUTTONS then break end
+            if entry.class ~= class and not ((snoozed[entry.key] or 0) > GetTime()) then
+                EvaluateAsk(entry, list)
+            end
+        end
+    end
     Run(Data.SELF, settings.showSelf, true)
     Run(CustomEntries(), true, true)
     Run(Data.TARGETED, settings.showTargeted, true)
@@ -1078,8 +1347,18 @@ local function ShowTooltip(button)
         local last = settings.lastTargets[record.entry.key]
         if last then GameTooltip:AddLine("Casts on " .. last .. " (it was on them last)", 1, 1, 1) end
     end
-    if settings.clickCast and (record.spell or record.item or record.macro) and not record.entry.noClick then
+    if record.ask and not record.stack then
+        GameTooltip:AddLine("You are missing it; somebody in the group can give it", 1, 0.4, 0.4, true)
+    end
+    if settings.clickCast and record.ask and record.macro then
+        GameTooltip:AddLine("Click to ask for it in group chat", 0.5, 1, 0.5)
+    elseif settings.clickCast and record.apply then
+        GameTooltip:AddLine("Click to switch to it", 0.5, 1, 0.5)
+    elseif settings.clickCast and (record.spell or record.item or record.macro) and not record.entry.noClick then
         GameTooltip:AddLine("Click to " .. ((record.item or (record.macro and not record.spell)) and "use it" or "cast it"), 0.5, 1, 0.5)
+    end
+    if record.kind and settings.consumableMemory then
+        GameTooltip:AddLine("The one you click is offered first next time on this spec", 0.7, 0.7, 0.7, true)
     end
     if settings.rightSnooze then
         GameTooltip:AddLine(("Right-click: hide it for %d minutes"):format(settings.snoozeMinutes or 10), 0.7, 0.7, 0.7)
@@ -1151,6 +1430,7 @@ local function CreateButton(index)
     button.under:SetPoint("TOP", button, "BOTTOM", 0, -1)
     button.under:SetWordWrap(false)   -- long names are cut with "..."
 
+    button.texts = { button.label, button.badge, button.count, button.under }
     CreateGlow(button)
 
     button:SetScript("OnEnter", ShowTooltip)
@@ -1158,9 +1438,23 @@ local function CreateButton(index)
     -- Right-click hides the reminder for a while. The secure actions are set
     -- for the left button only, so the right one never casts.
     button:SetScript("PostClick", function(self, mouse, down)
-        if mouse ~= "RightButton" or down or not settings.rightSnooze then return end
         local record = self.record
-        if not record or InCombatLockdown() then return end
+        if not record or down or InCombatLockdown() then return end
+        -- Left: the secure action has run (or there was none); what follows
+        -- is bookkeeping, plus the talents / gear switch, which is not secure.
+        if mouse == "LeftButton" then
+            if not settings.clickCast then return end
+            if record.ask then
+                askedAt[record.entry.key] = GetTime()
+                MarkDirty()
+            elseif record.apply then
+                ApplyFix(record)
+            elseif record.kind then
+                RememberItem(record)
+            end
+            return
+        end
+        if mouse ~= "RightButton" or not settings.rightSnooze then return end
         snoozed[record.entry.key] = GetTime() + (settings.snoozeMinutes or 10) * 60
         GameTooltip:Hide()
         MarkDirty()
@@ -1259,6 +1553,58 @@ local function Slot(i, count, perRow, size, gap, rowHeight)
     return x, -line * rowHeight, across * step - gap, lines * rowHeight
 end
 
+-- ── Preview ─────────────────────────────────────────────────────────────────
+-- While previewing, the bar shows previewCount sample icons made from every
+-- reminder there is, in every state (missing with a count, running out,
+-- items with a stack, a name under a pet), so size, spacing, rows, glow and
+-- text can be set without waiting for something to go missing. Sample icons
+-- never cast anything.
+
+local previewing = false
+
+local function EntryTexture(entry)
+    if entry.icon then return entry.icon end
+    local kind = entry.check == "oil" and "weaponOil" or entry.check
+    local items = kind and Data.ITEMS[kind]
+    if items and items[1] then return ItemIcon(items[1].id) end
+    local spell = entry.cast or entry.known or (entry.castList and entry.castList[1])
+        or (entry.auras and entry.auras[1]) or entry.selfAura
+    return spell and SpellTexture(spell) or nil
+end
+
+local function PreviewList()
+    local pool = {}
+    for _, part in ipairs({ Data.RAID, Data.SELF, Data.TARGETED, Data.PET, Data.CONSUMABLE }) do
+        for _, entry in ipairs(part) do
+            local texture = EntryTexture(entry)
+            if texture then pool[#pool + 1] = { entry = entry, texture = texture } end
+        end
+    end
+    local list = {}
+    local wanted = math.max(1, math.min(MAX_BUTTONS, tonumber(settings.previewCount) or 12))
+    for i = 1, wanted do
+        local source = pool[(i - 1) % #pool + 1]
+        local entry = source.entry
+        local record = { sample = true, preview = true, entry = entry, texture = source.texture }
+        if entry.group == "raid" then
+            record.count, record.total = (i % 3) + 1, 5
+        elseif entry.group == "consumable" and entry.check ~= "repair" then
+            record.item, record.stack = true, (i % 4 == 0) and 1 or 12
+            if entry.check == "flask" then record.label = "Crit" end
+        elseif entry.group == "pet" then
+            record.name = "Pet"
+        end
+        if i % 4 == 2 then record.timeLeft = 90 + i * 7 end
+        list[#list + 1] = record
+    end
+    return list
+end
+
+local function SetPreview(on)
+    previewing = on and true or false
+    MarkDirty()
+end
+
 -- Out of combat only: shows, hides and re-targets secure buttons.
 local function Render(list)
     if InCombatLockdown() then return end
@@ -1266,6 +1612,10 @@ local function Render(list)
     local gap = tonumber(settings.spacing) or 6
     local perRow = math.max(1, tonumber(settings.perRow) or 10)
     local rowHeight = size + 16   -- room for the name / time under each icon
+    local zoom = math.max(0, math.min(30, tonumber(settings.iconZoom) or 8)) / 100
+    local alpha = math.max(10, math.min(100, tonumber(settings.iconAlpha) or 100)) / 100
+    local border = math.max(0, math.min(4, tonumber(settings.borderSize) or 1))
+    local textScale = math.max(50, math.min(200, tonumber(settings.textScale) or 100)) / 100
 
     -- A sample icon marks the bar while it is unlocked or Options is open,
     -- so the player can see where reminders will appear.
@@ -1291,26 +1641,44 @@ local function Render(list)
                 button.record = not record.sample and record or nil
                 button.icon:SetTexture(record.texture or 134400)
                 button.icon:SetDesaturated(record.timeLeft ~= nil or record.stack == 0)
+                button.icon:SetTexCoord(zoom, 1 - zoom, zoom, 1 - zoom)
+                button.icon:SetAlpha(alpha)
+                button.border:SetShown(border > 0)
+                button.border:SetPoint("TOPLEFT", -border, border)
+                button.border:SetPoint("BOTTOMRIGHT", border, -border)
+                for _, text in ipairs(button.texts) do
+                    if text.SetTextScale then text:SetTextScale(textScale) end
+                end
                 button.label:SetText(record.label or "")
                 button.badge:SetText(record.badge or "")
 
                 local number = ""
-                if record.count and record.count > 0 and IsInGroup() then number = record.count
+                if record.count and record.count > 0 and (IsInGroup() or record.preview) then
+                    if settings.missingCountOnly or not record.total then number = record.count
+                    else number = ("%d/%d"):format(record.total - record.count, record.total) end
                 elseif record.stack then number = record.stack end
                 button.count:SetText(number)
+                local low = tonumber(settings.lowStock) or 0
+                if record.item and record.stack and record.stack > 0 and record.stack <= low then
+                    button.count:SetTextColor(1, 0.25, 0.25)
+                else
+                    button.count:SetTextColor(1, 1, 1)
+                end
 
                 if record.timeLeft then
                     button.under:SetText(FormatLeft(record.timeLeft))
                 else
                     local name = record.name
-                    if not name and settings.showNames and not record.sample then
+                    if not name and settings.showNames and record.preview then
+                        name = LabelOf(record.entry)
+                    elseif not name and settings.showNames and not record.sample then
                         name = record.item and C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(record.item)
                         name = name or LabelOf(record.entry)
                     end
                     button.under:SetText(name or "")
                 end
 
-                if record.sample then
+                if record.sample and not record.preview then
                     SetGlow(button, false)
                 elseif record.timeLeft then
                     SetGlow(button, settings.glowExpiring, 1, 0.82, 0.2)
@@ -1358,6 +1726,10 @@ local function Refresh()
     pending = false
     if not settings or settings.enabled ~= true or not bar then return end
     if InCombatLockdown() then return end
+    if previewing then
+        Render(PreviewList())
+        return
+    end
     -- While the game keeps auras secret, keep the bar as it was.
     if AurasSecretNow() then return end
     local list = Collect()
@@ -1404,6 +1776,7 @@ local EVENTS = {
     "PLAYER_MOUNT_DISPLAY_CHANGED", "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE",
     "ZONE_CHANGED_NEW_AREA", "READY_CHECK", "BAG_UPDATE_DELAYED", "PLAYER_DEAD", "PLAYER_UNGHOST",
     "UPDATE_INVENTORY_DURABILITY", "PET_STABLE_UPDATE", "PET_BAR_UPDATE", "PLAYER_LEVEL_UP",
+    "TRAIT_CONFIG_UPDATED", "EQUIPMENT_SETS_CHANGED", "PLAYER_EQUIPMENT_CHANGED",
 }
 
 local combatAurasDirty = false
@@ -1434,6 +1807,15 @@ watcher:SetScript("OnEvent", function(_, event, unit)
         -- raid3 may be somebody else now.
         combatAurasDirty = false
         ForgetAllUnits()
+    elseif event == "TRAIT_CONFIG_UPDATED" then
+        local load = pendingLoadout
+        pendingLoadout = nil
+        if load and GetTime() < load.untilTime then MarkLoadoutSelected(load.specID, load.configID) end
+    elseif event == "PLAYER_MOUNT_DISPLAY_CHANGED" then
+        if not IsMounted() then
+            petPauseUntil = GetTime() + Data.DISMOUNT_PET_PAUSE
+            C_Timer.After(Data.DISMOUNT_PET_PAUSE + 0.2, MarkDirty)
+        end
     elseif event == "READY_CHECK" then
         if settings.readyCheck then
             readyCheckUntil = GetTime() + READY_CHECK_SECONDS
@@ -1499,6 +1881,9 @@ local function BindSettings()
     -- Lists are made here, never in DEFAULTS (they would be shared).
     if type(config.customBuffs) ~= "table" then config.customBuffs = {} end
     if type(config.lastTargets) ~= "table" then config.lastTargets = {} end
+    if type(config.lastUsed) ~= "table" then config.lastUsed = {} end   -- spec -> kind -> itemID
+    if type(config.loadouts) ~= "table" then config.loadouts = {} end   -- spec -> content -> loadout name
+    if type(config.gearSets) ~= "table" then config.gearSets = {} end   -- spec -> content -> set name
     -- The old "large icons" box becomes a size the slider can show.
     if (tonumber(config.iconSize) or 0) <= 0 then config.iconSize = config.largeIcons and 44 or 34 end
     settings = config
@@ -1538,7 +1923,24 @@ local function ToggleSub(name, build)
         subWindows[name] = w
         w:HookScript("OnShow", MarkDirty)
     end
-    if w:IsShown() then w:Hide() else w:Show() end
+    if w:IsShown() then w:Hide() return end
+    -- Every options window opens at the centre of the screen, so two of them
+    -- landed on top of each other. One at a time, beside the main window
+    -- (left of it when there is no room on the right).
+    for other, sub in pairs(subWindows) do
+        if other ~= name then sub:Hide() end
+    end
+    if optionsWindow then
+        w:ClearAllPoints()
+        local right = (optionsWindow:GetRight() or 0) + w:GetWidth() + 8
+        if right <= UIParent:GetWidth() then
+            w:SetPoint("TOPLEFT", optionsWindow, "TOPRIGHT", 8, 0)
+        else
+            w:SetPoint("TOPRIGHT", optionsWindow, "TOPLEFT", -8, 0)
+        end
+    end
+    w:Show()
+    w:Raise()
 end
 
 local function FitHeight(w)
@@ -1563,6 +1965,7 @@ local function BuildReminders(API)
         end,
     })
     local parts = {
+        { "loadout", Data.LOADOUT },
         { "raid", Data.RAID }, { "self", Data.SELF }, { "targeted", Data.TARGETED },
         { "pet", Data.PET }, { "consumable", Data.CONSUMABLE },
     }
@@ -1596,6 +1999,12 @@ local function BuildLayout(API)
     w:AddSlider(settings, "spacing", "Space between icons", 0, 20, 1, "%s: %d", MarkDirty)
     w:AddSlider(settings, "perRow", "Icons per row", 1, 20, 1, "%s: %d", MarkDirty)
     w:AddChoice(settings, "growDirection", "Direction", DIRECTIONS, MarkDirty)
+    w:AddSlider(settings, "iconAlpha", "Icon opacity", 10, 100, 5, "%s: %d%%", MarkDirty)
+    w:AddSlider(settings, "iconZoom", "Icon zoom", 0, 30, 1, "%s: %d%%", MarkDirty)
+    w:AddSlider(settings, "borderSize", "Border", 0, 4, 1, "%s: %d px", MarkDirty)
+    w:AddSlider(settings, "textScale", "Text size", 50, 200, 10, "%s: %d%%", MarkDirty)
+    w:AddCheckbox(settings, "missingCountOnly", "Group buffs: count who is missing it",
+        "Ticked: \"3\" means three players lack it. Unticked: \"2/5\", two of five have it.", MarkDirty)
     w:AddCheckbox(settings, "showNames", "Show names under the icons", nil, MarkDirty)
     w:AddCheckbox(settings, "glowMissing", "Glow around what is missing", nil, MarkDirty)
     w:AddCheckbox(settings, "glowExpiring", "Glow around what is running out", nil, MarkDirty)
@@ -1654,7 +2063,127 @@ local function BuildClass(API, class)
         w:AddNote("Turn on \"Wrong druid form\" in Reminders: Balance wants Moonkin Form, Feral wants Cat Form.")
     elseif class == "WARRIOR" then
         w:AddNote("Turn on \"Wrong warrior stance\" in Reminders: Arms wants Battle Stance, Fury Battle or Berserker, Protection Defensive.")
+    elseif class == "WARLOCK" then
+        Heading(w, "Demon offered first when yours is missing")
+        local choices = {}
+        for _, id in ipairs(Data.DEMON_CHOICES) do
+            choices[#choices + 1] = { value = id, text = Data.DEMON_NAMES[id] or SpellName(id) or ("Spell " .. id) }
+        end
+        for _, content in ipairs(Data.DEMON_CONTENT) do
+            w:AddChoice(settings, "demon_" .. content.key, content.text, choices, MarkDirty)
+        end
+        w:AddNote("Demonology always gets its Felguard first.")
     end
+    FitHeight(w)
+    return w
+end
+
+-- Talent loadout and equipment set per kind of content, for the current
+-- spec. The choice lists are refilled each time the window opens, so a new
+-- loadout or a spec change shows up.
+local function BuildLoadouts(API)
+    local w = API:CreateOptionsWindow("Buff Reminder: Talents and gear", 460, 400)
+    w:AddNote("Pick what you want for each kind of content. When something else is in use an icon shows; "
+        .. "a click switches to it. Chosen per specialisation.")
+    local specLine = w:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    specLine:SetPoint("TOPLEFT", w, "TOPLEFT", 18, w.cursorY - 6)
+    w.cursorY = w.cursorY - 24
+
+    -- Reads and writes settings[store][spec][content] for the spec in use now.
+    local function Store(store)
+        return setmetatable({}, {
+            __index = function(_, content)
+                local mine = settings[store][SpecKey(CurrentSpecID())]
+                return mine and mine[content] or ""
+            end,
+            __newindex = function(_, content, value)
+                local key = SpecKey(CurrentSpecID())
+                settings[store][key] = settings[store][key] or {}
+                settings[store][key][content] = (value ~= "") and value or nil
+                MarkDirty()
+            end,
+        })
+    end
+
+    local talentChoices, gearChoices, choiceButtons = {}, {}, {}
+    local talents, gear = Store("loadouts"), Store("gearSets")
+    Heading(w, "Talent loadout")
+    for _, content in ipairs(Data.LOADOUT_CONTENT) do
+        choiceButtons[#choiceButtons + 1] = w:AddChoice(talents, content.key, content.text, talentChoices)
+    end
+    Heading(w, "Equipment set")
+    for _, content in ipairs(Data.LOADOUT_CONTENT) do
+        choiceButtons[#choiceButtons + 1] = w:AddChoice(gear, content.key, content.text, gearChoices)
+    end
+    w:AddNote("Other scenarios use the dungeon choice. Nothing switches in combat.")
+
+    local function Fill()
+        local specID = CurrentSpecID()
+        local specName = specID and GetSpecializationInfoByID and select(2, GetSpecializationInfoByID(specID))
+        specLine:SetText("For: " .. (specName or "no specialisation yet"))
+        wipe(talentChoices)
+        talentChoices[1] = { value = "", text = "Don't care" }
+        for _, loadout in ipairs(Loadouts(specID)) do
+            talentChoices[#talentChoices + 1] = { value = loadout.name, text = loadout.name }
+        end
+        wipe(gearChoices)
+        gearChoices[1] = { value = "", text = "Don't care" }
+        if C_EquipmentSet and C_EquipmentSet.GetEquipmentSetIDs then
+            for _, id in ipairs(C_EquipmentSet.GetEquipmentSetIDs() or {}) do
+                local name = C_EquipmentSet.GetEquipmentSetInfo(id)
+                if type(name) == "string" then gearChoices[#gearChoices + 1] = { value = name, text = name } end
+            end
+        end
+        for _, button in ipairs(choiceButtons) do button.Refresh() end
+    end
+    w:HookScript("OnShow", Fill)
+    Fill()
+    FitHeight(w)
+    return w
+end
+
+local function BuildSmarter(API)
+    local w = API:CreateOptionsWindow("Buff Reminder: Smarter choices", 460, 300)
+    Heading(w, "Group buffs")
+    w:AddCheckbox(settings, "benefitOnly", "Count only players the buff helps",
+        "Arcane Intellect is not missing on a warrior, nor Battle Shout on a priest. Uses each player's spec when the game knows it.", MarkDirty)
+    w:AddCheckbox(settings, "askBuffs", "Ask for buffs you lack",
+        "A group buff you cannot give yourself, missing on you while its class is in the group, shows an icon; "
+        .. "a click asks for it in group chat (once every 30 seconds). Also asks for a Soulwell when you have no Healthstone.", MarkDirty)
+    Heading(w, "Consumables")
+    w:AddCheckbox(settings, "consumableMemory", "Offer the one you used last first",
+        "Remembered per specialisation: the food, flask, rune or oil you clicked last time comes first.", MarkDirty)
+    w:AddCheckbox(settings, "oneConsumable", "Only one icon per kind", "Just the first: the remembered one, else the best you carry.", MarkDirty)
+    w:AddSlider(settings, "lowStock", "Count in red at or below", 0, 10, 1, "%s %d", MarkDirty)
+    w:AddCheckbox(settings, "withoutItems", "Show food, flask and oil even with none in your bags", nil, MarkDirty)
+    w:AddSlider(settings, "repairBelow", "Repair reminder below", 5, 95, 5, "%s %d%% durability", MarkDirty)
+
+    Heading(w, "Your request in chat")
+    -- ⚠ SetAutoFocus(false): a new EditBox takes the keyboard at once.
+    local box = CreateFrame("EditBox", nil, w, "InputBoxTemplate")
+    box:SetAutoFocus(false)
+    box:SetSize(w:GetWidth() - 60, 22)
+    box:SetPoint("TOPLEFT", w, "TOPLEFT", 26, w.cursorY - 4)
+    box:SetMaxLetters(200)
+    local function Save()
+        settings.askMessage = strtrim(box:GetText() or "")
+        box:ClearFocus()
+        MarkDirty()
+    end
+    box:SetScript("OnEnterPressed", Save)
+    box:SetScript("OnEditFocusLost", Save)
+    box:SetScript("OnEscapePressed", function(self)
+        self:SetText(settings.askMessage or "")
+        self:ClearFocus()
+    end)
+    w:HookScript("OnShow", function()
+        local text = settings.askMessage
+        box:SetText((type(text) == "string" and text ~= "") and text or Data.ASK_MESSAGE)
+    end)
+    w:HookScript("OnHide", function() box:ClearFocus() end)
+    box:SetText((settings.askMessage ~= "" and settings.askMessage) or Data.ASK_MESSAGE)
+    w.cursorY = w.cursorY - 32
+    w:AddNote("{buff} becomes the buff's name. Empty the box for the default wording.")
     FitHeight(w)
     return w
 end
@@ -1783,6 +2312,14 @@ local function ShowOptions()
         w:AddCheckbox(settings, "rightSnooze", "Right-click an icon to hide it for a while", nil, MarkDirty)
         w:AddSlider(settings, "snoozeMinutes", "Hidden for", 1, 60, 1, "%s %d min")
         w:AddSoundPicker(settings, "sound", "Sound when something goes missing", "None")
+        -- Preview: not saved, and switched off when this window closes.
+        local previewToggle = setmetatable({}, {
+            __index = function() return previewing end,
+            __newindex = function(_, _, value) SetPreview(value) end,
+        })
+        w:AddCheckbox(previewToggle, "on", "Preview sample icons on screen",
+            "Fills the bar with sample icons in every state, to set size, spacing and position. They do nothing when clicked.")
+        w:AddSlider(settings, "previewCount", "Sample icons", 1, MAX_BUTTONS, 1, "%s: %d", MarkDirty)
 
         local _, class = UnitClass("player")
         local items = {
@@ -1790,8 +2327,10 @@ local function ShowOptions()
             { "Custom buffs", function() ToggleSub("custom", function() return BuildCustom(API) end) end },
             { "Layout and glow", function() ToggleSub("layout", function() return BuildLayout(API) end) end },
             { "Where it shows", function() ToggleSub("where", function() return BuildWhere(API) end) end },
+            { "Talents and gear", function() ToggleSub("loadouts", function() return BuildLoadouts(API) end) end },
+            { "Smarter choices", function() ToggleSub("smarter", function() return BuildSmarter(API) end) end },
         }
-        if class == "ROGUE" or class == "DEATHKNIGHT" or class == "DRUID" or class == "WARRIOR" then
+        if class == "ROGUE" or class == "DEATHKNIGHT" or class == "DRUID" or class == "WARRIOR" or class == "WARLOCK" then
             items[#items + 1] = { "Class choices", function() ToggleSub("class", function() return BuildClass(API, class) end) end }
         end
         AddButtonRow(w, items)
@@ -1800,6 +2339,7 @@ local function ShowOptions()
         w:HookScript("OnShow", MarkDirty)
         w:HookScript("OnHide", function()
             for _, sub in pairs(subWindows) do sub:Hide() end
+            previewing = false
             MarkDirty()
         end)
     end
@@ -1822,11 +2362,13 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "buffreminder",
         name     = "Buff Reminder",
-        version  = "1.3.0",
+        version  = "1.5.0",
+        updated  = 20261017.4,  -- preview with sample icons, icon look options, request wording
         author   = "Oxed",
         category = "combat",
         keywords = { "buff", "missing", "food", "flask", "rune", "oil", "pet", "poison", "consumables",
-            "healthstone", "ready check", "beacon", "earth shield", "soulstone", "stance", "form", "custom" },
+            "healthstone", "ready check", "beacon", "earth shield", "soulstone", "stance", "form", "custom",
+            "talents", "loadout", "gear set", "ask" },
         -- Clipped at about 90 characters on the card; the detail is in Options.
         desc     = "Icons for missing buffs, pets and consumables. Click one to cast it.",
         icon     = "Interface\\Icons\\Spell_Holy_MagicalSentry",
@@ -1839,6 +2381,9 @@ loginFrame:SetScript("OnEvent", function(self)
             settings = config
             if type(settings.customBuffs) ~= "table" then settings.customBuffs = {} end
             if type(settings.lastTargets) ~= "table" then settings.lastTargets = {} end
+            if type(settings.lastUsed) ~= "table" then settings.lastUsed = {} end
+            if type(settings.loadouts) ~= "table" then settings.loadouts = {} end
+            if type(settings.gearSets) ~= "table" then settings.gearSets = {} end
             SafeStart()
         end,
 

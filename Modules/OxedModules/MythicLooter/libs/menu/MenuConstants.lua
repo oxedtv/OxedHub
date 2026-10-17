@@ -1,4 +1,4 @@
-KSLMenuConstants = 
+OxMLMenuConstants = 
 {
 	VerticalLinearDirection = 1,
 	VerticalGridDirection = 2,
@@ -14,9 +14,9 @@ structure to remain open, reinitialize all the children, or only close the leafm
 It is common for menus with checkboxes or radio options to return Refresh in order for
 the children to visually update.
 --]]
-KSLMenuResponse = 
+OxMLMenuResponse = 
 {
-	Open = 1, -- KSLMenu remains open and unchanged
+	Open = 1, -- OxMLMenu remains open and unchanged
 	Refresh = 2, -- All frames in the menu are reinitialized
 	Close = 3, -- Parent menus remain open but this menu closes
 	CloseAll = 4, -- All menus close
@@ -28,14 +28,14 @@ Passed to element handlers to inform which input is responsible for invoking the
 which is relevant in some specialized use cases. See Blizzard_CharacterCustomize.lua.
 Can be used to
 ]]--
-KSLMenuInputContext =
+OxMLMenuInputContext =
 {
 	None = 1,
 	MouseButton = 2,
 	MouseWheel = 3,
 };
 
-KSLMenuCloseReason =
+OxMLMenuCloseReason =
 {
 	Unspecified = 1,
 	CloseAll = 2,

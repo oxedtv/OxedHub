@@ -1,6 +1,6 @@
 local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; AddonName = "MythicLooter";
 
--- Public API, exposed as the global "KeystoneLootAPI" - see README.md
+-- Public API, exposed as the global "OxMythicLooterAPI" - see README.md
 KeystoneLoot.API              = {};
 KeystoneLoot.APIInternal      = {};
 
@@ -68,7 +68,7 @@ local function RefreshUI()
     C_Timer.After(0, function()
         isRefreshPending = false;
 
-        local Frame = KeystoneLootFrame;
+        local Frame = OxMythicLooterFrame;
         if (not Frame) then
             return;
         end
@@ -697,4 +697,4 @@ function API:UnregisterCallback(event, owner)
     return true;
 end
 
-_G.KeystoneLootAPI = API;
+_G.OxMythicLooterAPI = API;

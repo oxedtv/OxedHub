@@ -1,6 +1,6 @@
 SlashCmdList.KEYSTONELOOT = function()
-    if KeystoneLootFrame then
-        KeystoneLootFrame:SetShown(not KeystoneLootFrame:IsShown());
+    if OxMythicLooterFrame then
+        OxMythicLooterFrame:SetShown(not OxMythicLooterFrame:IsShown());
     end
 end;
 

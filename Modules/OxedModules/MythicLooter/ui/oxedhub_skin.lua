@@ -292,22 +292,22 @@ local function SkinTeleportPopup(frame)
 end
 
 local function Apply()
-    if (not KeystoneLootFrame) then
+    if (not OxMythicLooterFrame) then
         return;
     end
 
     local ok, err = pcall(function()
-        SkinMainFrame(KeystoneLootFrame);
+        SkinMainFrame(OxMythicLooterFrame);
         -- The Catalyst and custom-item strips beside the window are gone:
         -- OxedHub has no panels hanging off a window like that.
-        KillFrame(KeystoneLootFrame.CatalystFrame);
-        KillFrame(KeystoneLootFrame.CustomItemFrame);
-        OptionsButton(KeystoneLootFrame.SettingsDropdown);
-        SkinPopup(KeystoneLootReminderFrame);
-        SkinPopup(KeystoneLootDropNotificationFrame);
-        SkinTeleportPopup(KeystoneLootMythicPlusNotificationFrame);
+        KillFrame(OxMythicLooterFrame.CatalystFrame);
+        KillFrame(OxMythicLooterFrame.CustomItemFrame);
+        OptionsButton(OxMythicLooterFrame.SettingsDropdown);
+        SkinPopup(OxMythicLooterReminderFrame);
+        SkinPopup(OxMythicLooterDropNotificationFrame);
+        SkinTeleportPopup(OxMythicLooterMythicPlusNotificationFrame);
 
-        for _, button in ipairs({ KeystoneLootReminderFrame and KeystoneLootReminderFrame.LootSpecButton }) do
+        for _, button in ipairs({ OxMythicLooterReminderFrame and OxMythicLooterReminderFrame.LootSpecButton }) do
             RedButton(button);
         end
     end);

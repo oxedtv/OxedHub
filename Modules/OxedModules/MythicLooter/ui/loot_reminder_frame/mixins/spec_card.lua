@@ -55,15 +55,15 @@ local ICON_SPACING_Y          = 8;
 local ICON_PADDING_X          = 11;
 local ICON_PADDING_Y          = 10;
 
-KeystoneLootReminderSpecMixin = {};
+OxMythicLooterReminderSpecMixin = {};
 
-function KeystoneLootReminderSpecMixin:OnLoad()
-    self.iconPool = CreateFramePool("Button", self, "KeystoneLootReminderIconTemplate");
+function OxMythicLooterReminderSpecMixin:OnLoad()
+    self.iconPool = CreateFramePool("Button", self, "OxMythicLooterReminderIconTemplate");
 
     self.LootSpecButton:SetScript("OnClick", GenerateClosure(self.OnLootSpecButtonClick, self));
 end
 
-function KeystoneLootReminderSpecMixin:Init(displaySpecId, favoSpecId, items, lootSpecId, allSpecItems)
+function OxMythicLooterReminderSpecMixin:Init(displaySpecId, favoSpecId, items, lootSpecId, allSpecItems)
     self.specId = displaySpecId;
 
     local specName = Character:GetSpecName(displaySpecId);
@@ -86,7 +86,7 @@ function KeystoneLootReminderSpecMixin:Init(displaySpecId, favoSpecId, items, lo
     self:SetIcons(items, allSpecItems);
 end
 
-function KeystoneLootReminderSpecMixin:SetIcons(items, allSpecItems)
+function OxMythicLooterReminderSpecMixin:SetIcons(items, allSpecItems)
     self.iconPool:ReleaseAll();
 
     local LastIcon = nil;
@@ -114,7 +114,7 @@ function KeystoneLootReminderSpecMixin:SetIcons(items, allSpecItems)
     end
 end
 
-function KeystoneLootReminderSpecMixin:OnLootSpecButtonClick()
+function OxMythicLooterReminderSpecMixin:OnLootSpecButtonClick()
     if (DB:Get("previousLootSpecId") == nil) then
         DB:Set("previousLootSpecId", GetLootSpecialization());
     end
@@ -123,7 +123,7 @@ function KeystoneLootReminderSpecMixin:OnLootSpecButtonClick()
     PlaySound(SOUNDKIT.UI_CLASS_TALENT_SPEC_ACTIVATE);
 end
 
-function KeystoneLootReminderSpecMixin:UpdateLootSpec(lootSpecId)
+function OxMythicLooterReminderSpecMixin:UpdateLootSpec(lootSpecId)
     local isActive = self.specId == lootSpecId;
     self.LootSpecButton:SetShown(not isActive);
     self.ActiveText:SetShown(isActive);

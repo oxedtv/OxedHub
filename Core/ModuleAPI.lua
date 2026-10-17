@@ -494,13 +494,35 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
             local choice = choices[Index()]
             button:SetText(choice and choice.text or "")
         end
-        button:SetScript("OnClick", function(_, mouse)
-            local i = Index() + (mouse == "RightButton" and -1 or 1)
-            if i > #choices then i = 1 elseif i < 1 then i = #choices end
-            config[key] = choices[i].value
+        local function Pick(value)
+            config[key] = value
             button.Refresh()
             if onChange then onChange(config[key]) end
+        end
+        -- A click opens a list of every choice (the game's own menu). Clients
+        -- without MenuUtil step through the choices instead; right-click steps back.
+        button:SetScript("OnClick", function(self, mouse)
+            if MenuUtil and MenuUtil.CreateContextMenu and mouse ~= "RightButton" then
+                MenuUtil.CreateContextMenu(self, function(_, root)
+                    for _, choice in ipairs(choices) do
+                        local value = choice.value
+                        root:CreateRadio(choice.text,
+                            function() return config[key] == value end,
+                            function() Pick(value) end)
+                    end
+                end)
+                return
+            end
+            local i = Index() + (mouse == "RightButton" and -1 or 1)
+            if i > #choices then i = 1 elseif i < 1 then i = #choices end
+            Pick(choices[i].value)
         end)
+        -- A small arrow says it is a list.
+        local arrow = button:CreateTexture(nil, "OVERLAY")
+        arrow:SetSize(12, 12)
+        arrow:SetPoint("RIGHT", -6, 0)
+        arrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow")
+        arrow:SetRotation(-math.pi / 2)   -- points down
 
         table.insert(self.checks, button)
         self.cursorY = self.cursorY - 30

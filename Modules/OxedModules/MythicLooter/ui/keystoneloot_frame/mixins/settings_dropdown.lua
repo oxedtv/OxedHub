@@ -215,9 +215,9 @@ StaticPopupDialogs.KEYSTONELOOT_WHISPER_MESSAGE = {
     hideOnEscape = true
 };
 
-KeystoneLootSettingsDropdownMixin = CreateFromMixins(KSLDropdownButtonMixin);
+OxMythicLooterSettingsDropdownMixin = CreateFromMixins(OxMLDropdownButtonMixin);
 
-function KeystoneLootSettingsDropdownMixin:Init()
+function OxMythicLooterSettingsDropdownMixin:Init()
     self:SetupMenu(function(dropdown, rootDescription)
         rootDescription:SetTag("MENU_KEYSTONELOOT_SETTINGS_DROPDOWN");
 

@@ -2,15 +2,15 @@ local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; Addon
 
 local L = KeystoneLoot.L;
 
-KeystoneLootCustomItemIconMixin = {};
+OxMythicLooterCustomItemIconMixin = {};
 
-function KeystoneLootCustomItemIconMixin:OnEnter()
+function OxMythicLooterCustomItemIconMixin:OnEnter()
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
     GameTooltip:SetText(L["Custom Items"], HIGHLIGHT_FONT_COLOR:GetRGB());
     GameTooltip:AddLine(L["Import items from external sources like keystoneloot.io"], nil, nil, nil, true);
     GameTooltip:Show();
 end
 
-function KeystoneLootCustomItemIconMixin:OnLeave()
+function OxMythicLooterCustomItemIconMixin:OnLeave()
     GameTooltip:Hide();
 end

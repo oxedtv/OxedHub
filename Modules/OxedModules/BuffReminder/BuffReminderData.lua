@@ -284,3 +284,80 @@ Data.DEMON_NAMES = { [688] = "Imp", [697] = "Voidwalker", [691] = "Felhunter", [
 
 -- Gear below this durability (percent, worst item) gets a repair reminder.
 Data.REPAIR_BELOW = 25
+
+-- ── Who a group buff is for ─────────────────────────────────────────────────
+-- A buff missing on somebody it does nothing for is not worth an icon: a
+-- warrior without Arcane Intellect, a priest without Battle Shout. When a
+-- member's spec is known it decides; otherwise the class does. A buff not
+-- listed here is for everybody.
+Data.BENEFIT_SPECS = {
+    intellect = {
+        [62] = true, [63] = true, [64] = true,          -- Mage
+        [256] = true, [257] = true, [258] = true,       -- Priest
+        [265] = true, [266] = true, [267] = true,       -- Warlock
+        [102] = true, [105] = true,                     -- Druid: Balance, Restoration
+        [262] = true, [264] = true,                     -- Shaman: Elemental, Restoration
+        [270] = true,                                   -- Monk: Mistweaver
+        [65] = true,                                    -- Paladin: Holy
+        [1467] = true, [1468] = true, [1473] = true,    -- Evoker
+        [1480] = true,                                  -- Demon Hunter: Devourer
+    },
+    attackPower = {
+        [71] = true, [72] = true, [73] = true,          -- Warrior
+        [259] = true, [260] = true, [261] = true,       -- Rogue
+        [253] = true, [254] = true, [255] = true,       -- Hunter
+        [250] = true, [251] = true, [252] = true,       -- Death Knight
+        [577] = true, [581] = true,                     -- Demon Hunter: Havoc, Vengeance
+        [103] = true, [104] = true,                     -- Druid: Feral, Guardian
+        [263] = true,                                   -- Shaman: Enhancement
+        [268] = true, [269] = true,                     -- Monk: Brewmaster, Windwalker
+        [66] = true, [70] = true,                       -- Paladin: Protection, Retribution
+    },
+}
+Data.BENEFIT_CLASSES = {
+    intellect = { MAGE = true, WARLOCK = true, PRIEST = true, DRUID = true, SHAMAN = true,
+        MONK = true, EVOKER = true, PALADIN = true, DEMONHUNTER = true },
+    attackPower = { WARRIOR = true, ROGUE = true, HUNTER = true, DEATHKNIGHT = true, PALADIN = true,
+        MONK = true, DRUID = true, DEMONHUNTER = true, SHAMAN = true },
+}
+
+-- ── Asking for a buff ───────────────────────────────────────────────────────
+-- A group buff you lack, from a class somebody in the group plays: a click
+-- asks for it in group chat. "%s" is the buff's name.
+Data.ASK_MESSAGE = "Could I get {buff}, please?"   -- {buff}: the buff's name
+Data.ASK_HEALTHSTONE = "Could somebody put down a Soulwell, please?"
+Data.ASK_COOLDOWN = 30           -- seconds before the same request can be sent again
+
+-- ── Talents and gear per kind of content ───────────────────────────────────
+-- "scenario" uses the dungeon choice; everything else has its own.
+Data.LOADOUT_CONTENT = {
+    { key = "openWorld", text = "Open world" }, { key = "dungeon", text = "Dungeons" },
+    { key = "raid", text = "Raids" }, { key = "delve", text = "Delves" },
+    { key = "pvp", text = "Battlegrounds and arenas" },
+}
+Data.LOADOUT_ICON = "Interface\\Icons\\Ability_Marksmanship"
+Data.GEAR_ICON = "Interface\\Icons\\INV_Chest_Cloth_17"
+
+-- Which demon a warlock should have out, by content. Felhunter (an
+-- interrupt) unless the player picks another; Demonology wants its Felguard
+-- regardless (see wrongDemon).
+Data.DEMON_CONTENT = {
+    { key = "openWorld", text = "Open world" }, { key = "dungeon", text = "Dungeons" },
+    { key = "raid", text = "Raids" }, { key = "pvp", text = "Battlegrounds and arenas" },
+}
+Data.DEMON_CHOICES = { 691, 697, 688, 366222 }   -- Felhunter, Voidwalker, Imp, Sayaad
+
+-- A pet comes back a moment after you dismount; pet reminders wait this long.
+Data.DISMOUNT_PET_PAUSE = 3
+
+Data.LABELS.talentLoadout = "Talent loadout for this content"
+Data.LABELS.gearSet = "Equipment set for this content"
+Data.LABELS.askBuffs = "Ask for buffs you lack"
+
+-- Shown when the talents or gear set chosen for this content are not the
+-- ones in use. Read without auras, so they are right anywhere.
+Data.LOADOUT = {
+    { key = "talentLoadout", group = "loadout", check = "talentLoadout" },
+    { key = "gearSet",       group = "loadout", check = "gearSet" },
+}
+Data.GROUP_TITLES.loadout = "Talents and gear"

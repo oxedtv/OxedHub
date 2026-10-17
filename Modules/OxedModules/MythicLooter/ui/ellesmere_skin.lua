@@ -90,36 +90,36 @@ local function SkinWidgets(Frame)
 end
 
 local function Apply()
-    SkinMainFrame(KeystoneLootFrame);
-    SkinSidePanel(KeystoneLootFrame.CatalystFrame);
-    SkinSidePanel(KeystoneLootFrame.CustomItemFrame);
+    SkinMainFrame(OxMythicLooterFrame);
+    SkinSidePanel(OxMythicLooterFrame.CatalystFrame);
+    SkinSidePanel(OxMythicLooterFrame.CustomItemFrame);
 
-    skin.Inset(KeystoneLootFrame.DungeonsFrame.Inset);
-    skin.FadeRegions(KeystoneLootFrame.DungeonsFrame.BorderFrame);
-    skin.Dropdown(KeystoneLootFrame.RaidsFrame.DropdownButton);
+    skin.Inset(OxMythicLooterFrame.DungeonsFrame.Inset);
+    skin.FadeRegions(OxMythicLooterFrame.DungeonsFrame.BorderFrame);
+    skin.Dropdown(OxMythicLooterFrame.RaidsFrame.DropdownButton);
 
-    hooksecurefunc(KeystoneLootFrame.RaidsFrame, "Refresh", SkinRaidBlocks);
-    SkinRaidBlocks(KeystoneLootFrame.RaidsFrame);
+    hooksecurefunc(OxMythicLooterFrame.RaidsFrame, "Refresh", SkinRaidBlocks);
+    SkinRaidBlocks(OxMythicLooterFrame.RaidsFrame);
 
-    for _, Frame in ipairs({ KeystoneLootFrame.DungeonsFrame, KeystoneLootFrame.RaidsFrame,
-        KeystoneLootFrame.CatalystFrame, KeystoneLootFrame.CustomItemFrame,
-        KeystoneLootDropNotificationFrame }) do
+    for _, Frame in ipairs({ OxMythicLooterFrame.DungeonsFrame, OxMythicLooterFrame.RaidsFrame,
+        OxMythicLooterFrame.CatalystFrame, OxMythicLooterFrame.CustomItemFrame,
+        OxMythicLooterDropNotificationFrame }) do
         hooksecurefunc(Frame, "Refresh", SkinWidgets);
         SkinWidgets(Frame);
     end
 
-    hooksecurefunc(KeystoneLootReminderFrame, "Open", SkinWidgets);
-    SkinWidgets(KeystoneLootMythicPlusNotificationFrame);
+    hooksecurefunc(OxMythicLooterReminderFrame, "Open", SkinWidgets);
+    SkinWidgets(OxMythicLooterMythicPlusNotificationFrame);
 
-    hooksecurefunc(KSLMenuStyle1Mixin, "Generate", function(Menu)
+    hooksecurefunc(OxMLMenuStyle1Mixin, "Generate", function(Menu)
         RunNextFrame(function()
             SkinMenu(Menu);
         end);
     end);
 
-    SkinPopupFrame(KeystoneLootReminderFrame);
-    SkinPopupFrame(KeystoneLootDropNotificationFrame);
-    SkinPopupFrame(KeystoneLootMythicPlusNotificationFrame);
+    SkinPopupFrame(OxMythicLooterReminderFrame);
+    SkinPopupFrame(OxMythicLooterDropNotificationFrame);
+    SkinPopupFrame(OxMythicLooterMythicPlusNotificationFrame);
 end
 
 EllesmereUI.RegisterSkin(AddonName, function(S)

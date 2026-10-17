@@ -22,9 +22,9 @@ local MSG_REPLY                = "R";
 local SEND_DELAY               = 0.5;
 local EVALUATE_DELAY           = 10;
 
-KeystoneLootReminderFrameMixin = {};
+OxMythicLooterReminderFrameMixin = {};
 
-function KeystoneLootReminderFrameMixin:OnLoad()
+function OxMythicLooterReminderFrameMixin:OnLoad()
     self:RegisterEvent("PLAYER_ENTERING_WORLD");
     self:RegisterEvent("GROUP_ROSTER_UPDATE");
     self:RegisterForDrag("LeftButton");
@@ -37,29 +37,29 @@ function KeystoneLootReminderFrameMixin:OnLoad()
     self.HeadlineBg:SetVertexColor(0.1, 0.1, 0.1, 1);
     self.AddonLabel:SetText(AddonName);
 
-    self.specPool = CreateFramePool("Frame", self.Container, "KeystoneLootReminderSpecTemplate");
+    self.specPool = CreateFramePool("Frame", self.Container, "OxMythicLooterReminderSpecTemplate");
     self.groupGuids = {};
     self.partyFavorites = {};
 end
 
-function KeystoneLootReminderFrameMixin:OnShow()
+function OxMythicLooterReminderFrameMixin:OnShow()
     PlaySound(SOUNDKIT.IG_QUEST_LOG_OPEN);
 end
 
-function KeystoneLootReminderFrameMixin:OnHide()
+function OxMythicLooterReminderFrameMixin:OnHide()
     PlaySound(SOUNDKIT.IG_QUEST_LOG_CLOSE);
 end
 
-function KeystoneLootReminderFrameMixin:OnDragStart()
+function OxMythicLooterReminderFrameMixin:OnDragStart()
     self:StartMoving();
     self:SetUserPlaced(true);
 end
 
-function KeystoneLootReminderFrameMixin:OnDragStop()
+function OxMythicLooterReminderFrameMixin:OnDragStop()
     self:StopMovingOrSizing();
 end
 
-function KeystoneLootReminderFrameMixin:OnEvent(event, ...)
+function OxMythicLooterReminderFrameMixin:OnEvent(event, ...)
     if (event == "PLAYER_ENTERING_WORLD") then
         self:Hide();
         self.challengeMapId = Keystone:GetCurrentChallengeMapId();
@@ -145,7 +145,7 @@ function KeystoneLootReminderFrameMixin:OnEvent(event, ...)
     end
 end
 
-function KeystoneLootReminderFrameMixin:RestoreLootSpec()
+function OxMythicLooterReminderFrameMixin:RestoreLootSpec()
     local previousLootSpecId = DB:Get("previousLootSpecId");
     if (previousLootSpecId == nil) then
         return;
@@ -159,7 +159,7 @@ function KeystoneLootReminderFrameMixin:RestoreLootSpec()
     end
 end
 
-function KeystoneLootReminderFrameMixin:GetGroupGuids()
+function OxMythicLooterReminderFrameMixin:GetGroupGuids()
     local guids = {};
 
     if (IsInGroup()) then
@@ -174,7 +174,7 @@ function KeystoneLootReminderFrameMixin:GetGroupGuids()
     return guids;
 end
 
-function KeystoneLootReminderFrameMixin:QueueReply()
+function OxMythicLooterReminderFrameMixin:QueueReply()
     if (self.pendingSend) then
         return;
     end
@@ -187,7 +187,7 @@ function KeystoneLootReminderFrameMixin:QueueReply()
     end);
 end
 
-function KeystoneLootReminderFrameMixin:SendFavorites(msgType)
+function OxMythicLooterReminderFrameMixin:SendFavorites(msgType)
     if (not IsInGroup()) then
         return;
     end
@@ -214,7 +214,7 @@ function KeystoneLootReminderFrameMixin:SendFavorites(msgType)
     C_ChatInfo.SendAddonMessage(ADDON_PREFIX, message, "PARTY");
 end
 
-function KeystoneLootReminderFrameMixin:OnAddonMessage(text, sender)
+function OxMythicLooterReminderFrameMixin:OnAddonMessage(text, sender)
     if (sender == UnitName("player") .. "-" .. GetNormalizedRealmName()) then
         return;
     end
@@ -258,7 +258,7 @@ function KeystoneLootReminderFrameMixin:OnAddonMessage(text, sender)
     end
 end
 
-function KeystoneLootReminderFrameMixin:HasAllMessages()
+function OxMythicLooterReminderFrameMixin:HasAllMessages()
     if (not self.partyFavorites[self.challengeMapId]) then
         return false;
     end
@@ -272,7 +272,7 @@ function KeystoneLootReminderFrameMixin:HasAllMessages()
     return true;
 end
 
-function KeystoneLootReminderFrameMixin:IsGroupComplete()
+function OxMythicLooterReminderFrameMixin:IsGroupComplete()
     if (GetNumGroupMembers() ~= FULL_GROUP_SIZE) then
         return false;
     end
@@ -292,7 +292,7 @@ function KeystoneLootReminderFrameMixin:IsGroupComplete()
     return complete;
 end
 
-function KeystoneLootReminderFrameMixin:CheckGroup()
+function OxMythicLooterReminderFrameMixin:CheckGroup()
     if (self.isLocked or self.isEvaluated) then
         return;
     end
@@ -321,7 +321,7 @@ function KeystoneLootReminderFrameMixin:CheckGroup()
     end);
 end
 
-function KeystoneLootReminderFrameMixin:Evaluate()
+function OxMythicLooterReminderFrameMixin:Evaluate()
     self.evaluateTimer = nil;
 
     if (self.isLocked) then
@@ -332,7 +332,7 @@ function KeystoneLootReminderFrameMixin:Evaluate()
     self:Open(itemList, {}, true);
 end
 
-function KeystoneLootReminderFrameMixin:GetPartyItems()
+function OxMythicLooterReminderFrameMixin:GetPartyItems()
     local items = {};
 
     if (not self.partyFavorites[self.challengeMapId]) then
@@ -354,7 +354,7 @@ function KeystoneLootReminderFrameMixin:GetPartyItems()
     return items;
 end
 
-function KeystoneLootReminderFrameMixin:Open(itemList, allSpecItems, isParty)
+function OxMythicLooterReminderFrameMixin:Open(itemList, allSpecItems, isParty)
     if (not next(itemList)) then
         return;
     end
@@ -426,16 +426,16 @@ function KeystoneLootReminderFrameMixin:Open(itemList, allSpecItems, isParty)
     self:Show();
 end
 
-function KeystoneLootReminderFrameMixin:UpdateLootSpec(lootSpecId)
+function OxMythicLooterReminderFrameMixin:UpdateLootSpec(lootSpecId)
     for SpecFrame in self.specPool:EnumerateActive() do
         SpecFrame:UpdateLootSpec(lootSpecId);
     end
 end
 
 hooksecurefunc("SetLootSpecialization", function(newLootSpecId)
-    if (not KeystoneLootReminderFrame:IsShown()) then
+    if (not OxMythicLooterReminderFrame:IsShown()) then
         return;
     end
 
-    KeystoneLootReminderFrame:UpdateLootSpec(newLootSpecId);
+    OxMythicLooterReminderFrame:UpdateLootSpec(newLootSpecId);
 end);

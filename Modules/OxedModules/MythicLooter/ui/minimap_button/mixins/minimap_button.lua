@@ -52,14 +52,14 @@ local function GetPosition(degrees, radius)
     return "CENTER", x, y;
 end
 
-KeystoneLootMinimapButtonMixin = {};
+OxMythicLooterMinimapButtonMixin = {};
 
-function KeystoneLootMinimapButtonMixin:OnLoad()
+function OxMythicLooterMinimapButtonMixin:OnLoad()
     self:RegisterForClicks("LeftButtonUp", "RightButtonUp");
     self:RegisterForDrag("LeftButton");
 end
 
-function KeystoneLootMinimapButtonMixin:Init()
+function OxMythicLooterMinimapButtonMixin:Init()
     AddonCompartmentFrame:RegisterAddon({
         text                = AddonName,
         icon                = "Interface\\Icons\\INV_Relics_Hourglass_02",
@@ -118,7 +118,7 @@ function KeystoneLootMinimapButtonMixin:Init()
     self:SetPoint(GetPosition(DB:Get("settings.minimap.degrees"), 5));
 end
 
-function KeystoneLootMinimapButtonMixin:OnUpdate()
+function OxMythicLooterMinimapButtonMixin:OnUpdate()
     local scale = Minimap:GetEffectiveScale();
     local minimapX, minimapY = Minimap:GetCenter();
     local cursorX, cursorY = GetCursorPosition();
@@ -130,39 +130,39 @@ function KeystoneLootMinimapButtonMixin:OnUpdate()
     self:SetPoint(GetPosition(self.degrees, 5));
 end
 
-function KeystoneLootMinimapButtonMixin:OnEnter()
+function OxMythicLooterMinimapButtonMixin:OnEnter()
     GameTooltip:SetOwner(self, "ANCHOR_LEFT");
     GameTooltip:SetText("Oxed " .. AddonName, 1, 1, 1);
     GameTooltip:AddLine(L["Left click: Open overview"]);
     GameTooltip:Show();
 end
 
-function KeystoneLootMinimapButtonMixin:OnLeave()
+function OxMythicLooterMinimapButtonMixin:OnLeave()
     GameTooltip:Hide();
 end
 
-function KeystoneLootMinimapButtonMixin:OnMouseDown()
+function OxMythicLooterMinimapButtonMixin:OnMouseDown()
     self.Icon:AdjustPointsOffset(1, -1);
 end
 
-function KeystoneLootMinimapButtonMixin:OnMouseUp()
+function OxMythicLooterMinimapButtonMixin:OnMouseUp()
     self.Icon:AdjustPointsOffset(-1, 1);
 end
 
-function KeystoneLootMinimapButtonMixin:OnDragStart()
+function OxMythicLooterMinimapButtonMixin:OnDragStart()
     self:LockHighlight();
     self:SetScript("OnUpdate", self.OnUpdate);
     self:OnMouseUp();
     self:OnLeave();
 end
 
-function KeystoneLootMinimapButtonMixin:OnDragStop()
+function OxMythicLooterMinimapButtonMixin:OnDragStop()
     self:UnlockHighlight();
     self:SetScript("OnUpdate", nil);
 
     DB:Set("settings.minimap.degrees", self.degrees);
 end
 
-function KeystoneLootMinimapButtonMixin:OnClick(button)
-    KeystoneLootFrame:SetShown(not KeystoneLootFrame:IsShown());
+function OxMythicLooterMinimapButtonMixin:OnClick(button)
+    OxMythicLooterFrame:SetShown(not OxMythicLooterFrame:IsShown());
 end

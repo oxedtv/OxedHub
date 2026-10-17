@@ -19,12 +19,12 @@ end
 
 function DB:InitGlobalDB()
     -- TODO: Will be removed in the next version
-    if (KeystoneLootDB and KeystoneLootDB.minimapButtonEnabled ~= nil) then
-        KeystoneLootDB = {};
+    if (OxMythicLooterDB and OxMythicLooterDB.minimapButtonEnabled ~= nil) then
+        OxMythicLooterDB = {};
     end
 
-    if (not KeystoneLootDB or not KeystoneLootDB.version) then
-        KeystoneLootDB = {
+    if (not OxMythicLooterDB or not OxMythicLooterDB.version) then
+        OxMythicLooterDB = {
             version = 0,
             settings = {},
             favorites = {},
@@ -32,9 +32,9 @@ function DB:InitGlobalDB()
         };
     end
 
-    while (KeystoneLootDB.version < DB_VERSION) do
-        self:MigrateGlobalDB(KeystoneLootDB.version);
-        KeystoneLootDB.version = KeystoneLootDB.version + 1;
+    while (OxMythicLooterDB.version < DB_VERSION) do
+        self:MigrateGlobalDB(OxMythicLooterDB.version);
+        OxMythicLooterDB.version = OxMythicLooterDB.version + 1;
     end
 
     self:CheckSeason();
@@ -42,28 +42,28 @@ end
 
 function DB:InitCharDB()
     -- TODO: Will be removed in the next version
-    if (KeystoneLootCharDB and KeystoneLootCharDB.favoriteLoot ~= nil) then
-        KeystoneLootCharDB = {};
+    if (OxMythicLooterCharDB and OxMythicLooterCharDB.favoriteLoot ~= nil) then
+        OxMythicLooterCharDB = {};
     end
 
-    if (not KeystoneLootCharDB or not KeystoneLootCharDB.version) then
-        KeystoneLootCharDB = {
+    if (not OxMythicLooterCharDB or not OxMythicLooterCharDB.version) then
+        OxMythicLooterCharDB = {
             version = 0,
             filters = {},
             ui = {}
         };
     end
 
-    while (KeystoneLootCharDB.version < CHAR_DB_VERSION) do
-        self:MigrateCharDB(KeystoneLootCharDB.version);
-        KeystoneLootCharDB.version = KeystoneLootCharDB.version + 1;
+    while (OxMythicLooterCharDB.version < CHAR_DB_VERSION) do
+        self:MigrateCharDB(OxMythicLooterCharDB.version);
+        OxMythicLooterCharDB.version = OxMythicLooterCharDB.version + 1;
     end
 end
 
 function DB:MigrateGlobalDB(fromVersion)
     if (fromVersion == 0) then
         -- First install
-        KeystoneLootDB.settings = {
+        OxMythicLooterDB.settings = {
             minimap = {
                 enabled = true,
                 degrees = 195
@@ -81,40 +81,40 @@ function DB:MigrateGlobalDB(fromVersion)
             keystoneTooltip = true
         };
 
-        KeystoneLootDB.favorites = {};
+        OxMythicLooterDB.favorites = {};
     end
 
     if (fromVersion == 1) then
-        KeystoneLootDB.settings.favoriteTooltip = true;
+        OxMythicLooterDB.settings.favoriteTooltip = true;
     end
 
     if (fromVersion == 2) then
-        KeystoneLootDB.settings.hiddenCharacters = {};
+        OxMythicLooterDB.settings.hiddenCharacters = {};
     end
 
     if (fromVersion == 3) then
-        KeystoneLootDB.settings.wideMode = false;
+        OxMythicLooterDB.settings.wideMode = false;
     end
 
     if (fromVersion == 4) then
-        KeystoneLootDB.settings.highlighting.comboMode = false;
+        OxMythicLooterDB.settings.highlighting.comboMode = false;
     end
 
     if (fromVersion == 5) then
-        KeystoneLootDB.settings.hideOtherItems = false;
+        OxMythicLooterDB.settings.hideOtherItems = false;
     end
 
     if (fromVersion == 6) then
-        KeystoneLootDB.settings.lootReminder.dropAlert = true;
-        KeystoneLootDB.settings.lootReminder.whisperMessage = DEFAULT_WHISPER_MESSAGE;
+        OxMythicLooterDB.settings.lootReminder.dropAlert = true;
+        OxMythicLooterDB.settings.lootReminder.whisperMessage = DEFAULT_WHISPER_MESSAGE;
     end
 
     if (fromVersion == 7) then
-        KeystoneLootDB.settings.multiSlotFilter = false;
+        OxMythicLooterDB.settings.multiSlotFilter = false;
     end
 
     if (fromVersion == 8) then
-        KeystoneLootDB.settings.keyCommand = {
+        OxMythicLooterDB.settings.keyCommand = {
             CHAT_MSG_PARTY = true,
             CHAT_MSG_PARTY_LEADER = true,
             CHAT_MSG_GUILD = true
@@ -122,55 +122,55 @@ function DB:MigrateGlobalDB(fromVersion)
     end
 
     if (fromVersion == 9) then
-        KeystoneLootDB.settings.favoriteIcon = true;
+        OxMythicLooterDB.settings.favoriteIcon = true;
     end
 
     if (fromVersion == 10) then
-        KeystoneLootDB.settings.slotName = true;
+        OxMythicLooterDB.settings.slotName = true;
     end
 
     if (fromVersion == 11) then
-        KeystoneLootDB.settings.mythicPlusNotification = true;
+        OxMythicLooterDB.settings.mythicPlusNotification = true;
     end
 
     if (fromVersion == 12) then
-        KeystoneLootDB.settings.lootReminder.party = true;
+        OxMythicLooterDB.settings.lootReminder.party = true;
     end
 
     if (fromVersion == 13) then
-        KeystoneLootDB.settings.ownedTooltip = true;
+        OxMythicLooterDB.settings.ownedTooltip = true;
     end
 
     if (fromVersion == 14) then
-        KeystoneLootDB.settings.lootReminder.share = true;
+        OxMythicLooterDB.settings.lootReminder.share = true;
 
-        if (KeystoneLootDB.settings.lootReminder.whisperMessage == "Can I have {item} please?") then
-            KeystoneLootDB.settings.lootReminder.whisperMessage = DEFAULT_WHISPER_MESSAGE;
+        if (OxMythicLooterDB.settings.lootReminder.whisperMessage == "Can I have {item} please?") then
+            OxMythicLooterDB.settings.lootReminder.whisperMessage = DEFAULT_WHISPER_MESSAGE;
         end
     end
 
     if (fromVersion == 15) then
-        KeystoneLootDB.settings.roleCheck = KeystoneLoot.RoleCheck.MODE_MYTHIC_PLUS;
+        OxMythicLooterDB.settings.roleCheck = KeystoneLoot.RoleCheck.MODE_MYTHIC_PLUS;
     end
 
     if (fromVersion == 16) then
-        KeystoneLootDB.settings.windowScale = 100;
+        OxMythicLooterDB.settings.windowScale = 100;
     end
 
     if (fromVersion == 17) then
-        KeystoneLootDB.settings.ownedCheck = "hero";
+        OxMythicLooterDB.settings.ownedCheck = "hero";
     end
 
     if (fromVersion == 18) then
-        local enabled = KeystoneLootDB.settings.mythicPlusNotification;
-        KeystoneLootDB.settings.mythicPlusNotification = {
+        local enabled = OxMythicLooterDB.settings.mythicPlusNotification;
+        OxMythicLooterDB.settings.mythicPlusNotification = {
             joined = enabled,
             full = enabled
         };
     end
 
     if (fromVersion == 19) then
-        KeystoneLootDB.settings.favoriteIcon = KeystoneLootDB.settings.favoriteIcon and "BOTTOMLEFT";
+        OxMythicLooterDB.settings.favoriteIcon = OxMythicLooterDB.settings.favoriteIcon and "BOTTOMLEFT";
     end
 end
 
@@ -180,7 +180,7 @@ function DB:MigrateCharDB(fromVersion)
         local _, _, classId = UnitClass("player");
         local specId = C_SpecializationInfo.GetSpecializationInfo(C_SpecializationInfo.GetSpecialization() or 1);
 
-        KeystoneLootCharDB.filters = {
+        OxMythicLooterCharDB.filters = {
             classId = classId,
             specId = specId or 0,
             slotId = 0,
@@ -194,43 +194,43 @@ function DB:MigrateCharDB(fromVersion)
             }
         };
 
-        KeystoneLootCharDB.ui = {
+        OxMythicLooterCharDB.ui = {
             selectedTab = "dungeons",
             selectedRaidTab = KeystoneLoot.RaidDatabase[1].journalInstanceId
         }
     end
 
     if (fromVersion == 1) then
-        KeystoneLootCharDB.voidcore = {};
+        OxMythicLooterCharDB.voidcore = {};
     end
 
     if (fromVersion == 2) then
-        KeystoneLootCharDB.voidcoreChecked = false;
+        OxMythicLooterCharDB.voidcoreChecked = false;
     end
 
     if (fromVersion == 3) then
-        KeystoneLootCharDB.bankTracks = {};
+        OxMythicLooterCharDB.bankTracks = {};
     end
 end
 
 function DB:CheckSeason()
     local currentSeason = CURRENT_SEASON;
 
-    if (not KeystoneLootDB.currentSeason) then
-        KeystoneLootDB.currentSeason = currentSeason;
+    if (not OxMythicLooterDB.currentSeason) then
+        OxMythicLooterDB.currentSeason = currentSeason;
         return;
     end
 
-    if (KeystoneLootDB.currentSeason ~= currentSeason) then
+    if (OxMythicLooterDB.currentSeason ~= currentSeason) then
         -- New season - wipe all favorites
-        wipe(KeystoneLootDB.favorites);
-        KeystoneLootDB.currentSeason = currentSeason;
+        wipe(OxMythicLooterDB.favorites);
+        OxMythicLooterDB.currentSeason = currentSeason;
     end
 end
 
 function DB:Get(path)
     local keys = { strsplit(".", path) };
-    local current = KeystoneLootCharDB;
+    local current = OxMythicLooterCharDB;
 
     -- Try CharDB first
     for _, key in ipairs(keys) do
@@ -243,7 +243,7 @@ function DB:Get(path)
 
     -- Fallback to global DB
     if (current == nil) then
-        current = KeystoneLootDB;
+        current = OxMythicLooterDB;
 
         for _, key in ipairs(keys) do
             if (current) then
@@ -264,9 +264,9 @@ function DB:Set(path, value)
     -- Determine which DB
     local db
     if (path:match("^settings") or path:match("^favorites")) then
-        db = KeystoneLootDB;
+        db = OxMythicLooterDB;
     else
-        db = KeystoneLootCharDB;
+        db = OxMythicLooterCharDB;
     end
 
     -- Navigate to parent

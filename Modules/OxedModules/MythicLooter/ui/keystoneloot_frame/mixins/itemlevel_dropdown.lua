@@ -2,9 +2,9 @@ local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; Addon
 
 local DB = KeystoneLoot.DB;
 
-KeystoneLootItemLevelDropdownMixin = {};
+OxMythicLooterItemLevelDropdownMixin = {};
 
-function KeystoneLootItemLevelDropdownMixin:Init()
+function OxMythicLooterItemLevelDropdownMixin:Init()
     self:SetSelectionText(function(selections)
         if (#selections == 0) then
             return STAT_AVERAGE_ITEM_LEVEL;
@@ -32,7 +32,7 @@ function KeystoneLootItemLevelDropdownMixin:Init()
     DB:AddObserver("ui.selectedTab", function() self:GenerateMenu(); end);
 end
 
-function KeystoneLootItemLevelDropdownMixin:BuildTrackMenu(rootDescription, context, trackSetting)
+function OxMythicLooterItemLevelDropdownMixin:BuildTrackMenu(rootDescription, context, trackSetting)
     local trackPath = "filters." .. context .. "." .. trackSetting;
     local rankPath = "filters." .. context .. ".rank";
 

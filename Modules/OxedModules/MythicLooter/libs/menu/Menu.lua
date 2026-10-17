@@ -18,7 +18,7 @@ ModifyMenuRegistry:OnLoad();
 
 local MenuAttributeDelegate = CreateFrame("FRAME");
 
-KSLMenu = {};
+OxMLMenu = {};
 
 local frameDummy = CreateFrame("Frame");
 local mouseEventEnterData = nil;
@@ -65,7 +65,7 @@ do
 	end
 
 	EventRegistry:RegisterFrameEventAndCallback(event, function(buttonID, buttonName)
-		local manager = KSLMenu.GetManager();
+		local manager = OxMLMenu.GetManager();
 		if not manager then
 			return;
 		end
@@ -79,7 +79,7 @@ do
 end
 
 --[[
-KSLMenu descriptions, element descriptions, and menus objects are private and are
+OxMLMenu descriptions, element descriptions, and menus objects are private and are
 exposed externally using proxies. A menu object's proxy is a menu frame so that
 external code can continue to pass the frame to required APIs like SetPoint().
 --]]
@@ -102,7 +102,7 @@ MenuAttributeDelegate:SetScript("OnAttributeChanged", function(self, attribute, 
 			self:SetAttribute("respond", false);
 		end
 	elseif attribute == "get-open-menu-tags" then
-		local menuManager = Proxies:ToPrivate(KSLMenu.GetManager());
+		local menuManager = Proxies:ToPrivate(OxMLMenu.GetManager());
 		local tags = menuManager:GetOpenMenuTags();
 		self:SetAttribute("get-open-menu-tags-result", tags);
 	end
@@ -113,10 +113,10 @@ All descriptions in the menu hierarchy are assigned a single shared properties
 table to store information shared across all menus, and to store callbacks for
 menu structure changes.
 --]]
-local KSLSharedMenuPropertiesMixin = {};
-KSLSharedMenuPropertiesMixin.__index = KSLSharedMenuPropertiesMixin;
+local OxMLSharedMenuPropertiesMixin = {};
+OxMLSharedMenuPropertiesMixin.__index = OxMLSharedMenuPropertiesMixin;
 
-function KSLSharedMenuPropertiesMixin:Init(menuMixin)
+function OxMLSharedMenuPropertiesMixin:Init(menuMixin)
 	self.menuMixin = menuMixin;
 	self.menuResponseCallbacks = CreateSecureArray();
 	self.menuChangedCallbacks = CreateSecureArray();
@@ -124,19 +124,19 @@ function KSLSharedMenuPropertiesMixin:Init(menuMixin)
 	self.menuReleasedCallbacks = CreateSecureArray();
 end
 
-function KSLSharedMenuPropertiesMixin:DisableCompositor()
+function OxMLSharedMenuPropertiesMixin:DisableCompositor()
 	self.disableCompositor = true;
 end
 
-function KSLSharedMenuPropertiesMixin:IsCompositorEnabled()
+function OxMLSharedMenuPropertiesMixin:IsCompositorEnabled()
 	return not self.disableCompositor;
 end
 
-function KSLSharedMenuPropertiesMixin:DisableReacquireFrames()
+function OxMLSharedMenuPropertiesMixin:DisableReacquireFrames()
 	self.disableRequireFrames = true;
 end
 
-function KSLSharedMenuPropertiesMixin:CanReacquireFrames()
+function OxMLSharedMenuPropertiesMixin:CanReacquireFrames()
 	return not self.disableRequireFrames;
 end
 
@@ -145,46 +145,46 @@ do
 		return smp.menuMixin;
 	end
 
-	function KSLSharedMenuPropertiesMixin:GetMenuMixin()
+	function OxMLSharedMenuPropertiesMixin:GetMenuMixin()
 		return securecall(GetMenuMixin, self);
 	end
 end
 
-function KSLSharedMenuPropertiesMixin:GetMenuResponseCallbacks()
+function OxMLSharedMenuPropertiesMixin:GetMenuResponseCallbacks()
 	return self.menuResponseCallbacks;
 end
 
-function KSLSharedMenuPropertiesMixin:AddMenuResponseCallback(callback)
+function OxMLSharedMenuPropertiesMixin:AddMenuResponseCallback(callback)
 	self.menuResponseCallbacks:Insert(callback);
 end
 
-function KSLSharedMenuPropertiesMixin:GetMenuChangedCallbacks()
+function OxMLSharedMenuPropertiesMixin:GetMenuChangedCallbacks()
 	return self.menuChangedCallbacks;
 end
 
-function KSLSharedMenuPropertiesMixin:AddMenuChangedCallback(callback)
+function OxMLSharedMenuPropertiesMixin:AddMenuChangedCallback(callback)
 	self.menuChangedCallbacks:Insert(callback);
 end
 
-function KSLSharedMenuPropertiesMixin:GetMenuAcquiredCallbacks()
+function OxMLSharedMenuPropertiesMixin:GetMenuAcquiredCallbacks()
 	return self.menuAcquiredCallbacks;
 end
 
-function KSLSharedMenuPropertiesMixin:AddMenuAcquiredCallback(callback)
+function OxMLSharedMenuPropertiesMixin:AddMenuAcquiredCallback(callback)
 	self.menuAcquiredCallbacks:Insert(callback);
 end
 
-function KSLSharedMenuPropertiesMixin:GetMenuReleasedCallbacks()
+function OxMLSharedMenuPropertiesMixin:GetMenuReleasedCallbacks()
 	return self.menuReleasedCallbacks;
 end
 
-function KSLSharedMenuPropertiesMixin:AddMenuReleasedCallback(callback)
+function OxMLSharedMenuPropertiesMixin:AddMenuReleasedCallback(callback)
 	self.menuReleasedCallbacks:Insert(callback);
 end
 
 local function CreateSharedMenuProperties(menuMixin)
 	local properties = {};
-	setmetatable(properties, KSLSharedMenuPropertiesMixin);
+	setmetatable(properties, OxMLSharedMenuPropertiesMixin);
 	properties:Init(menuMixin);
 	return properties;
 end
@@ -195,36 +195,36 @@ the collections to store child element descriptions, and the initializers used t
 the description frame.the description frame. Child element description are also base menu descriptions.
 ]]
 
-local KSLBaseMenuDescriptionMixin = CreateFromMixinsPrivate(ProxyConvertablePrivateMixin);
+local OxMLBaseMenuDescriptionMixin = CreateFromMixinsPrivate(ProxyConvertablePrivateMixin);
 
 local function IsValidGridDirection(direction)
-	return (direction == KSLMenuConstants.VerticalGridDirection)
-		or (direction == KSLMenuConstants.HorizontalGridDirection);
+	return (direction == OxMLMenuConstants.VerticalGridDirection)
+		or (direction == OxMLMenuConstants.HorizontalGridDirection);
 end
 
-function KSLBaseMenuDescriptionMixin:Init(proxy)
+function OxMLBaseMenuDescriptionMixin:Init(proxy)
 	local tags = ProxyConvertablePrivateMixin.Init(self, proxy, Proxies);
-	tags[proxy] = "KSLBaseMenuDescriptionMixin";
+	tags[proxy] = "OxMLBaseMenuDescriptionMixin";
 
-	self.gridDirection = KSLMenuConstants.VerticalLinearDirection;
+	self.gridDirection = OxMLMenuConstants.VerticalLinearDirection;
 	self.elementDescriptions = CreateSecureArray();
 	self.initializers = CreateSecureArray();
 	self.finalInitializer = CreateSecureFunction();
 	self.resetters = CreateSecureArray();
 end
 
-function KSLBaseMenuDescriptionMixin:GetMenuMixin()
+function OxMLBaseMenuDescriptionMixin:GetMenuMixin()
 	return self:GetSharedMenuProperties():GetMenuMixin();
 end
 
-function KSLBaseMenuDescriptionMixin:SetScrollMode(maxScrollExtent)
+function OxMLBaseMenuDescriptionMixin:SetScrollMode(maxScrollExtent)
 	assert(type(maxScrollExtent) == "number");
 	self.scrollable = true;
 	self.maxScrollExtent = maxScrollExtent or 200;
 end
 
-function KSLBaseMenuDescriptionMixin:SetGridMode(direction, columns, padding, compactionMargin)
-	assert((columns == KSLMenuConstants.AutoCalculateColumns) or (columns > 0));
+function OxMLBaseMenuDescriptionMixin:SetGridMode(direction, columns, padding, compactionMargin)
+	assert((columns == OxMLMenuConstants.AutoCalculateColumns) or (columns > 0));
 	assert(IsValidGridDirection(direction));
 
 	self.gridDirection = direction;
@@ -238,7 +238,7 @@ do
 		return IsValidGridDirection(menuDescription.gridDirection);
 	end
 
-	function KSLBaseMenuDescriptionMixin:HasGridLayout()
+	function OxMLBaseMenuDescriptionMixin:HasGridLayout()
 		return securecall(HasGridLayout, self);
 	end
 end
@@ -248,7 +248,7 @@ do
 		return menuDescription.scrollable;
 	end
 
-	function KSLBaseMenuDescriptionMixin:IsScrollable()
+	function OxMLBaseMenuDescriptionMixin:IsScrollable()
 		return securecall(IsScrollable, self);
 	end
 end
@@ -258,7 +258,7 @@ do
 		return menuDescription.maxScrollExtent;
 	end
 
-	function KSLBaseMenuDescriptionMixin:GetMaxScrollExtent()
+	function OxMLBaseMenuDescriptionMixin:GetMaxScrollExtent()
 		return securecall(GetMaxScrollExtent, self);
 	end
 end
@@ -268,7 +268,7 @@ do
 		return menuDescription.gridDirection or 0;
 	end
 
-	function KSLBaseMenuDescriptionMixin:GetGridDirection()
+	function OxMLBaseMenuDescriptionMixin:GetGridDirection()
 		return securecall(GetGridDirection, self);
 	end
 end
@@ -278,7 +278,7 @@ do
 		return menuDescription.gridColumns or 0;
 	end
 
-	function KSLBaseMenuDescriptionMixin:GetGridColumns()
+	function OxMLBaseMenuDescriptionMixin:GetGridColumns()
 		return securecall(GetGridColumns, self);
 	end
 end
@@ -288,7 +288,7 @@ do
 		return menuDescription.gridPadding or 0;
 	end
 
-	function KSLBaseMenuDescriptionMixin:GetGridPadding()
+	function OxMLBaseMenuDescriptionMixin:GetGridPadding()
 		return securecall(GetGridPadding, self);
 	end
 end
@@ -298,7 +298,7 @@ do
 		return menuDescription.compactionMargin or 0;
 	end
 
-	function KSLBaseMenuDescriptionMixin:GetCompactionMargin()
+	function OxMLBaseMenuDescriptionMixin:GetCompactionMargin()
 		return securecall(GetCompactionMargin, self);
 	end
 end
@@ -308,7 +308,7 @@ do
 		return menuDescription.padding or 0;
 	end
 
-	function KSLBaseMenuDescriptionMixin:GetPadding()
+	function OxMLBaseMenuDescriptionMixin:GetPadding()
 		return securecall(GetPadding, self);
 	end
 end
@@ -318,12 +318,12 @@ do
 		return menuDescription.minimumWidth or 0;
 	end
 
-	function KSLBaseMenuDescriptionMixin:GetMinimumWidth()
+	function OxMLBaseMenuDescriptionMixin:GetMinimumWidth()
 		return securecall(GetMinimumWidth, self);
 	end
 end
 
-function KSLBaseMenuDescriptionMixin:SetMinimumWidth(width)
+function OxMLBaseMenuDescriptionMixin:SetMinimumWidth(width)
 	self.minimumWidth = width;
 end
 
@@ -332,12 +332,12 @@ do
 		return menuDescription.maximumWidth or 0;
 	end
 
-	function KSLBaseMenuDescriptionMixin:GetMaximumWidth()
+	function OxMLBaseMenuDescriptionMixin:GetMaximumWidth()
 		return securecall(GetMaximumWidth, self);
 	end
 end
 
-function KSLBaseMenuDescriptionMixin:SetMaximumWidth(width)
+function OxMLBaseMenuDescriptionMixin:SetMaximumWidth(width)
 	self.maximumWidth = width;
 end
 
@@ -346,60 +346,60 @@ do
 		return menuDescription.deactivateSubmenu;
 	end
 
-	function KSLBaseMenuDescriptionMixin:IsSubmenuDeactivated()
+	function OxMLBaseMenuDescriptionMixin:IsSubmenuDeactivated()
 		return securecall(IsSubmenuDeactivated, self);
 	end
 end
 
-function KSLBaseMenuDescriptionMixin:DeactivateSubmenu()
+function OxMLBaseMenuDescriptionMixin:DeactivateSubmenu()
 	self.deactivateSubmenu = true;
 end
 
-function KSLBaseMenuDescriptionMixin:SetSharedMenuProperties(sharedMenuProperties)
+function OxMLBaseMenuDescriptionMixin:SetSharedMenuProperties(sharedMenuProperties)
 	self.sharedMenuProperties = sharedMenuProperties;
 end
 
-function KSLBaseMenuDescriptionMixin:GetSharedMenuProperties()
+function OxMLBaseMenuDescriptionMixin:GetSharedMenuProperties()
 	return self.sharedMenuProperties;
 end
 
-function KSLBaseMenuDescriptionMixin:GetMenuResponseCallbacks()
+function OxMLBaseMenuDescriptionMixin:GetMenuResponseCallbacks()
 	return self:GetSharedMenuProperties():GetMenuResponseCallbacks();
 end
 
-function KSLBaseMenuDescriptionMixin:GetMenuChangedCallbacks()
+function OxMLBaseMenuDescriptionMixin:GetMenuChangedCallbacks()
 	return self:GetSharedMenuProperties():GetMenuChangedCallbacks();
 end
 
-function KSLBaseMenuDescriptionMixin:GetMenuAcquiredCallbacks()
+function OxMLBaseMenuDescriptionMixin:GetMenuAcquiredCallbacks()
 	return self:GetSharedMenuProperties():GetMenuAcquiredCallbacks();
 end
 
-function KSLBaseMenuDescriptionMixin:GetMenuReleasedCallbacks()
+function OxMLBaseMenuDescriptionMixin:GetMenuReleasedCallbacks()
 	return self:GetSharedMenuProperties():GetMenuReleasedCallbacks();
 end
 
-function KSLBaseMenuDescriptionMixin:IsCompositorEnabled()
+function OxMLBaseMenuDescriptionMixin:IsCompositorEnabled()
 	return self:GetSharedMenuProperties():IsCompositorEnabled();
 end
 
-function KSLBaseMenuDescriptionMixin:DisableCompositor()
+function OxMLBaseMenuDescriptionMixin:DisableCompositor()
 	self:GetSharedMenuProperties():DisableCompositor();
 end
 
-function KSLBaseMenuDescriptionMixin:CanReacquireFrames()
+function OxMLBaseMenuDescriptionMixin:CanReacquireFrames()
 	return self:GetSharedMenuProperties():CanReacquireFrames();
 end
 
-function KSLBaseMenuDescriptionMixin:DisableReacquireFrames()
+function OxMLBaseMenuDescriptionMixin:DisableReacquireFrames()
 	self:GetSharedMenuProperties():DisableReacquireFrames();
 end
 
-function KSLBaseMenuDescriptionMixin:HasElements()
+function OxMLBaseMenuDescriptionMixin:HasElements()
 	return self.elementDescriptions:HasValues();
 end
 
-function KSLBaseMenuDescriptionMixin:CanOpenSubmenu()
+function OxMLBaseMenuDescriptionMixin:CanOpenSubmenu()
 	return self:HasElements() and not self:IsSubmenuDeactivated();
 end
 
@@ -408,12 +408,12 @@ do
 		return menuDescription.elementDescriptions:Enumerate();
 	end
 
-	function KSLBaseMenuDescriptionMixin:EnumerateElementDescriptions()
+	function OxMLBaseMenuDescriptionMixin:EnumerateElementDescriptions()
 		return securecall(EnumerateElementDescriptions, self);
 	end
 end
 
-function KSLBaseMenuDescriptionMixin:Insert(description, index)
+function OxMLBaseMenuDescriptionMixin:Insert(description, index)
 	description:SetSharedMenuProperties(self:GetSharedMenuProperties());
 
 	self.elementDescriptions:Insert(description, index);
@@ -425,27 +425,27 @@ function KSLBaseMenuDescriptionMixin:Insert(description, index)
 	return description;
 end
 
-function KSLBaseMenuDescriptionMixin:GetInitializers()
+function OxMLBaseMenuDescriptionMixin:GetInitializers()
 	return self.initializers;
 end
 
-function KSLBaseMenuDescriptionMixin:AddInitializer(initializer, index)
+function OxMLBaseMenuDescriptionMixin:AddInitializer(initializer, index)
 	self.initializers:UniqueInsert(initializer, index);
 end
 
-function KSLBaseMenuDescriptionMixin:SetFinalInitializer(finalInitializer)
+function OxMLBaseMenuDescriptionMixin:SetFinalInitializer(finalInitializer)
 	self.finalInitializer:SetFunction(finalInitializer);
 end
 
-function KSLBaseMenuDescriptionMixin:GetFinalInitializer()
+function OxMLBaseMenuDescriptionMixin:GetFinalInitializer()
 	return self.finalInitializer;
 end
 
-function KSLBaseMenuDescriptionMixin:AddResetter(resetter)
+function OxMLBaseMenuDescriptionMixin:AddResetter(resetter)
 	self.resetters:UniqueInsert(resetter);
 end
 
-function KSLBaseMenuDescriptionMixin:GetResetters()
+function OxMLBaseMenuDescriptionMixin:GetResetters()
 	return self.resetters;
 end
 
@@ -455,65 +455,65 @@ The root menu description is the start of the menu hierarchy. Although all of th
 child menu descriptions technically have access to the shared menu properties,
 it is expected that any menu event registration occur on this root description.
 ]]--
-local KSLRootMenuDescriptionMixin = CreateFromMixinsPrivate(KSLBaseMenuDescriptionMixin);
-KSLRootMenuDescriptionMixin.__index = KSLRootMenuDescriptionMixin;
+local OxMLRootMenuDescriptionMixin = CreateFromMixinsPrivate(OxMLBaseMenuDescriptionMixin);
+OxMLRootMenuDescriptionMixin.__index = OxMLRootMenuDescriptionMixin;
 
-function KSLRootMenuDescriptionMixin:Init(proxy, menuMixin)
-	KSLBaseMenuDescriptionMixin.Init(self, proxy);
+function OxMLRootMenuDescriptionMixin:Init(proxy, menuMixin)
+	OxMLBaseMenuDescriptionMixin.Init(self, proxy);
 
 	-- A single shared menu properties is created for the entire menu hierarchy.
 	self.sharedMenuProperties = CreateSharedMenuProperties(menuMixin);
 end
 
-function KSLRootMenuDescriptionMixin:AddMenuResponseCallback(callback)
+function OxMLRootMenuDescriptionMixin:AddMenuResponseCallback(callback)
 	self:GetSharedMenuProperties():AddMenuResponseCallback(callback);
 end
 
-function KSLRootMenuDescriptionMixin:AddMenuChangedCallback(callback)
+function OxMLRootMenuDescriptionMixin:AddMenuChangedCallback(callback)
 	self:GetSharedMenuProperties():AddMenuChangedCallback(callback);
 end
 
-function KSLRootMenuDescriptionMixin:AddMenuAcquiredCallback(callback)
+function OxMLRootMenuDescriptionMixin:AddMenuAcquiredCallback(callback)
 	self:GetSharedMenuProperties():AddMenuAcquiredCallback(callback);
 end
 
-function KSLRootMenuDescriptionMixin:AddMenuReleasedCallback(callback)
+function OxMLRootMenuDescriptionMixin:AddMenuReleasedCallback(callback)
 	self:GetSharedMenuProperties():AddMenuReleasedCallback(callback);
 end
 
 --[[
-KSLMenu element descriptions represent each individual menu element. Adding menu element
+OxMLMenu element descriptions represent each individual menu element. Adding menu element
 descriptions into an existing element description creates a submenu.
 ]]--
-local KSLMenuElementDescriptionMixin = CreateFromMixinsPrivate(KSLBaseMenuDescriptionMixin);
-KSLMenuElementDescriptionMixin.__index = KSLMenuElementDescriptionMixin;
+local OxMLMenuElementDescriptionMixin = CreateFromMixinsPrivate(OxMLBaseMenuDescriptionMixin);
+OxMLMenuElementDescriptionMixin.__index = OxMLMenuElementDescriptionMixin;
 
-function KSLMenuElementDescriptionMixin:Init(proxy)
-	KSLBaseMenuDescriptionMixin.Init(self, proxy);
+function OxMLMenuElementDescriptionMixin:Init(proxy)
+	OxMLBaseMenuDescriptionMixin.Init(self, proxy);
 
 	self.elementFactory = CreateSecureFunction();
 	self.finalizeGridLayout = CreateSecureFunction();
 end
 
-function KSLMenuElementDescriptionMixin:CallFactory(factory)
+function OxMLMenuElementDescriptionMixin:CallFactory(factory)
 	self.elementFactory:CallFunction(factory);
 end
 
-function KSLMenuElementDescriptionMixin:SetElementFactory(elementFactory)
+function OxMLMenuElementDescriptionMixin:SetElementFactory(elementFactory)
 	self.elementFactory:SetFunction(elementFactory);
 end
 
-function KSLMenuElementDescriptionMixin:SetFinalizeGridLayout(callback)
+function OxMLMenuElementDescriptionMixin:SetFinalizeGridLayout(callback)
 	self.finalizeGridLayout:SetFunction(callback);
 end
 
-function KSLMenuElementDescriptionMixin:SendResponseToMenu(response)
+function OxMLMenuElementDescriptionMixin:SendResponseToMenu(response)
 	if self.menu then
 		self.menu:SendResponse(self, response);
 	end
 end
 
-function KSLMenuElementDescriptionMixin:ForceOpenSubmenu()
+function OxMLMenuElementDescriptionMixin:ForceOpenSubmenu()
 	if self.menu then
 		self.menu:ForceOpenSubmenu(self);
 	end
@@ -545,7 +545,7 @@ do
 	};
 	tAppendAll(Funcs, BaseMenuDescriptionAPI);
 
-	RootMenuDescriptionProxyMixin = CreateProxyMixin(Proxies, KSLRootMenuDescriptionMixin, Funcs);
+	RootMenuDescriptionProxyMixin = CreateProxyMixin(Proxies, OxMLRootMenuDescriptionMixin, Funcs);
 	RootMenuDescriptionProxyMixin.__index = RootMenuDescriptionProxyMixin;
 end
 
@@ -563,7 +563,7 @@ do
 	};
 	tAppendAll(Funcs, BaseMenuDescriptionAPI);
 
-	MenuElementDescriptionProxyMixin = CreateProxyMixin(Proxies, KSLMenuElementDescriptionMixin, Funcs);
+	MenuElementDescriptionProxyMixin = CreateProxyMixin(Proxies, OxMLMenuElementDescriptionMixin, Funcs);
 	MenuElementDescriptionProxyMixin.__index = MenuElementDescriptionProxyMixin;
 end
 
@@ -922,15 +922,15 @@ be closed.
 local MenuElementFactory = CreateFrameFactory();
 MenuElementFactory.ReleaseAll = nil;
 
-KSLMenuMixin = CreateFromMixinsPrivate(ProxyConvertablePrivateMixin);
+OxMLMenuMixin = CreateFromMixinsPrivate(ProxyConvertablePrivateMixin);
 
-function KSLMenuMixin:Init(menuManager, proxy, permitOverwrite)
+function OxMLMenuMixin:Init(menuManager, proxy, permitOverwrite)
 	local tags = ProxyConvertablePrivateMixin.Init(self, proxy, Proxies, permitOverwrite);
-	tags[proxy] = "KSLMenuMixin";
+	tags[proxy] = "OxMLMenuMixin";
 
 	self.level = 0;
 	self.menuManager = menuManager;
-	self.compositor = KSLCreateCompositor(proxy);
+	self.compositor = OxMLCreateCompositor(proxy);
 	self.frames = CreateSecureArray();
 	self.elementCompositors = CreateSecureMap();
 end
@@ -940,13 +940,13 @@ do
 		return menu.level;
 	end
 
-	function KSLMenuMixin:GetLevel()
+	function OxMLMenuMixin:GetLevel()
 		return securecall(GetLevel, self);
 	end
 end
 
 
-function KSLMenuMixin:SetClosedCallback(onCloseCallback)
+function OxMLMenuMixin:SetClosedCallback(onCloseCallback)
 	self.onCloseCallback = function(...)
 		onCloseCallback(...);
 	end
@@ -1104,7 +1104,7 @@ local function AcquireMenuElement(frameDummy, frameTemplateOrFrameType, ResetMen
 	return MenuElementFactory:Create(frameDummy, frameTemplateOrFrameType, ResetMenuElement);
 end
 
-function KSLMenuMixin:SetMenuDescription(menuDescription)
+function OxMLMenuMixin:SetMenuDescription(menuDescription)
 	self.menuDescription = menuDescription;
 
 	-- In a secure context, the factoryArgs table can be passed to securecallfunction without tainting execution.
@@ -1118,7 +1118,7 @@ function KSLMenuMixin:SetMenuDescription(menuDescription)
 		local function Factory(frameTemplateOrFrameType, initializer)
 			local childFrame, _new, templateInfo = securecallfunction(AcquireMenuElement, frameDummy, frameTemplateOrFrameType, ResetMenuElement)
 			if not childFrame then
-				error(string.format("KSLMenuMixin:SetMenuDescription: Failed to create a frame from pool for frame template or frame type '%s'", frameTemplateOrFrameType));
+				error(string.format("OxMLMenuMixin:SetMenuDescription: Failed to create a frame from pool for frame template or frame type '%s'", frameTemplateOrFrameType));
 			end
 
 			-- ID is for our test harness, it has no significance elsewhere.
@@ -1134,7 +1134,7 @@ function KSLMenuMixin:SetMenuDescription(menuDescription)
 			childFrame.frameTemplateOrFrameType = frameTemplateOrFrameType;
 
 			--[[
-			KSLMenu frames have 'ignoreAllChildren' set to prevent any cosmetic regions
+			OxMLMenu frames have 'ignoreAllChildren' set to prevent any cosmetic regions
 			from being included in the layout calculation. We opt-in the frames that we
 			expect to be included in the menu's layout list.
 			]]--
@@ -1159,7 +1159,7 @@ function KSLMenuMixin:SetMenuDescription(menuDescription)
 			self.frames:Insert(childFrame);
 
 			if isCompositorEnabled then
-				self.elementCompositors:SetValue(childFrame, KSLCreateCompositor(childFrame));
+				self.elementCompositors:SetValue(childFrame, OxMLCreateCompositor(childFrame));
 			end
 		end
 
@@ -1196,13 +1196,13 @@ function KSLMenuMixin:SetMenuDescription(menuDescription)
 	self:PerformLayout();
 end
 
-function KSLMenuMixin:ToDebugString()
+function OxMLMenuMixin:ToDebugString()
 	if self.menuDescription then
 		return self.menuDescription.proxy:GetTag();
 	end
 end
 
-function KSLMenuMixin:Open(menuDescription, onElementMouseDown, onElementEnter, onElementLeave)
+function OxMLMenuMixin:Open(menuDescription, onElementMouseDown, onElementEnter, onElementLeave)
 	-- Retain these wrappers in case the description is replaced.
 	self.onElementMouseDown = onElementMouseDown;
 	self.onElementEnter = onElementEnter;
@@ -1238,7 +1238,7 @@ local function TransformColumnsAndRows(count, columns, rows, maxRows)
 	return columns, rows;
 end
 
-function KSLMenuMixin:MeasureFrameExtents()
+function OxMLMenuMixin:MeasureFrameExtents()
 	local menuFrame = self:ToProxy();
 	local width = menuFrame.minimumElementWidth;
 	local height = 1;
@@ -1254,7 +1254,7 @@ function KSLMenuMixin:MeasureFrameExtents()
 	width = Round(width);
 	height = Round(height);
 
-	--assert(height > 1, "KSLMenuMixin:MeasureFrameExtents(): Couldn't obtain a valid height for the frame. Set the size at the end of your initializer.");
+	--assert(height > 1, "OxMLMenuMixin:MeasureFrameExtents(): Couldn't obtain a valid height for the frame. Set the size at the end of your initializer.");
 	return width, height, totalHeight;
 end
 
@@ -1268,7 +1268,7 @@ local function SecureGetChildExtentPadding(menuFrame)
 	return padding.width, padding.height;
 end
 
-function KSLMenuMixin:PerformLayout()
+function OxMLMenuMixin:PerformLayout()
 	--[[
 	GetTop() is returning inconsistently between openings despite it's anchor being fixed in space.
 	Will need to create a simpler test case for us to understand this misbehavior, but in the meantime,
@@ -1448,9 +1448,9 @@ function KSLMenuMixin:PerformLayout()
 			local layout = nil;
 			local gridPadding = self.menuDescription:GetGridPadding();
 			local gridDirection = self.menuDescription:GetGridDirection();
-			if gridDirection == KSLMenuConstants.VerticalGridDirection then
+			if gridDirection == OxMLMenuConstants.VerticalGridDirection then
 				layout = AnchorUtil.CreateGridLayout(GridLayoutMixin.Direction.TopLeftToBottomRightVertical, finalRows, gridPadding);
-			elseif gridDirection == KSLMenuConstants.HorizontalGridDirection then
+			elseif gridDirection == OxMLMenuConstants.HorizontalGridDirection then
 				layout = AnchorUtil.CreateGridLayout(GridLayoutMixin.Direction.TopLeftToBottomRight, finalColumns, gridPadding);
 			end
 
@@ -1548,7 +1548,7 @@ do
 		frame:SetPoint(relativePoint, relativeKey, point, x, y);
 	end
 
-	function KSLMenuMixin:FlipPositionIfOffscreen()
+	function OxMLMenuMixin:FlipPositionIfOffscreen()
 		local menuFrame = self:ToProxy();
 		local l, r, t, b = RegionUtil.GetBounds(menuFrame);
 		if not l or not r or not t or not b then
@@ -1620,7 +1620,7 @@ local function ReinitializeFrame(self, frame, isCompositorEnabled)
 	securecallfunction(CallInitializers, frame, self, compositor);
 end
 
-function KSLMenuMixin:ReinitializeAll()
+function OxMLMenuMixin:ReinitializeAll()
 	local isCompositorEnabled = self.menuDescription:IsCompositorEnabled();
 	for index, frame in self.frames:Enumerate() do
 		securecallfunction(ReinitializeFrame, self, frame, isCompositorEnabled);
@@ -1629,7 +1629,7 @@ function KSLMenuMixin:ReinitializeAll()
 	self:PerformLayout();
 end
 
-function KSLMenuMixin:DiscardChildFrames()
+function OxMLMenuMixin:DiscardChildFrames()
 	--[[
 	Releasing the compositors will cause any keys assigned or changed to be discarded.
 	All frame cleanup that is contingent on these keys must be finished prior to this
@@ -1662,7 +1662,7 @@ function KSLMenuMixin:DiscardChildFrames()
 	self.frames:Wipe();
 end
 
-function KSLMenuMixin:Close(closeReason)
+function OxMLMenuMixin:Close(closeReason)
 	local menuFrame = self:ToProxy();
 	menuFrame:SetScript("OnEnter", nil);
 	menuFrame:SetScript("OnLeave", nil);
@@ -1691,11 +1691,11 @@ function KSLMenuMixin:Close(closeReason)
 	self.menuDescription = nil;
 end
 
-function KSLMenuMixin:SendResponse(description, response)
+function OxMLMenuMixin:SendResponse(description, response)
 	self.menuManager:Respond(self, description, response);
 end
 
-function KSLMenuMixin:ForceOpenSubmenu(description)
+function OxMLMenuMixin:ForceOpenSubmenu(description)
 	self.menuManager:ForceOpenSubmenu(self, description);
 end
 
@@ -1706,10 +1706,10 @@ do
 		"SetClosedCallback",
 	};
 
-	KSLMenuProxyMixin = CreateProxyMixin(Proxies, KSLMenuMixin, Funcs);
+	OxMLMenuProxyMixin = CreateProxyMixin(Proxies, OxMLMenuMixin, Funcs);
 end
 
-function KSLMenuProxyMixin:OnLoad()
+function OxMLMenuProxyMixin:OnLoad()
 	self.ScrollBox = CreateFrame("Frame", nil, self, "WowScrollBoxList");
 
 	self.ScrollBar = CreateFrame("EventFrame", nil, self, "MinimalScrollBar");
@@ -1739,13 +1739,13 @@ function KSLMenuProxyMixin:OnLoad()
 	ScrollUtil.InitScrollBoxListWithScrollBar(self.ScrollBox, self.ScrollBar, view);
 end
 
-function KSLMenuProxyMixin:ClearScrollLayout()
+function OxMLMenuProxyMixin:ClearScrollLayout()
 	self.ScrollBox:Hide();
 	self.ScrollBar:Hide();
 	self:ClearFixedSize();
 end
 
-function KSLMenuProxyMixin:InitScrollLayout(childWidth, maxScrollExtent)
+function OxMLMenuProxyMixin:InitScrollLayout(childWidth, maxScrollExtent)
 	local left, top, right, bottom = securecallfunction(SecureGetInset, self);
 	local scrollBarWidth = self.ScrollBar:GetWidth();
 	self.ScrollBox:SetPoint("TOPLEFT", left, -top);
@@ -1762,29 +1762,29 @@ function KSLMenuProxyMixin:InitScrollLayout(childWidth, maxScrollExtent)
 	self.ScrollBar:Show();
 end
 
-function KSLMenuProxyMixin:SetMenuDescription(descriptionProxy)
+function OxMLMenuProxyMixin:SetMenuDescription(descriptionProxy)
 	local menu = Proxies:ToPrivate(self);
 	local description = Proxies:ToPrivate(descriptionProxy);
 	menu:SetMenuDescription(description);
 end
 
-function KSLMenuProxyMixin:SendResponse(descriptionProxy, response)
+function OxMLMenuProxyMixin:SendResponse(descriptionProxy, response)
 	local menu = Proxies:ToPrivate(self);
 	local description = Proxies:ToPrivate(descriptionProxy);
 	menu:SendResponse(description, response);
 end
 
-function KSLMenuProxyMixin:Close()
-	KSLMenu.GetManager():CloseMenu(self);
+function OxMLMenuProxyMixin:Close()
+	OxMLMenu.GetManager():CloseMenu(self);
 end
 
-function KSLMenuProxyMixin:GetOwnerRegion()
+function OxMLMenuProxyMixin:GetOwnerRegion()
 	return self.ownerRegion;
 end
 
-local KSLMenuManagerMixin = CreateFromMixinsPrivate(ProxyConvertablePrivateMixin);
+local OxMLMenuManagerMixin = CreateFromMixinsPrivate(ProxyConvertablePrivateMixin);
 
-function KSLMenuManagerMixin:ProcessMouseEventLeaveData()
+function OxMLMenuManagerMixin:ProcessMouseEventLeaveData()
 	if securecallfunction(ClearMouseLeaveEventData) then
 		if not self:ContainsCursor() then
 			self:CollapseMenusUntilLevel(self:GetRetainMenuLevel());
@@ -1792,7 +1792,7 @@ function KSLMenuManagerMixin:ProcessMouseEventLeaveData()
 	end
 end
 
-function KSLMenuManagerMixin:ProcessMouseEventEnterData()
+function OxMLMenuManagerMixin:ProcessMouseEventEnterData()
 	if not mouseEventEnterData then
 		return;
 	end
@@ -1806,13 +1806,13 @@ function KSLMenuManagerMixin:ProcessMouseEventEnterData()
 	end
 end
 
-function KSLMenuManagerMixin:CancelMouseEventTimer()
+function OxMLMenuManagerMixin:CancelMouseEventTimer()
 	frameDummy:SetScript("OnUpdate", nil);
 end
 
-function KSLMenuManagerMixin:Init(proxy)
+function OxMLMenuManagerMixin:Init(proxy)
 	local tags = ProxyConvertablePrivateMixin.Init(self, proxy, Proxies);
-	tags[proxy] = "KSLMenuManagerMixin";
+	tags[proxy] = "OxMLMenuManagerMixin";
 
 	self.menus = CreateSecureArray();
 	self.frameFactory = CreateFrameFactory();
@@ -1837,13 +1837,13 @@ function KSLMenuManagerMixin:Init(proxy)
 	end
 end
 
-function KSLMenuManagerMixin:RestartMouseEventTimer()
+function OxMLMenuManagerMixin:RestartMouseEventTimer()
 	mouseEventTimeRemaining:SetValue(.33);
 
 	frameDummy:SetScript("OnUpdate", self.mouseEventTimerCallback);
 end
 
-function KSLMenuManagerMixin:ClearMouseEventData()
+function OxMLMenuManagerMixin:ClearMouseEventData()
 	mouseEventLeaveData = false;
 	mouseEventEnterData = nil;
 
@@ -1859,7 +1859,7 @@ local function GetMenuDescriptionTag(tags, menu)
 	end
 end
 
-function KSLMenuManagerMixin:GetOpenMenuTags()
+function OxMLMenuManagerMixin:GetOpenMenuTags()
 	local tags = {};
 	for stackIndex, menu in self.menus:Enumerate() do
 		securecallfunction(GetMenuDescriptionTag, tags, menu);
@@ -1867,11 +1867,11 @@ function KSLMenuManagerMixin:GetOpenMenuTags()
 	return tags;
 end
 
-function KSLMenuManagerMixin:GetOpenMenu()
+function OxMLMenuManagerMixin:GetOpenMenu()
 	return self.menus:GetValue(1);
 end
 
-function KSLMenuManagerMixin:HandleESC()
+function OxMLMenuManagerMixin:HandleESC()
 	if self:IsAnyMenuOpen() then
 		self:CloseMenus();
 		return true;
@@ -1879,7 +1879,7 @@ function KSLMenuManagerMixin:HandleESC()
 	return false;
 end
 
-function KSLMenuManagerMixin:HandleGlobalMouseEvent(buttonName, event)
+function OxMLMenuManagerMixin:HandleGlobalMouseEvent(buttonName, event)
 	if event == "GLOBAL_MOUSE_DOWN" and (buttonName == "LeftButton" or buttonName == "RightButton") then
 		if isEditorShown or isEditMenuShown then
 			return false;
@@ -1893,7 +1893,7 @@ function KSLMenuManagerMixin:HandleGlobalMouseEvent(buttonName, event)
 	return false;
 end
 
-function KSLMenuManagerMixin:ContainsCursor()
+function OxMLMenuManagerMixin:ContainsCursor()
 	for stackIndex, menu in self.menus:Enumerate() do
 		if menu:ToProxy():IsMouseOver() then
 			return true;
@@ -1902,21 +1902,21 @@ function KSLMenuManagerMixin:ContainsCursor()
 	return false;
 end
 
-function KSLMenuManagerMixin:CloseMenu(menu, closeReason)
+function OxMLMenuManagerMixin:CloseMenu(menu, closeReason)
 	if not menu then
 		return;
 	end
 
-	self:RemoveMenu(menu, closeReason or KSLMenuCloseReason.Unspecified);
+	self:RemoveMenu(menu, closeReason or OxMLMenuCloseReason.Unspecified);
 end
 
-function KSLMenuManagerMixin:CloseMenus()
+function OxMLMenuManagerMixin:CloseMenus()
 	for stackIndex, menu in self.menus:EnumerateReverse() do
-		self:CloseMenu(menu, KSLMenuCloseReason.CloseAll);
+		self:CloseMenu(menu, OxMLMenuCloseReason.CloseAll);
 	end
 end
 
-function KSLMenuManagerMixin:RemoveMenu(menu, closeReason)
+function OxMLMenuManagerMixin:RemoveMenu(menu, closeReason)
 	if not menu then
 		return;
 	end
@@ -1962,25 +1962,25 @@ function KSLMenuManagerMixin:RemoveMenu(menu, closeReason)
 	end
 end
 
-function KSLMenuManagerMixin:FindMenu(menuDescription)
+function OxMLMenuManagerMixin:FindMenu(menuDescription)
 	return self.menus:FindInTableIf(function(menu)
 		return menu.menuDescription == menuDescription;
 	end);
 end
 
-function KSLMenuManagerMixin:IsAnyMenuOpen(menuDescription)
+function OxMLMenuManagerMixin:IsAnyMenuOpen(menuDescription)
 	return self.menus:HasValues();
 end
 
-function KSLMenuManagerMixin:IsMenuDescriptionOpen(menuDescription)
+function OxMLMenuManagerMixin:IsMenuDescriptionOpen(menuDescription)
 	return self:FindMenu(menuDescription) ~= nil;
 end
 
-function KSLMenuManagerMixin:IsMenuOpen(menu)
+function OxMLMenuManagerMixin:IsMenuOpen(menu)
 	return self.menus:Contains(menu);
 end
 
-function KSLMenuManagerMixin:CollapseMenusUntilLevel(level, closeReason)
+function OxMLMenuManagerMixin:CollapseMenusUntilLevel(level, closeReason)
 	for stackIndex, menu in self.menus:EnumerateReverse() do
 		if menu:GetLevel() > level then
 			self:RemoveMenu(menu, closeReason);
@@ -1988,7 +1988,7 @@ function KSLMenuManagerMixin:CollapseMenusUntilLevel(level, closeReason)
 	end
 end
 
-function KSLMenuManagerMixin:GenerateSubmenu(menuDescription, level, relativeFrame)
+function OxMLMenuManagerMixin:GenerateSubmenu(menuDescription, level, relativeFrame)
 	if self:IsMenuDescriptionOpen(menuDescription) then
 		return;
 	end
@@ -1998,7 +1998,7 @@ function KSLMenuManagerMixin:GenerateSubmenu(menuDescription, level, relativeFra
 	self:GenerateSubmenuInternal(menuDescription, level + 1, relativeFrame);
 end
 
-function KSLMenuManagerMixin:EvaluateMenuOverflow(menu)
+function OxMLMenuManagerMixin:EvaluateMenuOverflow(menu)
 	local overflowHorizontal, overflowVertical = false, false;
 	local menuParent = menu:GetParent();
 	if (menu:GetLeft() < 0) or (menu:GetRight() > menuParent:GetRight()) then
@@ -2013,7 +2013,7 @@ function KSLMenuManagerMixin:EvaluateMenuOverflow(menu)
 end
 
 
-function KSLMenuManagerMixin:GenerateSubmenuInternal(menuDescription, level, relativeFrame)
+function OxMLMenuManagerMixin:GenerateSubmenuInternal(menuDescription, level, relativeFrame)
 	local function SetMenuPosition(menu)
 		menu:SetPoint("TOPLEFT", relativeFrame, "TOPRIGHT");
 	end
@@ -2041,7 +2041,7 @@ local function ResetMenu(pool, frame, new)
 end
 
 local function AcquireMenuFrame(menuManager)
-	return menuManager.frameFactory:Create(nil, "KSLMenuTemplateBase", ResetMenu);
+	return menuManager.frameFactory:Create(nil, "OxMLMenuTemplateBase", ResetMenu);
 end
 
 local function SecureGenerate(proxy, menuDescription)
@@ -2049,7 +2049,7 @@ local function SecureGenerate(proxy, menuDescription)
 	proxy:Generate();
 end
 
-function KSLMenuManagerMixin:AcquireMenu(params)
+function OxMLMenuManagerMixin:AcquireMenu(params)
 	local menuDescription = params.menuDescription;
 
 	--[[
@@ -2064,7 +2064,7 @@ function KSLMenuManagerMixin:AcquireMenu(params)
 
 	proxy:ClearScrollLayout();
 
-	local menu = CreateFromMixinsPrivate(KSLMenuMixin);
+	local menu = CreateFromMixinsPrivate(OxMLMenuMixin);
 
 	--[[
 	Normally all proxies are tables with private references to the object. Since the frame
@@ -2125,7 +2125,7 @@ function KSLMenuManagerMixin:AcquireMenu(params)
 	proxy:SetScale(parent:GetScale());
 
 	--[[
-	KSLMenu is initially unclamped until after we've calculated any overflow and performed
+	OxMLMenu is initially unclamped until after we've calculated any overflow and performed
 	any necessary anchor swapping.
 	--]]
 	proxy:SetClampedToScreen(false);
@@ -2134,7 +2134,7 @@ function KSLMenuManagerMixin:AcquireMenu(params)
 end
 
 local function ExecuteMenuReponseCallbacks(menu, description)
-	-- KSLMenu response callbacks exist in the SharedMenuProperties, so descriptions on any menu level will cause
+	-- OxMLMenu response callbacks exist in the SharedMenuProperties, so descriptions on any menu level will cause
 	-- the listeners to be notified.
 	description:GetMenuResponseCallbacks():ExecuteRange(function(index, onMenuResponse)
 		onMenuResponse(menu, description:ToProxy());
@@ -2169,7 +2169,7 @@ local function CanSubmenuProxyRespond(description)
 	return descriptionProxy:ShouldRespondIfSubmenu();
 end
 
-function KSLMenuManagerMixin:AttributeRespond(menu, description, response)
+function OxMLMenuManagerMixin:AttributeRespond(menu, description, response)
 	--[[
 	CloseAll and 'nil' are equivalent in behavior. For brevity, responders generally do not return
 	anything, which causes the entire menu to close. While that is frequently desirable, checkboxes
@@ -2183,7 +2183,7 @@ function KSLMenuManagerMixin:AttributeRespond(menu, description, response)
 	local canReinitializeHierarchy = true;
 	local parentMenu = menu.parentMenu;
 
-	if (response == nil) or (response == KSLMenuResponse.CloseAll) then
+	if (response == nil) or (response == OxMLMenuResponse.CloseAll) then
 		-- If the description has elements, but the submenu is omitted, treat it as
 		-- if there are no elements.
 		local canCloseMenus = not description:HasElements();
@@ -2195,9 +2195,9 @@ function KSLMenuManagerMixin:AttributeRespond(menu, description, response)
 			self:CloseMenus();
 		end
 		canReinitializeHierarchy = false;
-	elseif response == KSLMenuResponse.Close then
+	elseif response == OxMLMenuResponse.Close then
 		self:CloseMenu(menu);
-	elseif response == KSLMenuResponse.Refresh then
+	elseif response == OxMLMenuResponse.Refresh then
 		-- Reinitialize every option in the enclosing menu.
 		securecallfunction(SecureReinitializeAll, menu);
 
@@ -2205,7 +2205,7 @@ function KSLMenuManagerMixin:AttributeRespond(menu, description, response)
 		-- account for cases where a radio or checkbox is also a submenu and selecting an option influences
 		-- the open submenu.
 		securecallfunction(SecureReinitializeChildMenus, description);
-	elseif response == KSLMenuResponse.Open then
+	elseif response == OxMLMenuResponse.Open then
 		-- No action
 	end
 
@@ -2220,7 +2220,7 @@ function KSLMenuManagerMixin:AttributeRespond(menu, description, response)
 	ExecuteMenuReponseCallbacks(menu, description);
 end
 
-function KSLMenuManagerMixin:Respond(menu, description, response)
+function OxMLMenuManagerMixin:Respond(menu, description, response)
 	MenuAttributeDelegate:SetAttribute("respond-menu", menu);
 	MenuAttributeDelegate:SetAttribute("respond-description", description);
 	MenuAttributeDelegate:SetAttribute("respond-response", response);
@@ -2230,13 +2230,13 @@ end
 -- This is only intended to be called externally when DeactivateSubmenu() is used to prevent
 -- automatic opening of the submenu on mouseover or click. This is for cases where design
 -- wants the submenu to only open when a nested button is clicked.
-function KSLMenuManagerMixin:ForceOpenSubmenu(menu, description)
+function OxMLMenuManagerMixin:ForceOpenSubmenu(menu, description)
 	if description:HasElements() then
 		self:GenerateSubmenu(description, menu:GetLevel(), description.frame);
 	end
 end
 
-function KSLMenuManagerMixin:CheckForSubmenu(frame, level)
+function OxMLMenuManagerMixin:CheckForSubmenu(frame, level)
 	local descriptionProxy = frame:GetElementDescription();
 	local description = Proxies:ToPrivate(descriptionProxy);
 	if not self:IsMenuDescriptionOpen(description) then
@@ -2253,27 +2253,27 @@ do
 		return menuManager.retainMenuLevel;
 	end
 
-	function KSLMenuManagerMixin:GetRetainMenuLevel()
+	function OxMLMenuManagerMixin:GetRetainMenuLevel()
 		return securecall(GetRetainMenuLevel, self);
 	end
 
-	function KSLMenuManagerMixin:SetRetainMenuLevel(level)
+	function OxMLMenuManagerMixin:SetRetainMenuLevel(level)
 		self.retainMenuLevel = level;
 	end
 end
 
-function KSLMenuManagerMixin:SetEventLeaveData()
+function OxMLMenuManagerMixin:SetEventLeaveData()
 	mouseEventLeaveData = true;
 	self:RestartMouseEventTimer();
 end
 
-function KSLMenuManagerMixin:SetEventEnterData(frame, menu, level)
+function OxMLMenuManagerMixin:SetEventEnterData(frame, menu, level)
 	mouseEventEnterData = {frame = frame, menu = menu, level = level};
 
 	self:RestartMouseEventTimer();
 end
 
-function KSLMenuManagerMixin:EnterFrame(frame, menu, level)
+function OxMLMenuManagerMixin:EnterFrame(frame, menu, level)
 	self:SetEventEnterData(frame, menu, level);
 
 	self:SetRetainMenuLevel(level);
@@ -2282,18 +2282,18 @@ function KSLMenuManagerMixin:EnterFrame(frame, menu, level)
 	descriptionProxy:HandleOnEnter(frame);
 end
 
-function KSLMenuManagerMixin:LeaveFrame(frame, menu)
+function OxMLMenuManagerMixin:LeaveFrame(frame, menu)
 	self:SetEventLeaveData();
 
 	local descriptionProxy = frame:GetElementDescription();
 	descriptionProxy:HandleOnLeave(frame);
 end
 
-function KSLMenuManagerMixin:OnMenuEnter(level)
+function OxMLMenuManagerMixin:OnMenuEnter(level)
 	self:SetRetainMenuLevel(level);
 end
 
-function KSLMenuManagerMixin:OnMenuLeave()
+function OxMLMenuManagerMixin:OnMenuLeave()
 	self:SetEventLeaveData();
 end
 
@@ -2301,11 +2301,11 @@ local function SecureTaggedMenuOpened(menuDescription)
 	local proxy = menuDescription:ToProxy();
 	local tag, contextData = proxy:GetTag();
 	if tag then
-		EventRegistry:TriggerEvent("KSLMenu.OpenMenuTag", tag, contextData);
+		EventRegistry:TriggerEvent("OxMLMenu.OpenMenuTag", tag, contextData);
 	end
 end
 
-function KSLMenuManagerMixin:GenerateMenuInternal(params)
+function OxMLMenuManagerMixin:GenerateMenuInternal(params)
 	local menuDescription = params.menuDescription;
 	-- If the menu has no entries, we don't bother even acquiring one. This can occur with context
 	-- menus that are generated with conditional options.
@@ -2322,7 +2322,7 @@ function KSLMenuManagerMixin:GenerateMenuInternal(params)
 	menu.parentMenu = menuDescription.menu;
 
 	--[[
-	KSLMenu scale should be the same scale of it's parent, but the character customization
+	OxMLMenu scale should be the same scale of it's parent, but the character customization
 	case downscales the controls and the menu scale needs to change to match. This shouldn't
 	generally be needed.
 	--]]
@@ -2408,7 +2408,7 @@ function KSLMenuManagerMixin:GenerateMenuInternal(params)
 	return menu;
 end
 
-function KSLMenuManagerMixin:DisableScrollableRegions(menu)
+function OxMLMenuManagerMixin:DisableScrollableRegions(menu)
 	for index, focus in ipairs(GetMouseFoci()) do
 		if self.disabledScrollRegionData ~= nil then
 			break;
@@ -2433,7 +2433,7 @@ function KSLMenuManagerMixin:DisableScrollableRegions(menu)
 	end
 end
 
-function KSLMenuManagerMixin:OpenMenuInternal(params)
+function OxMLMenuManagerMixin:OpenMenuInternal(params)
 	-- Ensure all other menus are closed first.
 	self:CloseMenus();
 
@@ -2446,7 +2446,7 @@ function KSLMenuManagerMixin:OpenMenuInternal(params)
 	return self:GenerateMenuInternal(params);
 end
 
-function KSLMenuManagerMixin:OpenMenu(ownerRegion, menuDescription, anchor)
+function OxMLMenuManagerMixin:OpenMenu(ownerRegion, menuDescription, anchor)
 	local function SetMenuPosition(menuFrame)
 		local clearAllPoints = true;
 		anchor:SetPoint(menuFrame, clearAllPoints);
@@ -2460,12 +2460,12 @@ function KSLMenuManagerMixin:OpenMenu(ownerRegion, menuDescription, anchor)
 	return self:OpenMenuInternal(params);
 end
 
-function KSLMenuManagerMixin:OpenContextMenu(ownerRegion, menuDescription)
+function OxMLMenuManagerMixin:OpenContextMenu(ownerRegion, menuDescription)
 	--[[
 	The region is required for closing the menu when the region becomes hidden,
 	but otherwise the menu should open at the position of the cursor.
 	]]--
-	assert(ownerRegion, "KSLMenuManagerMixin:OpenContextMenu(ownerRegion, menuDescription): ownerRegion was not provided.");
+	assert(ownerRegion, "OxMLMenuManagerMixin:OpenContextMenu(ownerRegion, menuDescription): ownerRegion was not provided.");
 
 	local function SetMenuPosition(menuFrame)
 		InputUtil.AnchorRegionToCursor(menuFrame, "TOPLEFT");
@@ -2486,7 +2486,7 @@ do
 		"HandleGlobalMouseEvent",
 	};
 
-	local MenuManagerProxyMixin = CreateProxyMixin(Proxies, KSLMenuManagerMixin, Funcs);
+	local MenuManagerProxyMixin = CreateProxyMixin(Proxies, OxMLMenuManagerMixin, Funcs);
 	MenuManagerProxyMixin.__index = MenuManagerProxyMixin;
 
 	function MenuManagerProxyMixin:GetOpenMenu()
@@ -2526,7 +2526,7 @@ do
 	end
 
 	local function CreateMenuManager()
-		local menuManager = CreateFromMixinsPrivate(KSLMenuManagerMixin);
+		local menuManager = CreateFromMixinsPrivate(OxMLMenuManagerMixin);
 		local menuManagerProxy = CreateProxy(menuManager, MenuManagerProxyMixin);
 		menuManager:Init(menuManagerProxy);
 		return menuManagerProxy;
@@ -2534,39 +2534,39 @@ do
 
 	local menuManagerProxy = CreateMenuManager();
 
-	function KSLMenu.GetManager()
+	function OxMLMenu.GetManager()
 		return menuManagerProxy;
 	end
 
 	local function SecureCreateRootMenuDescription(menuMixin)
 		assert(menuMixin, "CreateRootMenuDescription argument 'menuMixin' is required.");
 		local menuDescription = {};
-		setmetatable(menuDescription, KSLRootMenuDescriptionMixin);
+		setmetatable(menuDescription, OxMLRootMenuDescriptionMixin);
 
 		local proxy = CreateProxy(menuDescription, RootMenuDescriptionProxyMixin);
 		menuDescription:Init(proxy, menuMixin);
 		return menuDescription:ToProxy();
 	end
 
-	function KSLMenu.CreateRootMenuDescription(menuMixin)
+	function OxMLMenu.CreateRootMenuDescription(menuMixin)
 		return securecallfunction(SecureCreateRootMenuDescription, menuMixin);
 	end
 
 	local function SecureCreateMenuElementDescription()
 		local elementDescription = {};
-		setmetatable(elementDescription, KSLMenuElementDescriptionMixin);
+		setmetatable(elementDescription, OxMLMenuElementDescriptionMixin);
 
 		local proxy = CreateProxy(elementDescription, MenuElementDescriptionProxyMixin);
 		elementDescription:Init(proxy);
 		return elementDescription:ToProxy();
 	end
 
-	function KSLMenu.CreateMenuElementDescription()
+	function OxMLMenu.CreateMenuElementDescription()
 		return securecallfunction(SecureCreateMenuElementDescription);
 	end
 
 	--[[
-	KSLMenu descriptions are always regenerated before the menu is displayed, so any additions
+	OxMLMenu descriptions are always regenerated before the menu is displayed, so any additions
 	made by an addon should always appear regardless of the menu description having already
 	been created. However, if the addon wants to affect the dropdown's displayed selected
 	state, then we need to inform the dropdown to update after the changes are made.
@@ -2584,12 +2584,12 @@ do
 		ModifyMenuRegistry:TriggerEvent(tag, ownerRegion, description);
 	end
 
-	function KSLMenu.PopulateDescription(menuGenerator, ownerRegion, description, ...)
+	function OxMLMenu.PopulateDescription(menuGenerator, ownerRegion, description, ...)
 		securecallfunction(menuGenerator, ownerRegion, description, ...);
 		securecallfunction(SecureModifyMenu, ownerRegion, description, ...);
 	end
 
-	function KSLMenu.ModifyMenu(tag, callback)
+	function OxMLMenu.ModifyMenu(tag, callback)
 		assert(type(tag) == "string");
 
 		local tbl = generatedDescriptions[tag];
@@ -2598,7 +2598,7 @@ do
 			local ownerRegion = tbl[2];
 			callback(ownerRegion, description, description.contextData);
 
-			if KSLIsDropdownButtonIntrinsic(ownerRegion) then
+			if OxMLIsDropdownButtonIntrinsic(ownerRegion) then
 				ownerRegion:SignalUpdate();
 			end
 		end
@@ -2612,12 +2612,12 @@ do
 		return ModifyMenuRegistry:RegisterCallbackWithHandle(tag, Callback);
 	end
 
-	function KSLMenu.GetOpenMenuTags()
+	function OxMLMenu.GetOpenMenuTags()
 		MenuAttributeDelegate:SetAttribute("get-open-menu-tags");
 		return MenuAttributeDelegate:GetAttribute("get-open-menu-tags-result");
 	end
 
-	function KSLMenu.PrintOpenMenuTags()
-		print(table.concat(KSLMenu.GetOpenMenuTags(), LIST_DELIMITER));
+	function OxMLMenu.PrintOpenMenuTags()
+		print(table.concat(OxMLMenu.GetOpenMenuTags(), LIST_DELIMITER));
 	end
 end

@@ -298,7 +298,7 @@ local function ConfigureMetatable(compositor, region)
 	return region;
 end
 
-KSLCompositorMixin = {};
+OxMLCompositorMixin = {};
 
 do 
 	--[[
@@ -320,7 +320,7 @@ do
 	end
 	]]--
 	
-	function KSLCompositorMixin:Init(target)
+	function OxMLCompositorMixin:Init(target)
 		self.replacedMetatables = {};
 		self.attachments = {};
 		self.target = target;
@@ -336,18 +336,18 @@ do
 	end
 end
 
-function KSLCompositorMixin:GetBase()
+function OxMLCompositorMixin:GetBase()
 	return self.target;
 end
 
-function KSLCompositorMixin:ClearTicker()
+function OxMLCompositorMixin:ClearTicker()
 	if self.ticker then
 		self.ticker:Cancel();
 		self.ticker = nil;
 	end
 end
 
-function KSLCompositorMixin:NewTicker(parent, timeSeconds, callback)
+function OxMLCompositorMixin:NewTicker(parent, timeSeconds, callback)
 	self:ClearTicker();
 	self.ticker = C_Timer.NewTicker(timeSeconds, callback);
 end
@@ -359,7 +359,7 @@ local function Configure(compositor, region, parent)
 	ConfigureMetatable(compositor, region);
 end
 
-function KSLCompositorMixin:CreateWithPool(parent, pool, defaultFunc, configFunc)
+function OxMLCompositorMixin:CreateWithPool(parent, pool, defaultFunc, configFunc)
 	local region = pool:Acquire();
 	table.insert(self.attachments, region);
 
@@ -376,15 +376,15 @@ function KSLCompositorMixin:CreateWithPool(parent, pool, defaultFunc, configFunc
 	return region;
 end
 
-function KSLCompositorMixin:AttachTexture(parent)
+function OxMLCompositorMixin:AttachTexture(parent)
 	return self:CreateWithPool(parent, texturePool);
 end
 
-function KSLCompositorMixin:AttachFontString(parent)
+function OxMLCompositorMixin:AttachFontString(parent)
 	return self:CreateWithPool(parent, fontStringPool);
 end
 
-function KSLCompositorMixin:AttachFrame(parent, frameType)
+function OxMLCompositorMixin:AttachFrame(parent, frameType)
 	local frame = AcquireFrame(self, parent, frameType, PoolReset);
 	Configure(self, frame, parent);
 	return frame;
@@ -396,7 +396,7 @@ changes. It's the callsite's responsibility to fully initialize the frame under 
 assumption that is has been changed by its previous user. This will remain true until
 we've implemented a means of restoring a frame back to the state defined by the XML.
 ]]--
-function KSLCompositorMixin:AttachTemplate(parent, template)
+function OxMLCompositorMixin:AttachTemplate(parent, template)
 	-- We need to capture the template here so that after the SetToDefaults() call
 	-- we can restore the size defined in the template info. There are other characteristics
 	-- of the frame that may have been defined in the XML that are different after calling
@@ -416,7 +416,7 @@ local function ReleaseAttachments(compositor)
 	compositor.attachments = {};
 end
 
-function KSLCompositorMixin:Clear()
+function OxMLCompositorMixin:Clear()
 	self:ClearTicker();
 
 	for index, region in ipairs(self.replacedMetatables) do
@@ -442,15 +442,15 @@ local function SecureDetach(compositor)
 	ReleaseAttachments(compositor);
 end
 
-function KSLCompositorMixin:Detach()
+function OxMLCompositorMixin:Detach()
 	securecallfunction(SecureDetach, self);
 end
 
-KSLCompositorMixin.__index = KSLCompositorMixin;
+OxMLCompositorMixin.__index = OxMLCompositorMixin;
 
-function KSLCreateCompositor(target)
+function OxMLCreateCompositor(target)
 	local tbl = {};
-	setmetatable(tbl, KSLCompositorMixin);
+	setmetatable(tbl, OxMLCompositorMixin);
 	tbl:Init(target);
 	return tbl;
 end

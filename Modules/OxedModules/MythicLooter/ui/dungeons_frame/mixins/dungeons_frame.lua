@@ -8,7 +8,7 @@ local PickerView = KeystoneLoot.PickerView;
 -- on the right with every item it drops (see picker_view.lua). No teleport
 -- here: the banner is the name and the count only.
 
-KeystoneLootDungeonsFrameMixin = {};
+OxMythicLooterDungeonsFrameMixin = {};
 
 local function GetSelectedId(dungeons)
     local selected = DB:Get("ui.selectedDungeon");
@@ -20,14 +20,14 @@ local function GetSelectedId(dungeons)
     return dungeons[1] and dungeons[1].challengeModeId;
 end
 
-function KeystoneLootDungeonsFrameMixin:OnLoad()
+function OxMythicLooterDungeonsFrameMixin:OnLoad()
     -- The old list's backdrop and border are not used by this layout.
     self.Inset:Hide();
     self.BorderFrame:Hide();
     PickerView.Setup(self);
 end
 
-function KeystoneLootDungeonsFrameMixin:Init()
+function OxMythicLooterDungeonsFrameMixin:Init()
     local function OnChanged()
         if (not self:IsShown()) then
             return;
@@ -54,23 +54,23 @@ function KeystoneLootDungeonsFrameMixin:Init()
     self:Refresh();
 end
 
-function KeystoneLootDungeonsFrameMixin:RefreshOwnedIcons()
+function OxMythicLooterDungeonsFrameMixin:RefreshOwnedIcons()
     PickerView.EachItemButton(self, function(button) button:UpdateOwnedIcon(); end);
 end
 
-function KeystoneLootDungeonsFrameMixin:RefreshSize()
+function OxMythicLooterDungeonsFrameMixin:RefreshSize()
     local Parent = self:GetParent();
     if (Parent.dungeonsTabId) then
         Parent:RefreshSize(Parent.dungeonsTabId);
     end
 end
 
-function KeystoneLootDungeonsFrameMixin:OnShow()
+function OxMythicLooterDungeonsFrameMixin:OnShow()
     -- Update cooldowns for teleport buttons in case they were on cooldown when the frame was hidden.
     PickerView.UpdateTeleportCooldown(self);
 end
 
-function KeystoneLootDungeonsFrameMixin:Refresh()
+function OxMythicLooterDungeonsFrameMixin:Refresh()
     local dungeons = Query:GetDungeons();
     local selectedId = GetSelectedId(dungeons);
 
