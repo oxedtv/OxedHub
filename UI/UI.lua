@@ -1306,12 +1306,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.16)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.17)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.16")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.17")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1377,11 +1377,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  Lighter in combat: Cursor and BRes & Lust do far less work.",
-        "•  Currency transfer keeps your collapsed headers collapsed.",
-        "•  Run Tracker options no longer pop open mid-pull.",
-        "•  Fixed: blocked AddAuraSound errors from PvP triggers.",
-        "•  Fixed: key binding and slash clashes with KeystoneLoot.",
+        "•  New module: Currencies -- every currency for all your characters.",
+        "•  Totals across characters, live warband amounts, gold and warband bank.",
+        "•  Shift-click a currency to pin it to a bar you drag anywhere.",
+        "•  Goals, near-cap warnings, per hour and a week / month ago.",
+        "•  Reputations gets the slim scrollbar too.",
         "•  Grab either pack from CurseForge:",
     }
 

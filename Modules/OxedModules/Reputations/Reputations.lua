@@ -967,6 +967,8 @@ local function BuildWindow()
     w.summary = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     w.summary:SetPoint("TOPLEFT", w, "TOPLEFT", 22, -60)
     w.summary:SetJustifyH("LEFT")
+    w.summary:SetWidth(W - 294)   -- up to the Collapse all button
+    w.summary:SetWordWrap(false)
 
     local line = w:CreateTexture(nil, "ARTWORK")
     line:SetPoint("TOPLEFT", w, "TOPLEFT", 16, -LIST_TOP + 4)
@@ -984,27 +986,65 @@ local function BuildWindow()
     w.list = list
     visibleRows = math.floor((H - LIST_TOP - 14) / ROW_H)
 
-    local scroll = CreateFrame("Slider", nil, w)
-    scroll:SetOrientation("VERTICAL")
-    scroll:SetWidth(10)
-    scroll:SetPoint("TOPRIGHT", w, "TOPRIGHT", -12, -LIST_TOP)
-    scroll:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -12, 16)
-    scroll:SetValueStep(1)
-    scroll:SetObeyStepOnDrag(true)
-    local track = scroll:CreateTexture(nil, "BACKGROUND")
-    track:SetAllPoints()
-    track:SetColorTexture(0, 0, 0, 0.45)
-    local thumb = scroll:CreateTexture(nil, "OVERLAY")
-    thumb:SetColorTexture(1, 0.82, 0, 0.55)
-    thumb:SetSize(10, 36)
-    scroll:SetThumbTexture(thumb)
-    scroll:SetScript("OnValueChanged", function(_, value)
+    -- The game's own thin scrollbar, as its newer windows use. It speaks in
+    -- percentages; this wraps it in the few slider calls the list makes. The
+    -- plain slider stays as the fallback for a client without the template.
+    local function OnOffset(value)
         local wanted = math.floor(value + 0.5)
         if wanted ~= offset then
             offset = wanted
             Draw()
         end
-    end)
+    end
+    local scroll
+    local okBar, bar = pcall(CreateFrame, "EventFrame", nil, w, "MinimalScrollBar")
+    if okBar and bar and bar.SetScrollPercentage and bar.RegisterCallback then
+        bar:SetPoint("TOPRIGHT", w, "TOPRIGHT", -14, -LIST_TOP)
+        bar:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -14, 16)
+        local maxValue, setting = 0, false
+        scroll = {
+            SetMinMaxValues = function(_, _, high)
+                maxValue = high or 0
+                local total = visibleRows + maxValue
+                if bar.SetVisibleExtentPercentage then
+                    bar:SetVisibleExtentPercentage(total > 0 and visibleRows / total or 1)
+                end
+                if bar.SetPanExtentPercentage then
+                    bar:SetPanExtentPercentage(maxValue > 0 and math.min(1, 3 / maxValue) or 1)
+                end
+            end,
+            GetMinMaxValues = function() return 0, maxValue end,
+            GetValue = function()
+                return maxValue > 0 and (bar:GetScrollPercentage() or 0) * maxValue or 0
+            end,
+            SetValue = function(_, value)
+                setting = true
+                bar:SetScrollPercentage(maxValue > 0 and value / maxValue or 0)
+                setting = false
+                OnOffset(value)
+            end,
+            SetShown = function(_, shown) bar:SetShown(shown) end,
+        }
+        bar:RegisterCallback("OnScroll", function(_, percentage)
+            if not setting then OnOffset((percentage or 0) * maxValue) end
+        end, w)
+    else
+        scroll = CreateFrame("Slider", nil, w)
+        scroll:SetOrientation("VERTICAL")
+        scroll:SetWidth(10)
+        scroll:SetPoint("TOPRIGHT", w, "TOPRIGHT", -12, -LIST_TOP)
+        scroll:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -12, 16)
+        scroll:SetValueStep(1)
+        scroll:SetObeyStepOnDrag(true)
+        local track = scroll:CreateTexture(nil, "BACKGROUND")
+        track:SetAllPoints()
+        track:SetColorTexture(0, 0, 0, 0.45)
+        local thumb = scroll:CreateTexture(nil, "OVERLAY")
+        thumb:SetColorTexture(1, 0.82, 0, 0.55)
+        thumb:SetSize(10, 36)
+        scroll:SetThumbTexture(thumb)
+        scroll:SetScript("OnValueChanged", function(_, value) OnOffset(value) end)
+    end
     w.scroll = scroll
 
     list:SetScript("OnMouseWheel", function(_, delta)

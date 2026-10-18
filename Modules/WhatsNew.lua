@@ -26,6 +26,20 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.17",
+        important = true,
+        lines = {
+            { "NEW", "Currencies module (/oxcurrency): every currency for all your characters in one list, grouped by expansion like the game's own tab, with search and Collapse all. Each character is saved when it logs in." },
+            { "NEW", "Currencies: the total across your characters on each row; click a currency to see who holds how much. Transferable currencies use the warband's live amounts, so totals stay right after a transfer." },
+            { "NEW", "Currencies: Shift-click a currency to pin it to a small bar on screen -- drag it anywhere, lock it, size it, run it downwards. Pinned currencies get a green dot in the list." },
+            { "NEW", "Currencies: right-click to set a goal (\"5,000 anima\"), shown on the row and the bar, with a message and sound when reached. Amber near a cap, red at it." },
+            { "NEW", "Currencies: tooltips show this session's gains and spending, per hour, today, and the amount a week and a month ago." },
+            { "NEW", "Currencies: gold for every character plus the warband bank; hover the summary for the breakdown and the WoW Token price." },
+            { "NEW", "Currencies: your characters' amounts appear in the game's own currency tooltips, and hidden Shadowlands currencies (Reservoir Anima, Redeemed Soul and more) are listed." },
+            { "CHANGED", "Reputations: the game's slim scrollbar, and the summary line no longer runs under the buttons." },
+        },
+    },
+    {
         version = "2.4.16",
         important = true,
         lines = {
