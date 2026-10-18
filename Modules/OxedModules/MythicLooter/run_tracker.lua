@@ -424,8 +424,19 @@ local function BuildPanel()
     p.bosses:SetJustifyH("LEFT")
     p.bosses:SetShadowOffset(1, -1)
 
+    -- Only a real right-click on the panel, out of combat. Letting go of a
+    -- right-drag camera turn over the panel also counts as a mouse-up, and
+    -- opened this window mid-pull where the player could not get rid of it.
+    p:SetScript("OnMouseDown", function(_, mouse)
+        p.rightDown = (mouse == "RightButton") and GetCursorPosition() or nil
+    end)
     p:SetScript("OnMouseUp", function(_, mouse)
-        if mouse == "RightButton" then RT:ShowOptions() end
+        local down = p.rightDown
+        p.rightDown = nil
+        if mouse ~= "RightButton" or not down then return end
+        if InCombatLockdown() or (IsMouselooking and IsMouselooking()) then return end
+        if math.abs(GetCursorPosition() - down) > 4 then return end
+        RT:ShowOptions()
     end)
 
     p:ClearAllPoints()

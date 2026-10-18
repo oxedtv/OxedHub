@@ -159,6 +159,47 @@ logWatcher:SetScript("OnEvent", function()
     C_Timer.After(0.3, ReportLastTransfer)
 end)
 
+-- ── Keeping collapsed headers collapsed ─────────────────────────────────────
+-- After a transfer the game rebuilds the currency list with every header
+-- open again, so the player had to fold Legacy, Dragonflight and the rest
+-- away to get back to the one they were working in. The folded headers are
+-- noted when a transfer is started and folded again once it has landed.
+local foldedHeaders      -- set of "depth:name" for headers that were collapsed
+local foldUntil = 0
+
+local function HeaderKey(info)
+    return (info.currencyListDepth or 0) .. ":" .. tostring(info.name)
+end
+
+local function RememberFolded()
+    if not (C_CurrencyInfo.GetCurrencyListSize and C_CurrencyInfo.GetCurrencyListInfo) then return end
+    foldedHeaders = {}
+    for i = 1, C_CurrencyInfo.GetCurrencyListSize() do
+        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+        if info and info.isHeader and not info.isHeaderExpanded then
+            foldedHeaders[HeaderKey(info)] = true
+        end
+    end
+    foldUntil = GetTime() + 10
+end
+
+local function RestoreFolded()
+    if not foldedHeaders or GetTime() > foldUntil then return end
+    if not C_CurrencyInfo.ExpandCurrencyList then return end
+    -- Bottom up, so folding one header does not move the ones still to check.
+    local changed = false
+    for i = C_CurrencyInfo.GetCurrencyListSize(), 1, -1 do
+        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+        if info and info.isHeader and info.isHeaderExpanded and foldedHeaders[HeaderKey(info)] then
+            C_CurrencyInfo.ExpandCurrencyList(i, false)
+            changed = true
+        end
+    end
+    if changed and _G.TokenFrame and _G.TokenFrame.Update and _G.TokenFrame:IsShown() then
+        _G.TokenFrame:Update()
+    end
+end
+
 local function TryInitialize()
     if isInitialized then return true end
     
@@ -196,6 +237,8 @@ local function TryInitialize()
     
     btn:SetAttribute("typerelease", "click")
     -- Remember that this transfer was ours, so OxedHub can report it.
+    confirm:HookScript("OnClick", RememberFolded)
+    btn:HookScript("PreClick", RememberFolded)
     btn:HookScript("OnClick", function()
         usedOurButtonAt = GetTime()
         logSizeAtClick = LogSize()
@@ -211,6 +254,10 @@ local function TryInitialize()
     btn:RegisterEvent("ACCOUNT_CHARACTER_CURRENCY_DATA_RECEIVED")
     btn:SetScript("OnEvent", function(self, event, arg1)
         if arg1 then CDUMemo[arg1] = nil end
+        if foldedHeaders and GetTime() <= foldUntil then
+            -- After the game's own rebuild of the list, not before it.
+            C_Timer.After(0.1, RestoreFolded)
+        end
         if TokenFrame:IsShown() then update2() end
     end)
     TokenFrame.ScrollBox:RegisterCallback("OnScroll", update2)
@@ -279,7 +326,8 @@ loginFrame:SetScript("OnEvent", function(self, event, arg1)
         OxedHub.ModuleAPI:Register({
             id       = "currencytransfer",
             name     = "Currency Transfer",
-            version  = "2.16",
+            version  = "2.17",
+            updated  = 20261018.1,  -- collapsed headers stay collapsed after a transfer
             author   = "taudier",
             category = "character",
             keywords = { "currency", "transfer", "helper", "warband", "token" },

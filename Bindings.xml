@@ -14,7 +14,7 @@
     <Binding name="OXEDHUB_VENDOR_TOGGLE_HOVERED" category="OXEDHUB_CATEGORY">
         OxedHub_AutoVendorToggleHovered()
     </Binding>
-    <Binding name="KEYSTONELOOT_TOGGLE" category="OXEDHUB_CATEGORY" header="BINDING_HEADER_KEYSTONELOOT">
+    <Binding name="OXEDHUB_MYTHICLOOTER_TOGGLE" category="OXEDHUB_CATEGORY" header="OXEDHUB_MYTHICLOOTER">
         if OxMythicLooterFrame then OxMythicLooterFrame:SetShown(not OxMythicLooterFrame:IsShown()) end
     </Binding>
 </Bindings>

@@ -1,5 +1,5 @@
 <Bindings>
-    <Binding name="KEYSTONELOOT_TOGGLE" category="BINDING_HEADER_KEYSTONELOOT">
+    <Binding name="OXEDHUB_MYTHICLOOTER_TOGGLE" category="BINDING_HEADER_OXEDHUB_MYTHICLOOTER">
         OxMythicLooterFrame:SetShown(not OxMythicLooterFrame:IsShown());
     </Binding>
 </Bindings>

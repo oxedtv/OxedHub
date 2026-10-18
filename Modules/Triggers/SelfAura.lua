@@ -436,11 +436,12 @@ local function LoadNativeBlockedState()
     local stored = settings and settings.selfAuraNativeBlocked
     if type(stored) ~= "table" then return end
 
-    local _, build = CurrentNativeStamp()
-    if stored.allowed == true and stored.build == build then
-        nativeSoundUnavailable = false
-    end
+    -- A saved "allowed" is no longer trusted at login. The Retry button saved
+    -- one after a call that looked fine but was refused moments later, and from
+    -- then on every PvP trigger called AddAuraSound and logged a blocked action.
+    -- A yes now lasts only the session the button was pressed in.
 end
+
 
 local function SaveNativeAllowedState()
     if type(OxedHubDB) ~= "table" then return end
@@ -460,6 +461,20 @@ local function SaveNativeBlockedState()
         build = build,
         time = time(),
     }
+end
+
+-- The client reports the refusal after the call returns, so catch the report
+-- itself: the first blocked AddAuraSound turns the feature off for everything.
+do
+    local blockWatch = CreateFrame("Frame")
+    blockWatch:RegisterEvent("ADDON_ACTION_BLOCKED")
+    blockWatch:SetScript("OnEvent", function(_, _, addon, func)
+        if addon == addonName and type(func) == "string" and func:find("AddAuraSound", 1, true) then
+            nativeSoundUnavailable = true
+            nativeBlockedStateLoaded = true
+            SaveNativeBlockedState()
+        end
+    end)
 end
 
 -- Forget the stored answer and probe once more. Called from the Settings

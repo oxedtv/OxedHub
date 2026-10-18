@@ -7,5 +7,4 @@ CreateFrame("Frame", "OxMythicLooterReminderFrame", UIParent, "OxMythicLooterRem
 CreateFrame("Frame", "OxMythicLooterDropNotificationFrame", UIParent, "OxMythicLooterDropNotificationFrameTemplate");
 CreateFrame("Frame", "OxMythicLooterMythicPlusNotificationFrame", UIParent, "OxMythicLooterMythicPlusNotificationFrameTemplate");
 
-MythicLooterFrame = OxMythicLooterFrame;
 

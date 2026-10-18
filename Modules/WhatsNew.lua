@@ -26,6 +26,19 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.16",
+        important = true,
+        lines = {
+            { "CHANGED", "Cursor: the trail and sparks update at most 50 times a second and a still pointer costs almost nothing, so the module is much lighter at high frame rates." },
+            { "CHANGED", "BRes & Lust: no longer redraws its whole layout ten times a second; it now makes about a tenth of the memory it did." },
+            { "CHANGED", "Currency transfer: headers you had collapsed stay collapsed after a transfer, instead of the whole list opening again." },
+            { "FIXED", "Run Tracker: its options window no longer opens when a camera turn ends over the panel, or at all in combat." },
+            { "FIXED", "Options windows: the close button works in combat." },
+            { "FIXED", "PvP triggers no longer cause \"blocked AddAuraSound\" errors; the first refusal now switches it off for good." },
+            { "FIXED", "MythicLooter: its key binding and slash commands no longer clash with the KeystoneLoot addon (rebind its key once)." },
+        },
+    },
+    {
         version = "2.4.15",
         important = true,
         lines = {

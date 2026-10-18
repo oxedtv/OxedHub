@@ -69,6 +69,20 @@ local function FormatTime(seconds)
     end
 end
 
+-- Fixed text (preview, empty): forget the cached second so the live timer redraws.
+local function PlainTimer(fs, text)
+    fs.shownSecond = nil
+    fs:SetText(text)
+end
+
+-- Builds the timer text only when the shown second changes, not every tick.
+local function SetTimer(fs, remain)
+    local whole = (settings and settings.showTime and remain and remain > 0) and math.floor(remain) or -1
+    if fs.shownSecond == whole then return end
+    fs.shownSecond = whole
+    fs:SetText(whole >= 0 and FormatTime(whole) or "")
+end
+
 -- Sound library integration with OxedHub
 local function SoundName(id)
     if id == "None" or id == "none" then
@@ -187,8 +201,22 @@ end
 
 -- ── UI Creation & Layout ────────────────────────────────────────────────────
 
+-- What the last layout was built from. The display ticks ten times a second
+-- and asked for a full re-layout (fonts, anchors, backdrop) every time.
+local laidOut = {}
+local LAYOUT_KEYS = { "style", "orientation", "iconSize", "locked", "trackBRes", "trackLust", "scale", "alpha" }
+
 UpdateLayout = function()
     if not MainFrame then return end
+    if settings and laidOut.frame == MainFrame then
+        local same = true
+        for _, key in ipairs(LAYOUT_KEYS) do
+            if laidOut[key] ~= settings[key] then same = false break end
+        end
+        if same then return end
+    end
+    laidOut.frame = MainFrame
+    for _, key in ipairs(LAYOUT_KEYS) do laidOut[key] = settings and settings[key] end
 
     local isCompact = (settings and settings.style) ~= "full"
     local isHoriz = (settings and settings.orientation) ~= "vertical"
@@ -422,6 +450,8 @@ CreateUI = function()
     MainFrame:Hide()
 end
 
+local cachedCharges, chargesAskedAt, chargesDirty = nil, 0, true
+
 -- ── Display Engine ──────────────────────────────────────────────────────────
 
 UpdateDisplay = function()
@@ -440,7 +470,7 @@ UpdateDisplay = function()
             BResFrame:Show()
             BResFrame.count:SetText(settings.showCharges and "2" or "")
             BResFrame.count:SetTextColor(0, 1, 0)
-            BResFrame.timer:SetText(settings.showTime and "3:45" or "")
+            PlainTimer(BResFrame.timer, settings.showTime and "3:45" or "")
             BResFrame.Cooldown:SetCooldown(GetTime() - 75, 300)
         else
             BResFrame:Hide()
@@ -449,7 +479,7 @@ UpdateDisplay = function()
         if settings.trackLust then
             LustFrame:Show()
             LustFrame.Icon:SetTexture(136012)
-            LustFrame.timer:SetText(settings.showTime and "7:20" or "")
+            PlainTimer(LustFrame.timer, settings.showTime and "7:20" or "")
             LustFrame.Cooldown:SetCooldown(GetTime() - 160, 600)
         else
             LustFrame:Hide()
@@ -464,7 +494,7 @@ UpdateDisplay = function()
             BResFrame:Show()
             BResFrame.count:SetText(settings.showCharges and "3" or "")
             BResFrame.count:SetTextColor(0, 1, 0)
-            BResFrame.timer:SetText("") -- Full charges: clean view with no timer
+            PlainTimer(BResFrame.timer, "") -- Full charges: clean view with no timer
             BResFrame.Cooldown:Clear()
         else
             BResFrame:Hide()
@@ -473,7 +503,7 @@ UpdateDisplay = function()
         if settings.trackLust then
             LustFrame:Show()
             LustFrame.Icon:SetTexture(136012)
-            LustFrame.timer:SetText(settings.showTime and "10:00" or "")
+            PlainTimer(LustFrame.timer, settings.showTime and "10:00" or "")
             LustFrame.Cooldown:Clear()
         else
             LustFrame:Hide()
@@ -499,7 +529,15 @@ UpdateDisplay = function()
 
     -- Update BRes
     if settings.trackBRes then
-        local bresInfo = C_Spell.GetSpellCharges(BRES_SPELL_ID)
+        -- Each ask hands back a new table; ten a second was most of this
+        -- module's garbage. Charges change on SPELL_UPDATE_CHARGES or a zone
+        -- change, and the countdown only needs start and duration.
+        local nowT = GetTime()
+        if chargesDirty or nowT - chargesAskedAt >= 1 then
+            cachedCharges = C_Spell.GetSpellCharges(BRES_SPELL_ID)
+            chargesAskedAt, chargesDirty = nowT, false
+        end
+        local bresInfo = cachedCharges
         if bresInfo and bresInfo.maxCharges and bresInfo.maxCharges > 0 then
             bresActive = true
             BResFrame:Show()
@@ -513,13 +551,13 @@ UpdateDisplay = function()
 
             if cur < bresInfo.maxCharges and bresInfo.cooldownStartTime > 0 then
                 local remain = (bresInfo.cooldownStartTime + bresInfo.cooldownDuration) - GetTime()
-                BResFrame.timer:SetText(settings.showTime and FormatTime(remain) or "")
+                SetTimer(BResFrame.timer, remain)
                 if lastBResStart ~= bresInfo.cooldownStartTime then 
                     BResFrame.Cooldown:SetCooldown(bresInfo.cooldownStartTime, bresInfo.cooldownDuration)
                     lastBResStart = bresInfo.cooldownStartTime 
                 end
             else 
-                BResFrame.timer:SetText("") 
+                PlainTimer(BResFrame.timer, "") 
                 BResFrame.Cooldown:Clear()
                 lastBResStart = 0 
             end
@@ -529,7 +567,7 @@ UpdateDisplay = function()
             else
                 BResFrame:Show()
                 BResFrame.count:SetText("")
-                BResFrame.timer:SetText("")
+                PlainTimer(BResFrame.timer, "")
                 BResFrame.Cooldown:Clear()
             end
             lastBResStart = 0
@@ -545,7 +583,7 @@ UpdateDisplay = function()
             if remain > 0 then
                 lustActive = true
                 LustFrame:Show()
-                LustFrame.timer:SetText(settings.showTime and FormatTime(remain) or "")
+                SetTimer(LustFrame.timer, remain)
                 if lastLustStart ~= startTime then 
                     LustFrame.Cooldown:SetCooldown(startTime, 600)
                     lastLustStart = startTime 
@@ -557,7 +595,7 @@ UpdateDisplay = function()
                     LustFrame:Hide()
                 else
                     LustFrame:Show()
-                    LustFrame.timer:SetText("")
+                    PlainTimer(LustFrame.timer, "")
                     LustFrame.Cooldown:Clear()
                 end
                 lastLustStart = 0
@@ -567,7 +605,7 @@ UpdateDisplay = function()
                 LustFrame:Hide()
             else
                 LustFrame:Show()
-                LustFrame.timer:SetText("")
+                PlainTimer(LustFrame.timer, "")
                 LustFrame.Cooldown:Clear()
             end
             lastLustStart = 0
@@ -664,6 +702,7 @@ end
 local watcher = CreateFrame("Frame")
 watcher:SetScript("OnEvent", function(self, event, ...)
     if not settings or not settings.enabled then return end
+    if event ~= "UNIT_AURA" then chargesDirty = true end
     if event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
         startTime = 0
         activeAuraExpiration = 0
@@ -1035,7 +1074,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "breslusttracker",
         name     = "BRes & Lust Tracker",
-        version  = "1.1.0",
+        version  = "1.1.1",
+        updated  = 20261018.1,  -- lighter in combat
         author   = "Oxed",
         category = "combat",
         keywords = { "bres", "lust", "sated", "resurrection" },

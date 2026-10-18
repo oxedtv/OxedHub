@@ -336,6 +336,12 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
     end
     titleText:SetText(title or "Settings")
 
+    -- Close plainly ourselves: the template's handler goes through the panel
+    -- manager, which a player could not get past in combat.
+    if f.CloseButton then
+        f.CloseButton:SetScript("OnClick", function() f:Hide() end)
+    end
+
     f.cursorY = -36
     f.checks = {}
 

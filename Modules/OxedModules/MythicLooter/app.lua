@@ -1,13 +1,3 @@
-SlashCmdList.KEYSTONELOOT = function()
-    if OxMythicLooterFrame then
-        OxMythicLooterFrame:SetShown(not OxMythicLooterFrame:IsShown());
-    end
-end;
-
-SLASH_KEYSTONELOOT1 = "/ksl";
-SLASH_KEYSTONELOOT2 = "/keyloot";
-SLASH_KEYSTONELOOT3 = "/keystoneloot";
-SLASH_KEYSTONELOOT4 = "/mythicloot";
-SLASH_KEYSTONELOOT5 = "/mythiclooter";
-SLASH_KEYSTONELOOT6 = "/ml";
-
+-- Slash commands live in MythicLooter.lua (/mythicloot, /mythiclooter, /ml).
+-- This file used to claim /ksl, /keyloot and /keystoneloot too, which belong
+-- to the standalone KeystoneLoot addon and broke it when both were loaded.

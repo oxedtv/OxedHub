@@ -255,11 +255,11 @@ local function ShowOptions()
 end
 
 -- ── Slash Commands ──────────────────────────────────────────────────────────
-SLASH_MYTHICLOOTER1 = "/mythicloot"
-SLASH_MYTHICLOOTER2 = "/mythiclooter"
-SLASH_MYTHICLOOTER3 = "/ml"
+SLASH_OXEDHUBMYTHICLOOTER1 = "/mythicloot"
+SLASH_OXEDHUBMYTHICLOOTER2 = "/mythiclooter"
+SLASH_OXEDHUBMYTHICLOOTER3 = "/ml"
 
-SlashCmdList["MYTHICLOOTER"] = function(msg)
+SlashCmdList["OXEDHUBMYTHICLOOTER"] = function(msg)
     local cmd = (msg or ""):lower():trim()
     if cmd == "opt" or cmd == "options" or cmd == "config" or cmd == "settings" then
         ShowOptions()
@@ -279,8 +279,8 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "mythiclooter",
         name     = "MythicLooter",
-        version  = "2.19.3",
-        updated  = 20261017.1,  -- no longer clashes with the standalone KeystoneLoot addon
+        version  = "2.19.4",
+        updated  = 20261018.1,  -- Run Tracker options no longer open from a camera turn
         author   = "Oxed",
         category = "groups",
         keywords = { "mythiclooter", "keystoneloot", "m+", "loot", "dungeon", "raid", "bis", "vault", "item" },

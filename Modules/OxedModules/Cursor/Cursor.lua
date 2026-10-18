@@ -99,6 +99,8 @@ local nextSpark = 1
 local POOL = 70
 local watcher = CreateFrame("Frame")
 local wasSteering = false   -- the pointer was frozen last frame
+local lastMouselooking = false
+local pendingElapsed = 0     -- frame time since the last full update
 local MAX_SPARK_SPEED = 320   -- pixels a second; see DropSpark
 local MAX_TRAVEL = 150        -- how far from its birthplace a spark may get
 
@@ -1143,11 +1145,36 @@ local function OnUpdate(_, elapsed)
     local x, y = Anchor(cx, cy, scale)
     curX, curY = x, y
     local now = GetTime()
-    local theme = CurrentTheme()
     local mouselooking = IsMouselooking and IsMouselooking() or false
 
     local dx, dy = x - lastX, y - lastY
     local moved = (dx * dx + dy * dy) > 0.25
+
+    -- Between particle steps only the glow follows the pointer; the trail,
+    -- sparks, fade and colours advance at 50 Hz. A moving mouse used to run
+    -- everything on every frame, 150-200 times a second in combat. lastX/lastY
+    -- stay put, so the next full frame lays sparks along the whole distance.
+    sparkStepAccum = sparkStepAccum + elapsed
+    pendingElapsed = pendingElapsed + elapsed
+    if sparkStepAccum < SPARK_STEP and now >= flareUntil
+        and mouselooking == lastMouselooking then
+        if moved and (lastRootAlpha or 1) > 0 then
+            if settings.halo and (x ~= lastHaloX or y ~= lastHaloY) then
+                lastHaloX, lastHaloY = x, y
+                halo:SetPoint("CENTER", root, "BOTTOMLEFT", x, y)
+            end
+            if settings.shadow and (x ~= lastShadowX or y ~= lastShadowY) then
+                lastShadowX, lastShadowY = x, y
+                shadow:SetPoint("CENTER", root, "BOTTOMLEFT", x, y)
+            end
+        end
+        return
+    end
+    lastMouselooking = mouselooking
+    elapsed = pendingElapsed
+    pendingElapsed = 0
+
+    local theme = CurrentTheme()
     if moved then lastMoveAt = now end
 
     -- Shake to find.
@@ -1187,7 +1214,6 @@ local function OnUpdate(_, elapsed)
         return
     end
 
-    sparkStepAccum = sparkStepAccum + elapsed
     local doStep = sparkStepAccum >= SPARK_STEP
     local stepDt = sparkStepAccum
     if doStep then sparkStepAccum = 0 end
@@ -1931,7 +1957,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "cursor",
         name     = "Cursor",
-        version  = "1.1.0",
+        version  = "1.1.1",
+        updated  = 20261018.1,  -- lighter in combat
         author   = "Oxed",
         category = "character",
         keywords = { "cursor", "mouse", "pointer", "trail", "windows 95", "retro", "glow", "halo", "steering", "mouselook", "find", "fire", "frost", "meteor", "lightning", "void", "fel", "blood", "bubbles", "fairy" },

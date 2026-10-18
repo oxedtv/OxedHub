@@ -2,5 +2,5 @@ local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; Addon
 
 local L = KeystoneLoot.L;
 
-BINDING_HEADER_KEYSTONELOOT = AddonName;
-BINDING_NAME_KEYSTONELOOT_TOGGLE = L["Toggle Window"];
+BINDING_HEADER_OXEDHUB_MYTHICLOOTER = AddonName;
+BINDING_NAME_OXEDHUB_MYTHICLOOTER_TOGGLE = L["Toggle Window"];
