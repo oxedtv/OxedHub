@@ -26,12 +26,23 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.18",
+        important = true,
+        lines = {
+            { "NEW", "OxedHub Sounds Pack and OxedHub Animations Pack are on CurseForge. To keep OxedHub light, its sounds and animations are moving into them; they leave the main addon on 1 December 2026." },
+            { "NEW", "With the packs installed, every sound and animation you picked plays from them by itself. Your triggers and settings stay exactly as they are, with nothing to set up again." },
+            { "NEW", "The main page opens with a countdown to the move, links to both packs and whether each one is installed. \"Got it, hide this\" takes the page away; /oxpacks brings it back." },
+            { "CHANGED", "Holiday decorations take their dates from the game's own calendar, so they start and end on the real days of each event." },
+            { "FIXED", "Hallow's End decorations did not appear during the first days of the event." },
+        },
+    },
+    {
         version = "2.4.17",
         important = true,
         lines = {
             { "NEW", "Currencies module (/oxcurrency): every currency for all your characters in one list, grouped by expansion like the game's own tab, with search and Collapse all. Each character is saved when it logs in." },
             { "NEW", "Currencies: the total across your characters on each row; click a currency to see who holds how much. Transferable currencies use the warband's live amounts, so totals stay right after a transfer." },
-            { "NEW", "Currencies: Shift-click a currency to pin it to a small bar on screen -- drag it anywhere, lock it, size it, run it downwards. Pinned currencies get a green dot in the list." },
+            { "NEW", "Currencies: Shift-click a currency to pin it to a small bar on screen. Drag it anywhere, lock it, size it, or run it downwards. Pinned currencies get a green dot in the list." },
             { "NEW", "Currencies: right-click to set a goal (\"5,000 anima\"), shown on the row and the bar, with a message and sound when reached. Amber near a cap, red at it." },
             { "NEW", "Currencies: tooltips show this session's gains and spending, per hour, today, and the amount a week and a month ago." },
             { "NEW", "Currencies: gold for every character plus the warband bank; hover the summary for the breakdown and the WoW Token price." },

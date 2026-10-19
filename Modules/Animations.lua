@@ -655,7 +655,8 @@ end
 -- Resolve an animation file: searched in OxedHub_MemePack / OxedHub_GamingPack first, then OxedHub_CustomMedia, then default.
 local function ResolveAnimationPath(filename)
     if not filename or filename == "" then return "" end
-    if filename:find("\\") then return filename end  -- Full path provided, use as-is
+    -- Full path provided: as-is, or from the Animations Pack when it has it.
+    if filename:find("\\") then return OxedHub.PackPath and OxedHub.PackPath(filename) or filename end
     local meme = "Interface\\AddOns\\OxedHub_MemePack\\Animations\\" .. filename
     if AnimFileExists(meme) then return meme end
     local gaming = "Interface\\AddOns\\OxedHub_GamingPack\\Animations\\" .. filename
@@ -666,7 +667,8 @@ local function ResolveAnimationPath(filename)
     if AnimFileExists(gamingRoot) then return gamingRoot end
     local custom = "Interface\\AddOns\\OxedHub_CustomMedia\\" .. filename
     if AnimFileExists(custom) then return custom end
-    return "Interface\\AddOns\\OxedHub\\Media\\Animations\\" .. filename
+    local main = "Interface\\AddOns\\OxedHub\\Media\\Animations\\" .. filename
+    return OxedHub.PackPath and OxedHub.PackPath(main) or main
 end
 
 function Animations:SyncMemePack()

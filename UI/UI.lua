@@ -1220,7 +1220,7 @@ function UI:CreateDashboardTab()
     sliderScroll:SetScrollChild(sliderContent)
 
     local cards = {}
-    local numCards = 5
+    local numCards = 6
     local activeCardIndex = 1
 
     -- Default inner dimensions (updated dynamically by OnSizeChanged)
@@ -1281,11 +1281,13 @@ function UI:CreateDashboardTab()
         table.insert(cards, card)
     end
 
-    local card1 = cards[1]
-    local card2 = cards[2]
-    local card3 = cards[3]
-    local card4 = cards[4]
-    local card5 = cards[5]
+    -- The pack countdown comes first; the release notes and guides follow.
+    local packsCard = cards[1]
+    local card1 = cards[2]
+    local card2 = cards[3]
+    local card3 = cards[4]
+    local card4 = cards[5]
+    local card5 = cards[6]
 
     -- Responsive resizing of cards and content
     showcaseContainer:SetScript("OnSizeChanged", function(self, width, height)
@@ -1306,12 +1308,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.17)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.18)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.17")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.18")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1334,6 +1336,18 @@ function UI:CreateDashboardTab()
             title = "OxedHub Gaming Pack",
             url = "https://www.curseforge.com/wow/addons/oxedhub-gaming-pack",
             texture = "Interface\\AddOns\\OxedHub\\Media\\Textures\\logo\\OxedHubGamingPack.png",
+        },
+        sounds = {
+            title = "OxedHub Sounds Pack",
+            url = "https://www.curseforge.com/wow/addons/oxedhub-sounds-pack",
+            texture = "Interface\\AddOns\\OxedHub\\Media\\Textures\\logo\\OxedHub_SoundPack.png",
+            global = "OxedHubSoundsPack",
+        },
+        animations = {
+            title = "OxedHub Animations Pack",
+            url = "https://www.curseforge.com/wow/addons/oxedhub-animations-pack",
+            texture = "Interface\\AddOns\\OxedHub\\Media\\Textures\\logo\\OxedHub_animationPack.png",
+            global = "OxedHubAnimationsPack",
         },
     }
 
@@ -1377,11 +1391,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  New module: Currencies -- every currency for all your characters.",
-        "•  Totals across characters, live warband amounts, gold and warband bank.",
-        "•  Shift-click a currency to pin it to a bar you drag anywhere.",
-        "•  Goals, near-cap warnings, per hour and a week / month ago.",
-        "•  Reputations gets the slim scrollbar too.",
+        "•  New: OxedHub Sounds Pack and Animations Pack on CurseForge.",
+        "•  Install them and your sounds and animations switch over by themselves.",
+        "•  New module: Currencies, every currency for all your characters.",
+        "•  Holiday decorations now follow the game's own calendar dates.",
+        "•  Fixed: Hallow's End decorations missing at the start of the event.",
         "•  Grab either pack from CurseForge:",
     }
 
@@ -1476,6 +1490,185 @@ function UI:CreateDashboardTab()
     end)
     packBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     packBtn:SetScript("OnClick", function() ShowPackLink("gaming") end)
+
+    -- ───────────────────────────────────────────────────────────────
+    -- CARD 0: SOUNDS AND ANIMATIONS MOVE TO THEIR OWN PACKS
+    -- ───────────────────────────────────────────────────────────────
+    -- A countdown in days to the release that takes them out of OxedHub,
+    -- counted on the game's calendar (server date), not the computer's clock.
+    local PACK_DEADLINE = { year = 2026, month = 12, day = 1 }
+    local PACK_CARD_REST = 10 * 86400   -- "Got it, hide this" lasts ten days
+
+    local function DaysLeft()
+        local today
+        local cal = C_DateAndTime and C_DateAndTime.GetCurrentCalendarTime and C_DateAndTime.GetCurrentCalendarTime()
+        if cal and cal.year and cal.month and cal.monthDay then
+            today = time({ year = cal.year, month = cal.month, day = cal.monthDay, hour = 12 })
+        else
+            local d = date("*t")
+            today = time({ year = d.year, month = d.month, day = d.day, hour = 12 })
+        end
+        local due = time({ year = PACK_DEADLINE.year, month = PACK_DEADLINE.month, day = PACK_DEADLINE.day, hour = 12 })
+        return math.floor((due - today) / 86400 + 0.5)
+    end
+
+    local packTitle = packsCard:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
+    packTitle:SetPoint("TOPLEFT", packsCard, "TOPLEFT", 55, -14)
+    packTitle:SetTextColor(1, 0.82, 0, 1)
+    packTitle:SetText("Sounds & Animations get their own packs")
+
+    local bigDays = packsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    bigDays:SetPoint("TOPLEFT", packsCard, "TOPLEFT", 55, -52)
+    local bName = bigDays:GetFont()
+    if bName then bigDays:SetFont(bName, 72, "THICKOUTLINE") end
+    bigDays:SetTextColor(1, 0.55, 0.1, 1)
+
+    local daysLabel = packsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    daysLabel:SetPoint("BOTTOMLEFT", bigDays, "BOTTOMRIGHT", 10, 14)
+    daysLabel:SetTextColor(0.15, 0.1, 0.08, 1)
+    daysLabel:SetShadowOffset(0, 0)
+
+    local untilLabel = packsCard:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    untilLabel:SetPoint("TOPLEFT", daysLabel, "BOTTOMLEFT", 0, -2)
+    untilLabel:SetTextColor(0.25, 0.2, 0.17, 1)
+    untilLabel:SetShadowOffset(0, 0)
+
+    local packLines = {
+        "•  To make OxedHub lighter, its sounds and animations move into two packs.",
+        "•  A small set stays in OxedHub; the rest leaves it when the timer runs out.",
+        "•  Install the packs and every sound and animation you picked switches over",
+        "    by itself. Your triggers keep working and there is nothing to set up again.",
+    }
+    for i, text in ipairs(packLines) do
+        local line = packsCard:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        line:SetPoint("TOPLEFT", packsCard, "TOPLEFT", 60, -150 - (i - 1) * 24)
+        line:SetWidth(560)
+        line:SetJustifyH("LEFT")
+        line:SetText(text)
+        line:SetTextColor(0.1, 0.1, 0.1, 1)
+        line:SetShadowOffset(0, 0)
+    end
+
+    -- The two packs: logo, link, and whether it is already installed.
+    local packStatus = {}
+    local function PackTile(key, anchorX)
+        local pack = PACKS[key]
+        local tile = CreateFrame("Button", nil, packsCard)
+        tile:SetSize(150, 150)
+        tile:SetPoint("TOPRIGHT", packsCard, "TOPRIGHT", anchorX, -45)   -- the block sits centred
+        local img = tile:CreateTexture(nil, "ARTWORK")
+        img:SetAllPoints()
+        img:SetTexture(pack.texture)
+        local hl = tile:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetTexture(pack.texture)
+        hl:SetBlendMode("ADD")
+        hl:SetAlpha(0.25)
+
+        local btn = CreateFrame("Button", nil, packsCard, "UIPanelButtonTemplate")
+        btn:SetSize(140, 22)
+        btn:SetPoint("TOP", tile, "BOTTOM", 0, -4)
+        btn:SetText(key == "sounds" and "Sounds Pack Link" or "Animations Pack Link")
+        btn:SetNormalFontObject("GameFontNormalSmall")
+        if ApplyRedButtonStyle then ApplyRedButtonStyle(btn) end
+
+        local status = packsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+        status:SetPoint("TOP", btn, "BOTTOM", 0, -8)
+        local sName = status:GetFont()
+        if sName then status:SetFont(sName, 20, "OUTLINE") end
+        status:SetShadowOffset(0, 0)
+        packStatus[key] = status
+
+        local function Open() ShowPackLink(key) end
+        tile:SetScript("OnClick", Open)
+        btn:SetScript("OnClick", Open)
+        tile:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine(pack.title, 1, 0.82, 0)
+            GameTooltip:AddLine("Click to copy the CurseForge link.", 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        tile:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    PackTile("animations", -40)
+    PackTile("sounds", -205)
+
+    function UI:UpdatePackCountdown()
+        local left = DaysLeft()
+        local both = type(_G[PACKS.sounds.global]) == "table" and type(_G[PACKS.animations.global]) == "table"
+        if left > 0 then
+            bigDays:SetText(tostring(left))
+            daysLabel:SetText(left == 1 and "DAY LEFT" or "DAYS LEFT")
+        else
+            bigDays:SetText("0")
+            daysLabel:SetText("DAYS LEFT")
+        end
+        untilLabel:SetText(("until they leave OxedHub (%d %s %d)"):format(PACK_DEADLINE.day,
+            CALENDAR_FULLDATE_MONTH_NAMES and CALENDAR_FULLDATE_MONTH_NAMES[PACK_DEADLINE.month] or "December",
+            PACK_DEADLINE.year))
+        if both then
+            bigDays:SetTextColor(0.25, 0.8, 0.3, 1)
+        elseif left <= 3 then
+            bigDays:SetTextColor(0.9, 0.15, 0.1, 1)
+        else
+            bigDays:SetTextColor(1, 0.55, 0.1, 1)
+        end
+        for key, fs in pairs(packStatus) do
+            if type(_G[PACKS[key].global]) == "table" then
+                fs:SetText("|cff20a020Installed|r")
+            else
+                fs:SetText("|cffb02020Not installed|r")
+            end
+        end
+    end
+    -- "Got it, hide this": the card leaves the carousel for good on this
+    -- account; the release notes become the first page again.
+    local hideBtn = CreateFrame("Button", nil, packsCard, "UIPanelButtonTemplate")
+    hideBtn:SetSize(150, 24)
+    hideBtn:SetPoint("BOTTOM", packsCard, "BOTTOM", 0, 24)
+    hideBtn:SetText("Got it, hide this")
+    if ApplyRedButtonStyle then ApplyRedButtonStyle(hideBtn) end
+    hideBtn:SetScript("OnClick", function()
+        OxedHubDB = OxedHubDB or {}
+        OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+        OxedHubDB.globalSettings.packCardHidden = time()   -- when; it comes back after PACK_CARD_REST
+        UI:ApplyPackCardOrder()
+        UI:SetDashboardCard(1, false)
+    end)
+    hideBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("Move this page back", 1, 0.82, 0)
+        GameTooltip:AddLine("The release notes open first and this page becomes the second one, for 10 days. Type /oxpacks to put it first again.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    hideBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    packsCard:SetScript("OnShow", function() UI:UpdatePackCountdown() end)
+
+    -- Which of the two comes first. "Got it, hide this" (saved for the
+    -- account) puts the release notes first and this page second; /oxpacks
+    -- turns it back. Only the first two swap, so every other page keeps its
+    -- number.
+    function UI:ApplyPackCardOrder()
+        -- Moved back for ten days at a time: then it is first again, with its
+        -- button, until the packs are in or the player moves it back again.
+        local at = OxedHubDB and OxedHubDB.globalSettings and OxedHubDB.globalSettings.packCardHidden
+        local hidden = type(at) == "number" and (time() - at) < PACK_CARD_REST
+        if hidden then
+            cards[1], cards[2] = card1, packsCard
+        else
+            cards[1], cards[2] = packsCard, card1
+        end
+        hideBtn:SetShown(not hidden)
+        local w = sliderScroll:GetWidth()
+        if not w or w <= 0 then w = defaultInnerW end
+        for i, card in ipairs(cards) do
+            card:ClearAllPoints()
+            card:SetPoint("TOPLEFT", sliderContent, "TOPLEFT", (i - 1) * w, 0)
+        end
+    end
+    UI:ApplyPackCardOrder()
+    UI:UpdatePackCountdown()
 
     -- ───────────────────────────────────────────────────────────────
     -- CARD 2: CHARACTER SHOWCASE
@@ -2340,7 +2533,7 @@ function UI:CreateDashboardTab()
         if idx < 1 or idx > numCards then return end
         activeCardIndex = idx
 
-        if idx == 4 and UI.UpdateActionHubCardState then
+        if idx == 5 and UI.UpdateActionHubCardState then
             UI:UpdateActionHubCardState()
         end
         
@@ -2378,7 +2571,7 @@ function UI:CreateDashboardTab()
         targetScroll = (idx - 1) * innerWidth
         
         -- If sliding back to Card 2 (Character Showcase), show model immediately so it slides in nicely
-        if idx == 2 then
+        if idx == 3 then
             modelFrame:Show()
         end
 
@@ -2390,7 +2583,7 @@ function UI:CreateDashboardTab()
                     self:SetHorizontalScroll(targetScroll)
                     self:SetScript("OnUpdate", nil)
                     -- If we completed slide away from Card 2, hide the 3D model frame to prevent clipping issues
-                    if activeCardIndex ~= 2 then
+                    if activeCardIndex ~= 3 then
                         modelFrame:Hide()
                     end
                 else
@@ -2400,7 +2593,7 @@ function UI:CreateDashboardTab()
         else
             sliderScroll:SetScript("OnUpdate", nil)
             sliderScroll:SetHorizontalScroll(targetScroll)
-            if idx ~= 2 then
+            if idx ~= 3 then
                 modelFrame:Hide()
             end
         end
@@ -9932,3 +10125,15 @@ C_Timer.After(1, function()
 end)
 
 
+
+-- /oxpacks: the Sounds & Animations pack page back on the main window, after
+-- "Got it, hide this" took it off.
+SLASH_OXEDHUBPACKS1 = "/oxpacks"
+SlashCmdList.OXEDHUBPACKS = function()
+    OxedHubDB = OxedHubDB or {}
+    OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+    OxedHubDB.globalSettings.packCardHidden = nil
+    if UI.ApplyPackCardOrder then UI:ApplyPackCardOrder() end
+    if UI.SetDashboardCard then UI:SetDashboardCard(1, false) end
+    print("|cff00ff00OxedHub:|r the Sounds & Animations packs page is the first page again.")
+end

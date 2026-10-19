@@ -41,6 +41,7 @@ Events.EVENTS = {
     {
         key    = "brewfest",
         name   = "Brewfest",
+        holiday = { 372 },   -- the game calendar's holiday id
         folder = "Brewfest",
         from   = { month = 9,  day = 20 },
         to     = { month = 10, day = 6 },
@@ -64,9 +65,10 @@ Events.EVENTS = {
     {
         key    = "halloween",
         name   = "Hallow's End",
+        holiday = { 324 },   -- the game calendar's holiday id
         folder = "Halloween",
-        from   = { month = 10, day = 21 },
-        to     = { month = 11, day = 4 },
+        from   = { month = 10, day = 18 },
+        to     = { month = 11, day = 2 },
         guide  = "https://www.wowhead.com/guide/world-events/holidays/hallows-end",
         -- A line along the foot of the window naming the event and its dates,
         -- built from the two above so the caption can never say one thing
@@ -143,6 +145,48 @@ local function InRange(month, day, from, to)
     return afterStart and beforeEnd
 end
 
+-- ── The game's own calendar ─────────────────────────────────────────────────
+-- Holiday dates move a day or two every year, so the dates in the table above
+-- are only a fallback. When the game's calendar has loaded, it decides: an
+-- event runs today if today's page of the calendar lists its holiday, and the
+-- caption shows the holiday's real first and last day.
+--
+-- Read only while the calendar shows the current month: the offsets count
+-- from whichever month the player last browsed to, and moving their calendar
+-- for them is not ours to do.
+--   returns the holiday's calendar entry, false (loaded, not on today), or
+--   nil (cannot tell; use the dates in the table)
+local function GameHoliday(event)
+    if not (event.holiday and C_Calendar and C_Calendar.GetNumDayEvents and C_Calendar.GetDayEvent
+        and C_Calendar.GetMonthInfo and C_DateAndTime and C_DateAndTime.GetCurrentCalendarTime) then
+        return nil
+    end
+    if FakeDate() then return nil end
+    local okNow, now = pcall(C_DateAndTime.GetCurrentCalendarTime)
+    local okMonth, shown = pcall(C_Calendar.GetMonthInfo, 0)
+    if not (okNow and okMonth and type(now) == "table" and type(shown) == "table") then return nil end
+    if shown.month ~= now.month or shown.year ~= now.year then return nil end
+
+    local okCount, count = pcall(C_Calendar.GetNumDayEvents, 0, now.monthDay)
+    if not okCount or type(count) ~= "number" or count == 0 then return nil end
+    for i = 1, count do
+        local ok, entry = pcall(C_Calendar.GetDayEvent, 0, now.monthDay, i)
+        if ok and type(entry) == "table" and entry.calendarType == "HOLIDAY" then
+            for _, id in ipairs(event.holiday) do
+                if entry.eventID == id then return entry end
+            end
+            -- By name too, in case the id is not the one this client uses.
+            if type(entry.title) == "string" and not (issecretvalue and issecretvalue(entry.title))
+                and entry.title == event.name then
+                return entry
+            end
+        end
+    end
+    -- Not found today. Only "cannot tell" rather than "not on": a wrong id
+    -- must not hide a holiday that is running, so the dates decide instead.
+    return nil
+end
+
 function Events:GetActive()
     if not self:IsEnabled() then return nil end
 
@@ -156,7 +200,10 @@ function Events:GetActive()
 
     local month, day = Today()
     for _, event in ipairs(self.EVENTS) do
-        if InRange(month, day, event.from, event.to) then return event end
+        local live = GameHoliday(event)
+        event.live = live or nil
+        if live then return event end
+        if live == nil and InRange(month, day, event.from, event.to) then return event end
     end
     return nil
 end
@@ -200,6 +247,12 @@ local MONTHS = { "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
 
 local function DateRangeText(event)
     local from, to = event.from, event.to
+    -- The calendar's own first and last day, when it has told us.
+    local live = event.live
+    if live and type(live.startTime) == "table" and type(live.endTime) == "table" then
+        from = { month = live.startTime.month, day = live.startTime.monthDay }
+        to = { month = live.endTime.month, day = live.endTime.monthDay }
+    end
     return ("%s:  %s %d - %s %d"):format(
         event.name:upper(),
         MONTHS[from.month] or "?", from.day,
@@ -424,7 +477,19 @@ watcher:SetScript("OnEvent", function(self, event)
         return
     end
 
+    if event == "CALENDAR_UPDATE_EVENT_LIST" then
+        -- The calendar arrived (or changed): it may say something the dates
+        -- in the table did not.
+        local current = Events:GetActive()
+        if (current and current.key) ~= Events.activeKey then Events:Apply() end
+        return
+    end
+
     self:UnregisterEvent("PLAYER_LOGIN")
+    -- Ask the server for this month's calendar; its answer comes back as
+    -- CALENDAR_UPDATE_EVENT_LIST.
+    pcall(self.RegisterEvent, self, "CALENDAR_UPDATE_EVENT_LIST")
+    if C_Calendar and C_Calendar.OpenCalendar then pcall(C_Calendar.OpenCalendar) end
 
     -- The window is built the first time it is opened, which may be an hour
     -- after login or never. Waiting a fixed number of seconds for it meant the
@@ -547,7 +612,8 @@ SlashCmdList["OXEDHUBDECOR"] = function(msg)
 
     local byDate
     for _, event in ipairs(Events.EVENTS) do
-        local active = InRange(month, day, event.from, event.to)
+        local live = GameHoliday(event)
+        local active = live and true or (live == nil and InRange(month, day, event.from, event.to))
         if active then byDate = event end
         print(("  %s  %s %d - %s %d   %s"):format(
             event.name,

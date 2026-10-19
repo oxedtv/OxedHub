@@ -151,6 +151,31 @@ function Sounds:BuildLegacyMap()
     end
 end
 
+-- ── The Sounds Pack and the Animations Pack ──────────────────────────────────
+-- OxedHub's own sounds (Media\Sound) and animations (Media\Animations) also
+-- ship as two packs, and are leaving the main addon. With a pack installed,
+-- every path into those folders is answered from the pack instead -- at the
+-- moment it is played, so saved triggers keep their ids and paths untouched
+-- and nothing has to be set up again. Without the pack the path is returned
+-- as it was. The packs mirror the folders file for file.
+local MAIN_SOUND = "Interface\\AddOns\\OxedHub\\Media\\Sound\\"
+local MAIN_ANIM = "Interface\\AddOns\\OxedHub\\Media\\Animations\\"
+
+function OxedHub.PackPath(path)
+    if type(path) ~= "string" then return path end
+    local sounds = _G.OxedHubSoundsPack
+    if type(sounds) == "table" and type(sounds.soundRoot) == "string"
+        and path:sub(1, #MAIN_SOUND) == MAIN_SOUND then
+        return sounds.soundRoot .. path:sub(#MAIN_SOUND + 1)
+    end
+    local anims = _G.OxedHubAnimationsPack
+    if type(anims) == "table" and type(anims.animationRoot) == "string"
+        and path:sub(1, #MAIN_ANIM) == MAIN_ANIM then
+        return anims.animationRoot .. path:sub(#MAIN_ANIM + 1)
+    end
+    return path
+end
+
 function Sounds:ResolvePathOrId(pathOrId)
     if not pathOrId or type(pathOrId) ~= "string" or pathOrId == "" or pathOrId == "None" then
         return pathOrId
@@ -949,7 +974,7 @@ function Sounds:GetFilePath(soundIdOrPath)
         filePath = sounds[resolved].filePath
     end
     if type(filePath) == "string" and filePath ~= "" then
-        return filePath
+        return OxedHub.PackPath(filePath)
     end
     return nil
 end
@@ -982,6 +1007,7 @@ function Sounds:Play(soundIdOrPath, soundName, priority)
         print("|cffff0000Oxed Hub:|r No sound file specified")
         return
     end
+    filePath = OxedHub.PackPath(filePath)
 
     -- Decided on the resolved path, not the id: two triggers can name the same
     -- file through different ids, and to the ear that is still one sound twice.
