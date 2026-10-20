@@ -279,8 +279,8 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "mythiclooter",
         name     = "MythicLooter",
-        version  = "2.19.4",
-        updated  = 20261018.1,  -- Run Tracker options no longer open from a camera turn
+        version  = "2.19.5",
+        updated  = 20261020.3,  -- role marks placed when the key goes in
         author   = "Oxed",
         category = "groups",
         keywords = { "mythiclooter", "keystoneloot", "m+", "loot", "dungeon", "raid", "bis", "vault", "item" },

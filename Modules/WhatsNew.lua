@@ -26,6 +26,20 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.19",
+        important = true,
+        lines = {
+            { "NEW", "Auto Queue: a Queued For list names every dungeon you picked, each Raid Finder wing, your Group Finder applications and listing, and battlegrounds, arenas and brawls, with their pictures." },
+            { "NEW", "Auto Queue: each row shows how long you have waited, the estimate, which roles are still missing and when an application expires." },
+            { "NEW", "Auto Queue: keep the list on screen while you are queued (drag its header) or see it by hovering the eye. List Settings sets its size, width, opacity and rows; Preview List shows it without a queue." },
+            { "NEW", "Auto Queue: when your group is ready, chat names the dungeon." },
+            { "CHANGED", "Bloodlust and Heartbeat triggers make far less garbage in long fights. Gold World Quests no longer scans zones during a fight; it waits until the fight is over." },
+            { "CHANGED", "/oxprofile tells apart files with the same name, no longer blames OxedHub for loading screens or for frames another addon spent, and says when a frame was not measured." },
+            { "FIXED", "MythicLooter: the tank and healer are marked when the key goes in. Once the run had started the game refused marks from addons." },
+            { "FIXED", "Holiday decorations could raise an error while another addon had the calendar open." },
+        },
+    },
+    {
         version = "2.4.18",
         important = true,
         lines = {

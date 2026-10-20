@@ -183,7 +183,9 @@ function Engine:UpdateAllHeartbeats()
         return
     end
 
-    local seen = {}
+    local seen = self.seen or {}
+    self.seen = seen
+    wipe(seen)
     for triggerId, trigger in pairs(OxedHub.db.profile.triggers) do
         if trigger.event == "HEARTBEAT" then
             seen[triggerId] = true
@@ -202,20 +204,17 @@ end
 
 Engine:RegisterEvent("PLAYER_REGEN_DISABLED")
 Engine:RegisterEvent("PLAYER_REGEN_ENABLED")
--- Filtered at the client rather than in the handler below. Both fire for every
--- unit in the group, so in a raid this was waking Lua hundreds of times a
--- second only to drop the event on its first line.
-Engine:RegisterUnitEvent("UNIT_HEALTH", "player")
-Engine:RegisterUnitEvent("UNIT_MAXHEALTH", "player")
+-- ⚠ No UNIT_HEALTH / UNIT_MAXHEALTH. A heartbeat's state follows combat and
+-- death only, never health, and those two arrived ten thousand times in a
+-- fifty-minute session, each walking every trigger for nothing (1.8 MB of
+-- garbage). Death has its own events, and the ticker below covers the rest.
 Engine:RegisterEvent("PLAYER_DEAD")
 Engine:RegisterEvent("PLAYER_UNGHOST")
 Engine:RegisterEvent("PLAYER_ALIVE")
 Engine:RegisterEvent("PLAYER_ENTERING_WORLD")
 
 Engine:SetScript("OnEvent", function(self, event, unit)
-    if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
-        if unit and unit ~= "player" then return end
-    elseif event == "PLAYER_REGEN_DISABLED" then
+    if event == "PLAYER_REGEN_DISABLED" then
         self.inCombat = true
     elseif event == "PLAYER_REGEN_ENABLED" then
         self.inCombat = false

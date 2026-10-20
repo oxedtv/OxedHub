@@ -171,14 +171,18 @@ local function GameHoliday(event)
     if not okCount or type(count) ~= "number" or count == 0 then return nil end
     for i = 1, count do
         local ok, entry = pcall(C_Calendar.GetDayEvent, 0, now.monthDay, i)
-        if ok and type(entry) == "table" and entry.calendarType == "HOLIDAY" then
-            for _, id in ipairs(event.holiday) do
-                if entry.eventID == id then return entry end
-            end
-            -- By name too, in case the id is not the one this client uses.
-            if type(entry.title) == "string" and not (issecretvalue and issecretvalue(entry.title))
-                and entry.title == event.name then
-                return entry
+        -- ⚠ Read while another addon has the calendar open, the fields can
+        -- come back as secrets, and comparing one is an error. A secret field
+        -- is skipped; the dates in the table decide instead.
+        if ok and type(entry) == "table" then
+            local kind, id, title = entry.calendarType, entry.eventID, entry.title
+            local secret = issecretvalue and (issecretvalue(kind) or issecretvalue(id) or issecretvalue(title))
+            if not secret and kind == "HOLIDAY" then
+                for _, want in ipairs(event.holiday) do
+                    if id == want then return entry end
+                end
+                -- By name too, in case the id is not the one this client uses.
+                if title == event.name then return entry end
             end
         end
     end

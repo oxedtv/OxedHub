@@ -344,6 +344,11 @@ local function StepScan()
         return
     end
 
+    if InCombatLockdown() then
+        -- Picked up again, from this zone, once the fight is over.
+        C_Timer.After(1, StepScan)
+        return
+    end
     j.zone = j.zone + 1
     local zones = Data.ZONES or {}
     local z = zones[j.zone]
@@ -368,11 +373,20 @@ end
 local QUEST_LOG_GAP = 30
 local lastScanAt = 0
 
+local scanAfterCombat = false
+
 scan = function()
     if not settings or settings.enabled == false then return end
     if not (C_TaskQuest and (C_TaskQuest.GetQuestsOnMap or C_TaskQuest.GetQuestsForPlayerByMapID)) then return end
     if job then
         rescanWanted = true
+        return
+    end
+    -- ⚠ Not in a fight. A scan walks every zone and each answer is a set of
+    -- new tables from the game (15 KB a zone); quests turned in and zones
+    -- changed mid-pull used to scan right there. It runs when combat ends.
+    if InCombatLockdown() then
+        scanAfterCombat = true
         return
     end
     lastScanAt = GetTime()
@@ -1607,7 +1621,12 @@ end
 watcher:SetScript("OnEvent", function(self, event, ...)
     if not settings or settings.enabled == false then return end
 
-    if event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
+    if event == "PLAYER_REGEN_ENABLED" then
+        if scanAfterCombat then
+            scanAfterCombat = false
+            requestScan(2)
+        end
+    elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
         requestScan(2)
     elseif event == "QUEST_LOG_UPDATE" then
         if GetTime() - lastScanAt >= QUEST_LOG_GAP then requestScan(1) end
@@ -1713,8 +1732,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "goldwq",
         name     = "Gold World Quests",
-        version  = "1.0.1",
-        updated  = 20261016.99,  -- Oxed in the minimap tooltip
+        version  = "1.0.2",
+        updated  = 20261020.2,  -- no scans during a fight
         author   = "Marcus / Oxed",
         category = "quests",
         keywords = { "gold", "wq", "world quest", "caches", "special assignment", "tomtom", "route" },
@@ -1744,6 +1763,7 @@ loginFrame:SetScript("OnEvent", function(self)
             watcher:RegisterEvent("ZONE_CHANGED_NEW_AREA")
             watcher:RegisterEvent("QUEST_LOG_UPDATE")
             watcher:RegisterEvent("QUEST_TURNED_IN")
+            watcher:RegisterEvent("PLAYER_REGEN_ENABLED")
 
             if not ticker then
                 ticker = C_Timer.NewTicker(60, function()
@@ -1781,6 +1801,7 @@ loginFrame:SetScript("OnEvent", function(self)
             watcher:UnregisterEvent("ZONE_CHANGED_NEW_AREA")
             watcher:UnregisterEvent("QUEST_LOG_UPDATE")
             watcher:UnregisterEvent("QUEST_TURNED_IN")
+            watcher:UnregisterEvent("PLAYER_REGEN_ENABLED")
 
             if ticker then
                 ticker:Cancel()

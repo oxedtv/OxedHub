@@ -234,8 +234,12 @@ end
 
 -- ── Role marks ──────────────────────────────────────────────────────────────
 
+-- ⚠ Only before the key starts. Once a keystone run is under way the game
+-- forbids raid marks from addons (ADDON_ACTION_FORBIDDEN, even inside pcall:
+-- pcall stops the error, not the report). Marked when the key is slotted.
 local function MarkRoles()
     if not cfg.markRoles or not IsInGroup() or IsInRaid() or InCombatLockdown() then return end
+    if C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive() then return end
     if not (SetRaidTarget and UnitGroupRolesAssigned) then return end
     local units = { "player", "party1", "party2", "party3", "party4" }
     for _, unit in ipairs(units) do
@@ -620,10 +624,12 @@ end)
 local lifecycle = CreateFrame("Frame")
 lifecycle:SetScript("OnEvent", function(_, event)
     if not cfg then return end
-    if event == "CHALLENGE_MODE_START" then
+    if event == "CHALLENGE_MODE_KEYSTONE_SLOTTED" then
+        -- The key is in but the run has not begun: the last moment marks are allowed.
+        MarkRoles()
+    elseif event == "CHALLENGE_MODE_START" then
         C_Timer.After(1, function()
             if InKey() then BeginRun() end
-            MarkRoles()
         end)
     elseif event == "CHALLENGE_MODE_COMPLETED" then
         ReadState()
@@ -719,7 +725,7 @@ function RT:ShowOptions()
         o:AddSoundPicker(cfg, "lowPullSound", "Warning sound", "None")
         o:AddCheckbox(cfg, "learnTargets", "Learn targets from timed runs",
             "At each boss pull the forces are noted; a timed run keeps those numbers as that dungeon's targets.")
-        o:AddCheckbox(cfg, "markRoles", "Mark the tank and healer when the key starts",
+        o:AddCheckbox(cfg, "markRoles", "Mark the tank and healer when the key goes in",
             "Only unmarked players are marked, so a mark already set is left alone.")
         o:AddChoice(cfg, "tankMark", "Tank mark", MARKS)
         o:AddChoice(cfg, "healerMark", "Healer mark", MARKS)
@@ -785,7 +791,7 @@ login:SetScript("OnEvent", function(self)
     Bind()
     HookTooltip()
     for _, event in ipairs({ "CHALLENGE_MODE_START", "CHALLENGE_MODE_COMPLETED",
-            "CHALLENGE_MODE_RESET", "PLAYER_ENTERING_WORLD" }) do
+            "CHALLENGE_MODE_RESET", "PLAYER_ENTERING_WORLD", "CHALLENGE_MODE_KEYSTONE_SLOTTED" }) do
         pcall(lifecycle.RegisterEvent, lifecycle, event)
     end
 end)

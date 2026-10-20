@@ -1308,12 +1308,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.18)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.19)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.18")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.19")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1391,11 +1391,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  New: OxedHub Sounds Pack and Animations Pack on CurseForge.",
-        "•  Install them and your sounds and animations switch over by themselves.",
-        "•  New module: Currencies, every currency for all your characters.",
-        "•  Holiday decorations now follow the game's own calendar dates.",
-        "•  Fixed: Hallow's End decorations missing at the start of the event.",
+        "•  Auto Queue: a Queued For list of every dungeon, group and battleground.",
+        "•  Keep it on screen or hover the eye. Size, width and opacity can be set.",
+        "•  The queue pop now names the dungeon in chat.",
+        "•  Lower memory use in long fights: Bloodlust, Heartbeat and Gold World Quests.",
+        "•  Fixed: MythicLooter role marks were refused once the key had started.",
         "•  Grab either pack from CurseForge:",
     }
 

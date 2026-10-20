@@ -182,6 +182,13 @@ end
 -- value)"). It is also not worth breaking a timer or a handler over a name, so
 -- the whole read is done inside pcall: no name simply means the call is listed
 -- without one.
+-- File names used by more than one OxedHub file: these are labelled with
+-- their folder ("Heartbeat/Heartbeat.lua:215") so each keeps its own feature.
+local SHARED_NAMES = {
+    ["Heartbeat.lua"] = true, ["Mounts.lua"] = true, ["Shattersight.lua"] = true,
+    ["UI.lua"] = true, ["Search.lua"] = true, ["Data.lua"] = true,
+}
+
 local function ReadStack(startLevel)
     local stack = debugstack(startLevel or 3, 8, 0)
     if type(stack) ~= "string" then return nil end
@@ -190,8 +197,15 @@ local function ReadStack(startLevel)
     for line in stack:gmatch("[^\n]+") do
         if not line:find("Profiler%.lua") and not line:find("%[C%]") and not line:find("tail call") then
             if not line:find("AddOns[/\\]OxedHub[/\\]") then return nil end
-            local file, num = line:match("([%w_]+%.lua)\"?%]?:(%d+)")
-            return file and (file .. ":" .. num) or "OxedHub"
+            local folder, file, num = line:match("([%w_]+)[/\\]([%w_]+%.lua)\"?%]?:(%d+)")
+            if not file then
+                file, num = line:match("([%w_]+%.lua)\"?%]?:(%d+)")
+            end
+            if not file then return "OxedHub" end
+            -- Two Heartbeat.lua files (the repeating trigger and the low
+            -- health module) were both reported as one feature.
+            if folder and SHARED_NAMES[file] then file = folder .. "/" .. file end
+            return file .. ":" .. num
         end
     end
     return nil
@@ -220,7 +234,23 @@ local FEATURES = {
     ["BasicAuraTracker.lua"] = "Aura tracker",
     ["Bloodlust.lua"] = "Bloodlust trigger",
     ["ItemUse.lua"] = "Potion & trinket trigger",
-    ["Heartbeat.lua"] = "Heartbeat (repeating triggers)",
+    ["Heartbeat.lua"] = "Heartbeat (repeating triggers)",   -- saved sessions without folders
+    ["Triggers/Heartbeat.lua"] = "Heartbeat (repeating triggers)",
+    ["Heartbeat/Heartbeat.lua"] = "Heartbeat (low health module)",
+    ["Triggers/Mounts.lua"] = "Mount trigger",
+    ["Modules/Mounts.lua"] = "Mounts",
+    ["Shattersight/Shattersight.lua"] = "Shattersight (disenchant)",
+    ["Triggers/Shattersight.lua"] = "Shattersight trigger",
+    ["Shattersight/UI.lua"] = "Shattersight window",
+    ["UI/UI.lua"] = "OxedHub window",
+    ["Modules/Search.lua"] = "Search",
+    ["Components/Search.lua"] = "Search box",
+    ["Core/Data.lua"] = "OxedHub data",
+    ["Shattersight/Data.lua"] = "Shattersight data",
+    ["Currencies.lua"] = "Currencies",
+    ["Reputations.lua"] = "Reputations",
+    ["Cursor.lua"] = "Cursor",
+    ["GoldWQ.lua"] = "GoldWQ",
     ["Combat.lua"] = "Combat trigger",
     ["Interrupt.lua"] = "Interrupt trigger",
     ["Encounter.lua"] = "Boss trigger",
@@ -323,8 +353,10 @@ local EVENT_WORDS = {
 
 -- "Prey hunt tracker -- on-screen widget update  [PreyEngine.lua:900]"
 local function Describe(where, what)
-    local file = where and where:match("^([%w_]+%.lua)")
-    local feature = (file and FEATURES[file]) or (file and file:gsub("%.lua$", "")) or "OxedHub"
+    local file = where and where:match("^([%w_/]+%.lua)")
+    local base = file and file:match("([%w_]+%.lua)$")
+    local feature = (file and FEATURES[file]) or (base and FEATURES[base])
+        or (base and base:gsub("%.lua$", "")) or "OxedHub"
     local words = what and (EVENT_WORDS[what] or what) or nil
     local name = words and (feature .. " -- " .. words) or feature
     return where and (name .. "  [" .. where .. "]") or name
@@ -712,9 +744,16 @@ local function Nameplates()
 end
 
 local function CauseOf(spike, collected, now)
-    local frame = spike.frameMs
-    if spike.oxedMs >= frame * SHARE then return "OxedHub" end
+    local frame = spike.frameMs or 0
     local top = spike.others and spike.others[1]
+    -- ⚠ OxedHub takes the blame only for a frame of known length, and only
+    -- when no other addon did more in it. A loading-screen frame was recorded
+    -- as "0 ms", so any OxedHub work at all was 40% of it, and a 3600 ms frame
+    -- spent inside another addon was filed under "cause: OxedHub".
+    local otherTop = (top and top.name ~= addonName) and top.ms or 0
+    if frame > 0 and spike.oxedMs >= frame * SHARE and spike.oxedMs >= otherTop then
+        return "OxedHub"
+    end
     if top and top.name ~= addonName and top.ms >= frame * SHARE then
         return "addon: " .. top.name
     end
@@ -1662,8 +1701,12 @@ function Profiler:BuildReport()
     for i = #shownSpikes, first, -1 do
         local spike = shownSpikes[i]
         local share = spike.frameMs > 0 and (spike.oxedMs / spike.frameMs * 100) or 0
-        add(("%s  frame %.0f ms  OxedHub %.1f ms (%.0f%%)%s  %s%s")
-            :format(date("%H:%M:%S", spike.at), spike.frameMs, spike.oxedMs, share,
+        -- A frame the clock did not catch (it ran across a loading screen)
+        -- says so, rather than "frame 0 ms".
+        local frameText = spike.frameMs > 0 and ("frame %.0f ms"):format(spike.frameMs)
+            or "frame not measured (loading screen)"
+        add(("%s  %s  OxedHub %.1f ms (%.0f%%)%s  %s%s")
+            :format(date("%H:%M:%S", spike.at), frameText, spike.oxedMs, share,
                 spike.addonMs and (" game says %.1f ms"):format(spike.addonMs) or "",
                 spike.where or "", spike.combat and ", in combat" or ""))
         if spike.cause then

@@ -12,6 +12,7 @@
 --     that were delisted or filled show orange, and you may apply again.
 --   * The listing tooltip gets back the "created ... ago" line, and your
 --     sign-up note is kept from one application to the next.
+--   * Hovering the queue eye lists every dungeon and group you are queued for.
 --   * A role bar above the Group Finder window picks the roles to queue as
 --     (several at once, or not your spec's). Roles are saved per character.
 --
@@ -50,6 +51,14 @@ local DEFAULTS = {
     movableEye     = true,   -- make Blizzard's queue eye movable and draggable
     eyeLocked      = false,  -- lock eye dragging
     eyeScale       = 1.0,    -- eye scale (0.5 to 2.5)
+    eyeTooltip     = true,   -- hovering the eye lists the dungeons and groups you are queued for
+    queueList      = true,   -- keep that list on screen, movable, while queued for anything
+    listLocked     = false,  -- the list's header no longer drags it
+    listScale      = 1.0,
+    listAlpha      = 0.92,   -- background opacity
+    listWidth      = 310,
+    listRows       = 12,     -- rows before "and N more"
+    listDetails    = true,   -- the grey third line of each row
     -- UI state, not options
     roleBarHidden  = false,
     tutorialSeen   = false,
@@ -57,6 +66,7 @@ local DEFAULTS = {
 
 local settings          -- OxedHubDB.modules.autoqueue, bound at login
 local optionsWindow
+local listOptionsWindow
 local watcher = CreateFrame("Frame")
 
 local PREFIX = "|cff00ff00OxedHub:|r "
@@ -194,15 +204,18 @@ local proposalTicker
 -- ⚠ Asked of the game, not of a frame. Blizzard's ready popup can report
 -- itself shown at login with no proposal behind it, and the module rang the
 -- ready sound every time the player logged in.
+-- Also hands back the dungeon's name when the game gives a plain one.
 local function ReadyDialogShown()
     if not GetLFGProposal then return false end
-    local ok, exists = pcall(GetLFGProposal)
+    local ok, exists, _, _, _, name = pcall(GetLFGProposal)
     if not ok or issecretvalue(exists) then return false end
-    return exists == true
+    if name ~= nil and (issecretvalue(name) or type(name) ~= "string" or name == "") then name = nil end
+    return exists == true, name
 end
 
 local function AcceptReady()
-    if not ReadyDialogShown() then
+    local shown, dungeon = ReadyDialogShown()
+    if not shown then
         -- Gone: the next window is a new one and may speak again.
         announced = false
         return
@@ -213,7 +226,8 @@ local function AcceptReady()
     if PlaySound and SOUNDKIT and SOUNDKIT.READY_CHECK then
         pcall(PlaySound, SOUNDKIT.READY_CHECK, "Master")
     end
-    print(PREFIX .. "your group is ready. |cffffd100Press Enter yourself|r: the game does not let an addon do it.")
+    print(PREFIX .. "your group is ready" .. (dungeon and (" for |cffffffff" .. dungeon .. "|r") or "")
+        .. ". |cffffd100Press Enter yourself|r: the game does not let an addon do it.")
 end
 
 local function StartProposalWatch()
@@ -741,11 +755,533 @@ local function SetEyeTestMode(enabled)
     end
 end
 
+-- ── What the eye is queued for ──────────────────────────────────────────────
+-- Hovering the eye opens a list beside Blizzard's own queue window, drawn
+-- like the Party Keystones list: a gold header, then one row per queue with
+-- its icon, what kind of queue it is, the dungeon or group, and the details
+-- (time waited, estimate, who is still missing). Blizzard's window only says
+-- "Dungeon Finder" for a hand-picked list; this names every dungeon.
+-- Every read goes through pcall and Plain(): a secret or a missing API leaves
+-- its detail out. A listing's own title can be a secret: it is handed to
+-- SetText untouched, never joined to other text.
+
+local QUEUE_CATEGORIES = {
+    { "LE_LFG_CATEGORY_LFD", "Dungeon Finder" },
+    { "LE_LFG_CATEGORY_RF", "Raid Finder" },
+    { "LE_LFG_CATEGORY_SCENARIO", "Scenario" },
+    { "LE_LFG_CATEGORY_FLEXRAID", "Flex Raid" },
+    { "LE_LFG_CATEGORY_WORLDPVP", "World PvP" },
+    { "LE_LFG_CATEGORY_BATTLEFIELD", "Brawl" },
+}
+local QUEUED_MODES = { queued = true, rolecheck = true, proposal = true, suspended = true }
+local MODE_WORDS = { rolecheck = "Role check", proposal = "Ready", suspended = "Paused" }
+
+local Q_WIDTH, Q_HEADER, Q_ROW, Q_ICON, Q_MAX = 310, 20, 44, 36, 12
+local ICON_DUNGEON = "Interface\\Icons\\INV_Misc_GroupNeedMore"
+local ICON_LISTING = "Interface\\Icons\\INV_Misc_GroupLooking"
+local ICON_KEY     = "Interface\\Icons\\INV_Relics_Hourglass"
+local ICON_PVP     = "Interface\\Icons\\Achievement_BG_winWSG"
+local GOLD, GREEN, RED = { 1, 0.82, 0 }, { 0.3, 1, 0.3 }, { 1, 0.4, 0.4 }
+
+local queuePanel, queueOwner
+
+local function Plain(value)
+    if value == nil or issecretvalue(value) then return nil end
+    return value
+end
+
+local function PlainText(value)
+    value = Plain(value)
+    return type(value) == "string" and value ~= "" and value or nil
+end
+
+-- "45s", "12m", "1h 05m": short enough that a row's details fit on one line.
+local function Duration(seconds)
+    if type(seconds) ~= "number" or seconds <= 0 then return nil end
+    seconds = math.floor(seconds)
+    if seconds < 60 then return seconds .. "s" end
+    if seconds < 3600 then return math.floor(seconds / 60) .. "m" end
+    return ("%dh %02dm"):format(math.floor(seconds / 3600), math.floor(seconds % 3600 / 60))
+end
+
+-- "5m" on the icon: minutes waited, short enough for a 36 px square.
+local function ShortWait(seconds)
+    if type(seconds) ~= "number" or seconds < 60 then return nil end
+    local minutes = math.floor(seconds / 60)
+    return minutes >= 60 and (math.floor(minutes / 60) .. "h") or (minutes .. "m")
+end
+
+local function DungeonInfo(id)
+    local ok, name, _, _, _, _, _, _, _, _, _, texture = pcall(GetLFGDungeonInfo, id)
+    if not ok then return nil end
+    -- A file id (number) on current clients, a bare "LFGIcon-" suffix on older ones.
+    texture = Plain(texture)
+    if type(texture) == "string" then
+        if texture == "" then
+            texture = nil
+        elseif not texture:find("[/\\]") then
+            texture = "Interface\\LFGFrame\\LFGIcon-" .. texture
+        end
+    elseif type(texture) ~= "number" or texture <= 0 then
+        texture = nil
+    end
+    return PlainText(name), texture
+end
+
+-- Battleground pictures by name, from the game's own battleground list.
+local ICON_ARENA = "Interface\\PVPFrame\\RandomPVPIcon"
+local battlegroundIcons
+local function BattlegroundIcon(name)
+    if not name then return nil end
+    if not battlegroundIcons then
+        battlegroundIcons = {}
+        if GetNumBattlegroundTypes and GetBattlegroundInfo then
+            local okCount, count = pcall(GetNumBattlegroundTypes)
+            for i = 1, (okCount and type(Plain(count)) == "number" and count or 0) do
+                local ok, bgName, _, _, _, _, _, _, _, _, icon = pcall(GetBattlegroundInfo, i)
+                bgName = ok and PlainText(bgName)
+                icon = ok and Plain(icon)
+                if bgName and icon and icon ~= "" and icon ~= 0 then battlegroundIcons[bgName] = icon end
+            end
+        end
+    end
+    if battlegroundIcons[name] then return battlegroundIcons[name] end
+    if name:find(ARENA or "Arena", 1, true) then return ICON_ARENA end
+    return nil
+end
+
+-- Keystone dungeon icons, matched by name against an activity's full name
+-- ("Murder Row (Mythic Keystone)" starts with "Murder Row").
+local keystoneIcons
+local function KeystoneIcon(activityName)
+    if not activityName then return nil end
+    if not keystoneIcons then
+        keystoneIcons = {}
+        if C_ChallengeMode and C_ChallengeMode.GetMapTable and C_ChallengeMode.GetMapUIInfo then
+            local ok, maps = pcall(C_ChallengeMode.GetMapTable)
+            for _, mapID in ipairs(ok and type(maps) == "table" and maps or {}) do
+                local okInfo, name, _, _, texture = pcall(C_ChallengeMode.GetMapUIInfo, mapID)
+                name = okInfo and PlainText(name)
+                if name and Plain(texture) then keystoneIcons[name] = texture end
+            end
+        end
+    end
+    for name, texture in pairs(keystoneIcons) do
+        if activityName:sub(1, #name) == name then return texture end
+    end
+    return nil
+end
+
+local function Activity(info)
+    if type(info) ~= "table" or issecretvalue(info) then return nil end
+    local ids = Plain(info.activityIDs)
+    local activityID = Plain(info.activityID) or (type(ids) == "table" and Plain(ids[1])) or nil
+    if not activityID or not (C_LFGList and C_LFGList.GetActivityInfoTable) then return nil end
+    local ok, activity = pcall(C_LFGList.GetActivityInfoTable, activityID)
+    if not ok or type(activity) ~= "table" or issecretvalue(activity) then return nil end
+    local name = PlainText(activity.fullName)
+    local isKey = Plain(activity.isMythicPlusActivity) == true
+    return name, KeystoneIcon(name) or (isKey and ICON_KEY) or nil
+end
+
+-- A listing title as SetText can take it: a secret is passed on untouched
+-- (testing it is the error), a plain string if it has text, else fallback.
+local function TitleOr(title, fallback)
+    if issecretvalue(title) then return title end
+    return PlainText(title) or fallback
+end
+
+local function Join(parts)
+    local out = {}
+    for _, part in ipairs(parts) do if part then out[#out + 1] = part end end
+    return #out > 0 and table.concat(out, "  ·  ") or nil
+end
+
+-- One row: { icon, badge, kind, kindColor, title (may be secret), detail }
+local function CollectQueues(rows)
+    local now = GetTime()
+
+    for _, entry in ipairs(QUEUE_CATEGORIES) do
+        local category = _G[entry[1]]
+        local okMode, mode = false, nil
+        if category and GetLFGMode then okMode, mode = pcall(GetLFGMode, category) end
+        mode = okMode and Plain(mode) or nil
+        if mode and QUEUED_MODES[mode] then
+            -- ok, hasData, leaderNeeds, tankNeeds, healerNeeds, dpsNeeds, totalTanks,
+            -- totalHealers, totalDPS, instanceType, instanceSubType, instanceName,
+            -- averageWait, tankWait, healerWait, damageWait, myWait, queuedTime
+            local stats = GetLFGQueueStats and { pcall(GetLFGQueueStats, category) } or {}
+            local okStats = stats[1] == true
+            local waited, estimate, need
+            if okStats then
+                local queuedAt = Plain(stats[18])
+                waited = type(queuedAt) == "number" and (now - queuedAt) or nil
+                estimate = Plain(stats[17])
+                if type(estimate) ~= "number" or estimate <= 0 then estimate = Plain(stats[13]) end
+                if Plain(stats[2]) == true then
+                    local missing = {}
+                    local tank, healer, dps = Plain(stats[4]), Plain(stats[5]), Plain(stats[6])
+                    if type(tank) == "number" and tank > 0 then missing[#missing + 1] = tank .. " tank" end
+                    if type(healer) == "number" and healer > 0 then missing[#missing + 1] = healer .. " healer" end
+                    if type(dps) == "number" and dps > 0 then missing[#missing + 1] = dps .. " DPS" end
+                    if #missing > 0 then need = "needs " .. table.concat(missing, ", ") end
+                end
+            end
+            local detail = Join({
+                Duration(waited) and ("waited " .. Duration(waited)) or nil,
+                Duration(type(estimate) == "number" and estimate or nil) and ("est " .. Duration(estimate)) or nil,
+                need,
+            })
+            local kind = entry[2] .. (MODE_WORDS[mode] and ("  ·  " .. MODE_WORDS[mode]) or "")
+            local kindColor = (mode == "suspended" and RED) or (mode == "proposal" and GREEN) or GOLD
+
+            local dungeons = {}
+            if GetLFGQueuedList then
+                local list = {}
+                local ok, returned = pcall(GetLFGQueuedList, category, list)
+                if ok and type(returned) == "table" then list = returned end
+                for id in pairs(list) do
+                    local name, texture = DungeonInfo(id)
+                    if name then dungeons[#dungeons + 1] = { name = name, texture = texture } end
+                end
+            end
+            if #dungeons == 0 then
+                local instance = okStats and PlainText(stats[12])
+                dungeons[1] = { name = instance or entry[2] }
+            end
+            table.sort(dungeons, function(a, b) return a.name < b.name end)
+            for _, d in ipairs(dungeons) do
+                rows[#rows + 1] = { d.texture or ICON_DUNGEON, ShortWait(waited), kind, kindColor, d.name, detail }
+            end
+        end
+    end
+
+    if C_LFGList then
+        -- Your own Group Finder listing.
+        if C_LFGList.GetActiveEntryInfo then
+            local ok, entry = pcall(C_LFGList.GetActiveEntryInfo)
+            if ok and Plain(entry) then
+                local name, icon = Activity(entry)
+                local title = type(entry) == "table" and entry.name or nil
+                local okApps, applicants = false, nil
+                if C_LFGList.GetApplicants then okApps, applicants = pcall(C_LFGList.GetApplicants) end
+                local count = okApps and type(applicants) == "table" and not issecretvalue(applicants) and #applicants or nil
+                rows[#rows + 1] = { icon or ICON_LISTING, nil, "Your listing", GREEN,
+                    TitleOr(title, name or "Listed"),
+                    Join({ name, count and count > 0 and (count .. (count == 1 and " applicant" or " applicants")) or nil }) }
+            end
+        end
+        -- Groups you applied to.
+        if C_LFGList.GetApplications and C_LFGList.GetApplicationInfo then
+            local ok, apps = pcall(C_LFGList.GetApplications)
+            if ok and type(apps) == "table" and not issecretvalue(apps) then
+                for _, resultID in ipairs(apps) do
+                    local okInfo, _, status, _, expires = pcall(C_LFGList.GetApplicationInfo, resultID)
+                    status = okInfo and Plain(status) or nil
+                    if status == "applied" or status == "invited" then
+                        local info = SafeResultInfo(resultID)
+                        local name, icon = Activity(info)
+                        local title = info and info.name
+                        local invited = status == "invited"
+                        expires = okInfo and Plain(expires) or nil
+                        rows[#rows + 1] = { icon or ICON_LISTING, nil,
+                            invited and "Invited" or "Signed up", invited and GREEN or GOLD,
+                            TitleOr(title, name or "Group"),
+                            Join({ name, Duration(expires) and ("expires in " .. Duration(expires)) or nil }) }
+                    end
+                end
+            end
+        end
+    end
+
+    -- Battlegrounds, arenas and brawls.
+    if GetMaxBattlefieldID and GetBattlefieldStatus then
+        local okMax, max = pcall(GetMaxBattlefieldID)
+        max = okMax and Plain(max) or nil
+        for i = 1, (type(max) == "number" and max or 0) do
+            local ok, status, mapName = pcall(GetBattlefieldStatus, i)
+            status = ok and Plain(status) or nil
+            if status == "queued" or status == "confirm" then
+                local waited, estimate
+                if GetBattlefieldTimeWaited then
+                    local okW, ms = pcall(GetBattlefieldTimeWaited, i)
+                    ms = okW and Plain(ms)
+                    if type(ms) == "number" then waited = ms / 1000 end
+                end
+                if GetBattlefieldEstimatedWaitTime then
+                    local okE, ms = pcall(GetBattlefieldEstimatedWaitTime, i)
+                    ms = okE and Plain(ms)
+                    if type(ms) == "number" then estimate = ms / 1000 end
+                end
+                local ready = status == "confirm"
+                local bgName = PlainText(ok and mapName)
+                rows[#rows + 1] = { BattlegroundIcon(bgName) or ICON_PVP, ShortWait(waited),
+                    ready and "PvP  ·  Ready" or "PvP", ready and GREEN or GOLD,
+                    bgName or "Battleground",
+                    Join({ Duration(waited) and ("waited " .. Duration(waited)) or nil,
+                        Duration(estimate) and ("est " .. Duration(estimate)) or nil }) }
+            end
+        end
+    end
+end
+
+-- Pinned: the list stays on screen at its saved place while anything is
+-- queued, and hides itself when nothing is. Otherwise it is a hover panel.
+-- Preview: the list with made-up rows, to see it and drag it into place
+-- without being queued. Switched by the button in Options.
+local queuePreview = false
+
+local function Pinned()
+    return queuePreview or Active("queueList")
+end
+
+local function SampleRows()
+    return {
+        { ICON_DUNGEON, "2m", "Dungeon Finder", GOLD, "Murder Row", "waited 2m  ·  est 4m  ·  needs 1 healer" },
+        { ICON_DUNGEON, "2m", "Dungeon Finder", GOLD, "Windrunner Spire", "waited 2m  ·  est 4m  ·  needs 1 healer" },
+        { ICON_KEY, nil, "Signed up", GOLD, "+15 Relaxed", "Altar of Fangs (Mythic Keystone)  ·  expires in 4m" },
+        { ICON_LISTING, nil, "Invited", GREEN, "Weekly key", "Den of Nalorakk (Mythic Keystone)" },
+        { ICON_PVP, "1m", "PvP", GOLD, "Random Battleground", "waited 1m  ·  est 10m" },
+    }
+end
+
+local function HideQueuePanel()
+    queueOwner = nil
+    if queuePanel and not Pinned() then queuePanel:Hide() end
+end
+
+local function QueueRow(i)
+    local row = queuePanel.rows[i]
+    if row then return row end
+    row = CreateFrame("Frame", nil, queuePanel)
+    row:SetHeight(Q_ROW)
+    row:SetPoint("TOPLEFT", queuePanel, "TOPLEFT", 4, -Q_HEADER - 4 - (i - 1) * Q_ROW)
+    row:SetPoint("TOPRIGHT", queuePanel, "TOPRIGHT", -4, -Q_HEADER - 4 - (i - 1) * Q_ROW)
+
+    row.icon = row:CreateTexture(nil, "ARTWORK")
+    row.icon:SetSize(Q_ICON, Q_ICON)
+    row.icon:SetPoint("TOPLEFT", row, "TOPLEFT", 2, -3)
+    row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+    row.badge = row:CreateFontString(nil, "OVERLAY")
+    row.badge:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
+    row.badge:SetPoint("BOTTOMRIGHT", row.icon, "BOTTOMRIGHT", -1, 2)
+    row.badge:SetTextColor(1, 1, 1)
+
+    row.kind = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    row.kind:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 7, 0)
+    row.kind:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+    row.kind:SetJustifyH("LEFT")
+    row.kind:SetWordWrap(false)
+    row.kind:SetShadowOffset(1, -1)
+
+    row.title = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    row.title:SetPoint("TOPLEFT", row.kind, "BOTTOMLEFT", 0, -2)
+    row.title:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+    row.title:SetJustifyH("LEFT")
+    row.title:SetWordWrap(false)
+    row.title:SetShadowOffset(1, -1)
+
+    row.detail = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    row.detail:SetPoint("TOPLEFT", row.title, "BOTTOMLEFT", 0, -2)
+    row.detail:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+    row.detail:SetJustifyH("LEFT")
+    row.detail:SetWordWrap(false)
+
+    queuePanel.rows[i] = row
+    return row
+end
+
+local function FillQueuePanel()
+    local rows = {}
+    CollectQueues(rows)
+    if #rows == 0 and queuePreview then rows = SampleRows() end
+    if #rows == 0 and not eyeTestMode then queuePanel:Hide() return end
+
+    local maxRows = math.floor(tonumber(settings.listRows) or Q_MAX)
+    local shown = math.min(#rows, math.max(1, maxRows))
+    for i = 1, shown do
+        local data, row = rows[i], QueueRow(i)
+        row.icon:SetTexture(data[1])
+        row.badge:SetText(data[2] or "")
+        row.kind:SetText(data[3])
+        row.kind:SetTextColor(data[4][1], data[4][2], data[4][3])
+        row.title:SetText(data[5])
+        row.detail:SetText(data[6] or "")
+        row.detail:SetShown(settings.listDetails ~= false)
+        row:Show()
+    end
+    for i = shown + 1, #queuePanel.rows do queuePanel.rows[i]:Hide() end
+
+    local extra = #rows - shown
+    queuePanel.more:SetShown(extra > 0)
+    if extra > 0 then queuePanel.more:SetFormattedText("and %d more", extra) end
+    queuePanel.empty:SetShown(#rows == 0)
+    queuePanel.count:SetText(#rows > 0 and tostring(#rows) or "")
+
+    local height = Q_HEADER + 8 + math.max(shown, 1) * Q_ROW + (extra > 0 and 14 or 0)
+    if #rows == 0 then height = Q_HEADER + 30 end
+    queuePanel:SetHeight(height)
+    queuePanel:Show()
+end
+
+local function BuildQueuePanel()
+    queuePanel = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    queuePanel:SetFrameStrata("TOOLTIP")
+    queuePanel:SetClampedToScreen(true)
+    queuePanel:SetWidth(Q_WIDTH)
+    queuePanel:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    queuePanel:SetBackdropColor(0.03, 0.03, 0.05, tonumber(settings.listAlpha) or 0.92)
+    queuePanel:SetBackdropBorderColor(0, 0, 0, 0.9)
+    queuePanel:Hide()
+    queuePanel.rows = {}
+
+    local title = queuePanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    title:SetPoint("TOPLEFT", queuePanel, "TOPLEFT", 7, -5)
+    title:SetText("Queued For")
+    queuePanel.count = queuePanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    queuePanel.count:SetPoint("TOPRIGHT", queuePanel, "TOPRIGHT", -7, -5)
+
+    local line = queuePanel:CreateTexture(nil, "ARTWORK")
+    line:SetPoint("TOPLEFT", queuePanel, "TOPLEFT", 4, -Q_HEADER)
+    line:SetPoint("TOPRIGHT", queuePanel, "TOPRIGHT", -4, -Q_HEADER)
+    line:SetHeight(1)
+    line:SetColorTexture(1, 0.82, 0, 0.4)
+
+    queuePanel.empty = queuePanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    queuePanel.empty:SetPoint("TOPLEFT", queuePanel, "TOPLEFT", 8, -Q_HEADER - 8)
+    queuePanel.empty:SetText("Not in any queue.")
+
+    queuePanel.more = queuePanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    queuePanel.more:SetPoint("BOTTOMLEFT", queuePanel, "BOTTOMLEFT", 8, 5)
+
+    -- Drag handle for the pinned list: the header strip. Takes the mouse only
+    -- while pinned, so the hover panel never blocks clicks beneath it.
+    local handle = CreateFrame("Frame", nil, queuePanel)
+    handle:SetPoint("TOPLEFT", queuePanel, "TOPLEFT", 0, 0)
+    handle:SetPoint("TOPRIGHT", queuePanel, "TOPRIGHT", 0, 0)
+    handle:SetHeight(Q_HEADER)
+    handle:RegisterForDrag("LeftButton")
+    handle:EnableMouse(false)
+    handle:SetScript("OnDragStart", function()
+        if not settings.listLocked or queuePreview then queuePanel:StartMoving() end
+    end)
+    handle:SetScript("OnDragStop", function()
+        queuePanel:StopMovingOrSizing()
+        local point, _, relativePoint, x, y = queuePanel:GetPoint(1)
+        settings.queuePoint = { point = point or "TOP", relativePoint = relativePoint or "TOP", x = x or 0, y = y or 0 }
+    end)
+    handle:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Queued For")
+        GameTooltip:AddLine("Drag to move. Hides itself when you are not queued.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    handle:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    queuePanel.handle = handle
+    queuePanel:SetMovable(true)
+
+    -- Times waited tick on: while the mouse stays on the eye, or always when pinned.
+    local sinceFill = 0
+    queuePanel:SetScript("OnUpdate", function(_, elapsed)
+        sinceFill = sinceFill + elapsed
+        if sinceFill < 1 then return end
+        sinceFill = 0
+        if not Pinned() and (not queueOwner or not queueOwner:IsMouseOver()) then HideQueuePanel() return end
+        FillQueuePanel()
+    end)
+end
+
+-- Size, width and opacity from Options. Rows hang off TOPLEFT and TOPRIGHT,
+-- so a new width carries them along; a shorter row hides its details line.
+local function ApplyQueueLook()
+    if not queuePanel then return end
+    queuePanel:SetScale(math.max(0.5, math.min(2, tonumber(settings.listScale) or 1)))
+    queuePanel:SetWidth(math.max(220, math.min(480, tonumber(settings.listWidth) or Q_WIDTH)))
+    local alpha = math.max(0, math.min(1, tonumber(settings.listAlpha) or 0.92))
+    queuePanel:SetBackdropColor(0.03, 0.03, 0.05, alpha)
+    queuePanel:SetBackdropBorderColor(0, 0, 0, math.min(0.9, alpha + 0.1))
+end
+
+-- Puts the panel in pinned or hover form. Pinned: its saved place, under
+-- other windows, header draggable.
+local function PlacePinned()
+    local p = type(settings.queuePoint) == "table" and settings.queuePoint or nil
+    queuePanel:ClearAllPoints()
+    if p then
+        queuePanel:SetPoint(p.point or "TOP", UIParent, p.relativePoint or "TOP", p.x or 0, p.y or 0)
+    else
+        queuePanel:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -240, -220)
+    end
+    queuePanel:SetFrameStrata("MEDIUM")
+    queuePanel.handle:EnableMouse(true)
+end
+
+local function UpdatePinnedList()
+    if not Pinned() then
+        if queuePanel and queuePanel.handle:IsMouseEnabled() then
+            queuePanel.handle:EnableMouse(false)
+            queuePanel:Hide()
+        end
+        return
+    end
+    if not queuePanel then BuildQueuePanel() end
+    ApplyQueueLook()
+    PlacePinned()
+    FillQueuePanel()
+end
+
+-- Queue events come in bursts; one refresh a moment later covers them all.
+local pinnedRefreshQueued = false
+local function RequestPinnedRefresh()
+    if pinnedRefreshQueued or not Pinned() then return end
+    pinnedRefreshQueued = true
+    C_Timer.After(0.3, function()
+        pinnedRefreshQueued = false
+        UpdatePinnedList()
+    end)
+end
+
+local function ShowQueuePanel(button)
+    if not Active("eyeTooltip") or not button then return end
+    -- Pinned, the list is already on screen; refresh it rather than move it.
+    if Pinned() then UpdatePinnedList() return end
+    if not queuePanel then BuildQueuePanel() end
+    queueOwner = button
+    ApplyQueueLook()
+    queuePanel:SetFrameStrata("TOOLTIP")
+    queuePanel.handle:EnableMouse(false)
+
+    -- Beside Blizzard's queue window when it is open, on the side of the
+    -- screen with room.
+    local anchor = (QueueStatusFrame and QueueStatusFrame:IsShown()) and QueueStatusFrame or button
+    local x = button:GetCenter()
+    local onRight = x and (x * button:GetEffectiveScale() / UIParent:GetEffectiveScale()) > UIParent:GetWidth() / 2
+    queuePanel:ClearAllPoints()
+    if onRight then
+        queuePanel:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -4, 0)
+    else
+        queuePanel:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
+    end
+    FillQueuePanel()
+end
+
+local function HookEyeTooltip()
+    if hooked.eyeTip then return end
+    local button = GetQueueEyeButton()
+    if not button then return end
+    hooked.eyeTip = true
+    button:HookScript("OnEnter", ShowQueuePanel)
+    button:HookScript("OnLeave", HideQueuePanel)
+end
+
 -- ── Events ──────────────────────────────────────────────────────────────────
 
 local function Setup()
     HookFinderFrames()
     BuildRoleBar()
+    HookEyeTooltip()
+    RequestPinnedRefresh()
     if Active("movableEye") then
         SetupEyeButton()
         RestoreEyePosition()
@@ -765,13 +1301,18 @@ watcher:SetScript("OnEvent", function(_, event, arg1, arg2)
         C_Timer.After(0.2, AcceptReady)
     elseif event == "LFG_PROPOSAL_SUCCEEDED" or event == "LFG_PROPOSAL_FAILED" then
         announced = false
+        RequestPinnedRefresh()
     elseif event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" then
         Setup()
         if Active("doubleClick") then C_Timer.After(0.1, HookListingButtons) end
     elseif event == "LFG_LIST_APPLICATION_STATUS_UPDATED" then
         OnApplicationStatus(arg1, arg2)
+        RequestPinnedRefresh()
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
         RefreshRoleBar()
+    elseif event == "LFG_UPDATE" or event == "LFG_QUEUE_STATUS_UPDATE" or event == "UPDATE_BATTLEFIELD_STATUS"
+        or event == "LFG_LIST_ACTIVE_ENTRY_UPDATE" or event == "LFG_LIST_APPLICANT_LIST_UPDATED" then
+        RequestPinnedRefresh()
     elseif event == "PLAYER_REGEN_ENABLED" then
         if pendingEyeRestore then
             pendingEyeRestore = false
@@ -785,6 +1326,8 @@ local EVENTS = {
     "LFG_PROPOSAL_SHOW", "LFG_PROPOSAL_SUCCEEDED", "LFG_PROPOSAL_FAILED",
     "LFG_LIST_SEARCH_RESULTS_RECEIVED", "LFG_LIST_APPLICATION_STATUS_UPDATED",
     "PLAYER_SPECIALIZATION_CHANGED", "PLAYER_REGEN_ENABLED",
+    "LFG_UPDATE", "LFG_QUEUE_STATUS_UPDATE", "UPDATE_BATTLEFIELD_STATUS",
+    "LFG_LIST_ACTIVE_ENTRY_UPDATE", "LFG_LIST_APPLICANT_LIST_UPDATED",
 }
 
 -- The stand-alone AutoQueue does all of this too; both at once would answer
@@ -812,6 +1355,9 @@ local function Stop()
     if tutorial then tutorial:Hide() end
     eyeTestMode = false
     UpdateEyeAppearance()
+    queueOwner = nil
+    queuePreview = false
+    if queuePanel then queuePanel:Hide() end
 end
 
 -- ── Slash command ───────────────────────────────────────────────────────────
@@ -881,12 +1427,43 @@ local function BindSettings()
     settings = config
 end
 
+-- The queue list's look, in a window of its own: the main one is full.
+local function ShowListOptions()
+    local API = OxedHub.ModuleAPI
+    if not API or not settings then return end
+    if not listOptionsWindow then
+        local o = API:CreateOptionsWindow("Queue List", 420, 400)
+        local function Refresh() UpdatePinnedList() if queuePanel and queuePanel:IsShown() then ApplyQueueLook() FillQueuePanel() end end
+        o:AddCheckbox(settings, "listLocked", "Lock the list", "Locked, its header no longer drags it. Preview still can.", Refresh)
+        o:AddCheckbox(settings, "listDetails", "Show the details line", "Time waited, estimate, who is missing, expiry.", Refresh)
+        o:AddSlider(settings, "listScale", "Size", 0.6, 1.8, 0.05, "%s: %.2fx", Refresh)
+        o:AddSlider(settings, "listAlpha", "Background opacity", 0, 1, 0.05, "%s: %.2f", Refresh)
+        o:AddSlider(settings, "listWidth", "Width", 220, 480, 10, "%s: %d", Refresh)
+        o:AddSlider(settings, "listRows", "Rows shown", 3, 12, 1, "%s: %d", Refresh)
+
+        local reset = CreateFrame("Button", nil, o, "UIPanelButtonTemplate")
+        reset:SetSize(160, 24)
+        reset:SetPoint("TOPLEFT", o, "TOPLEFT", 18, o.cursorY)
+        reset:SetText("Reset Position")
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(reset) end
+        reset:SetScript("OnClick", function()
+            settings.queuePoint = nil
+            Refresh()
+            print(PREFIX .. "queue list moved back to its starting place.")
+        end)
+        o.cursorY = o.cursorY - 34
+        o:AddNote("Press Preview List in Auto Queue's options to see changes without being queued.")
+        listOptionsWindow = o
+    end
+    listOptionsWindow:Show()
+end
+
 local function ShowOptions()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("Auto Queue", 450, 680)
+        optionsWindow = API:CreateOptionsWindow("Auto Queue", 450, 690)
         local w = optionsWindow
         w:AddCheckbox(settings, "roleCheck", "Answer role checks",
             "Dungeon Finder role checks are accepted at once with your queue roles.")
@@ -920,6 +1497,10 @@ local function ShowOptions()
             "Locks the LFG Eye in place to prevent accidental dragging.", function()
                 UpdateEyeAppearance()
             end)
+        w:AddCheckbox(settings, "eyeTooltip", "List my queues when hovering the eye",
+            "Names every dungeon, raid wing, Group Finder group and PvP queue you are in, with time waited.", HideQueuePanel)
+        w:AddCheckbox(settings, "queueList", "Keep the queue list on screen",
+            "While you are queued the list stays up; drag its header to move it. It hides when you are not queued.", UpdatePinnedList)
         w:AddSlider(settings, "eyeScale", "LFG Eye scale", 0.5, 2.5, 0.1, "%s: %.1fx", function()
             UpdateEyeAppearance()
         end)
@@ -930,7 +1511,7 @@ local function ShowOptions()
         eyeBtnRow:SetPoint("TOPLEFT", w, "TOPLEFT", 18, w.cursorY)
 
         local testEyeBtn = CreateFrame("Button", nil, eyeBtnRow, "UIPanelButtonTemplate")
-        testEyeBtn:SetSize(130, 24)
+        testEyeBtn:SetSize(120, 24)
         testEyeBtn:SetPoint("LEFT", eyeBtnRow, "LEFT", 0, 0)
         testEyeBtn:SetText("Test / Drag Eye")
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
@@ -941,7 +1522,7 @@ local function ShowOptions()
         end)
 
         local resetEyeBtn = CreateFrame("Button", nil, eyeBtnRow, "UIPanelButtonTemplate")
-        resetEyeBtn:SetSize(130, 24)
+        resetEyeBtn:SetSize(120, 24)
         resetEyeBtn:SetPoint("LEFT", testEyeBtn, "RIGHT", 10, 0)
         resetEyeBtn:SetText("Reset Position")
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
@@ -958,10 +1539,45 @@ local function ShowOptions()
             print(PREFIX .. "LFG Eye position reset to default.")
         end)
 
+        w.cursorY = w.cursorY - 32
+
+        -- The queue list: preview it (sample rows, drag the header) and put it back.
+        local listRow = CreateFrame("Frame", nil, w)
+        listRow:SetSize(400, 28)
+        listRow:SetPoint("TOPLEFT", w, "TOPLEFT", 18, w.cursorY)
+
+        local previewBtn = CreateFrame("Button", nil, listRow, "UIPanelButtonTemplate")
+        previewBtn:SetSize(120, 24)
+        previewBtn:SetPoint("LEFT", listRow, "LEFT", 0, 0)
+        previewBtn:SetText("Preview List")
+        local resetListBtn = CreateFrame("Button", nil, listRow, "UIPanelButtonTemplate")
+        resetListBtn:SetSize(120, 24)
+        resetListBtn:SetPoint("LEFT", previewBtn, "RIGHT", 10, 0)
+        resetListBtn:SetText("List Settings")
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
+            OxedHub.UI:ApplyRedButtonStyle(previewBtn)
+            OxedHub.UI:ApplyRedButtonStyle(resetListBtn)
+        end
+        previewBtn:SetScript("OnClick", function(self)
+            queuePreview = not queuePreview
+            self:SetText(queuePreview and "Stop Preview" or "Preview List")
+            UpdatePinnedList()
+            if not queuePreview and queuePanel and not Active("queueList") then queuePanel:Hide() end
+        end)
+        previewBtn:SetScript("OnHide", function(self)
+            -- Closing Options ends the preview.
+            if queuePreview then
+                queuePreview = false
+                self:SetText("Preview List")
+                UpdatePinnedList()
+                if queuePanel and not Active("queueList") then queuePanel:Hide() end
+            end
+        end)
+        resetListBtn:SetScript("OnClick", function() ShowListOptions() end)
+
         w.cursorY = w.cursorY - 36
 
-        w:AddNote("Roles are saved per character. /aq shows status; /aq eye (or /eye) toggles preview.")
-        w:AddNote("With Premade Groups Filter installed, it signs you up and keeps your note itself; those two options here then step aside.")
+        w:AddNote("Roles are saved per character. /aq shows status, /eye toggles the preview. With Premade Groups Filter loaded, sign-up and note keeping are left to it.")
     end
     optionsWindow:Show()
 end
@@ -982,12 +1598,12 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "autoqueue",
         name     = "Auto Queue",
-        version  = "1.2.0",
-        updated  = 20261013.9,
+        version  = "1.3.0",
+        updated  = 20261020.1,  -- hovering the eye lists your queues
         author   = "Oxed",
         category = "groups",
         keywords = { "queue", "lfg", "group finder", "role check", "ready check", "dungeon", "apply", "sign up", "eye", "movable eye" },
-        desc     = "Accepts role checks, signs up in Group Finder, movable & customizable LFG eye, rings when ready.",
+        desc     = "Answers role checks, signs up in Group Finder, movable LFG eye that lists your queues.",
         icon     = "Interface\\Icons\\INV_Misc_GroupNeedMore",
 
         defaults = DEFAULTS,

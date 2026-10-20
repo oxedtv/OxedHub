@@ -133,7 +133,8 @@ local lastFired = 0             -- when the trigger last announced a lust
 -- next successful one look like a fresh lust, which is what played the sound
 -- again -- several times per cast. The buff is only treated as gone once it has
 -- been missing for a run of reads.
-local CLEAR_AFTER_MISSES = 8    -- 8 x 0.25s = two seconds of nothing
+local POLL_EVERY = 1.0
+local CLEAR_AFTER_MISSES = 8    -- empty reads in a row (polls and aura events) before the buff counts as gone
 
 -- No source of lust can land again this soon, so anything inside the window is
 -- the same one being seen twice. A last line of defence behind the miss count.
@@ -204,7 +205,10 @@ end
 -- is throttled or the aura appears between updates.
 local function StartPolling()
     if pollTicker then return end
-    pollTicker = C_Timer.NewTicker(0.25, CheckLust)
+    -- Once a second: UNIT_AURA still arrives in combat and calls CheckLust at
+    -- once, so this only catches the rare change it misses. At four a second it
+    -- was 2 MB of aura tables in half an hour of fighting.
+    pollTicker = C_Timer.NewTicker(POLL_EVERY, CheckLust)
 end
 
 local function StopPolling()
