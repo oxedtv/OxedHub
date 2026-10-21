@@ -26,6 +26,24 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.20",
+        important = true,
+        lines = {
+            { "NEW", "Auto Queue: on the pinned list, the X on a row leaves that queue or cancels that application. Group Finder rows show the leader, the run's playstyle (Relaxed, Competitive...), the leader's score and 3/5 members; hover one for the full listing with its note." },
+            { "NEW", "MythicLooter Run Tracker: every boss's target marked on the bar with your current section lit, and an optional big \"still needed\" number on screen in your own colours (Options, Look)." },
+            { "NEW", "MythicLooter Run Tracker: targets from your very first key. Each boss gets an estimate until a timed run gives the dungeon real numbers; later timed runs are averaged in instead of replacing them. 2 decimals if you like." },
+            { "NEW", "Durability module: your gear's durability on screen (lowest item or average, green to red, pulsing red below your warning line), every slot and the repair cost in its tooltip, and a chat reminder on entering a dungeon, raid, arena or delve, after death and in cities. /dura" },
+            { "NEW", "Chat Filter ignore list: ignoring someone asks for a reason, also through the game's own Ignore and /ignore, which now join the account-wide list too." },
+            { "NEW", "Chat Filter: Recent Players tab (/oxfilter). Everyone you grouped with or played a battleground or arena against in the last 7 days, with where. Click one to ignore, report or whisper them, even if they never said a word." },
+            { "NEW", "Chat Filter: right-click a name in chat for \"Report this message\" and \"Ignore + report\". The report carries the message itself; the game's chat menu has no Report at all." },
+            { "NEW", "Chat Filter ignore list: a warning with your reason when an ignored player whispers you, talks in your group, joins it, leads a group you sign up to or invites you, or applies to your listing." },
+            { "CHANGED", "Prey Hunt is now a module (Modules > Prey Hunt) instead of a trigger. If you used the trigger, its settings and sounds are moved over and the module is switched on for you; the old trigger is switched off and can be deleted." },
+            { "FIXED", "Bloodlust and buff (cooldown) sounds no longer play late, after the pull or on leaving a dungeon. A buff the game hid during the fight is taken in silently when it shows up later." },
+            { "FIXED", "MythicLooter Run Tracker: the enemy forces bar was drawn empty." },
+            { "FIXED", "Holiday decorations (pumpkins, cobwebs, the dated line) disappeared after the calendar was opened from the window and closed again." },
+        },
+    },
+    {
         version = "2.4.19",
         important = true,
         lines = {

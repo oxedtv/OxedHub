@@ -333,6 +333,15 @@ local function EvaluateSelfAuraTriggers(initial)
                     -- gained. Fire unless the trigger is in "lost only" mode.
                     selfAuraPresent[id] = true
                     local fireOnGained = c.onBoth or not c.onLost
+                    -- ⚠ Seen only now, but applied a while ago: it was hidden
+                    -- in combat (aura data is secret in instances), and this is
+                    -- the end-of-fight re-check finding it. Taken in silently,
+                    -- or every cooldown buff played at the end of the pull.
+                    local Core = OxedHub.Core
+                    if fireOnGained and Core and Core.IsStaleAura and Core:IsStaleAura(matchedSid) then
+                        fireOnGained = false
+                        if OxedHub.debug then print("|cff00ffff[OxedHub-Debug]|r SELF_AURA seen late, not fired:", trigger.name or id) end
+                    end
                     if OxedHub.debug then print("|cff00ffff[OxedHub-Debug]|r SELF_AURA GAINED:", trigger.name or id, "spell", tostring(matchedSid), "fire:", tostring(fireOnGained)) end
                     if fireOnGained and Triggers:CheckZoneRestrictions(trigger.zones) then
                         selfAuraEventData.spellID = matchedSid

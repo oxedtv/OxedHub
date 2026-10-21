@@ -2,7 +2,7 @@ local addonName, OxedHub = ...
 
 -- Configuration and Constants
 OxedHub.CONFIG = {
-    VERSION = "2.4.19",
+    VERSION = "2.4.20",
     DB_VERSION = 1,
 
     -- Shown in the Export/Import "About" panel. Edit freely.
@@ -54,7 +54,7 @@ OxedHub.CONFIG = {
         { value = "PARTY_INVITE_REQUEST", label = "Party Invite", desc = "When you receive a party invite", category = "basic" },
         { value = "PARTY_LEADER_CHANGED", label = "Leader Changed", desc = "When the party leader changes", category = "basic" },
         { value = "HEARTBEAT", label = "Heartbeat", desc = "Plays a heartbeat sound that speeds up as your health drops below a threshold", category = "basic" },
-        { value = "PREY_HUNT", label = "Prey Hunt", desc = "Track Prey Hunts, Astalor gossip achievement markers, stage alerts, and HUD bar", category = "basic" },
+        { value = "PREY_HUNT", label = "Prey Hunt (moved to Modules)", desc = "Prey Hunt is now a module: Modules > Prey Hunt. Its bar, widget, gossip marks and sounds are set there.", category = "basic" },
 
         -- Combat Triggers
         { value = "COMBAT_STATE", label = "Enter/Exit Combat", desc = "When you enter or leave combat", category = "combat" },

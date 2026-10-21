@@ -1769,6 +1769,38 @@ local auraLostEventData = { isLost = true }
 -- One aura, compared with the record the cache holds under the same key.
 -- Writes the record into `into` and fires the rule event for a new aura,
 -- more stacks or a refresh. Returns the key used.
+-- Seconds since an aura was applied, or nil when the game will not say (no
+-- duration, or its times are secret in combat).
+-- ⚠ Tells a new aura from one that was hidden. In combat inside an instance
+-- aura data is secret, so a buff that landed mid-fight is first seen after
+-- the fight or the loading screen, and calling that sighting "gained" played
+-- its sound late: Bloodlust after leaving the dungeon, cooldown buffs at the
+-- end of every pull. An aura older than STALE_AURA when first seen is taken
+-- in silently. nil (cannot tell) still fires, so mid-combat sightings work.
+local STALE_AURA = 4
+Core.STALE_AURA = STALE_AURA
+
+local function AuraAgeOf(aura)
+    if type(aura) ~= "table" then return nil end
+    if canaccesstable and not canaccesstable(aura) then return nil end
+    local exp, dur = aura.expirationTime, aura.duration
+    if CheckSecretValue(exp) or CheckSecretValue(dur) then return nil end
+    if type(exp) ~= "number" or type(dur) ~= "number" or dur <= 0 or exp <= 0 then return nil end
+    return GetTime() - (exp - dur)
+end
+
+local function PlayerAuraAge(spellID)
+    if not (C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID) then return nil end
+    return AuraAgeOf(C_UnitAuras.GetPlayerAuraBySpellID(spellID))
+end
+
+-- true when the aura on the player is known to be older than STALE_AURA.
+function Core:IsStaleAura(spellID, limit)
+    if spellID == nil then return false end
+    local ok, age = pcall(PlayerAuraAge, spellID)
+    return ok and type(age) == "number" and age > (limit or STALE_AURA) or false
+end
+
 local function ApplyAura(aura, prefix, into, auraCache, spellCache)
     local name = aura.name
     local spellId = aura.spellId
@@ -1890,7 +1922,9 @@ local function ApplyAura(aura, prefix, into, auraCache, spellCache)
         table.insert(auraBuffer_FoodNew, name)
     end
 
-    if (isNewAura or isStackIncrease or isRefreshed) and Core:HasEnabledTrigger("UNIT_AURA") then
+    -- First seen long after it landed: it was hidden, not gained (see STALE_AURA).
+    local hiddenGain = isNewAura and (AuraAgeOf(aura) or 0) > STALE_AURA
+    if ((isNewAura and not hiddenGain) or isStackIncrease or isRefreshed) and Core:HasEnabledTrigger("UNIT_AURA") then
         if OxedHub.debug then
             if isNewAura then
                 print(string.format("|cff00ffff[OxedHub-Debug]|r Aura Gained: %s (ID: %s)", tostring(name), tostring(finalId)))

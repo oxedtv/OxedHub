@@ -42,6 +42,14 @@ local DEFAULTS = {
     locked       = false,
     scale        = 1,
     point = "TOP", x = 0, y = -180,
+    estimateTargets = true, -- even shares per boss until the dungeon has targets of its own
+    decimals     = 1,       -- 1 or 2 places in every percentage
+    showTicks    = true,    -- every boss's target on the bar, and the current section lit
+    bigNumber    = false,   -- a large "still needed" number of its own on screen
+    bigSize      = 28,
+    bigLocked    = false,
+    bigPoint = "TOP", bigX = 0, bigY = -110,
+    -- colorProgress, colorDone, colorMissing are tables, built in Bind.
     -- "targets" and "manual" are tables, built in Bind.
 }
 
@@ -88,7 +96,14 @@ local function InKey()
     return ok and Bool(active) == true
 end
 
-local function Pct(v) return ("%.1f%%"):format(v or 0) end
+local function Pct(v)
+    return ((cfg and cfg.decimals == 2) and "%.2f%%" or "%.1f%%"):format(v or 0)
+end
+
+local function Hex(c)
+    if type(c) ~= "table" then return "ffffff" end
+    return ("%02x%02x%02x"):format(math.floor((c[1] or 1) * 255), math.floor((c[2] or 1) * 255), math.floor((c[3] or 1) * 255))
+end
 
 -- ── The run ─────────────────────────────────────────────────────────────────
 
@@ -102,9 +117,11 @@ local run = {
     readyFor = {},        -- boss index -> said already
     pulledAt = {},        -- boss index -> forces when it was pulled
     doneSaid = false,
+    inEncounter = false,  -- a boss is engaged right now
 }
 
-local Paint   -- draws the panel; defined with it
+local Paint      -- draws the panel; defined with it
+local PaintBig   -- the large number; defined with it
 
 -- The forces and the bosses, from the scenario. Keeps the last good numbers
 -- when the scenario answers with secrets.
@@ -155,12 +172,33 @@ end
 
 -- What the player wants before pulling boss i: their own number, or 100% for
 -- the last boss. nil when there is none.
+-- Second value: true when the number is only an estimate. Until a dungeon has
+-- targets of its own (a timed run, or set by hand) each boss gets an even
+-- share, so the panel has something to aim at from the first key.
 local function TargetFor(i)
     local list = run.mapID and cfg.targets[run.mapID]
     local t = list and tonumber(list[i])
-    if t and t > 0 then return t end
-    if i == #run.bosses then return 100 end
+    if t and t > 0 then return t, false end
+    local n = #run.bosses
+    if i == n then return 100, false end
+    if cfg.estimateTargets and n > 1 and i < n then
+        return math.floor(100 * i / n + 0.5), true
+    end
     return nil
+end
+
+-- The section being worked on: from the last target before the next boss to
+-- that boss's own. from, to, index, isEstimate; nil once every boss is done.
+local function Section()
+    local i = NextBoss()
+    if not i then return nil end
+    local to, est = TargetFor(i)
+    local from = 0
+    for k = i - 1, 1, -1 do
+        local t = TargetFor(k)
+        if t then from = t break end
+    end
+    return from, to, i, est
 end
 
 -- ── Alerts ──────────────────────────────────────────────────────────────────
@@ -186,11 +224,12 @@ local function CheckReady()
         return
     end
     local i, boss = NextBoss()
-    local target = i and TargetFor(i)
+    local target, est
+    if i then target, est = TargetFor(i) end
     if not target or run.readyFor[i] or run.pct < target then return end
     run.readyFor[i] = true
     if i == #run.bosses then return end   -- the last boss wants 100%, said above
-    local line = ("forces ready for %s: %s (target %s)"):format(boss.name, Pct(run.pct), Pct(target))
+    local line = ("forces ready for %s: %s (%s %s)"):format(boss.name, Pct(run.pct), est and "estimate" or "target", Pct(target))
     if cfg.readyAlert then Say("|cff40ff40" .. line .. "|r", cfg.readySound) end
     TellParty(("Forces ready for %s: %s"):format(boss.name, Pct(run.pct)))
 end
@@ -201,8 +240,8 @@ local function OnBossPull()
     local i, boss = NextBoss()
     if not i or not run.pct then return end
     run.pulledAt[i] = run.pct
-    local target = TargetFor(i)
-    if cfg.lowPullAlert and target and run.pct + 0.05 < target then
+    local target, est = TargetFor(i)
+    if cfg.lowPullAlert and target and not est and run.pct + 0.05 < target then
         Say(("|cffff9933%s pulled at %s, the target was %s.|r"):format(boss.name, Pct(run.pct), Pct(target)),
             cfg.lowPullSound)
     end
@@ -219,17 +258,26 @@ local function LearnFromRun()
     end
     if not info or Bool(info.onTime) ~= true then return end
 
+    -- Averaged with the targets learnt before, so one odd route does not
+    -- throw away what several timed runs agreed on.
+    local old = cfg.targets[run.mapID]
     local list = {}
-    local any = false
+    local any, blended = false, false
     for i, value in pairs(run.pulledAt) do
         if i < #run.bosses then
+            local before = type(old) == "table" and tonumber(old[i]) or nil
+            if before and before > 0 then
+                value = (before + value) / 2
+                blended = true
+            end
             list[i] = math.floor(value * 10 + 0.5) / 10
             any = true
         end
     end
     if not any then return end
     cfg.targets[run.mapID] = list
-    print(PREFIX .. ("this timed run's boss numbers are now your targets for %s."):format(run.name or "this dungeon"))
+    print(PREFIX .. (blended and "this timed run is averaged into your targets for %s."
+        or "this timed run's boss numbers are now your targets for %s."):format(run.name or "this dungeon"))
 end
 
 -- ── Role marks ──────────────────────────────────────────────────────────────
@@ -401,7 +449,9 @@ local function BuildPanel()
     bar:SetPoint("TOPLEFT", p, "TOPLEFT", 2, -HEADER_H - 5)
     bar:SetPoint("TOPRIGHT", p, "TOPRIGHT", -2, -HEADER_H - 5)
     bar:SetHeight(14)
-    bar:SetStatusBarTexture("Interface\TargetingFrame\UI-StatusBar")
+    -- ⚠ Two backslashes each: with one, Lua dropped them and the bar pointed
+    -- at a texture that does not exist, drawing nothing.
+    bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     bar:SetMinMaxValues(0, 100)
     bar:EnableMouse(false)
     local bg = bar:CreateTexture(nil, "BACKGROUND")
@@ -411,6 +461,12 @@ local function BuildPanel()
     bar.mark = bar:CreateTexture(nil, "OVERLAY")
     bar.mark:SetSize(2, 18)
     bar.mark:SetColorTexture(1, 1, 1, 0.9)
+    -- The section being worked on, lit across the bar, and a thin mark at
+    -- every other boss's target.
+    bar.section = bar:CreateTexture(nil, "ARTWORK", nil, 2)
+    bar.section:SetColorTexture(1, 1, 1, 0.14)
+    bar.section:Hide()
+    bar.ticks = {}
     bar.count = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     bar.count:SetPoint("CENTER")
     bar.count:SetShadowOffset(1, -1)
@@ -453,6 +509,78 @@ end
 
 local bossLines = {}
 
+-- ── The big number ──────────────────────────────────────────────────────────
+-- Optional, on its own: how much the current section still wants, large, with
+-- the boss under it. In-progress, done and missing colours from Options.
+local big
+local function BuildBig()
+    if big then return big end
+    local b = CreateFrame("Frame", "OxedHubRunSection", UIParent)
+    b:SetSize(200, 50)
+    b:SetClampedToScreen(true)
+    b:SetMovable(true)
+    b:SetFrameStrata("MEDIUM")
+    b:RegisterForDrag("LeftButton")
+    b:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    b:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local point, _, _, x, y = self:GetPoint(1)
+        if point then cfg.bigPoint, cfg.bigX, cfg.bigY = point, x, y end
+    end)
+    b.value = b:CreateFontString(nil, "OVERLAY")
+    b.value:SetPoint("TOP", b, "TOP", 0, 0)
+    b.value:SetShadowOffset(1, -1)
+    b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    b.label:SetPoint("TOP", b.value, "BOTTOM", 0, -2)
+    b.label:SetShadowOffset(1, -1)
+    b:ClearAllPoints()
+    b:SetPoint(cfg.bigPoint or "TOP", UIParent, cfg.bigPoint or "TOP", cfg.bigX or 0, cfg.bigY or -110)
+    b:Hide()
+    big = b
+    return b
+end
+
+PaintBig = function()
+    local show = cfg and cfg.enabled and cfg.bigNumber and LooterOn() and (run.active or run.preview)
+    if not show then
+        if big then big:Hide() end
+        return
+    end
+    local b = BuildBig()
+    b:SetScale(tonumber(cfg.scale) or 1)
+    -- Takes the mouse only while it may be dragged, so a locked number never
+    -- stands in the way of a click.
+    b:EnableMouse(not cfg.bigLocked)
+    b.value:SetFont(STANDARD_TEXT_FONT, math.max(14, math.min(48, tonumber(cfg.bigSize) or 28)), "OUTLINE")
+
+    local pct = run.pct
+    local from, to, i, est = Section()
+    local c = cfg.colorProgress
+    local value, label
+    if pct and pct >= 100 then
+        c, value, label = cfg.colorDone, "100%", "Enemy forces done"
+    elseif to and pct then
+        local boss = run.bosses[i]
+        if pct >= to then
+            c, value = cfg.colorDone, "Ready"
+        else
+            if run.inEncounter then c = cfg.colorMissing end
+            value = "+" .. Pct(to - pct)
+        end
+        label = (boss and boss.name or "next boss") .. (est and "  (est.)" or "")
+    elseif pct then
+        value, label = Pct(pct), run.name or "Enemy forces"
+    else
+        value, label = "--", run.name or "Enemy forces"
+    end
+    b.value:SetText(value)
+    b.value:SetTextColor(c[1] or 1, c[2] or 1, c[3] or 1)
+    b.label:SetText(label or "")
+    b:SetWidth(math.max(120, b.value:GetStringWidth() + 20, b.label:GetStringWidth() + 20))
+    b:SetHeight(b.value:GetStringHeight() + b.label:GetStringHeight() + 6)
+    b:Show()
+end
+
 Paint = function()
     local show = cfg and cfg.enabled and LooterOn() and (run.active or run.preview)
     if not show then
@@ -473,33 +601,74 @@ Paint = function()
     end
 
     local i, boss = NextBoss()
-    local target = i and TargetFor(i)
-    local r, g, b = 0.2, 0.8, 0.3
+    local target, est
+    if i then target, est = TargetFor(i) end
+    local done, missing, progress = cfg.colorDone, cfg.colorMissing, cfg.colorProgress
+    local c = progress
     local needText
+    local estTag = est and " |cff9d9d9dest.|r" or ""
     if pct and pct >= 100 then
-        needText = "|cff40ff40Enemy forces done|r"
+        c = done
+        needText = ("|cff%sEnemy forces done|r"):format(Hex(done))
     elseif target and pct then
         if pct >= target then
-            needText = ("|cff40ff40Ready for %s|r  (target %s)"):format(boss.name, Pct(target))
+            c = done
+            needText = ("|cff%sReady for %s|r  (%s%s)"):format(Hex(done), boss.name, Pct(target), estTag)
         else
             local short = target - pct
-            r, g, b = (short <= 5) and 1 or 0.9, (short <= 5) and 0.6 or 0.3, 0.2
-            needText = ("Need |cffffd100+%s|r before %s"):format(Pct(short), boss.name)
+            if run.inEncounter then c = missing end
+            needText = ("Need |cffffd100+%s|r before %s%s"):format(Pct(short), boss.name, estTag)
         end
     elseif boss then
         needText = ("Next: %s  |cff9d9d9d(no target set)|r"):format(boss.name)
     else
         needText = ""
     end
-    p.bar:SetStatusBarColor(r, g, b, 0.95)
+    p.bar:SetStatusBarColor(c[1] or 1, c[2] or 1, c[3] or 1, 0.95)
 
+    local width = p.bar:GetWidth()
     if target and target < 100 then
         p.bar.mark:ClearAllPoints()
-        p.bar.mark:SetPoint("CENTER", p.bar, "LEFT", p.bar:GetWidth() * target / 100, 0)
+        p.bar.mark:SetPoint("CENTER", p.bar, "LEFT", width * target / 100, 0)
         p.bar.mark:Show()
     else
         p.bar.mark:Hide()
     end
+
+    -- Every other boss's target, and the current section lit.
+    local used = 0
+    if cfg.showTicks and width > 0 then
+        local from, to = Section()
+        if from and to and to > from then
+            p.bar.section:ClearAllPoints()
+            p.bar.section:SetPoint("TOPLEFT", p.bar, "TOPLEFT", width * from / 100, 0)
+            p.bar.section:SetPoint("BOTTOMLEFT", p.bar, "BOTTOMLEFT", width * from / 100, 0)
+            p.bar.section:SetWidth(math.max(1, width * (to - from) / 100))
+            p.bar.section:Show()
+        else
+            p.bar.section:Hide()
+        end
+        for k = 1, #run.bosses - 1 do
+            local t, tEst = TargetFor(k)
+            if t and k ~= i then
+                used = used + 1
+                local tick = p.bar.ticks[used]
+                if not tick then
+                    tick = p.bar:CreateTexture(nil, "OVERLAY")
+                    tick:SetSize(1, 14)
+                    p.bar.ticks[used] = tick
+                end
+                local a = run.bosses[k].done and 0.35 or (tEst and 0.5 or 0.8)
+                tick:SetColorTexture(1, 0.82, 0, a)
+                tick:ClearAllPoints()
+                tick:SetPoint("CENTER", p.bar, "LEFT", width * t / 100, 0)
+                tick:Show()
+            end
+        end
+    else
+        p.bar.section:Hide()
+    end
+    for k = used + 1, #p.bar.ticks do p.bar.ticks[k]:Hide() end
 
     -- The pull in progress, or the one just finished.
     if cfg.showPull then
@@ -516,13 +685,17 @@ Paint = function()
     if cfg.showBosses and #run.bosses > 0 then
         wipe(bossLines)
         for index, item in ipairs(run.bosses) do
-            local t = TargetFor(index)
-            local mark = item.done and "|cff40ff40done|r" or (index == i and "|cffffd100next|r" or "|cff9d9d9d--|r")
+            local t, tEst = TargetFor(index)
+            local mark = item.done and "|TInterface\\RAIDFRAME\\ReadyCheck-Ready:12|t"
+                or (index == i and "|cffffd100>|r" or "|cff9d9d9d·|r")
             local extra = ""
-            if run.pulledAt[index] then
-                extra = ("  |cff9d9d9dpulled at %s|r"):format(Pct(run.pulledAt[index]))
+            local at = run.pulledAt[index]
+            if at then
+                -- Pulled short of a real target shows in the missing colour.
+                local short = t and not tEst and at + 0.05 < t
+                extra = ("  |cff%spulled at %s|r"):format(short and Hex(cfg.colorMissing) or "9d9d9d", Pct(at))
             elseif t and not item.done then
-                extra = ("  |cff9d9d9dtarget %s|r"):format(Pct(t))
+                extra = ("  |cff9d9d9d%s %s|r"):format(tEst and "est." or "target", Pct(t))
             end
             bossLines[#bossLines + 1] = ("%s  %s%s"):format(mark, item.name, extra)
         end
@@ -534,13 +707,14 @@ Paint = function()
     end
     p:SetHeight(height)
     p:Show()
+    PaintBig()
 end
 
 -- ── Keeping up with the run ─────────────────────────────────────────────────
 
 local watcher = CreateFrame("Frame")
 local RUN_EVENTS = {
-    "SCENARIO_CRITERIA_UPDATE", "ENCOUNTER_START", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
+    "SCENARIO_CRITERIA_UPDATE", "ENCOUNTER_START", "ENCOUNTER_END", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
     "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED",
 }
 
@@ -571,6 +745,7 @@ local function ResetRun()
     run.cur, run.total, run.pct = nil, nil, nil
     run.pullFrom, run.pullShown = nil, nil
     run.doneSaid = false
+    run.inEncounter = false
 end
 
 local function BeginRun()
@@ -599,8 +774,12 @@ watcher:SetScript("OnEvent", function(_, event, arg1)
     if event == "SCENARIO_CRITERIA_UPDATE" then
         QueueUpdate()
     elseif event == "ENCOUNTER_START" then
+        run.inEncounter = true
         OnBossPull()
         Paint()
+    elseif event == "ENCOUNTER_END" then
+        run.inEncounter = false
+        QueueUpdate()
     elseif event == "PLAYER_REGEN_DISABLED" then
         ReadState()
         run.pullFrom, run.pullShown = run.pct, nil
@@ -696,12 +875,38 @@ function RT:Preview()
         run.bosses = {
             { name = "First Boss", done = true },
             { name = "Second Boss", done = false },
+            { name = "Third Boss", done = false },
             { name = "Last Boss", done = false },
         }
         run.pulledAt[1] = 34.2
         run.mapID = nil
     end
     Paint()
+end
+
+-- The panel's look and the big number, in a window of their own: the main one is full.
+local lookWindow
+function RT:ShowLook()
+    local API = OxedHub.ModuleAPI
+    if not (API and cfg) then return end
+    if not lookWindow then
+        local o = API:CreateOptionsWindow("Run Tracker: Look", 460, 560)
+        o:AddCheckbox(cfg, "bigNumber", "Big \"still needed\" number",
+            "The current section's remaining percentage, large, with the boss under it. Drag it while unlocked.", Paint)
+        o:AddCheckbox(cfg, "bigLocked", "Lock the big number", "Locked, it lets clicks through.", Paint)
+        o:AddSlider(cfg, "bigSize", "Big number size", 14, 48, 1, "%s: %d", Paint)
+        o:AddCheckbox(cfg, "showTicks", "Every boss's target on the bar",
+            "A thin mark at each target and the section you are on lit.", Paint)
+        o:AddCheckbox(cfg, "estimateTargets", "Estimate targets until a dungeon has its own",
+            "Even shares per boss, marked est., until a timed run or your own numbers replace them. Estimates never warn about a short pull.", Paint)
+        o:AddChoice(cfg, "decimals", "Decimals", { { value = 1, text = "12.3%" }, { value = 2, text = "12.34%" } }, Paint)
+        o:AddColour(cfg, "colorProgress", "In progress", Paint)
+        o:AddColour(cfg, "colorDone", "Ready / done", Paint)
+        o:AddColour(cfg, "colorMissing", "Short at a boss pull", Paint)
+        o:AddNote("Preview the panel in the main options to see changes outside a key.")
+        lookWindow = o
+    end
+    lookWindow:Show()
 end
 
 function RT:ShowOptions()
@@ -731,19 +936,19 @@ function RT:ShowOptions()
         o:AddChoice(cfg, "healerMark", "Healer mark", MARKS)
 
         local preview = CreateFrame("Button", nil, o, "UIPanelButtonTemplate")
-        preview:SetSize(140, 22)
+        preview:SetSize(110, 22)
         preview:SetPoint("TOPLEFT", o, "TOPLEFT", 20, o.cursorY - 4)
         preview:SetText("Preview the panel")
         preview:SetScript("OnClick", function() RT:Preview() end)
 
         local targets = CreateFrame("Button", nil, o, "UIPanelButtonTemplate")
-        targets:SetSize(150, 22)
+        targets:SetSize(120, 22)
         targets:SetPoint("LEFT", preview, "RIGHT", 8, 0)
         targets:SetText("This key's targets")
         targets:SetScript("OnClick", function() RT:ShowTargets() end)
 
         local forget = CreateFrame("Button", nil, o, "UIPanelButtonTemplate")
-        forget:SetSize(120, 22)
+        forget:SetSize(110, 22)
         forget:SetPoint("LEFT", targets, "RIGHT", 8, 0)
         forget:SetText("Forget targets")
         forget:SetScript("OnClick", function()
@@ -753,6 +958,12 @@ function RT:ShowOptions()
                 Paint()
             end)
         end)
+        local look = CreateFrame("Button", nil, o, "UIPanelButtonTemplate")
+        look:SetSize(100, 22)
+        look:SetPoint("LEFT", forget, "RIGHT", 8, 0)
+        look:SetText("Look")
+        look:SetScript("OnClick", function() RT:ShowLook() end)
+
         o.cursorY = o.cursorY - 32
         o:AddNote("Targets are yours: a timed run's numbers, or what you set in a key. The last boss always wants 100%.")
         optionsWindow = o
@@ -781,6 +992,9 @@ local function Bind()
     -- Built here rather than in DEFAULTS: a table there is shared by reference.
     if type(config.targets) ~= "table" then config.targets = {} end
     if type(config.manual) ~= "table" then config.manual = {} end
+    if type(config.colorProgress) ~= "table" then config.colorProgress = { 1, 1, 1 } end
+    if type(config.colorDone) ~= "table" then config.colorDone = { 0.25, 1, 0.25 } end
+    if type(config.colorMissing) ~= "table" then config.colorMissing = { 1, 0.3, 0.25 } end
     cfg = config
 end
 

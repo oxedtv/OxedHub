@@ -782,6 +782,12 @@ local ICON_LISTING = "Interface\\Icons\\INV_Misc_GroupLooking"
 local ICON_KEY     = "Interface\\Icons\\INV_Relics_Hourglass"
 local ICON_PVP     = "Interface\\Icons\\Achievement_BG_winWSG"
 local GOLD, GREEN, RED = { 1, 0.82, 0 }, { 0.3, 1, 0.3 }, { 1, 0.4, 0.4 }
+local ROLE_TANK_ICON   = CreateAtlasMarkup and CreateAtlasMarkup("roleicon-tiny-tank", 12, 12) or "T"
+local ROLE_HEALER_ICON = CreateAtlasMarkup and CreateAtlasMarkup("roleicon-tiny-healer", 12, 12) or "H"
+local ROLE_DPS_ICON    = CreateAtlasMarkup and CreateAtlasMarkup("roleicon-tiny-dps", 12, 12) or "D"
+-- A listing's kind of run, as the Group Finder offers it.
+local PLAYSTYLES = { [1] = "Learning", [2] = "Relaxed", [3] = "Competitive", [4] = "Carry offered" }
+local OLD_PLAYSTYLES = { [1] = "Standard", [2] = "Casual", [3] = "Hardcore" }
 
 local queuePanel, queueOwner
 
@@ -919,12 +925,14 @@ local function CollectQueues(rows)
                 estimate = Plain(stats[17])
                 if type(estimate) ~= "number" or estimate <= 0 then estimate = Plain(stats[13]) end
                 if Plain(stats[2]) == true then
+                    -- Role icons and counts: "needs 2 tank, 5 healer, 17 DPS"
+                    -- ran off the end of a Raid Finder row.
                     local missing = {}
                     local tank, healer, dps = Plain(stats[4]), Plain(stats[5]), Plain(stats[6])
-                    if type(tank) == "number" and tank > 0 then missing[#missing + 1] = tank .. " tank" end
-                    if type(healer) == "number" and healer > 0 then missing[#missing + 1] = healer .. " healer" end
-                    if type(dps) == "number" and dps > 0 then missing[#missing + 1] = dps .. " DPS" end
-                    if #missing > 0 then need = "needs " .. table.concat(missing, ", ") end
+                    if type(tank) == "number" and tank > 0 then missing[#missing + 1] = ROLE_TANK_ICON .. tank end
+                    if type(healer) == "number" and healer > 0 then missing[#missing + 1] = ROLE_HEALER_ICON .. healer end
+                    if type(dps) == "number" and dps > 0 then missing[#missing + 1] = ROLE_DPS_ICON .. dps end
+                    if #missing > 0 then need = "needs " .. table.concat(missing, " ") end
                 end
             end
             local detail = Join({
@@ -942,7 +950,7 @@ local function CollectQueues(rows)
                 if ok and type(returned) == "table" then list = returned end
                 for id in pairs(list) do
                     local name, texture = DungeonInfo(id)
-                    if name then dungeons[#dungeons + 1] = { name = name, texture = texture } end
+                    if name then dungeons[#dungeons + 1] = { name = name, texture = texture, id = id } end
                 end
             end
             if #dungeons == 0 then
@@ -951,7 +959,8 @@ local function CollectQueues(rows)
             end
             table.sort(dungeons, function(a, b) return a.name < b.name end)
             for _, d in ipairs(dungeons) do
-                rows[#rows + 1] = { d.texture or ICON_DUNGEON, ShortWait(waited), kind, kindColor, d.name, detail }
+                rows[#rows + 1] = { d.texture or ICON_DUNGEON, ShortWait(waited), kind, kindColor, d.name, detail,
+                    { category = category, dungeonID = d.id } }
             end
         end
     end
@@ -984,10 +993,27 @@ local function CollectQueues(rows)
                         local title = info and info.name
                         local invited = status == "invited"
                         expires = okInfo and Plain(expires) or nil
+                        -- The kind of key run, the leader's rating and how full
+                        -- the group is. A field the game keeps secret is left out;
+                        -- the leader's name, secret or not, goes to SetText as is.
+                        local style = info and (PLAYSTYLES[Plain(info.generalPlaystyle) or 0]
+                            or OLD_PLAYSTYLES[Plain(info.playstyle) or 0])
+                        local score = info and Plain(info.leaderOverallDungeonScore)
+                        local members = info and Plain(info.numMembers)
+                        -- No "or" on it: testing a secret is the error.
+                        local leaderName = info and info.leaderName
+                        local short = name and name:gsub(" %(Mythic Keystone%)$", "") or nil
                         rows[#rows + 1] = { icon or ICON_LISTING, nil,
-                            invited and "Invited" or "Signed up", invited and GREEN or GOLD,
+                            (invited and "Invited" or "Signed up") .. (style and ("  ·  " .. style) or ""),
+                            invited and GREEN or GOLD,
                             TitleOr(title, name or "Group"),
-                            Join({ name, Duration(expires) and ("expires in " .. Duration(expires)) or nil }) }
+                            Join({ short,
+                                type(score) == "number" and score > 0 and ("score " .. math.floor(score)) or nil,
+                                type(members) == "number" and members > 0 and (members .. "/5") or nil,
+                                Duration(expires) and ("ends " .. Duration(expires)) or nil }),
+                            { resultID = resultID },
+                            leaderName,
+                            resultID }
                     end
                 end
             end
@@ -1037,10 +1063,10 @@ end
 
 local function SampleRows()
     return {
-        { ICON_DUNGEON, "2m", "Dungeon Finder", GOLD, "Murder Row", "waited 2m  ·  est 4m  ·  needs 1 healer" },
-        { ICON_DUNGEON, "2m", "Dungeon Finder", GOLD, "Windrunner Spire", "waited 2m  ·  est 4m  ·  needs 1 healer" },
-        { ICON_KEY, nil, "Signed up", GOLD, "+15 Relaxed", "Altar of Fangs (Mythic Keystone)  ·  expires in 4m" },
-        { ICON_LISTING, nil, "Invited", GREEN, "Weekly key", "Den of Nalorakk (Mythic Keystone)" },
+        { ICON_DUNGEON, "2m", "Dungeon Finder", GOLD, "Murder Row", "waited 2m  ·  est 4m  ·  needs " .. ROLE_HEALER_ICON .. "1", {} },
+        { ICON_DUNGEON, "2m", "Dungeon Finder", GOLD, "Windrunner Spire", "waited 2m  ·  est 4m  ·  needs " .. ROLE_HEALER_ICON .. "1", {} },
+        { ICON_KEY, nil, "Signed up  ·  Relaxed", GOLD, "+15 Relaxed", "Altar of Fangs  ·  score 2450  ·  3/5  ·  ends 4m", {}, "Oxed" },
+        { ICON_LISTING, nil, "Invited  ·  Competitive", GREEN, "Weekly key", "Den of Nalorakk  ·  score 3100  ·  4/5", {}, "Riyadh" },
         { ICON_PVP, "1m", "PvP", GOLD, "Random Battleground", "waited 1m  ·  est 10m" },
     }
 end
@@ -1070,14 +1096,58 @@ local function QueueRow(i)
 
     row.kind = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     row.kind:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 7, 0)
-    row.kind:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+    row.kind:SetPoint("RIGHT", row, "RIGHT", -20, 0)
     row.kind:SetJustifyH("LEFT")
     row.kind:SetWordWrap(false)
     row.kind:SetShadowOffset(1, -1)
 
+    -- Leave this queue: shown on the pinned list, where the mouse can reach it.
+    row.leave = CreateFrame("Button", nil, row)
+    row.leave:SetSize(14, 14)
+    row.leave:SetPoint("TOPRIGHT", row, "TOPRIGHT", -2, -3)
+    row.leave:SetNormalTexture("Interface\\Buttons\\UI-StopButton")
+    row.leave:SetHighlightTexture("Interface\\Buttons\\UI-StopButton", "ADD")
+    row.leave:SetScript("OnClick", function(self)
+        if self.data and queuePanel.onLeave then queuePanel.onLeave(self.data) end
+    end)
+    row.leave:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(self.data and self.data.resultID and "Cancel this application" or "Leave this queue")
+        GameTooltip:Show()
+    end)
+    row.leave:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row.leave:Hide()
+
+    -- The group's leader, at the right end of the name line.
+    row.leader = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    row.leader:SetPoint("TOPRIGHT", row, "TOPRIGHT", -4, -18)
+    row.leader:SetJustifyH("RIGHT")
+    row.leader:SetWordWrap(false)
+    row.leader:SetTextColor(0.85, 0.85, 0.85)
+    row.crown = row:CreateTexture(nil, "OVERLAY")
+    row.crown:SetSize(12, 12)
+    row.crown:SetPoint("RIGHT", row.leader, "LEFT", -2, 0)
+    if not pcall(row.crown.SetAtlas, row.crown, "groupfinder-icon-leader") then
+        row.crown:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon")
+    end
+    row.crown:Hide()
+
+    -- Hovering a Group Finder row shows the game's own listing tooltip:
+    -- note, leader, members, playstyle, voice chat.
+    row:SetScript("OnEnter", function(self)
+        if not self.resultID then return end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        if LFGListUtil_SetSearchEntryTooltip then
+            pcall(LFGListUtil_SetSearchEntryTooltip, GameTooltip, self.resultID)
+        end
+        GameTooltip:Show()
+    end)
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row:EnableMouse(false)
+
     row.title = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     row.title:SetPoint("TOPLEFT", row.kind, "BOTTOMLEFT", 0, -2)
-    row.title:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+    row.title:SetPoint("RIGHT", row.crown, "LEFT", -6, 0)
     row.title:SetJustifyH("LEFT")
     row.title:SetWordWrap(false)
     row.title:SetShadowOffset(1, -1)
@@ -1109,6 +1179,15 @@ local function FillQueuePanel()
         row.title:SetText(data[5])
         row.detail:SetText(data[6] or "")
         row.detail:SetShown(settings.listDetails ~= false)
+        local pinned = Pinned()
+        row.leave.data = data[7]
+        row.leave:SetShown(pinned and data[7] ~= nil)
+        local leader = data[8]
+        local hasLeader = issecretvalue(leader) or (type(leader) == "string" and leader ~= "")
+        if hasLeader then row.leader:SetText(leader) else row.leader:SetText("") end
+        row.crown:SetShown(hasLeader)
+        row.resultID = data[9]
+        row:EnableMouse(pinned and data[9] ~= nil)
         row:Show()
     end
     for i = shown + 1, #queuePanel.rows do queuePanel.rows[i]:Hide() end
@@ -1180,6 +1259,25 @@ local function BuildQueuePanel()
     handle:SetScript("OnLeave", function() GameTooltip:Hide() end)
     queuePanel.handle = handle
     queuePanel:SetMovable(true)
+
+    -- The row's X. Leaving needs no protected call: LeaveSingleLFG / LeaveLFG
+    -- for the finder queues, CancelApplication for a Group Finder sign-up,
+    -- both from the player's own click.
+    queuePanel.onLeave = function(leave)
+        if leave.resultID then
+            if C_LFGList and C_LFGList.CancelApplication then pcall(C_LFGList.CancelApplication, leave.resultID) end
+        elseif leave.category then
+            if leave.dungeonID and LeaveSingleLFG then
+                pcall(LeaveSingleLFG, leave.category, leave.dungeonID)
+            elseif LeaveLFG then
+                pcall(LeaveLFG, leave.category)
+            end
+        end
+        GameTooltip:Hide()
+        C_Timer.After(0.5, function()
+            if queuePanel:IsShown() then FillQueuePanel() end
+        end)
+    end
 
     -- Times waited tick on: while the mouse stays on the eye, or always when pinned.
     local sinceFill = 0
@@ -1598,8 +1696,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "autoqueue",
         name     = "Auto Queue",
-        version  = "1.3.0",
-        updated  = 20261020.1,  -- hovering the eye lists your queues
+        version  = "1.3.1",
+        updated  = 20261021.6,  -- leave queues, leader and playstyle on rows
         author   = "Oxed",
         category = "groups",
         keywords = { "queue", "lfg", "group finder", "role check", "ready check", "dungeon", "apply", "sign up", "eye", "movable eye" },

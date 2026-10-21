@@ -42,6 +42,11 @@ local DEFAULTS = {
     declineGuild    = true,   -- decline guild invites
     declineTrade    = true,   -- decline trade requests
     warnGroup       = true,   -- warn when an ignored player is in your group
+    warnTalk        = true,   -- warn when an ignored player whispers you or talks in your group
+    warnLFG         = true,   -- warn when a Group Finder leader or applicant is ignored
+    askReason       = true,   -- ask for a reason whenever someone is ignored
+    trackRecent     = true,   -- remember who you grouped or played a match with
+    recentDays      = 7,      -- and for how long
     lfgHighlight    = true,   -- color leaders red in LFG and show notes in tooltip
     syncBlizzard    = true,   -- sync top 50 ignores to Blizzard native ignore list
 }
@@ -59,7 +64,18 @@ local LOG_LIMIT = 250        -- blocked lines kept for this session
 local EXPIRY_STEPS = { 0, 1, 7, 30, 90 }   -- days; 0 means never
 
 -- Forward declarations
-local RefreshManager, OpenManager, SetIgnored, SyncToBlizzard
+local RefreshManager, OpenManager, SetIgnored, SyncToBlizzard, HookBlizzardIgnore
+
+-- Set while OxedHub itself adds to or removes from Blizzard's ignore list
+-- (the 50-slot sync), so the hook on that list can tell those calls from the
+-- player ignoring someone through the game's own menus.
+local ourIgnoreCall = false
+local function OurIgnoreCall(fn, ...)
+    ourIgnoreCall = true
+    local ok = pcall(fn, ...)
+    ourIgnoreCall = false
+    return ok
+end
 
 -- ── Names ───────────────────────────────────────────────────────────────────
 
@@ -95,6 +111,8 @@ local function EnsureData()
     settings.realms  = type(settings.realms) == "table" and settings.realms or {}
     settings.npcs    = type(settings.npcs) == "table" and settings.npcs or {}
     settings.filters = type(settings.filters) == "table" and settings.filters or {}
+    -- name -> { seen, where, class, guid, count }: who you played with lately.
+    settings.recent  = type(settings.recent) == "table" and settings.recent or {}
 end
 
 local function PruneExpired()
@@ -104,7 +122,7 @@ local function PruneExpired()
             settings.players[key] = nil
             removed = removed + 1
             if settings.syncBlizzard and C_FriendList and C_FriendList.DelIgnore then
-                pcall(C_FriendList.DelIgnore, key)
+                OurIgnoreCall(C_FriendList.DelIgnore, key)
             end
         end
     end
@@ -132,7 +150,7 @@ function SetIgnored(full, on, note, days)
         print(PREFIX .. ("now ignoring %s."):format(full))
         if settings.syncBlizzard and C_FriendList and C_FriendList.AddIgnore then
             inBlizzardSync = true
-            pcall(C_FriendList.AddIgnore, full)
+            OurIgnoreCall(C_FriendList.AddIgnore, full)
             C_Timer.After(1, function() inBlizzardSync = false end)
         end
     else
@@ -140,11 +158,243 @@ function SetIgnored(full, on, note, days)
         print(PREFIX .. ("no longer ignoring %s."):format(full))
         if settings.syncBlizzard and C_FriendList and C_FriendList.DelIgnore then
             inBlizzardSync = true
-            pcall(C_FriendList.DelIgnore, full)
+            OurIgnoreCall(C_FriendList.DelIgnore, full)
             C_Timer.After(1, function() inBlizzardSync = false end)
         end
     end
     if RefreshManager then RefreshManager() end
+end
+
+-- ── Reason for an ignore ────────────────────────────────────────────────────
+-- Asked right after the ignore, which has already happened: Skip leaves the
+-- player ignored with no note. The box is Blizzard's own popup, which takes
+-- the keyboard on purpose and lets it go when closed.
+
+local function ReasonEditBox(dialog)
+    return dialog and (dialog.EditBox or dialog.editBox)
+end
+
+local function AskReason(full)
+    if not (settings and settings.askReason and full and settings.players[full]) then return end
+    if not StaticPopupDialogs.OXEDHUB_IGNORE_REASON then
+        StaticPopupDialogs.OXEDHUB_IGNORE_REASON = {
+            text = "Ignoring |cffffd100%s|r.\nWhy? (shown whenever they turn up again)",
+            button1 = "Save",
+            button2 = "Skip",
+            hasEditBox = true,
+            maxLetters = 120,
+            OnShow = function(dialog, data)
+                local box = ReasonEditBox(dialog)
+                local entry = data and settings.players[data]
+                if box then box:SetText(type(entry) == "table" and entry.note or "") end
+            end,
+            OnAccept = function(dialog, data)
+                local box = ReasonEditBox(dialog)
+                local entry = data and settings.players[data]
+                if box and type(entry) == "table" then
+                    local text = box:GetText() or ""
+                    text = text:match("^%s*(.-)%s*$")
+                    entry.note = text ~= "" and text or nil
+                    if RefreshManager then RefreshManager() end
+                end
+            end,
+            EditBoxOnEnterPressed = function(box)
+                local dialog = box:GetParent()
+                local which = dialog and dialog.which
+                local info = which and StaticPopupDialogs[which]
+                if info and info.OnAccept then info.OnAccept(dialog, dialog.data) end
+                dialog:Hide()
+            end,
+            EditBoxOnEscapePressed = function(box) box:GetParent():Hide() end,
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+            preferredIndex = 3,
+        }
+    end
+    StaticPopup_Show("OXEDHUB_IGNORE_REASON", full, nil, full)
+end
+
+-- ── Warnings ────────────────────────────────────────────────────────────────
+-- One line per player and situation every two minutes, with the reason, and a
+-- raid warning on screen for the ones that matter right now.
+
+local lastWarned = {}
+local WARN_GAP = 120
+
+local function NoteFor(full)
+    local entry = full and settings.players[full]
+    local note = type(entry) == "table" and entry.note or nil
+    if note then return note end
+    local realm = full and full:match("%-(.+)$")
+    if realm and settings.realms[realm:lower()] then return "ignored realm" end
+    return nil
+end
+
+local function WarnIgnored(full, what, loud)
+    if not full then return end
+    local key = full .. "|" .. what
+    local now = GetTime()
+    if lastWarned[key] and now - lastWarned[key] < WARN_GAP then return end
+    lastWarned[key] = now
+    local note = NoteFor(full)
+    local line = ("%s %s%s"):format(full, what, note and (". Reason: " .. note) or "")
+    print(PREFIX .. "|cffff5555Ignored:|r " .. line)
+    if loud then
+        if RaidNotice_AddMessage and RaidWarningFrame and ChatTypeInfo then
+            pcall(RaidNotice_AddMessage, RaidWarningFrame, "Ignored: " .. line, ChatTypeInfo.RAID_WARNING)
+        end
+        if PlaySound and SOUNDKIT and SOUNDKIT.RAID_WARNING then pcall(PlaySound, SOUNDKIT.RAID_WARNING, "Master") end
+    end
+end
+
+-- ── Reporting ───────────────────────────────────────────────────────────────
+-- Blizzard's own report window, opened for a player. From a chat line (its
+-- lineID) the report carries the message itself; otherwise the player's GUID
+-- stands in. The window asks for the reason; opening it is no protected
+-- action, so an addon may do it.
+
+local function OpenReport(full, guid, lineID)
+    if not (ReportFrame and ReportFrame.InitiateReport and ReportInfo and ReportInfo.CreateReportInfoFromType
+        and PlayerLocation and Enum and Enum.ReportType) then
+        print(PREFIX .. "the game's report window is not available here.")
+        return false
+    end
+    local location, kind
+    if lineID ~= nil and not SecretValue(lineID) and PlayerLocation.CreateFromChatLineID then
+        local ok, loc = pcall(PlayerLocation.CreateFromChatLineID, PlayerLocation, lineID)
+        if ok and loc then location, kind = loc, Enum.ReportType.Chat end
+    end
+    if not location and type(guid) == "string" and not SecretValue(guid) and PlayerLocation.CreateFromGUID then
+        local ok, loc = pcall(PlayerLocation.CreateFromGUID, PlayerLocation, guid)
+        if ok and loc then location, kind = loc, Enum.ReportType.InWorld end
+    end
+    if not location then
+        print(PREFIX .. ("cannot report %s from here: the game gave no way to point at them. Report them from a chat line or while they are near."):format(full or "this player"))
+        return false
+    end
+    local okInfo, info = pcall(ReportInfo.CreateReportInfoFromType, ReportInfo, kind)
+    if not okInfo or not info then return false end
+    return (pcall(ReportFrame.InitiateReport, ReportFrame, info, full, location))
+end
+
+-- ── Who you played with ─────────────────────────────────────────────────────
+-- Everyone in your party or raid, and everyone on a battleground or arena
+-- scoreboard, is noted with where it was. The point: the player who ruined a
+-- key or threw a match without a word cannot be ignored from a chat line, and
+-- once the group breaks up they are gone. Here they stay for recentDays.
+-- Account-wide, like the ignore list. A name the game keeps secret is skipped.
+
+local RECENT_CAP = 400
+
+local function PlainValue(value)
+    if value == nil or SecretValue(value) then return nil end
+    return value
+end
+
+local function WhereNow()
+    local okInfo, name, kind, _, difficultyName = pcall(GetInstanceInfo)
+    name, kind, difficultyName = okInfo and PlainValue(name), okInfo and PlainValue(kind), okInfo and PlainValue(difficultyName)
+    if kind == nil or kind == "none" then
+        local zone = GetRealZoneText and PlainValue(GetRealZoneText())
+        return "Group" .. (type(zone) == "string" and zone ~= "" and (", " .. zone) or "")
+    end
+    if C_ChallengeMode and C_ChallengeMode.GetActiveKeystoneInfo then
+        local okKey, level = pcall(C_ChallengeMode.GetActiveKeystoneInfo)
+        level = okKey and PlainValue(level)
+        if type(level) == "number" and level > 0 then return ("%s +%d"):format(name or "Mythic+", level) end
+    end
+    if type(difficultyName) == "string" and difficultyName ~= "" and kind ~= "pvp" and kind ~= "arena" then
+        return ("%s (%s)"):format(name or "Instance", difficultyName)
+    end
+    return name or "Instance"
+end
+
+local function Remember(full, where, class, guid)
+    if not (full and settings.trackRecent) then return end
+    local me = UnitName("player")
+    if not SecretValue(me) and ShortName(full) == me then return end
+    local entry = settings.recent[full]
+    local now = time()
+    if type(entry) ~= "table" then
+        entry = { count = 0 }
+        settings.recent[full] = entry
+    end
+    -- One sighting per place per hour counts once.
+    if entry.where ~= where or now - (entry.seen or 0) > 3600 then entry.count = (entry.count or 0) + 1 end
+    entry.seen, entry.where = now, where
+    if class then entry.class = class end
+    if guid then entry.guid = guid end
+end
+
+local function RememberUnit(unit, where)
+    local okName, name, realm = pcall(UnitName, unit)
+    if not okName then return end
+    local full = FullName(name, realm)
+    if not full then return end
+    local okGuid, guid = pcall(UnitGUID, unit)
+    guid = okGuid and PlainValue(guid)
+    local okClass, _, class = pcall(UnitClass, unit)
+    class = okClass and PlainValue(class)
+    Remember(full, where, type(class) == "string" and class or nil, type(guid) == "string" and guid or nil)
+end
+
+local function RememberGroup()
+    if not (settings and settings.trackRecent) then return end
+    local count = GetNumGroupMembers and GetNumGroupMembers() or 0
+    if count == 0 then return end
+    local where = WhereNow()
+    if IsInRaid() then
+        for i = 1, count do RememberUnit("raid" .. i, where) end
+    else
+        for i = 1, count - 1 do RememberUnit("party" .. i, where) end
+    end
+end
+
+-- Battleground and arena scoreboards name both teams, including the half you
+-- never stood near. Their GUIDs are secret, so those rows report from chat or
+-- in person only.
+local function RememberScoreboard()
+    if not (settings and settings.trackRecent and C_PvP and C_PvP.GetScoreInfo and GetNumBattlefieldScores) then return end
+    local okCount, count = pcall(GetNumBattlefieldScores)
+    count = okCount and PlainValue(count)
+    if type(count) ~= "number" or count == 0 then return end
+    local where = WhereNow()
+    for i = 1, count do
+        local ok, info = pcall(C_PvP.GetScoreInfo, i)
+        if ok and type(info) == "table" and not SecretValue(info) then
+            local full = FullName(info.name)
+            local class = PlainValue(info.classToken)
+            Remember(full, where, type(class) == "string" and class or nil, nil)
+        end
+    end
+end
+
+local function PruneRecent()
+    if type(settings.recent) ~= "table" then return end
+    local cutoff = time() - math.max(1, tonumber(settings.recentDays) or 7) * 86400
+    local list = {}
+    for full, entry in pairs(settings.recent) do
+        if type(entry) ~= "table" or (entry.seen or 0) < cutoff then
+            settings.recent[full] = nil
+        else
+            list[#list + 1] = full
+        end
+    end
+    if #list > RECENT_CAP then
+        table.sort(list, function(a, b) return (settings.recent[a].seen or 0) > (settings.recent[b].seen or 0) end)
+        for i = RECENT_CAP + 1, #list do settings.recent[list[i]] = nil end
+    end
+end
+
+local groupScanQueued = false
+local function QueueGroupScan()
+    if groupScanQueued then return end
+    groupScanQueued = true
+    C_Timer.After(2, function()
+        groupScanQueued = false
+        RememberGroup()
+    end)
 end
 
 -- ── Blizzard 50-slot Native Ignore Sync ─────────────────────────────────────
@@ -181,7 +431,7 @@ function SyncToBlizzard(silent)
     for i = 1, math.min(#list, maxSlots) do
         local name = list[i].name
         if not blizzIgnores[name] and currentCount < maxSlots then
-            pcall(C_FriendList.AddIgnore, name)
+            OurIgnoreCall(C_FriendList.AddIgnore, name)
             currentCount = currentCount + 1
             syncedCount = syncedCount + 1
         end
@@ -554,14 +804,18 @@ local function CheckGroup()
         local full = name and FullName(name, realm)
         if full and IsIgnoredPlayer(full) and not warnedInGroup[full] then
             warnedInGroup[full] = true
-            local entry = settings.players[full]
-            local note = type(entry) == "table" and entry.note
-            print(PREFIX .. ("|cffff5555%s is in your group|r and on your ignore list%s.")
-                :format(full, note and (" (" .. note .. ")") or ""))
-            if PlaySound and SOUNDKIT then PlaySound(SOUNDKIT.RAID_WARNING) end
+            WarnIgnored(full, "is in your group", true)
         end
     end
 end
+
+-- Lines from the people you talk to and play with: an ignored one is warned
+-- about (the line itself is hidden by the filter as before).
+local TALK_EVENTS = {
+    CHAT_MSG_WHISPER = true, CHAT_MSG_PARTY = true, CHAT_MSG_PARTY_LEADER = true,
+    CHAT_MSG_RAID = true, CHAT_MSG_RAID_LEADER = true,
+    CHAT_MSG_INSTANCE_CHAT = true, CHAT_MSG_INSTANCE_CHAT_LEADER = true,
+}
 
 local social = CreateFrame("Frame")
 social:SetScript("OnEvent", function(_, event, name, ...)
@@ -595,14 +849,59 @@ social:SetScript("OnEvent", function(_, event, name, ...)
             StaticPopup_Hide("TRADE")
             LogBlocked("Declined trade", full, "Trade request", event)
         end
-    elseif event == "GROUP_ROSTER_UPDATE" then
-        CheckGroup()
+    elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
+        if event == "GROUP_ROSTER_UPDATE" then CheckGroup() end
+        QueueGroupScan()
+    elseif event == "UPDATE_BATTLEFIELD_SCORE" then
+        RememberScoreboard()
+    elseif TALK_EVENTS[event] and settings.warnTalk then
+        -- name here is the line's text; the author comes next. Either can be
+        -- a secret: FullName gives nil for one, and nothing is warned.
+        local author = ...
+        local full = FullName(author)
+        if full and IsIgnoredPlayer(full) then
+            WarnIgnored(full, event == "CHAT_MSG_WHISPER" and "whispered you" or "is talking in your group")
+        end
+    elseif event == "LFG_LIST_APPLICATION_STATUS_UPDATED" and settings.warnLFG then
+        -- name here is the search result id, the status comes next.
+        local status = ...
+        if status ~= "applied" and status ~= "invited" then return end
+        local ok, info = pcall(C_LFGList.GetSearchResultInfo, name)
+        if not ok or type(info) ~= "table" or SecretValue(info) then return end
+        local full = FullName(info.leaderName)
+        if full and IsIgnoredPlayer(full) then
+            if status == "invited" then
+                WarnIgnored(full, "leads the group that just invited you", true)
+            else
+                WarnIgnored(full, "leads a group you signed up to", true)
+            end
+        end
+    elseif event == "LFG_LIST_APPLICANT_LIST_UPDATED" and settings.warnLFG then
+        -- Someone applying to your own listing, or anyone in their group.
+        if not (C_LFGList.GetApplicants and C_LFGList.GetApplicantInfo and C_LFGList.GetApplicantMemberInfo) then return end
+        local ok, applicants = pcall(C_LFGList.GetApplicants)
+        if not ok or type(applicants) ~= "table" or SecretValue(applicants) then return end
+        for _, applicantID in ipairs(applicants) do
+            local okInfo, info = pcall(C_LFGList.GetApplicantInfo, applicantID)
+            local members = okInfo and type(info) == "table" and not SecretValue(info) and info.numMembers or 0
+            if SecretValue(members) or type(members) ~= "number" then members = 0 end
+            for i = 1, members do
+                local okMember, memberName = pcall(C_LFGList.GetApplicantMemberInfo, applicantID, i)
+                local full = okMember and FullName(memberName)
+                if full and IsIgnoredPlayer(full) then
+                    WarnIgnored(full, "applied to your group", true)
+                end
+            end
+        end
     end
 end)
 
 local SOCIAL_EVENTS = {
     "DUEL_REQUESTED", "PARTY_INVITE_REQUEST", "GUILD_INVITE_REQUEST",
-    "TRADE_REQUEST", "GROUP_ROSTER_UPDATE",
+    "TRADE_REQUEST", "GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD", "UPDATE_BATTLEFIELD_SCORE",
+    "CHAT_MSG_WHISPER", "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_RAID",
+    "CHAT_MSG_RAID_LEADER", "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER",
+    "LFG_LIST_APPLICATION_STATUS_UPDATED", "LFG_LIST_APPLICANT_LIST_UPDATED",
 }
 
 local function SetSocialEvents(on)
@@ -724,7 +1023,24 @@ local function InstallMenus()
             root:CreateDivider()
             root:CreateButton(ignored and "Unignore (OxedHub)" or "Ignore (OxedHub)", function()
                 SetIgnored(full, not ignored)
+                if not ignored then AskReason(full) end
             end)
+            -- A name clicked in chat brings the line it came from. The game's
+            -- own chat menu has no Report at all; this one sends the message
+            -- along with the name. Unit menus already have Blizzard's Report.
+            local lineID = type(contextData) == "table" and not SecretValue(contextData) and contextData.lineID or nil
+            if lineID ~= nil and not SecretValue(lineID) then
+                root:CreateButton("Report this message", function()
+                    OpenReport(full, nil, lineID)
+                end)
+                if not ignored then
+                    root:CreateButton("Ignore + report", function()
+                        SetIgnored(full, true)
+                        AskReason(full)
+                        OpenReport(full, nil, lineID)
+                    end)
+                end
+            end
         end)
     end
 end
@@ -1130,12 +1446,119 @@ local function DrawBlockedTab()
     manager.count:SetText(("%d blocked this session"):format(#blockedLog))
 end
 
+-- ── Tab: Recent ─────────────────────────────────────────────────────────────
+
+local function TimeAgo(t)
+    local d = time() - (t or 0)
+    if d < 3600 then return ("%dm ago"):format(math.max(1, math.floor(d / 60))) end
+    if d < 86400 then return ("%dh ago"):format(math.floor(d / 3600)) end
+    return ("%dd ago"):format(math.floor(d / 86400))
+end
+
+local function ClassColour(class)
+    local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+    return c and c.colorStr or "ffffffff"
+end
+
+local function Whisper(full)
+    if ChatFrameUtil and ChatFrameUtil.SendTell then
+        pcall(ChatFrameUtil.SendTell, full)
+    elseif ChatFrame_SendTell then
+        pcall(ChatFrame_SendTell, full)
+    end
+end
+
+local function RecentMenu(owner, full, entry)
+    local ignored = settings.players[full] ~= nil
+    local function Ignore()
+        if ignored then
+            SetIgnored(full, false)
+        else
+            SetIgnored(full, true, entry.where and ("Played together: " .. entry.where) or nil)
+            AskReason(full)
+        end
+    end
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then
+        Ignore()
+        return
+    end
+    MenuUtil.CreateContextMenu(owner, function(_, root)
+        root:CreateTitle(full)
+        root:CreateButton(ignored and "Unignore" or "Ignore...", Ignore)
+        root:CreateButton(entry.guid and "Report" or "Report (needs them near or a chat line)", function()
+            OpenReport(full, entry.guid, nil)
+        end)
+        root:CreateButton("Whisper", function() Whisper(full) end)
+        root:CreateButton("Forget", function()
+            settings.recent[full] = nil
+            RefreshManager()
+        end)
+    end)
+end
+
+local function DrawRecentTab()
+    PruneRecent()
+    local filterText = manager.searchBox and manager.searchBox:GetText():lower():gsub("^%s+", ""):gsub("%s+$", "") or ""
+    local list = {}
+    for full, entry in pairs(settings.recent) do
+        local where = entry.where or ""
+        if filterText == "" or full:lower():find(filterText, 1, true) or where:lower():find(filterText, 1, true) then
+            list[#list + 1] = full
+        end
+    end
+    table.sort(list, function(a, b) return (settings.recent[a].seen or 0) > (settings.recent[b].seen or 0) end)
+
+    local items = {}
+    for _, full in ipairs(list) do
+        local entry = settings.recent[full]
+        local ignored = IsIgnoredPlayer(full)
+        local note = ignored and NoteFor(full)
+        items[#items + 1] = {
+            left = ("|c%s%s|r  |cff9d9d9d%s|r%s"):format(ClassColour(entry.class), full, entry.where or "",
+                ignored and "  |cffff5555ignored|r" or ""),
+            right = TimeAgo(entry.seen),
+            tooltipTitle = full,
+            tooltip = ("|cffffd100Where:|r %s\n|cffffd100Last seen:|r %s\n|cffffd100Times:|r %d%s\n\n|cff00ff00Click: ignore, report or whisper.|r")
+                :format(entry.where or "?", date("%Y-%m-%d %H:%M", entry.seen or 0), entry.count or 1,
+                    note and ("\n|cffff5555Ignored:|r " .. note) or ""),
+            onClick = function(row) RecentMenu(row, full, entry) end,
+            onDelete = function()
+                settings.recent[full] = nil
+                RefreshManager()
+            end,
+        }
+    end
+    if #items == 0 then
+        items[1] = { left = settings.trackRecent and "|cff9d9d9dNobody yet. Everyone you group with or play a match against shows up here.|r"
+            or "|cff9d9d9dSwitched off in the Chat Filter options.|r" }
+    end
+    DrawRows(items)
+    manager.count:SetText(("%d players, last %d days"):format(#list, tonumber(settings.recentDays) or 7))
+end
+
+local function BuildRecentPanel(parent)
+    local panel = CreateFrame("Frame", nil, parent)
+    panel:SetAllPoints()
+    local clear = MakeButton(panel, "Clear list", 90, function()
+        wipe(settings.recent)
+        RefreshManager()
+    end)
+    clear:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
+    local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hint:SetPoint("LEFT", clear, "RIGHT", 10, 0)
+    hint:SetPoint("RIGHT", panel, "RIGHT", 0, 0)
+    hint:SetJustifyH("LEFT")
+    hint:SetText("Your group, dungeon, key, raid, battleground and arena players. Click one to ignore, report or whisper them, even if they never said a word.")
+    return panel
+end
+
 -- ── Building the Manager Window ─────────────────────────────────────────────
 
 local TABS = {
     { key = "ignore",  label = "Ignore List" },
     { key = "filters", label = "Spam Filters" },
     { key = "blocked", label = "Blocked History" },
+    { key = "recent",  label = "Recent Players" },
 }
 
 function RefreshManager()
@@ -1146,12 +1569,15 @@ function RefreshManager()
     manager.ignorePanel:SetShown(manager.tab == "ignore")
     manager.filterPanel:SetShown(manager.tab == "filters")
     manager.blockedPanel:SetShown(manager.tab == "blocked")
+    manager.recentPanel:SetShown(manager.tab == "recent")
     manager.searchBox:SetShown(manager.tab ~= "filters")
 
     if manager.tab == "filters" then
         DrawFiltersTab()
     elseif manager.tab == "blocked" then
         DrawBlockedTab()
+    elseif manager.tab == "recent" then
+        DrawRecentTab()
     else
         DrawIgnoreTab()
     end
@@ -1212,7 +1638,7 @@ local function BuildIgnorePanel(parent)
                 settings.players[key] = nil
                 pruned = pruned + 1
                 if settings.syncBlizzard and C_FriendList and C_FriendList.DelIgnore then
-                    pcall(C_FriendList.DelIgnore, key)
+                    OurIgnoreCall(C_FriendList.DelIgnore, key)
                 end
             end
         end
@@ -1368,6 +1794,7 @@ local function BuildManager()
     manager.ignorePanel  = BuildIgnorePanel(bottom)
     manager.filterPanel  = BuildFilterPanel(bottom)
     manager.blockedPanel = BuildBlockedPanel(bottom)
+    manager.recentPanel  = BuildRecentPanel(bottom)
 
     return manager
 end
@@ -1383,6 +1810,36 @@ end
 
 -- ── Switching on ────────────────────────────────────────────────────────────
 
+-- Someone ignored through the game itself (its right-click menu, /ignore):
+-- they join the account-wide list too, and the reason is asked for. OxedHub's
+-- own sync calls are marked and skipped.
+local blizzardHooked = false
+local function OnBlizzardIgnore(name, toggled)
+    if ourIgnoreCall or not settings or settings.enabled == false then return end
+    local full = FullName(name)
+    if not full then return end
+    -- AddOrDelIgnore may have removed them instead: asked a moment later.
+    C_Timer.After(0.5, function()
+        local okIgnored, isIgnored = pcall(C_FriendList.IsIgnored, name)
+        if toggled and okIgnored and not SecretValue(isIgnored) and not isIgnored then return end
+        if not settings.players[full] then
+            SetIgnored(full, true)
+            AskReason(full)
+        end
+    end)
+end
+
+function HookBlizzardIgnore()
+    if blizzardHooked or not C_FriendList then return end
+    blizzardHooked = true
+    if C_FriendList.AddIgnore then
+        hooksecurefunc(C_FriendList, "AddIgnore", function(name) OnBlizzardIgnore(name, false) end)
+    end
+    if C_FriendList.AddOrDelIgnore then
+        hooksecurefunc(C_FriendList, "AddOrDelIgnore", function(name) OnBlizzardIgnore(name, true) end)
+    end
+end
+
 local function Install()
     if installed then return end
     installed = true
@@ -1394,6 +1851,7 @@ local function Install()
     end
     InstallMenus()
     HookLFG()
+    HookBlizzardIgnore()
 
     SLASH_OXEDCHATFILTER1 = "/oxfilter"
     SLASH_OXEDCHATFILTER2 = "/chatfilter"
@@ -1412,7 +1870,9 @@ local function Install()
             return
         end
         local full = FullName(name)
-        SetIgnored(full, not settings.players[full], note)
+        local adding = full and not settings.players[full]
+        SetIgnored(full, adding, note)
+        if adding and (not note or note == "") then AskReason(full) end
     end
 end
 
@@ -1438,7 +1898,7 @@ local function ShowOptions()
     if not API or not settings then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("Chat Filter & Global Ignore", 450, 520)
+        optionsWindow = API:CreateOptionsWindow("Chat Filter & Global Ignore", 450, 700)
         optionsWindow:AddCheckbox(settings, "keepGuild", "Never filter guild",
             "Guild and officer chat, and guild members anywhere, are never hidden by filters.")
         optionsWindow:AddCheckbox(settings, "keepGroup", "Never filter your group",
@@ -1452,6 +1912,15 @@ local function ShowOptions()
         optionsWindow:AddCheckbox(settings, "declineGuild", "Decline guild invites from ignored players")
         optionsWindow:AddCheckbox(settings, "declineTrade", "Decline trade requests from ignored players")
         optionsWindow:AddCheckbox(settings, "warnGroup", "Warn when an ignored player joins your group")
+        optionsWindow:AddCheckbox(settings, "warnTalk", "Warn when an ignored player whispers or talks in your group",
+            "One line with your reason, at most every two minutes per player.")
+        optionsWindow:AddCheckbox(settings, "warnLFG", "Warn about ignored players in the Group Finder",
+            "When you sign up to a group an ignored player leads, are invited by one, or one applies to your group.")
+        optionsWindow:AddCheckbox(settings, "askReason", "Ask for a reason when ignoring",
+            "A small window after each ignore, including the game's own Ignore. Skip keeps them ignored with no note.")
+        optionsWindow:AddCheckbox(settings, "trackRecent", "Remember who I played with",
+            "Group, dungeon, key, raid, battleground and arena players, in the manager's Recent Players tab.")
+        optionsWindow:AddSlider(settings, "recentDays", "Keep them for", 1, 30, 1, "%s %d days")
         optionsWindow:AddCheckbox(settings, "lfgHighlight", "Highlight ignored leaders in LFG / Group Finder",
             "Colors ignored group leaders red in M+ and Raid Finder, and displays your note in the tooltip.")
         optionsWindow:AddCheckbox(settings, "syncBlizzard", "Sync top 50 to Blizzard ignore list",
@@ -1492,7 +1961,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "chatfilter",
         name     = "Chat Filter",
-        version  = "1.2.0",
+        version  = "1.4.0",
+        updated  = 20261021.5,  -- Recent Players, Report from chat
         author   = "Oxed",
         category = "chat",
         keywords = { "chat", "spam", "ignore", "filter", "block", "mute", "words", "gil" },

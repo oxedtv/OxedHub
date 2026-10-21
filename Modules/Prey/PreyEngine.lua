@@ -478,16 +478,10 @@ function PreyEngine:InferStageFromObjectives(questID)
     return 1
 end
 
--- Reads the PREY_HUNT trigger's condition block once per pass.
+-- The Prey Hunt module's settings (Modules/OxedModules/PreyHunt), or nil
+-- while the module is off. They used to live on a PREY_HUNT trigger.
 function PreyEngine:GetHuntConditions()
-    if OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.triggers then
-        for _, tr in pairs(OxedHub.db.profile.triggers) do
-            if tr.enabled and tr.event == "PREY_HUNT" and tr.conditions then
-                return tr.conditions
-            end
-        end
-    end
-    return nil
+    return Prey.GetConfig and Prey.GetConfig() or nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -498,6 +492,8 @@ end
 -- ---------------------------------------------------------------------------
 function PreyEngine:ShouldUsePolling()
     if Prey:IsRestrictedInstance() then return false end
+    -- Module off: nothing is shown or played, so nothing is worth polling for.
+    if not self:GetHuntConditions() then return false end
 
     local now = (GetTime and GetTime()) or 0
     if now < (self.state.killStageUntil or 0) then return true end
@@ -695,10 +691,11 @@ function PreyEngine:UpdateActiveHunt()
     end
 
     -- Trigger conditions & visibility gates
+    -- Module off: no bar, and the game's own widget left as the game has it.
     local conditions = self:GetHuntConditions()
     local showBlizz  = true
     local onlyInZone = false
-    local showHUD    = true
+    local showHUD    = conditions ~= nil
     if conditions then
         if conditions.showBlizzardWidget ~= nil then showBlizz  = conditions.showBlizzardWidget end
         if conditions.onlyShowInPreyZone ~= nil then onlyInZone = conditions.onlyShowInPreyZone end
@@ -729,20 +726,13 @@ function PreyEngine:OnStageChanged(newStage)
 end
 
 function PreyEngine:PlayPreySound(soundKey)
-    if not OxedHub.db or not OxedHub.db.profile or not OxedHub.db.profile.triggers then return end
-    for _, trigger in pairs(OxedHub.db.profile.triggers) do
-        if trigger.enabled and trigger.event == "PREY_HUNT" then
-            local actions = trigger.actions or {}
-            local cond = trigger.conditions or {}
-            local soundVal = actions[soundKey .. "Sound"] or cond[soundKey .. "Sound"]
-            if soundVal and soundVal ~= "" and soundVal ~= "None" then
-                if OxedHub.Sounds and OxedHub.Sounds.Play then
-                    OxedHub.Sounds:Play(soundVal)
-                else
-                    PlaySoundFile(soundVal, "Master")
-                end
-            end
-        end
+    local cfg = self:GetHuntConditions()
+    local soundVal = cfg and cfg[soundKey .. "Sound"]
+    if type(soundVal) ~= "string" or soundVal == "" or soundVal == "None" then return end
+    if OxedHub.Sounds and OxedHub.Sounds.Play then
+        pcall(OxedHub.Sounds.Play, OxedHub.Sounds, soundVal)
+    else
+        PlaySoundFile(soundVal, "Master")
     end
 end
 

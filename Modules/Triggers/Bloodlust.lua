@@ -140,6 +140,10 @@ local CLEAR_AFTER_MISSES = 8    -- empty reads in a row (polls and aura events) 
 -- the same one being seen twice. A last line of defence behind the miss count.
 local MIN_REFIRE = 25
 
+-- Older than this when first seen, a lust was hidden rather than just cast.
+-- Wider than the aura rules' limit: this trigger also polls once a second.
+local LATE_SIGHTING = 8
+
 -- ⚠ While the lust or its Sated is up and the last read found it, ask at
 -- most once a HELD_RECHECK. Each read the aura list cannot answer (in combat
 -- it never can) is a fresh aura table from the game, 1.5 KB, and the ticker
@@ -169,6 +173,15 @@ local function CheckLust()
     end
 
     if current and not activeBuff then
+        -- ⚠ A lust (or its 10-minute Sated) first seen long after it landed
+        -- was hidden, not cast just now: inside a dungeon aura data is secret
+        -- in combat, and this played the lust sound after the fight or on
+        -- leaving the dungeon. Taken back without announcing it.
+        local Core = OxedHub.Core
+        if Core and Core.IsStaleAura and Core:IsStaleAura(current, LATE_SIGHTING) then
+            activeBuff = current
+            return
+        end
         if (now - lastFired) < MIN_REFIRE then
             -- Same lust, seen again through a gap in the aura data. Take the
             -- buff back without announcing it.

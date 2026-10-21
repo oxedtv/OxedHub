@@ -213,17 +213,10 @@ function PreyGossip:WireTooltip(button, name, difficulty)
     end)
 end
 
--- True when the user has the gossip helper enabled on the PREY_HUNT trigger.
+-- True when the Prey Hunt module is on with its gossip marks switched on.
 function PreyGossip:IsEnabled()
-    if not (OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.triggers) then
-        return true
-    end
-    for _, tr in pairs(OxedHub.db.profile.triggers) do
-        if tr.enabled and tr.event == "PREY_HUNT" and tr.conditions then
-            return tr.conditions.enableGossipHelper ~= false
-        end
-    end
-    return true
+    local cfg = Prey.GetConfig and Prey.GetConfig()
+    return cfg ~= nil and cfg.enableGossipHelper ~= false
 end
 
 function PreyGossip:OnGossipShow()

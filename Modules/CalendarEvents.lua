@@ -274,26 +274,35 @@ end
 -- floating over the calendar with the window gone from under them.
 local loweredStrata
 
+-- ⚠ Changing a frame's strata resets the levels of everything inside it, and
+-- the window's own raise-on-click moves them too. The raised holders then fell
+-- under the panels: the pumpkins, cobwebs and dated line vanished after the
+-- calendar was opened and closed, while the "behind" pieces stayed. So the
+-- holders are lifted again after every strata change and every time the
+-- window opens.
+local HOLDER_LIFT = 60
+local function RaiseHolders()
+    for parent, holder in pairs(holders) do
+        holder:SetFrameStrata(parent:GetFrameStrata())
+        holder:SetFrameLevel((parent:GetFrameLevel() or 0) + HOLDER_LIFT)
+    end
+end
+
 local function RestoreStrata()
     if not loweredStrata then return end
     local frame = OxedHub.UI and OxedHub.UI.GetMainFrame and OxedHub.UI:GetMainFrame()
     if frame then frame:SetFrameStrata(loweredStrata.window) end
-    for holder, strata in pairs(loweredStrata.holders) do
-        holder:SetFrameStrata(strata)
-    end
     loweredStrata = nil
+    RaiseHolders()
 end
 
 local function LowerForCalendar()
     local frame = OxedHub.UI and OxedHub.UI.GetMainFrame and OxedHub.UI:GetMainFrame()
     if not frame or not frame:IsShown() or loweredStrata then return end
 
-    loweredStrata = { window = frame:GetFrameStrata(), holders = {} }
+    loweredStrata = { window = frame:GetFrameStrata() }
     frame:SetFrameStrata("MEDIUM")
-    for _, holder in pairs(holders) do
-        loweredStrata.holders[holder] = holder:GetFrameStrata()
-        holder:SetFrameStrata("MEDIUM")
-    end
+    RaiseHolders()
 
     local calendar = _G.CalendarFrame
     if calendar and not calendar.oxedStrataHooked then
@@ -337,7 +346,7 @@ local function Holder(parent)
     holder = CreateFrame("Frame", nil, parent)
     holder:SetAllPoints(parent)
     holder:SetFrameStrata(parent:GetFrameStrata())
-    holder:SetFrameLevel((parent:GetFrameLevel() or 0) + 60)
+    holder:SetFrameLevel((parent:GetFrameLevel() or 0) + HOLDER_LIFT)
     holder:EnableMouse(false)
     holders[parent] = holder
     return holder
@@ -358,6 +367,7 @@ end
 
 function Events:Apply()
     Clear()
+    RaiseHolders()
 
     local event = self:GetActive()
     if not event then return false end
@@ -518,7 +528,7 @@ watcher:SetScript("OnEvent", function(self, event)
             if not frame.oxedDecorHooked then
                 frame.oxedDecorHooked = true
                 frame:HookScript("OnShow", function()
-                    if not Events.activeKey then Events:Apply() end
+                    if not Events.activeKey then Events:Apply() else RaiseHolders() end
                 end)
             end
             return
