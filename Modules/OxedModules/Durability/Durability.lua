@@ -110,7 +110,12 @@ local function RepairCost(getter, ...)
     return Num(data.repairCost) or 0
 end
 
-local function ReadGear()
+-- withCosts: also the repair cost and the bags. ⚠ Only for the tooltip and a
+-- chat reminder. Each cost is a whole item tooltip built by the game, and
+-- doing it on every durability change (and every bag change while looting)
+-- made 300 KB a refresh: the largest garbage line in /oxprofile. The plain
+-- durability numbers cost next to nothing and are all the readout needs.
+local function ReadGear(withCosts)
     if not GetInventoryItemDurability then return end
     local items, total, totalMax, cost = {}, 0, 0, 0
     local lowest, lowestName
@@ -124,7 +129,7 @@ local function ReadGear()
         if type(cur) == "number" and type(max) == "number" and max > 0 then
             local pct = cur / max * 100
             total, totalMax = total + cur, totalMax + max
-            local itemCost = RepairCost(C_TooltipInfo and C_TooltipInfo.GetInventoryItem, "player", slot)
+            local itemCost = withCosts and RepairCost(C_TooltipInfo and C_TooltipInfo.GetInventoryItem, "player", slot) or 0
             cost = cost + itemCost
             items[#items + 1] = {
                 slot = slot, name = name, pct = pct, cost = itemCost,
@@ -138,10 +143,10 @@ local function ReadGear()
     state.items = items
     state.lowest, state.lowestName = lowest, lowestName
     state.average = totalMax > 0 and (total / totalMax * 100) or nil
-    state.cost = cost
+    if withCosts then state.cost = cost end
 
-    state.bags, state.bagCost = 0, 0
-    if settings.bagItems and C_Container and C_Container.GetContainerItemDurability then
+    if withCosts then state.bags, state.bagCost = 0, 0 end
+    if withCosts and settings.bagItems and C_Container and C_Container.GetContainerItemDurability then
         for bag = 0, (NUM_BAG_SLOTS or 4) do
             local okSlots, slots = pcall(C_Container.GetContainerNumSlots, bag)
             for slot = 1, (okSlots and Num(slots) or 0) do
@@ -166,6 +171,9 @@ end
 -- ── The readout ─────────────────────────────────────────────────────────────
 
 local function ShowTooltip(owner)
+    -- The costs, now that someone is looking. Not in combat: those reads can
+    -- be secret there, and the last figures stand.
+    if not InCombatLockdown() then ReadGear(true) end
     GameTooltip:SetOwner(owner, "ANCHOR_BOTTOM")
     GameTooltip:SetText("Durability")
     if not state.read or #state.items == 0 then
@@ -326,6 +334,7 @@ local function Report(force)
     local now = GetTime()
     if not force and now - lastReminder < 60 then return end
     lastReminder = now
+    if not InCombatLockdown() then ReadGear(true) end
 
     local cost = Coins(state.cost)
     print(PREFIX .. ("durability: lowest |cff%s%d%%|r (%s), average |cff%s%d%%|r%s.")
@@ -365,7 +374,7 @@ end
 
 watcher:SetScript("OnEvent", function(_, event)
     if event == "UPDATE_INVENTORY_DURABILITY" or event == "PLAYER_EQUIPMENT_CHANGED"
-        or event == "PLAYER_REGEN_ENABLED" or event == "MERCHANT_CLOSED" or event == "BAG_UPDATE_DELAYED" then
+        or event == "PLAYER_REGEN_ENABLED" or event == "MERCHANT_CLOSED" then
         QueueRefresh()
     elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
         C_Timer.After(2, function()
@@ -396,7 +405,7 @@ end)
 
 local EVENTS = {
     "UPDATE_INVENTORY_DURABILITY", "PLAYER_EQUIPMENT_CHANGED", "PLAYER_REGEN_ENABLED",
-    "MERCHANT_CLOSED", "BAG_UPDATE_DELAYED", "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA",
+    "MERCHANT_CLOSED", "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA",
     "PLAYER_UNGHOST", "PLAYER_ALIVE", "PLAYER_UPDATE_RESTING",
 }
 
@@ -530,8 +539,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "durability",
         name     = "Durability",
-        version  = "1.0.0",
-        updated  = 20261021.4,
+        version  = "1.0.1",
+        updated  = 20261021.7,  -- repair cost only when looked at
         author   = "Oxed",
         category = "items",
         keywords = { "durability", "repair", "broken", "armor", "gear", "damage", "cost" },

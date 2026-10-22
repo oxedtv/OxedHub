@@ -361,16 +361,22 @@ end
 
 -- ── Spell Triggers Engine ───────────────────────────────────────────────────
 
-local function TriggerSpellAlert(spellName, cfg, casterUnit)
+-- force: the Test button. ⚠ It skips the dedup and once-per-session checks:
+-- it used to share one 0.75 s window with every other alert, so a second
+-- click (or any keyword alert just before) did nothing and Test looked broken.
+-- Each spell also has its own window now, so one spell never silences another.
+local lastSpellAlert = {}
+local function TriggerSpellAlert(spellName, cfg, casterUnit, force)
     local now = GetTime()
-    if (now - lastAlertTime) < DEDUP_WINDOW then return end
-    lastAlertTime = now
-
     local key = "spell:" .. tostring(spellName):lower()
-    if settings.triggerOnce then
-        if firedThisSession[key] then return end
-        firedThisSession[key] = true
+    if not force then
+        if (now - (lastSpellAlert[key] or 0)) < DEDUP_WINDOW then return end
+        if settings.triggerOnce then
+            if firedThisSession[key] then return end
+            firedThisSession[key] = true
+        end
     end
+    lastSpellAlert[key] = now
 
     local effectName = cfg and cfg.effect or "Tilt"
     local soundID    = cfg and cfg.sound or settings.sound
@@ -393,26 +399,47 @@ local function OnSpellCast(unit, spellID)
     local cfg = settings.spellConfig and settings.spellConfig[spellName:lower()]
     if not cfg then return end
 
-    if cfg.onlyOnMe and not UnitIsUnit(unit, "player") then return end
+    -- Only the player's own casts are listened to (UNIT_SPELLCAST_SUCCEEDED
+    -- for "player"), so "Self" needs no unit check here.
     TriggerSpellAlert(spellName, cfg, unit)
+end
+
+-- "Self" spells also fire when their buff lands on you (Power Infusion,
+-- Leap of Faith cast by someone else). ⚠ Rewritten: it walked all 40 auras
+-- on every aura change, called :lower() on names that are secret in combat
+-- (an error), and replayed the sound every 4 s for as long as the buff stayed.
+-- Now only the configured names are asked about, a secret answer counts as
+-- "cannot tell" and changes nothing, and a buff fires once when it appears.
+local auraPresent = {}   -- lower-case name -> true while the buff is up
+
+local function AuraPresent(name)
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName) then return nil end
+    local ok, aura = pcall(C_UnitAuras.GetAuraDataBySpellName, "player", name, "HELPFUL")
+    if not ok or SecretValue(aura) then return nil end
+    return aura ~= nil, aura
 end
 
 local function OnPlayerAuraUpdate()
     if not settings or not settings.enabled or not settings.spellTriggersEnabled then return end
-    if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then return end
-
-    for i = 1, 40 do
-        local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
-        if not aura then break end
-        if aura.name then
-            local cfg = settings.spellConfig and settings.spellConfig[aura.name:lower()]
-            if cfg and cfg.onlyOnMe then
-                local now = GetTime()
-                local key = "aura:" .. aura.name:lower()
-                if (now - (lastAuraTrigger[key] or 0)) > 4.0 then
-                    lastAuraTrigger[key] = now
-                    TriggerSpellAlert(aura.name, cfg, "player")
+    for _, sp in ipairs(settings.spellTriggers or {}) do
+        local low = sp:lower()
+        local cfg = settings.spellConfig and settings.spellConfig[low]
+        if cfg and cfg.onlyOnMe then
+            local present, aura = AuraPresent(sp)
+            if present == true and not auraPresent[low] then
+                auraPresent[low] = true
+                -- Seen only now but applied long ago: it was hidden, not new.
+                local fresh = true
+                if type(aura) == "table" then
+                    local exp, dur = aura.expirationTime, aura.duration
+                    if not SecretValue(exp) and not SecretValue(dur) and type(exp) == "number"
+                        and type(dur) == "number" and dur > 0 and exp > 0 then
+                        fresh = (GetTime() - (exp - dur)) < 4
+                    end
                 end
+                if fresh then TriggerSpellAlert(sp, cfg, "player") end
+            elseif present == false then
+                auraPresent[low] = nil
             end
         end
     end
@@ -817,7 +844,7 @@ local function ShowOptions()
                 end)
 
                 row.testBtn:SetScript("OnClick", function()
-                    TriggerSpellAlert(sp, cfg, "player")
+                    TriggerSpellAlert(sp, cfg, "player", true)
                 end)
 
                 row.delBtn:SetScript("OnClick", function()
@@ -841,15 +868,48 @@ local function ShowOptions()
         addSpBtn:SetSize(110, 24)
         addSpBtn:SetPoint("LEFT", addSpBox, "RIGHT", 10, 0)
         addSpBtn:SetText("Add Spell")
-        addSpBtn:SetScript("OnClick", function()
-            local text = addSpBox:GetText():trim()
-            if text ~= "" then
-                table.insert(settings.spellTriggers, text)
-                settings.spellConfig[text:lower()] = { sound = "", effect = "Tilt", onlyOnMe = false }
-                addSpBox:SetText("")
-                RefreshSpellsList()
+        -- What was typed is looked up first: a name, a spell id or a
+        -- shift-clicked link all become the game's own spelling of the name,
+        -- which is what a cast is matched against. A name the game does not
+        -- know (another class's spell is only known by id) is still added,
+        -- with a warning that it must be spelled exactly.
+        local function ResolveSpell(text)
+            text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+            local id = tonumber(text) or tonumber(text:match("|Hspell:(%d+)") or "")
+            text = text:gsub("|H.-|h%[?(.-)%]?|h", "%1"):match("^%s*(.-)%s*$")
+            local query = id or text
+            if C_Spell and C_Spell.GetSpellInfo then
+                local ok, info = pcall(C_Spell.GetSpellInfo, query)
+                if ok and type(info) == "table" and type(info.name) == "string" and not SecretValue(info.name) then
+                    return info.name, true
+                end
             end
-        end)
+            return text, false
+        end
+        local function AddTypedSpell()
+            local raw = addSpBox:GetText() or ""
+            if raw:match("^%s*$") then return end
+            local name, known = ResolveSpell(raw)
+            if name == "" then return end
+            local low = name:lower()
+            for _, existing in ipairs(settings.spellTriggers) do
+                if existing:lower() == low then
+                    print(PREFIX .. ("|cffffd100%s|r is already in the list."):format(name))
+                    addSpBox:SetText("")
+                    return
+                end
+            end
+            table.insert(settings.spellTriggers, name)
+            settings.spellConfig[low] = settings.spellConfig[low] or { sound = "", effect = "Tilt", onlyOnMe = false }
+            if not known then
+                print(PREFIX .. ("|cffffd100%s|r is not a spell this character knows by name. It is added, but it must match the spell's exact name; a spell id also works."):format(name))
+            end
+            addSpBox:SetText("")
+            addSpBox:ClearFocus()
+            RefreshSpellsList()
+        end
+        addSpBtn:SetScript("OnClick", AddTypedSpell)
+        addSpBox:SetScript("OnEnterPressed", AddTypedSpell)
 
         -- ── Page 3: General Settings & Death Bell ───────────────────────────
         local function AddCheck(parent, cfg, key, label, yOffset)
@@ -964,8 +1024,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "memedon",
         name     = "MemedOn",
-        version  = "4.2.8",
-        updated  = 20261013.3,
+        version  = "4.2.9",
+        updated  = 20261021.8,  -- Test always plays, spell names checked, Self buffs fixed
         author   = "Oxed",
         category = "chat",
         keywords = { "meme", "memedon", "sound", "chat", "trigger", "wobble", "explosion", "blackhole", "death", "bell" },

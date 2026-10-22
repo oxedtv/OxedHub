@@ -1308,12 +1308,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.20)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.41)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.20")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.41")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
 
@@ -1391,11 +1391,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  New modules: Durability, and Prey Hunt (moved from Triggers).",
-        "•  Ignore list: reasons, warnings, and a Recent Players tab.",
-        "•  Report a chat message from its name. Leave queues from the list.",
-        "•  Run Tracker: every boss target on the bar, big number, estimates.",
-        "•  Fixed: lust and buff sounds playing after the fight.",
+        "•  New module: Item Tooltips. IDs, buff details and more on hover (/itt).",
+        "•  See how many of an item every alt holds, with the warband bank.",
+        "•  Collected or not: mounts, toys, battle pets and appearances.",
+        "•  Fixed: MemedOn spell Test sometimes did nothing.",
+        "•  Durability uses far less memory.",
         "•  Grab either pack from CurseForge:",
     }
 

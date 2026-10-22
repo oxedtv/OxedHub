@@ -26,6 +26,18 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.41",
+        important = true,
+        lines = {
+            { "NEW", "Item Tooltips module (/itt): ID numbers on items, spells, buffs, NPCs, quests, currencies, achievements, mounts, toys, pets and appearances, in the format and behind the key you pick." },
+            { "NEW", "Item Tooltips: who cast a buff or debuff (class or reaction colour), its dispel type, time left and stacks; an item's expansion, type, max stack with the price of a full stack, and keystone affixes." },
+            { "NEW", "Item Tooltips: collected or not for mounts, toys, battle pets and appearances, and how many of an item each of your characters holds in bags, worn, bank and mail, plus the warband bank and a total." },
+            { "NEW", "Item Tooltips: an icon beside the tooltip and a border in the item's quality colour, both optional." },
+            { "FIXED", "MemedOn spells: Test always plays (a quick second click, or any other alert just before, used to swallow it). A typed spell, id or shift-clicked link is checked and saved with the game's own spelling. \"Self\" buffs fire once when they land instead of every 4 seconds, and no longer error in combat." },
+            { "FIXED", "Durability: far less memory use. The repair cost is worked out only when you hover the readout or a reminder goes out." },
+        },
+    },
+    {
         version = "2.4.20",
         important = true,
         lines = {
