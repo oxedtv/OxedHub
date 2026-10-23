@@ -1138,6 +1138,20 @@ local function UpdateEchoes(echo, tipX, tipY, now)
     end
 end
 
+-- A theme that moves on its own while the mouse rests: a flickering or
+-- spinning glow, or a layer that burns in place or throws lightning.
+local restlessCache = {}
+local function IsRestless(theme)
+    local cached = restlessCache[theme.key]
+    if cached ~= nil then return cached end
+    cached = (theme.flicker or theme.spin) and true or false
+    for _, layer in ipairs(LayersOf(theme)) do
+        if layer.rate or layer.bolt then cached = true end
+    end
+    restlessCache[theme.key] = cached
+    return cached
+end
+
 local function OnUpdate(_, elapsed)
     local scale = cachedUIScale
     local cx, cy = GetCursorPosition()
@@ -1168,6 +1182,18 @@ local function OnUpdate(_, elapsed)
                 shadow:SetPoint("CENTER", root, "BOTTOMLEFT", x, y)
             end
         end
+        return
+    end
+
+    -- Resting, with nothing left to animate: no sparks, a still glow, the
+    -- trail copies long folded in. The step would only set everything to
+    -- what it already is, so it is skipped until the mouse moves again.
+    if not moved and mouselooking == lastMouselooking and now >= flareUntil
+        and #activeSparks == 0 and now - lastMoveAt > 1
+        and not (settings.trail and settings.idleSwirl) and not settings.rainbow
+        and (not settings.fadeIdle or lastRootAlpha == 0)
+        and not IsRestless(CurrentTheme()) then
+        sparkStepAccum, pendingElapsed = 0, 0
         return
     end
     lastMouselooking = mouselooking
@@ -1957,8 +1983,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "cursor",
         name     = "Cursor",
-        version  = "1.1.1",
-        updated  = 20261018.1,  -- lighter in combat
+        version  = "1.1.2",
+        updated  = 20261023.2,  -- does nothing while the mouse rests
         author   = "Oxed",
         category = "character",
         keywords = { "cursor", "mouse", "pointer", "trail", "windows 95", "retro", "glow", "halo", "steering", "mouselook", "find", "fire", "frost", "meteor", "lightning", "void", "fel", "blood", "bubbles", "fairy" },

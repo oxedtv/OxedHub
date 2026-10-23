@@ -26,6 +26,18 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.42",
+        important = true,
+        lines = {
+            { "NEW", "Camera module (/camera): the game's hidden ActionCam in a window. Tilt the camera up (separate angles on foot and flying), over the shoulder, head movement, turn toward your enemy or the NPC you talk to; plus zoom distance and speed, turn speed, field of view, follow style, seeing through walls." },
+            { "NEW", "Camera: presets (Subtle, Cinematic, Action, Off), enemy focus only in a fight, centred again while mounted, all of it off in raids. Switching the module off puts every camera setting back as it was." },
+            { "CHANGED", "Cursor: does nothing while the mouse rests and nothing on it moves, instead of updating 50 times a second." },
+            { "CHANGED", "Currencies: reads only the currency that changed, not every one of them. Looting no longer causes a short stutter, and far less memory is used." },
+            { "CHANGED", "MemedOn: listens to your own buffs only. Before, every buff change on every unit around you reached it and was thrown away." },
+            { "FIXED", "Currencies: hovering the gold line no longer raises an error." },
+        },
+    },
+    {
         version = "2.4.41",
         important = true,
         lines = {

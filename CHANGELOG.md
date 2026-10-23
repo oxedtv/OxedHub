@@ -1,5 +1,17 @@
 # Oxed Hub
 
+## [v2.4.42](https://github.com/oxedtv/OxedHub/tree/v2.4.42) (2026-10-23)
+[Full Changelog](https://github.com/oxedtv/OxedHub/compare/v2.4.41...v2.4.42) [Previous Releases](https://github.com/oxedtv/OxedHub/releases)
+
+- Release 2.4.42: Camera module (ActionCam), Currencies, Cursor, and MemedOn optimizations  
+    Adds the Camera module (/camera): access the game's ActionCam in a dedicated window,  
+    camera tilt (foot and flying), over-the-shoulder view, head movement, target/NPC focus,  
+    zoom distance & speed, turn speed, FOV, and presets (Subtle, Cinematic, Action, Off).  
+    Optimizes Cursor to sleep when idle (0 updates/sec when mouse rests).  
+    Optimizes Currencies to read only changed currencies, eliminating looting stutter & reducing GC.  
+    Optimizes MemedOn to track player-only auras instead of all surrounding units.  
+    Fixes Currencies tooltip error on hovering the gold line.  
+
 ## [v2.4.41](https://github.com/oxedtv/OxedHub/tree/v2.4.41) (2026-10-22)
 [Full Changelog](https://github.com/oxedtv/OxedHub/compare/v2.4.20...v2.4.41) [Previous Releases](https://github.com/oxedtv/OxedHub/releases)
 

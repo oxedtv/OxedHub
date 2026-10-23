@@ -537,7 +537,9 @@ local function StartModule()
 
     spellWatcher:UnregisterAllEvents()
     spellWatcher:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
-    spellWatcher:RegisterEvent("UNIT_AURA")
+    -- The player's only: every unit's aura change used to arrive here and be
+    -- thrown away, hundreds of thousands of calls in a long session.
+    spellWatcher:RegisterUnitEvent("UNIT_AURA", "player")
     spellWatcher:SetScript("OnEvent", function(_, event, unit, _, spellID)
         if event == "UNIT_SPELLCAST_SUCCEEDED" then
             OnSpellCast(unit, spellID)
@@ -1024,8 +1026,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "memedon",
         name     = "MemedOn",
-        version  = "4.2.9",
-        updated  = 20261021.8,  -- Test always plays, spell names checked, Self buffs fixed
+        version  = "4.2.10",
+        updated  = 20261023.3,  -- listens to the player's auras only
         author   = "Oxed",
         category = "chat",
         keywords = { "meme", "memedon", "sound", "chat", "trigger", "wobble", "explosion", "blackhole", "death", "bell" },

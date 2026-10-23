@@ -88,6 +88,23 @@ local function Big(n)
     return (BreakUpLargeNumbers or tostring)(n or 0)
 end
 
+-- Gold with coin icons. ⚠ The global GetCoinTextureString is missing in some
+-- builds, and calling it there broke the gold tooltip; ask whichever exists.
+local function CoinText(copper)
+    copper = copper or 0
+    local fn = GetCoinTextureString
+        or (C_CurrencyInfo and C_CurrencyInfo.GetCoinTextureString)
+    if fn then
+        local ok, text = pcall(fn, copper)
+        if ok and type(text) == "string" then return text end
+    end
+    if GetMoneyString then
+        local ok, text = pcall(GetMoneyString, copper, true)
+        if ok and type(text) == "string" then return text end
+    end
+    return Big(math.floor(copper / 10000)) .. "g"
+end
+
 -- ── Finding every currency ──────────────────────────────────────────────────
 
 local discovering = false
@@ -295,7 +312,7 @@ end
 local function FlowLines(tooltip, id)
     local me = settings and settings.chars[CharKey()]
     if type(me) ~= "table" then return end
-    local fmt = id == 0 and function(n) return GetCoinTextureString and GetCoinTextureString(n) or Big(n) end or Big
+    local fmt = id == 0 and CoinText or Big
     local g, sp = session.gain[id] or 0, session.spent[id] or 0
     local day = type(me.day) == "table" and me.day.d == date("%Y-%m-%d") and me.day or nil
     local dg, ds = day and day.gain[id] or 0, day and day.spent[id] or 0
@@ -328,7 +345,9 @@ end
 local function WriteHistory(me)
     if type(me.hist) ~= "table" then me.hist = {} end
     local today = DayNumber()
-    local snap = {}
+    -- Today's table is refilled in place: a new one on every read was garbage.
+    local snap = me.hist[today]
+    if type(snap) == "table" then wipe(snap) else snap = {} end
     for id, e in pairs(me.q) do
         if type(e) == "table" and (e.q or 0) > 0 then snap[id] = e.q end
     end
@@ -362,7 +381,7 @@ local function HistoryLines(tooltip, id, now)
         if was then
             if not shown then tooltip:AddLine(" ") shown = true end
             local diff = (now or 0) - was
-            local fmt = id == 0 and function(n) return GetCoinTextureString and GetCoinTextureString(n) or Big(n) end or Big
+            local fmt = id == 0 and CoinText or Big
             local sign = diff >= 0 and "|cff40ff40+" or "|cffff6040-"
             tooltip:AddDoubleLine(span[2], ("%s  %s%s|r"):format(fmt(was), sign, fmt(math.abs(diff))),
                 0.8, 0.8, 0.8, 1, 1, 1)
@@ -370,36 +389,48 @@ local function HistoryLines(tooltip, id, now)
     end
 end
 
-local Scan = Named("Currencies: read every currency", function()
+local function ScanOne(id, known, me)
+    local store = StoreFor(known, me)
+    local e = store[id]
+    if type(e) ~= "table" then
+        e = {}
+        store[id] = e
+    end
+    local wasCapped, before = e.capped, e.q
+    if Fill(id, e, known) then
+        if primed and before then Record(me, id, (e.q or 0) - before) end
+        -- Moved between stores if the game changed whether it is shared.
+        if known.a and me.q[id] then me.q[id] = nil end
+        if e.capped and not wasCapped and primed then
+            cappedNames[#cappedNames + 1] = known.n
+        end
+        local goal = settings.goals[id]
+        if goal and primed and before and before < goal and (e.q or 0) >= goal then
+            print(PREFIX .. ("goal reached: |cff40ff40%s %s|r"):format(Big(goal), known.n or "?"))
+            local API = OxedHub.ModuleAPI
+            if settings.goalSound and settings.goalSound ~= "" and API and API.PlaySound then
+                API:PlaySound(settings.goalSound)
+            end
+        end
+    end
+end
+
+-- `only`: the ids the game said changed, or nil to read every currency.
+-- Looting sends one event per currency; asking the game for all of them
+-- each time made a table per currency, several hundred, for one change.
+local Scan = Named("Currencies: read every currency", function(only)
     if not settings or not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyInfo then return end
     local me = MyRecord()
     wipe(cappedNames)
     local has = me.has
-    for id, known in pairs(settings.known) do
-        if known.a or not has or has[id] then
-            local store = StoreFor(known, me)
-            local e = store[id]
-            if type(e) ~= "table" then
-                e = {}
-                store[id] = e
-            end
-            local wasCapped, before = e.capped, e.q
-            if Fill(id, e, known) then
-                if primed and before then Record(me, id, (e.q or 0) - before) end
-                -- Moved between stores if the game changed whether it is shared.
-                if known.a and me.q[id] then me.q[id] = nil end
-                if e.capped and not wasCapped and primed then
-                    cappedNames[#cappedNames + 1] = known.n
-                end
-                local goal = settings.goals[id]
-                if goal and primed and before and before < goal and (e.q or 0) >= goal then
-                    print(PREFIX .. ("goal reached: |cff40ff40%s %s|r"):format(Big(goal), known.n or "?"))
-                    local API = OxedHub.ModuleAPI
-                    if settings.goalSound and settings.goalSound ~= "" and API and API.PlaySound then
-                        API:PlaySound(settings.goalSound)
-                    end
-                end
-            end
+    if only then
+        for id in pairs(only) do
+            local known = settings.known[id]
+            if known and (known.a or not has or has[id]) then ScanOne(id, known, me) end
+        end
+    else
+        for id, known in pairs(settings.known) do
+            if known.a or not has or has[id] then ScanOne(id, known, me) end
         end
     end
     if settings.capAlert and #cappedNames > 0 then
@@ -418,6 +449,8 @@ end)
 
 local SyncWarband   -- defined with the warband code below
 local scanQueued, scanOwed = false, false
+local fullScanOwed = true     -- read every currency next time, not only the changed ones
+local changedIDs, scanningIDs = {}, {}
 local function RunScan()
     scanQueued = false
     if not running then return end
@@ -425,8 +458,20 @@ local function RunScan()
         scanOwed = true
         return
     end
-    if discoverOwed then Discover() end
-    Scan()
+    if discoverOwed then
+        Discover()
+        fullScanOwed = true
+    end
+    if fullScanOwed or not primed then
+        fullScanOwed = false
+        wipe(changedIDs)
+        Scan()
+    else
+        -- Swapped, so an event arriving during the read lands in a fresh set.
+        changedIDs, scanningIDs = scanningIDs, changedIDs
+        Scan(scanningIDs)
+        wipe(scanningIDs)
+    end
     -- The game may have sent the warband amounts already (the Currency
     -- Transfer module asks too); read what it holds rather than wait.
     if window and window:IsShown() then SyncWarband() end
@@ -549,8 +594,7 @@ local function GoalText(id, e)
 end
 
 local function Coins(copper)
-    if GetCoinTextureString then return GetCoinTextureString(math.floor((copper or 0) / 10000) * 10000) end
-    return Big(math.floor((copper or 0) / 10000)) .. "g"
+    return CoinText(math.floor((copper or 0) / 10000) * 10000)
 end
 
 local function WarbandGold()
@@ -1179,20 +1223,20 @@ local function BuildWindow()
         for i, char in ipairs(list) do
             if i > 15 then break end
             GameTooltip:AddDoubleLine(("|c%s%s|r"):format(ClassHex(char.class), char.name or "?"),
-                GetCoinTextureString(char.money), 1, 1, 1, 1, 1, 1)
+                CoinText(char.money), 1, 1, 1, 1, 1, 1)
         end
         local bank = WarbandGold()
         if bank > 0 then
-            GameTooltip:AddDoubleLine("|cff66ccffWarband bank|r", GetCoinTextureString(bank), 1, 1, 1, 1, 1, 1)
+            GameTooltip:AddDoubleLine("|cff66ccffWarband bank|r", CoinText(bank), 1, 1, 1, 1, 1, 1)
         end
-        GameTooltip:AddDoubleLine("All", GetCoinTextureString(GoldTotal()), 1, 0.82, 0, 1, 0.82, 0)
+        GameTooltip:AddDoubleLine("All", CoinText(GoldTotal()), 1, 0.82, 0, 1, 0.82, 0)
         FlowLines(GameTooltip, 0)
         HistoryLines(GameTooltip, 0, GetMoney())
         if C_WowTokenPublic and C_WowTokenPublic.GetCurrentMarketPrice then
             local price = Num(C_WowTokenPublic.GetCurrentMarketPrice())
             if price and price > 0 then
                 GameTooltip:AddLine(" ")
-                GameTooltip:AddDoubleLine("WoW Token", GetCoinTextureString(price), 0.8, 0.8, 0.8, 1, 1, 1)
+                GameTooltip:AddDoubleLine("WoW Token", CoinText(price), 0.8, 0.8, 0.8, 1, 1, 1)
             end
         end
         GameTooltip:Show()
@@ -1286,6 +1330,7 @@ local function BuildWindow()
         self.hideBox:SetChecked(settings.hideEmpty == true)
         self.othersBox:SetChecked(settings.showOthers ~= false)
         Draw()
+        fullScanOwed = true
         QueueScan(0)
         RequestWarband()
         if C_WowTokenPublic and C_WowTokenPublic.UpdateMarketPrice and GetTime() - (tokenAskedAt or -9999) > 600 then
@@ -1477,7 +1522,9 @@ watcher:SetScript("OnEvent", function(_, event, arg1, arg2)
     if event == "CURRENCY_DISPLAY_UPDATE" then
         if discovering or GetTime() < quietUntil then return end
         -- A currency the list has not seen yet: learn the list again first.
-        if arg1 and not settings.known[arg1] then discoverOwed = true end
+        local id = Num(arg1)
+        if id and not settings.known[id] then discoverOwed = true end
+        if id then changedIDs[id] = true else fullScanOwed = true end
         if bar and bar:IsShown() then UpdateTracker() end
         if C_CurrencyInfo.GetCurrencyListSize and C_CurrencyInfo.GetCurrencyListSize() ~= lastListSize
             and not TabOpen() then
@@ -1678,8 +1725,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "currencies",
         name     = "Currencies",
-        version  = "1.5.0",
-        updated  = 20261018.7,  -- 7 and 30 day history, warband bank gold, gold details
+        version  = "1.5.1",
+        updated  = 20261023.1,  -- reads only the currencies that changed
         author   = "Oxed",
         category = "character",
         keywords = { "currency", "currencies", "tokens", "warband", "alts", "cap", "decor", "legacy" },
