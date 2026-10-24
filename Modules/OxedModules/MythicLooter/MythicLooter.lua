@@ -279,8 +279,8 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "mythiclooter",
         name     = "MythicLooter",
-        version  = "2.20.0",
-        updated  = 20261021.1,  -- Run Tracker: sections, big number, estimates
+        version  = "2.21.0",
+        updated  = 20261024.4,  -- group joined: details in the window and a line in chat
         author   = "Oxed",
         category = "groups",
         keywords = { "mythiclooter", "keystoneloot", "m+", "loot", "dungeon", "raid", "bis", "vault", "item" },

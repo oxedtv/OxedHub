@@ -2,7 +2,7 @@
 ## Title: Oxed Hub
 ## Notes: Unified interface for sounds, animations, emotes, chat messages, and toys based on in-game events
 ## Author: https://customwowaddon.com/
-## Version: 2.4.42
+## Version: 2.4.43
 ## SavedVariables: OxedHubDB, OxMythicLooterDB
 ## SavedVariablesPerCharacter: OxMythicLooterCharDB
 ## OptionalDeps: OxedHub_MemePack, OxedHub_GamingPack, OxedHub_CustomMedia
@@ -134,7 +134,9 @@ Modules\OxedModules\CopyChat\CopyChat.lua
 Modules\OxedModules\PreyHunt\PreyHunt.lua
 Modules\OxedModules\Durability\Durability.lua
 Modules\OxedModules\Camera\Camera.lua
+Modules\OxedModules\MinimapButtons\MinimapButtons.lua
 Modules\OxedModules\ChatFilter\ChatFilter.lua
+Modules\OxedModules\ChatButtons\ChatButtons.lua
 Modules\OxedModules\MissingGems\MissingGems.lua
 Modules\OxedModules\AutoQuest\AutoQuest.lua
 Modules\OxedModules\AutoGossip\AutoGossip.lua
@@ -152,6 +154,9 @@ Modules\OxedModules\Instances\Instances.lua
 Modules\OxedModules\PvPProgress\PvPProgress.lua
 Modules\OxedModules\GoldWQ\GoldWQData.lua
 Modules\OxedModules\GoldWQ\GoldWQ.lua
+Modules\OxedModules\GoldWQ\GoldStock.lua
+Modules\OxedModules\WQAchievements\WQAchievementsData.lua
+Modules\OxedModules\WQAchievements\WQAchievements.lua
 Modules\OxedModules\BResLustTracker\BResLustTracker.lua
 Modules\OxedModules\CurrencyTransfer\CurrencyTransfer.lua
 Modules\OxedModules\EasyExperienceBar\EasyExperienceBar.lua

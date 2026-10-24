@@ -59,7 +59,7 @@ local lastAlertTime = 0
 local lastDead = {}
 local lastAuraTrigger = {}
 
-local PREFIX = "|cffff6600MemedOn:|r "
+local PREFIX = "|cffff6600OxMemes:|r "
 local DEDUP_WINDOW = 0.75
 
 -- ── 1-in-1 Preset Data ──────────────────────────────────────────────────────
@@ -351,7 +351,7 @@ local function ProcessChatMessage(event, ...)
         if type(msg) ~= "string" or SecretValue(msg) then return end
     end
     if msg == "" then return end
-    if msg:find("%[OxedHub") or msg:find("%[MemedOn") then return end
+    if msg:find("%[OxedHub") or msg:find("%[MemedOn") or msg:find("%[OxMemes") then return end
 
     local hit, matched, cfg = MessageMatches(msg)
     if hit then
@@ -588,7 +588,7 @@ local function ShowOptions()
     if not API or not settings then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("MemedOn", 540, 680)
+        optionsWindow = API:CreateOptionsWindow("OxMemes", 540, 680)
         local w = optionsWindow
 
         -- Navigation Tabs
@@ -675,6 +675,26 @@ local function ShowOptions()
                     row.delBtn:SetSize(28, 22)
                     row.delBtn:SetPoint("LEFT", row.testBtn, "RIGHT", 6, 0)
                     row.delBtn:SetText("X")
+
+                    -- A long sound or effect name ran out over the next
+                    -- button; it is cut to the button now, the full name in
+                    -- the tooltip.
+                    for _, b in ipairs({ row.effectBtn, row.soundBtn }) do
+                        b:SetText(" ")
+                        local fs = b:GetFontString()
+                        if fs then
+                            fs:SetWidth(b:GetWidth() - 12)
+                            fs:SetWordWrap(false)
+                        end
+                        b:SetScript("OnEnter", function(self)
+                            local shown = self:GetText()
+                            if not shown or shown == "" then return end
+                            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                            GameTooltip:SetText(shown, 1, 1, 1)
+                            GameTooltip:Show()
+                        end)
+                        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                    end
 
                     kwRows[i] = row
                 end
@@ -806,6 +826,26 @@ local function ShowOptions()
                     row.delBtn:SetPoint("LEFT", row.testBtn, "RIGHT", 6, 0)
                     row.delBtn:SetText("X")
 
+                    -- A long sound or effect name ran out over the next
+                    -- button; it is cut to the button now, the full name in
+                    -- the tooltip.
+                    for _, b in ipairs({ row.effectBtn, row.soundBtn }) do
+                        b:SetText(" ")
+                        local fs = b:GetFontString()
+                        if fs then
+                            fs:SetWidth(b:GetWidth() - 12)
+                            fs:SetWordWrap(false)
+                        end
+                        b:SetScript("OnEnter", function(self)
+                            local shown = self:GetText()
+                            if not shown or shown == "" then return end
+                            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                            GameTooltip:SetText(shown, 1, 1, 1)
+                            GameTooltip:Show()
+                        end)
+                        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                    end
+
                     spRows[i] = row
                 end
 
@@ -912,6 +952,88 @@ local function ShowOptions()
         end
         addSpBtn:SetScript("OnClick", AddTypedSpell)
         addSpBox:SetScript("OnEnterPressed", AddTypedSpell)
+
+        -- Suggestions while typing: the same spell search the triggers use
+        -- (your spellbook plus the common spells of other classes). The list
+        -- opens upward, the box being at the bottom of the window. Clicking a
+        -- spell adds it at once.
+        local suggest = CreateFrame("Frame", nil, pageSpells, "BackdropTemplate")
+        suggest:SetPoint("BOTTOMLEFT", addSpBox, "TOPLEFT", -6, 2)
+        suggest:SetSize(240, 10)
+        suggest:SetFrameStrata("TOOLTIP")
+        suggest:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 10,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 } })
+        suggest:SetBackdropColor(0, 0, 0, 0.95)
+        suggest:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+        suggest:Hide()
+        local suggestRows = {}
+
+        local function ShowSuggestions(text)
+            local Triggers = OxedHub.Triggers
+            if not (Triggers and Triggers.SearchPlayerSpells) or not text or text:match("^%s*$") or tonumber(text) then
+                suggest:Hide()
+                return
+            end
+            local ok, results = pcall(Triggers.SearchPlayerSpells, Triggers, text, 8, true)
+            if not ok or type(results) ~= "table" or #results == 0 then
+                suggest:Hide()
+                return
+            end
+            for i, spell in ipairs(results) do
+                local b = suggestRows[i]
+                if not b then
+                    b = CreateFrame("Button", nil, suggest)
+                    b:SetSize(228, 22)
+                    b.icon = b:CreateTexture(nil, "ARTWORK")
+                    b.icon:SetSize(18, 18)
+                    b.icon:SetPoint("LEFT", 2, 0)
+                    b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                    b.text = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    b.text:SetPoint("LEFT", b.icon, "RIGHT", 6, 0)
+                    b.text:SetPoint("RIGHT", b, "RIGHT", -2, 0)
+                    b.text:SetJustifyH("LEFT")
+                    b.text:SetWordWrap(false)
+                    b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+                    suggestRows[i] = b
+                end
+                -- Best match closest to the box, at the bottom.
+                b:ClearAllPoints()
+                b:SetPoint("BOTTOMLEFT", suggest, "BOTTOMLEFT", 6, 5 + (i - 1) * 23)
+                b.icon:SetTexture(spell.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                b.text:SetText(spell.name)
+                b:SetScript("OnClick", function()
+                    addSpBox:SetText(spell.id and tostring(spell.id) or spell.name)
+                    suggest:Hide()
+                    AddTypedSpell()
+                end)
+                b:Show()
+            end
+            for i = #results + 1, #suggestRows do suggestRows[i]:Hide() end
+            suggest:SetHeight(#results * 23 + 10)
+            suggest:Show()
+        end
+
+        local suggestTimer, hideTimer
+        addSpBox:SetScript("OnTextChanged", function(self, user)
+            if not user then return end
+            if suggestTimer then suggestTimer:Cancel() end
+            local text = self:GetText()
+            suggestTimer = C_Timer.NewTimer(0.15, function()
+                if self:GetText() == text then ShowSuggestions(text) end
+            end)
+        end)
+        addSpBox:SetScript("OnEscapePressed", function(self) suggest:Hide(); self:ClearFocus() end)
+        addSpBox:SetScript("OnEditFocusLost", function()
+            if suggestTimer then suggestTimer:Cancel() end
+            -- A moment, so a click on a suggestion lands before it closes.
+            hideTimer = C_Timer.NewTimer(0.25, function() suggest:Hide() end)
+        end)
+        addSpBox:SetScript("OnEditFocusGained", function(self)
+            if hideTimer then hideTimer:Cancel() end
+            ShowSuggestions(self:GetText())
+        end)
+        pageSpells:HookScript("OnHide", function() suggest:Hide() end)
 
         -- ── Page 3: General Settings & Death Bell ───────────────────────────
         local function AddCheck(parent, cfg, key, label, yOffset)
@@ -1025,9 +1147,9 @@ loginFrame:SetScript("OnEvent", function(self)
 
     OxedHub.ModuleAPI:Register({
         id       = "memedon",
-        name     = "MemedOn",
-        version  = "4.2.10",
-        updated  = 20261023.3,  -- listens to the player's auras only
+        name     = "OxMemes",   -- renamed from MemedOn; id and saved settings unchanged
+        version  = "4.3.0",
+        updated  = 20261024.97,  -- renamed OxMemes, spell suggestions, long names fit
         author   = "Oxed",
         category = "chat",
         keywords = { "meme", "memedon", "sound", "chat", "trigger", "wobble", "explosion", "blackhole", "death", "bell" },

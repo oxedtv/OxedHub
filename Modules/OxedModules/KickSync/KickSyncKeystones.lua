@@ -86,6 +86,35 @@ local listWindow = nil
 
 -- ── Helpers ─────────────────────────────────────────────────────────────────
 
+-- The teleport for a dungeon. MythicLooter's dungeon list is kept up to date
+-- each season, so it is asked first; the table above only knows older
+-- dungeons, and the new season's keys had icons that did nothing on click.
+local seasonPorts
+local function PortFor(mapID)
+    if not mapID then return nil end
+    if not seasonPorts then
+        local ML = OxedHub.MythicLooter
+        local list = ML and ML.DungeonDatabase
+        if type(list) == "table" then
+            seasonPorts = {}
+            for _, dungeon in ipairs(list) do
+                local port = dungeon.teleportSpellId
+                if type(port) == "function" then
+                    local ok, id = pcall(port)
+                    port = ok and id or nil
+                end
+                if dungeon.challengeModeId and type(port) == "number" then
+                    seasonPorts[dungeon.challengeModeId] = port
+                end
+            end
+        end
+    end
+    local port = seasonPorts and seasonPorts[mapID]
+    if port then return port end
+    local info = DUNGEON_INFO[mapID]
+    return info and info.port or nil
+end
+
 local function GetOwnKeystone()
     local mapID = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
     local level = C_MythicPlus.GetOwnedKeystoneLevel()
@@ -700,8 +729,7 @@ function KL:UpdateListUI()
                 end
                 row.dungeon:SetText(item.dungeon or "Mythic+")
 
-                local info = DUNGEON_INFO[item.mapID]
-                row.btn:SetAttribute("spell", info and info.port or nil)
+                row.btn:SetAttribute("spell", PortFor(item.mapID))
                 row:Show()
             else
                 row.btn:SetAttribute("spell", nil)
@@ -725,12 +753,11 @@ function KL:GetPartyKeys()
     MergeOpenRaid()
     local list = {}
     for _, data in pairs(partyKeys) do
-        local info = DUNGEON_INFO[data.mapID]
         list[#list + 1] = {
             name = data.name, class = data.class, level = data.level or 0,
             mapID = data.mapID, dungeon = data.dungeon,
             rating = RatingFor(data.name) or data.rating,
-            port = info and info.port or nil,
+            port = PortFor(data.mapID),
         }
     end
     table.sort(list, function(a, b) return a.level > b.level end)

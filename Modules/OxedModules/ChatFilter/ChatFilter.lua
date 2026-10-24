@@ -278,6 +278,33 @@ local function OpenReport(full, guid, lineID)
     return (pcall(ReportFrame.InitiateReport, ReportFrame, info, full, location))
 end
 
+-- A Battle.net friend, by account. The constructor's name differs between
+-- builds, so each known spelling is tried.
+local function OpenBnetReport(bnetID, name)
+    if SecretValue(bnetID) or type(bnetID) ~= "number" or bnetID <= 0 then return false end
+    if not (ReportFrame and ReportFrame.InitiateReport and ReportInfo and ReportInfo.CreateReportInfoFromType
+        and PlayerLocation and Enum and Enum.ReportType) then
+        print(PREFIX .. "the game's report window is not available here.")
+        return false
+    end
+    local location
+    for _, method in ipairs({ "CreateFromBNetAccountID", "CreateFromBattleNetAccountID", "CreateFromBattlenetID" }) do
+        local ctor = PlayerLocation[method]
+        if ctor then
+            local ok, loc = pcall(ctor, PlayerLocation, bnetID)
+            if ok and loc then location = loc break end
+        end
+    end
+    local kind = Enum.ReportType.Chat or Enum.ReportType.InWorld
+    if not location or kind == nil then
+        print(PREFIX .. "this client cannot report a Battle.net friend from an addon.")
+        return false
+    end
+    local okInfo, info = pcall(ReportInfo.CreateReportInfoFromType, ReportInfo, kind)
+    if not okInfo or not info then return false end
+    return (pcall(ReportFrame.InitiateReport, ReportFrame, info, name, location))
+end
+
 -- ── Who you played with ─────────────────────────────────────────────────────
 -- Everyone in your party or raid, and everyone on a battleground or arena
 -- scoreboard, is noted with where it was. The point: the player who ruined a
@@ -351,6 +378,120 @@ local function RememberGroup()
     end
 end
 
+-- ── The last match ──────────────────────────────────────────────────────────
+-- Arena and battleground only: everyone seen while inside, from every source
+-- the game gives. Your group, arena1..5, whatever your team targets, every
+-- nameplate that comes into view, and the scoreboard (the only thing that
+-- names an arena opponent while their names are secret). Kept after you leave,
+-- since a report is usually decided afterwards, and replaced when the next
+-- match starts. settings.lastMatch = { where, started, result, rating,
+-- ratingChange, mmr, mmrChange, players = { [full] = { class, guid, rating,
+-- ratingChange } } }.
+
+local inMatch = false
+local matchTicker
+
+local function InPvPMatch()
+    local ok, _, kind = pcall(GetInstanceInfo)
+    kind = ok and PlainValue(kind)
+    return kind == "pvp" or kind == "arena"
+end
+
+-- true, false, or nil when the answer is secret. Testing a secret boolean is
+-- itself the error, so it is never tested outside this.
+local function Known(fn, ...)
+    local ok, value = pcall(fn, ...)
+    if not ok or SecretValue(value) then return nil end
+    return value and true or false
+end
+
+local function MatchEntry(full)
+    local m = settings.lastMatch
+    if type(m) ~= "table" or not full then return nil end
+    if type(m.players) ~= "table" then m.players = {} end
+    local e = m.players[full]
+    if type(e) ~= "table" then
+        e = {}
+        m.players[full] = e
+    end
+    return e
+end
+
+local function IsMe(full)
+    local me = UnitName("player")
+    return full ~= nil and not SecretValue(me) and ShortName(full) == me
+end
+
+local function SeenInMatch(unit)
+    if not (inMatch and settings.trackRecent and type(unit) == "string") then return end
+    -- Only a definite yes: a secret answer leaves the unit out.
+    if Known(UnitIsPlayer, unit) ~= true then return end
+    local okName, name, realm = pcall(UnitName, unit)
+    if not okName then return end
+    local full = FullName(name, realm)
+    if not full or IsMe(full) then return end
+    local okGuid, guid = pcall(UnitGUID, unit)
+    guid = okGuid and PlainValue(guid)
+    guid = type(guid) == "string" and guid or nil
+    local okClass, _, class = pcall(UnitClass, unit)
+    class = okClass and PlainValue(class)
+    class = type(class) == "string" and class or nil
+    Remember(full, settings.lastMatch.where, class, guid)
+    local e = MatchEntry(full)
+    if e then
+        e.class = class or e.class
+        e.guid = guid or e.guid
+    end
+end
+
+local function ScanMatch()
+    if not inMatch or not settings or settings.enabled == false then return end
+    for i = 1, 5 do SeenInMatch("arena" .. i) end
+    local count = GetNumGroupMembers and GetNumGroupMembers() or 0
+    local raid = IsInRaid()
+    for i = 1, raid and count or count - 1 do
+        local unit = (raid and "raid" or "party") .. i
+        SeenInMatch(unit)
+        SeenInMatch(unit .. "target")   -- enemies your team fights, even far from you
+    end
+    SeenInMatch("target")
+    SeenInMatch("focus")
+end
+
+-- A scoreboard's zeroes mean "no rating here" (skirmishes, unrated
+-- battlegrounds), never a rating of 0.
+local function Rated(value)
+    value = PlainValue(value)
+    if type(value) ~= "number" or value == 0 then return nil end
+    return value
+end
+
+local function ReadOutcome(myRow)
+    local m = settings.lastMatch
+    if type(m) ~= "table" then return end
+    if type(myRow) == "table" then
+        m.rating = Rated(myRow.rating) or m.rating
+        m.ratingChange = Rated(myRow.ratingChange) or m.ratingChange
+        m.mmr = Rated(myRow.prematchMMR) or m.mmr
+        m.mmrChange = Rated(myRow.mmrChange) or m.mmrChange
+        local side = PlainValue(myRow.faction)
+        if type(side) == "number" then m.side = side end
+    end
+    -- Solo shuffle has no single winner: the rating's direction says it.
+    if C_PvP and C_PvP.IsSoloShuffle and Known(C_PvP.IsSoloShuffle) then
+        if m.ratingChange then m.result = m.ratingChange > 0 and "Rating up" or "Rating down" end
+        return
+    end
+    local okWinner, winner = pcall(GetBattlefieldWinner)
+    winner = okWinner and PlainValue(winner)
+    if type(winner) ~= "number" then return end
+    if winner == 255 then
+        m.result = "Draw"
+    elseif m.side then
+        m.result = winner == m.side and "Victory" or "Defeat"
+    end
+end
+
 -- Battleground and arena scoreboards name both teams, including the half you
 -- never stood near. Their GUIDs are secret, so those rows report from chat or
 -- in person only.
@@ -360,13 +501,42 @@ local function RememberScoreboard()
     count = okCount and PlainValue(count)
     if type(count) ~= "number" or count == 0 then return end
     local where = WhereNow()
+    local myRow
     for i = 1, count do
+        -- One row at a time: a secret in one row leaves the rest readable.
         local ok, info = pcall(C_PvP.GetScoreInfo, i)
         if ok and type(info) == "table" and not SecretValue(info) then
             local full = FullName(info.name)
             local class = PlainValue(info.classToken)
-            Remember(full, where, type(class) == "string" and class or nil, nil)
+            class = type(class) == "string" and class or nil
+            if IsMe(full) then
+                myRow = info
+            elseif full then
+                Remember(full, where, class, nil)
+                if inMatch then
+                    local e = MatchEntry(full)
+                    e.class = class or e.class
+                    e.rating = Rated(info.rating) or e.rating
+                    e.ratingChange = Rated(info.ratingChange) or e.ratingChange
+                end
+            end
         end
+    end
+    if inMatch then ReadOutcome(myRow) end
+end
+
+-- Entering a match from outside starts a new one; leaving keeps it.
+local function CheckMatch()
+    if not settings then return end
+    local now = InPvPMatch()
+    if now and not inMatch then
+        inMatch = true
+        settings.lastMatch = { where = WhereNow(), started = time(), players = {} }
+        if not matchTicker then matchTicker = C_Timer.NewTicker(5, ScanMatch) end
+        C_Timer.After(1, ScanMatch)
+    elseif not now and inMatch then
+        inMatch = false
+        if matchTicker then matchTicker:Cancel() matchTicker = nil end
     end
 end
 
@@ -851,8 +1021,16 @@ social:SetScript("OnEvent", function(_, event, name, ...)
         end
     elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
         if event == "GROUP_ROSTER_UPDATE" then CheckGroup() end
+        if event == "PLAYER_ENTERING_WORLD" then CheckMatch() end
         QueueGroupScan()
-    elseif event == "UPDATE_BATTLEFIELD_SCORE" then
+    elseif event == "ZONE_CHANGED_NEW_AREA" then
+        CheckMatch()
+    elseif event == "NAME_PLATE_UNIT_ADDED" then
+        -- Caught as it appears: an enemy who runs past once is gone by the next scan.
+        if inMatch then SeenInMatch(name) end
+    elseif event == "ARENA_OPPONENT_UPDATE" then
+        if inMatch then SeenInMatch(name) end
+    elseif event == "UPDATE_BATTLEFIELD_SCORE" or event == "PVP_MATCH_COMPLETE" then
         RememberScoreboard()
     elseif TALK_EVENTS[event] and settings.warnTalk then
         -- name here is the line's text; the author comes next. Either can be
@@ -902,6 +1080,7 @@ local SOCIAL_EVENTS = {
     "CHAT_MSG_WHISPER", "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_RAID",
     "CHAT_MSG_RAID_LEADER", "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER",
     "LFG_LIST_APPLICATION_STATUS_UPDATED", "LFG_LIST_APPLICANT_LIST_UPDATED",
+    "ZONE_CHANGED_NEW_AREA", "NAME_PLATE_UNIT_ADDED", "ARENA_OPPONENT_UPDATE", "PVP_MATCH_COMPLETE",
 }
 
 local function SetSocialEvents(on)
@@ -1012,6 +1191,19 @@ local MENU_TAGS = {
 
 local function InstallMenus()
     if not (Menu and Menu.ModifyMenu) then return end
+    -- A Battle.net friend's menu has no Report of its own. Its name is a
+    -- protected string, so it goes to the report window untouched.
+    pcall(Menu.ModifyMenu, "MENU_UNIT_BN_FRIEND", function(_, root, contextData)
+        if not settings or settings.enabled == false then return end
+        if type(contextData) ~= "table" or SecretValue(contextData)
+            or (canaccesstable and not canaccesstable(contextData)) then return end
+        local bnetID = contextData.bnetIDAccount
+        if SecretValue(bnetID) or type(bnetID) ~= "number" then return end
+        root:CreateDivider()
+        root:CreateButton("Report (OxedHub)", function()
+            OpenBnetReport(bnetID, contextData.name)
+        end)
+    end)
     for _, tag in ipairs(MENU_TAGS) do
         pcall(Menu.ModifyMenu, tag, function(owner, root, contextData)
             if not settings or settings.enabled == false then return end
@@ -1151,6 +1343,36 @@ local function GetRow(index)
     return row
 end
 
+-- A row laid out in columns: item.cols = { text, ... } under COLUMN_WIDTHS;
+-- the last column takes what is left up to the delete button.
+local COLUMN_WIDTHS = { 110, 105, 46, 58 }
+
+local function DrawColumns(row, cols)
+    row.cols = row.cols or {}
+    local x = 6
+    for i, text in ipairs(cols) do
+        local fs = row.cols[i]
+        if not fs then
+            fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            fs:SetJustifyH("LEFT")
+            fs:SetWordWrap(false)
+            row.cols[i] = fs
+        end
+        fs:ClearAllPoints()
+        fs:SetPoint("LEFT", row, "LEFT", x, 0)
+        local width = COLUMN_WIDTHS[i]
+        if width then
+            fs:SetWidth(width - 6)
+            x = x + width
+        else
+            fs:SetPoint("RIGHT", row.delete, "LEFT", -6, 0)
+        end
+        fs:SetText(text or "")
+        fs:Show()
+    end
+    for i = #cols + 1, #row.cols do row.cols[i]:Hide() end
+end
+
 local function DrawRows(items)
     local y = 0
     for index, item in ipairs(items) do
@@ -1158,8 +1380,15 @@ local function DrawRows(items)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", manager.content, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", manager.content, "TOPRIGHT", 0, -y)
-        row.left:SetText(item.left or "")
-        row.right:SetText(item.right or "")
+        if item.cols then
+            DrawColumns(row, item.cols)
+            row.left:SetText("")
+            row.right:SetText("")
+        else
+            if row.cols then DrawColumns(row, {}) end
+            row.left:SetText(item.left or "")
+            row.right:SetText(item.right or "")
+        end
         row.tooltip, row.tooltipTitle = item.tooltip, item.tooltipTitle
 
         row.check:SetShown(item.onCheck ~= nil)
@@ -1249,21 +1478,37 @@ local function DrawIgnoreTab()
     end
     table.sort(names)
 
+    -- Columns: name, realm, how long on the list, when it expires, the note.
+    local GOLD = "|cffffd100%s|r"
+    items[1] = { cols = { GOLD:format("Player Name"), GOLD:format("Server Name"), GOLD:format("Listed"),
+        GOLD:format("Expires"), GOLD:format("Note") } }
+    local now = time()
+
     for _, full in ipairs(names) do
         local entry = settings.players[full]
-        local right = ""
-        if type(entry) == "table" and entry.expires and entry.expires > 0 then
-            right = ("|cff55ff55%dd left|r"):format(math.max(0, math.ceil((entry.expires - time()) / 86400)))
+        if type(entry) ~= "table" then entry = {} end
+        local name, realm = full:match("^([^%-]+)%-(.+)$")
+        name, realm = name or full, realm or ""
+        local listed = entry.added and ("%dd"):format(math.max(0, math.floor((now - entry.added) / 86400))) or ""
+        local expires
+        if entry.expires and entry.expires > 0 then
+            expires = ("|cff55ff55%dd|r"):format(math.max(0, math.ceil((entry.expires - now) / 86400)))
         else
-            right = "|cff888888Permanent|r"
+            expires = "|cff888888Never|r"
         end
-        local note = (type(entry) == "table" and entry.note) or GameIgnoreNote(full)
+        local ownNote = entry.note
+        local note = ownNote or GameIgnoreNote(full)
         items[#items + 1] = {
-            left = "|cffffffff" .. full .. "|r" .. (note and ("  |cffffd100(" .. note .. ")|r") or ""),
-            right = right,
+            cols = {
+                "|cffffd100" .. name .. "|r",
+                realm,
+                listed,
+                expires,
+                note and ((ownNote and "|cff66ccff" or "|cff9d9d9d") .. note .. "|r") or "",
+            },
             tooltipTitle = full,
-            tooltip = (type(entry) == "table" and entry.added)
-                and ("Added " .. date("%Y-%m-%d", entry.added) .. (note and ("\nNote: " .. note) or "")) or nil,
+            tooltip = (entry.added and ("Added " .. date("%Y-%m-%d", entry.added)) or "Added before dates were kept")
+                .. (note and ("\nNote: " .. note) or ""),
             onDelete = function() SetIgnored(full, false) end,
         }
     end
@@ -1271,7 +1516,7 @@ local function DrawIgnoreTab()
     for realm in pairs(settings.realms) do
         if filterText == "" or realm:lower():find(filterText, 1, true) then
             items[#items + 1] = {
-                left = "|cff00ccff[Realm]|r  " .. realm, right = "whole realm",
+                cols = { "|cff00ccff[Realm]|r", realm, "", "|cff888888Never|r", "|cff9d9d9deveryone from this realm|r" },
                 onDelete = function() settings.realms[realm] = nil; RefreshManager() end,
             }
         end
@@ -1280,14 +1525,14 @@ local function DrawIgnoreTab()
     for npc in pairs(settings.npcs) do
         if filterText == "" or npc:lower():find(filterText, 1, true) then
             items[#items + 1] = {
-                left = "|cffffaa00[NPC]|r  " .. npc, right = "monster/npc",
+                cols = { "|cffffaa00[NPC]|r", npc, "", "|cff888888Never|r", "|cff9d9d9dmonster or NPC|r" },
                 onDelete = function() settings.npcs[npc] = nil; RefreshManager() end,
             }
         end
     end
 
-    if #items == 0 then
-        items[1] = { left = "|cff9d9d9dNo matching ignores found.|r" }
+    if #items == 1 then
+        items[2] = { left = "|cff9d9d9dNo matching ignores found.|r" }
     end
     DrawRows(items)
 
@@ -1536,6 +1781,71 @@ local function DrawRecentTab()
     manager.count:SetText(("%d players, last %d days"):format(#list, tonumber(settings.recentDays) or 7))
 end
 
+-- ── Tab: Last match ─────────────────────────────────────────────────────────
+
+local function Signed(n)
+    if not n then return "" end
+    return n > 0 and ("|cff40ff40+%d|r"):format(n) or ("|cffff5050%d|r"):format(n)
+end
+
+local function MatchSummary(m)
+    if type(m) ~= "table" then return "|cff9d9d9dNo arena or battleground yet.|r" end
+    local colour = (m.result == "Victory" or m.result == "Rating up") and "ff40ff40"
+        or (m.result == "Defeat" or m.result == "Rating down") and "ffff5050" or "ffffd100"
+    local parts = { ("|c%s%s|r"):format(colour, m.result or "In progress or not known"), m.where or "" }
+    if m.rating then parts[#parts + 1] = ("Rating %d %s"):format(m.rating, Signed(m.ratingChange)) end
+    if m.mmr then parts[#parts + 1] = ("MMR %d %s"):format(m.mmr, Signed(m.mmrChange)) end
+    if m.started then parts[#parts + 1] = "|cff9d9d9d" .. date("%H:%M", m.started) .. "|r" end
+    return table.concat(parts, "   ")
+end
+
+local function DrawMatchTab()
+    local m = settings.lastMatch
+    local filterText = manager.searchBox and manager.searchBox:GetText():lower():gsub("^%s+", ""):gsub("%s+$", "") or ""
+    local items = { { left = MatchSummary(m) } }
+    local names = {}
+    if type(m) == "table" and type(m.players) == "table" then
+        for full in pairs(m.players) do
+            if filterText == "" or full:lower():find(filterText, 1, true) then names[#names + 1] = full end
+        end
+    end
+    table.sort(names)
+    for _, full in ipairs(names) do
+        local e = m.players[full]
+        local ignored = IsIgnoredPlayer(full)
+        local menuEntry = settings.recent[full] or { where = m.where, guid = e.guid, class = e.class }
+        if not menuEntry.guid then menuEntry.guid = e.guid end
+        items[#items + 1] = {
+            left = ("|c%s%s|r%s%s"):format(ClassColour(e.class), full,
+                e.rating and ("  |cff9d9d9d%d|r"):format(e.rating) or "",
+                ignored and "  |cffff5555ignored|r" or ""),
+            right = Signed(e.ratingChange),
+            tooltipTitle = full,
+            tooltip = (e.guid and "" or "|cff9d9d9dOnly on the scoreboard: report them from a chat line, or while they are near.|r\n")
+                .. "|cff00ff00Click: ignore, report or whisper.|r",
+            onClick = function(row) RecentMenu(row, full, menuEntry) end,
+        }
+    end
+    if #names == 0 and type(m) == "table" then
+        items[2] = { left = "|cff9d9d9dNobody seen yet.|r" }
+    end
+    DrawRows(items)
+    manager.count:SetText(("%d players"):format(#names))
+end
+
+local function BuildMatchPanel(parent)
+    local panel = CreateFrame("Frame", nil, parent)
+    panel:SetAllPoints()
+    local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hint:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
+    hint:SetPoint("RIGHT", panel, "RIGHT", 0, 0)
+    hint:SetJustifyH("LEFT")
+    hint:SetText("Everyone in your last arena or battleground: your team, the enemy team from the scoreboard and arena frames, "
+        .. "whoever your team targeted and every nameplate you saw. It stays after you leave and is replaced when the next match starts. "
+        .. "Open it with a key: Key Bindings, Oxed Hub, Last Match Players.")
+    return panel
+end
+
 local function BuildRecentPanel(parent)
     local panel = CreateFrame("Frame", nil, parent)
     panel:SetAllPoints()
@@ -1557,8 +1867,9 @@ end
 local TABS = {
     { key = "ignore",  label = "Ignore List" },
     { key = "filters", label = "Spam Filters" },
-    { key = "blocked", label = "Blocked History" },
-    { key = "recent",  label = "Recent Players" },
+    { key = "blocked", label = "Blocked" },
+    { key = "recent",  label = "Recent" },
+    { key = "match",   label = "Last Match" },
 }
 
 function RefreshManager()
@@ -1570,10 +1881,13 @@ function RefreshManager()
     manager.filterPanel:SetShown(manager.tab == "filters")
     manager.blockedPanel:SetShown(manager.tab == "blocked")
     manager.recentPanel:SetShown(manager.tab == "recent")
+    manager.matchPanel:SetShown(manager.tab == "match")
     manager.searchBox:SetShown(manager.tab ~= "filters")
 
     if manager.tab == "filters" then
         DrawFiltersTab()
+    elseif manager.tab == "match" then
+        DrawMatchTab()
     elseif manager.tab == "blocked" then
         DrawBlockedTab()
     elseif manager.tab == "recent" then
@@ -1752,7 +2066,7 @@ local function BuildManager()
     manager.tabButtons = {}
     local previous
     for _, tabInfo in ipairs(TABS) do
-        local button = MakeButton(manager, tabInfo.label, 110, function()
+        local button = MakeButton(manager, tabInfo.label, 92, function()
             manager.tab = tabInfo.key
             manager.editing = nil
             manager.scroll:SetVerticalScroll(0)
@@ -1769,7 +2083,7 @@ local function BuildManager()
     end
 
     -- Live Search EditBox
-    manager.searchBox = MakeInput(manager, 170, "Search ignores...")
+    manager.searchBox = MakeInput(manager, 150, "Search...")
     manager.searchBox:SetPoint("TOPRIGHT", manager, "TOPRIGHT", -20, -31)
     manager.searchBox:SetScript("OnTextChanged", function(self)
         if self.hint then self.hint:SetShown(self:GetText() == "") end
@@ -1795,6 +2109,7 @@ local function BuildManager()
     manager.filterPanel  = BuildFilterPanel(bottom)
     manager.blockedPanel = BuildBlockedPanel(bottom)
     manager.recentPanel  = BuildRecentPanel(bottom)
+    manager.matchPanel   = BuildMatchPanel(bottom)
 
     return manager
 end
@@ -1806,6 +2121,21 @@ function OpenManager(tab)
     manager:Show()
     manager:Raise()
     RefreshManager()
+end
+
+-- The key binding (Bindings.xml): the Last Match tab, or closes the window.
+-- Named at file scope, so the key is listed even with the module off.
+BINDING_NAME_OXEDHUB_CHATFILTER_LASTMATCH = "Last Match Players (Chat Filter)"
+function OxedHub_ChatFilterLastMatch()
+    if not settings or settings.enabled == false then
+        print(PREFIX .. "switched off. Switch it on in OxedHub's Modules page first.")
+        return
+    end
+    if manager and manager:IsShown() and manager.tab == "match" then
+        manager:Hide()
+    else
+        OpenManager("match")
+    end
 end
 
 -- ── Switching on ────────────────────────────────────────────────────────────
@@ -1961,8 +2291,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "chatfilter",
         name     = "Chat Filter",
-        version  = "1.4.0",
-        updated  = 20261021.5,  -- Recent Players, Report from chat
+        version  = "1.5.0",
+        updated  = 20261024.8,  -- Last Match tab, more PvP players caught, Battle.net report
         author   = "Oxed",
         category = "chat",
         keywords = { "chat", "spam", "ignore", "filter", "block", "mute", "words", "gil" },

@@ -29,6 +29,12 @@ local DEFAULTS = {
     collapsed   = false,  -- collapse HUD to title bar
     noBorder    = false,  -- hide HUD border
     minimap     = true,   -- show minimap button
+
+    -- Gold Stock (GoldStock.lua): the account's gold across characters
+    stockWarbandInTotal   = true,   -- the warband bank counts toward the total
+    stockCombineFactions  = false,  -- Realms view: one line per realm, not per faction
+    stockRoundDown        = true,   -- export whole gold
+    stockMinGold          = 0,      -- hide characters with less gold than this
 }
 
 local settings          -- OxedHubDB.modules.goldwq, bound at login
@@ -1287,6 +1293,25 @@ buildUI = function()
     ApplyRedButtonStyle(optBtn)
     optBtn:SetScript("OnClick", function() toggleOptions() end)
 
+    -- Over to Gold Stock; its window has a Tracker button that comes back.
+    local goldBtn = CreateFrame("Button", nil, ui, "UIPanelButtonTemplate")
+    goldBtn:SetSize(44, 18)
+    goldBtn:SetPoint("RIGHT", optBtn, "LEFT", -3, 0)
+    goldBtn:SetText("Gold")
+    ApplyRedButtonStyle(goldBtn)
+    goldBtn:SetScript("OnClick", function()
+        if not OxedHub.GoldStock then return end
+        ui:Hide()
+        OxedHub.GoldStock:Show()
+    end)
+    goldBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Gold Stock")
+        GameTooltip:AddLine("Gold on every character, guild bank and the warband bank.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    goldBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
     local minBtn = CreateFrame("Button", nil, ui, "UIPanelButtonTemplate")
     minBtn:SetSize(30, 20)
     -- On the left of the title bar, away from the other buttons.
@@ -1371,6 +1396,23 @@ buildUI = function()
     end)
 
     ui:Hide()
+end
+
+-- Gold Stock's minimise button: down to the same gold coin the tracker uses,
+-- which opens the tracker again when clicked.
+OxedHub.GoldWQMinimise = function()
+    if not settings or settings.enabled == false then return end
+    if not ui then buildUI() end
+    ui.SetCollapsed(true)
+end
+
+-- Gold Stock's Tracker button: the tracker in its full size, out of the coin.
+OxedHub.GoldWQShowTracker = function()
+    if not settings or settings.enabled == false then return end
+    if not ui then buildUI() end
+    if settings.collapsed and ui.SetCollapsed then ui.SetCollapsed(false) end
+    if coin then coin:Hide() end
+    ui:Show()
 end
 
 toggleUI = function()
@@ -1502,7 +1544,7 @@ local function ShowOptions()
     if not API or not settings then return end
 
     if not optionsWindow then
-        optionsWindow = API:CreateOptionsWindow("Gold World Quests", 440, 480)
+        optionsWindow = API:CreateOptionsWindow("Gold World Quests", 440, 510)
 
         optionsWindow:AddCheckbox(settings, "announce", "Announce active quests on login",
             "Prints a summary of active gold world quests and total gold in chat when you log in.")
@@ -1556,7 +1598,24 @@ local function ShowOptions()
             print(PREFIX .. "Tracker HUD position reset to center.")
         end)
 
-        optionsWindow.cursorY = optionsWindow.cursorY - 36
+        optionsWindow.cursorY = optionsWindow.cursorY - 32
+
+        -- Button: Gold Stock, every character's gold, guild banks and the warband bank
+        local btnStock = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
+        btnStock:SetSize(130, 22)
+        btnStock:SetPoint("TOPLEFT", optionsWindow, "TOPLEFT", 20, optionsWindow.cursorY)
+        btnStock:SetText("Gold Stock")
+        ApplyRedButtonStyle(btnStock)
+        btnStock:SetScript("OnClick", function()
+            optionsWindow:Hide()
+            if OxedHub.GoldStock then OxedHub.GoldStock:Toggle() end
+        end)
+        local stockNote = optionsWindow:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        stockNote:SetPoint("LEFT", btnStock, "RIGHT", 10, 0)
+        stockNote:SetTextColor(0.75, 0.75, 0.75)
+        stockNote:SetText("Gold on every character, guild bank and warband bank.")
+
+        optionsWindow.cursorY = optionsWindow.cursorY - 32
 
         optionsWindow:AddNote("|cffffd100Weekly Caches to Track|r  -- uncheck any caches you wish to ignore:")
         for _, cache in ipairs(Data.Caches or {}) do
@@ -1577,7 +1636,8 @@ local function ShowOptions()
             optionsWindow.cursorY = optionsWindow.cursorY - 24
         end
 
-        optionsWindow:AddNote("Type /gwq to toggle the tracker, /gwq route for shortest route, or /gwq report for weekly summary.")
+        optionsWindow:AddNote("Type /gwq to toggle the tracker, /gwq route for shortest route, or /gwq report for weekly summary. "
+            .. "/gwq gold opens Gold Stock, /gwq goldlist prints it in chat.")
     end
 
     optionsWindow:Show()
@@ -1673,6 +1733,10 @@ local function HandleSlash(msg)
         clearRoute()
     elseif msg == "next" or msg == "skip" then
         SkipRouteStop()
+    elseif msg == "gold" or msg == "stock" then
+        if OxedHub.GoldStock then OxedHub.GoldStock:Toggle() end
+    elseif msg == "goldlist" then
+        if OxedHub.GoldStock then OxedHub.GoldStock:PrintSummary() end
     elseif msg == "options" or msg == "config" then
         ShowOptions()
     elseif msg == "minimap" then
@@ -1732,8 +1796,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "goldwq",
         name     = "Gold World Quests",
-        version  = "1.0.2",
-        updated  = 20261020.2,  -- no scans during a fight
+        version  = "1.1.0",
+        updated  = 20261024.9,  -- Gold Stock, and buttons between it and the tracker
         author   = "Marcus / Oxed",
         category = "quests",
         keywords = { "gold", "wq", "world quest", "caches", "special assignment", "tomtom", "route" },
@@ -1746,6 +1810,7 @@ loginFrame:SetScript("OnEvent", function(self)
         -- On the minimap button's right-click menu and as an Action Hub node.
         quick = {
             { text = "Show or hide", func = function() toggleUI() end },
+            { text = "Gold Stock", func = function() if OxedHub.GoldStock then OxedHub.GoldStock:Toggle() end end },
         },
 
         OnOptionsShow = function()
@@ -1781,6 +1846,7 @@ loginFrame:SetScript("OnEvent", function(self)
 
             shouldAnnounce = settings.announce
             requestScan(3)
+            if OxedHub.GoldStock then OxedHub.GoldStock:Start(settings) end
 
             if settings.collapsed and settings.coinShown then
                 -- Minimised before the reload: the coin comes back where it was.
@@ -1809,6 +1875,7 @@ loginFrame:SetScript("OnEvent", function(self)
             end
 
             clearRoute()
+            if OxedHub.GoldStock then OxedHub.GoldStock:Stop() end
 
             if ui then ui:Hide() end
             if optionsWindow then optionsWindow:Hide() end

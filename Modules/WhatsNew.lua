@@ -26,6 +26,26 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.43",
+        important = true,
+        lines = {
+            { "NEW", "Chat Buttons module (/oxchat): Say, Group and Guild buttons by the chat window. Say keeps who whispered you and what they said, with a count of unanswered ones. Group sends a line of your own on the mouse wheel and can answer ready checks for you (Alt stops it). Guild shows who is online and marks new applicants and unread community messages. Right-click any of them to whisper someone." },
+            { "NEW", "WQ Achievements module (/wqach): the world quests up right now that count toward an achievement you still need, or reward a mount, pet or toy you do not have. Every criterion is checked against the game, not guessed. Still needed only or all, this expansion or every one, and which rewards to look for. Click a quest for the map, an achievement to open it, shift-click to link it, right-click for a web link." },
+            { "NEW", "WQ Achievements: a screenshot the moment you earn an achievement, and a quest mark over the nameplate of any mob your quest log needs (it keeps working in combat)." },
+            { "NEW", "Minimap Buttons module (/oxmb): every addon's minimap button gathered behind one button. A click opens them in a drawer that grows in the direction you pick, with the number per row and both sizes adjustable. It can close itself when the mouse leaves, hide the game's addon compartment and hide in pet battles. Switching it off puts every button back on the minimap." },
+            { "NEW", "Gold World Quests: Gold Stock (/gwq gold). The gold on every character, each guild bank once you open it, and the warband bank, with totals. Three views (characters, realms, guilds), sorting by any column, a search and a least-gold filter, guild banks you can leave out of the total, and an export to CSV or JSON." },
+            { "NEW", "MythicLooter: the window that opens when you join a Mythic+ group now also shows the group's name, leader, play style and description under the dungeon teleport, so they stay readable after the Group Finder closes. A line in chat says where you were invited, the play style and your role, with an [Open reminder] link that brings the window back." },
+            { "NEW", "Chat Filter: a Last Match tab. Everyone from your last arena or battleground with the result (Victory, Defeat, or Rating up and down in Solo Shuffle), your rating and MMR change, and each player's rating change. Click a player to ignore, report or whisper them. It stays after you leave and has its own key in Key Bindings." },
+            { "NEW", "Chat Filter: in a match it now also catches the enemy arena team, whoever your team targets and every nameplate you see, so a player who threw without a word can still be found. Battle.net friends get a Report entry on their menu." },
+            { "CHANGED", "MemedOn is now called OxMemes. Your keywords, spells and settings stay as they were." },
+            { "NEW", "OxMemes spells: suggestions with icons while you type a spell to add, the same search the triggers use (your spellbook and common spells of other classes). Click one to add it." },
+            { "FIXED", "OxMemes: a long sound or effect name no longer runs over the next button; it is cut to fit, the full name in the tooltip." },
+            { "CHANGED", "Chat Filter: the ignore list is a table now. Player, server, how many days on the list, when it expires and the reason you gave, each in its own column." },
+            { "FIXED", "Bonus Roll Guard works again: Roll and Pass now open a question that names the spec the loot goes to. Confirm rolls, Cancel or Escape keeps the coin." },
+            { "FIXED", "Party Keystones: clicking a dungeon icon teleports there for this season's dungeons too (Den of Nalorakk, Altar of Fangs, Voidscar Arena and the rest). Their icons did nothing before." },
+        },
+    },
+    {
         version = "2.4.42",
         important = true,
         lines = {

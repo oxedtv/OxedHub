@@ -1,14 +1,17 @@
 -- ============================================================================
 -- Bonus Roll Guard (built-in OxedHub module)
 -- A bonus roll is spent on one click, often by accident and often in the
--- wrong loot specialisation. With this on, the first click on Roll (or Pass)
--- only says which spec the loot goes to; a second click within a few seconds
--- does it.
+-- wrong loot specialisation. With this on, Roll (and Pass) first ask in a
+-- popup, which names the spec the loot goes to; Confirm does it.
 --
--- How: a button of ours lies over the game's button and takes the first
--- click. After it, ours steps aside for ARM_TIME seconds so the second click
--- lands on the game's own button. Nothing of the game's is replaced or
--- clicked for the player, so no taint and no blocked action.
+-- How: the game's Roll and Pass buttons keep their own click handler, but it
+-- is wrapped: while the module is on, the click opens our popup and the
+-- popup's Confirm calls the game's handler, still inside the player's click.
+--
+-- ⚠ The first version laid a button of ours over the game's and needed a
+-- second click. It never armed: the prompt opens on SPELL_CONFIRMATION_PROMPT,
+-- not BONUS_ROLL_STARTED (which fires after the roll), so the cover was not
+-- there when the window came up.
 -- ============================================================================
 
 local addonName, OxedHub = ...
@@ -16,17 +19,17 @@ local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -
 
 local DEFAULTS = {
     enabled   = false,  -- off until the player switches it on
-    guardPass = true,   -- also guard Pass
-    sound     = true,   -- a click sound on the first press
+    guardPass = true,   -- also ask before Pass
+    sound     = true,   -- a sound when the popup opens
 }
 
-local ARM_TIME = 5      -- seconds the real button stays reachable
+local POPUP_ROLL = "OXEDHUB_BONUS_ROLL_CONFIRM"
+local POPUP_PASS = "OXEDHUB_BONUS_PASS_CONFIRM"
 
 local settings
 local optionsWindow
-local shields = {}      -- [game button] = our cover
+local wrapped = {}      -- [game button] = true once its OnClick is wrapped
 local frameHooked = false
-local note              -- the line above the bonus roll window
 
 local function LootSpecText()
     local specID = GetLootSpecialization and GetLootSpecialization()
@@ -42,52 +45,40 @@ local function LootSpecText()
     return "unknown"
 end
 
-local function ShowNote(text)
-    if not BonusRollFrame then return end
-    if not note then
-        note = CreateFrame("Frame", nil, BonusRollFrame, "BackdropTemplate")
-        note:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-        note:SetBackdropColor(0, 0, 0, 0.85)
-        note:SetBackdropBorderColor(1, 0.82, 0, 0.9)
-        note.text = note:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        note.text:SetPoint("CENTER")
-    end
-    note:ClearAllPoints()
-    note:SetPoint("BOTTOM", BonusRollFrame, "TOP", 0, 4)
-    note.text:SetText(text)
-    note:SetSize(note.text:GetStringWidth() + 24, 28)
-    note:Show()
-end
+-- What Confirm should do; set each time a popup opens.
+local pendingAction
 
--- Our cover over one of the game's buttons.
-local function Shield(button, isRoll)
-    if not button or shields[button] then return shields[button] end
-    local cover = CreateFrame("Button", nil, button:GetParent())
-    cover:SetAllPoints(button)
-    cover:SetFrameLevel(button:GetFrameLevel() + 10)
-    cover:RegisterForClicks("AnyUp")
-    cover:SetScript("OnEnter", function()
-        local onEnter = button:GetScript("OnEnter")
-        if onEnter then pcall(onEnter, button) end
-    end)
-    cover:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    cover:SetScript("OnClick", function(self)
-        if isRoll then
-            ShowNote(("Loot goes to %s. |cff40ff40Click Roll again to roll.|r"):format(LootSpecText()))
-        else
-            ShowNote("|cffff8040Click Pass again to give the roll up.|r")
-        end
-        if settings.sound and PlaySound and SOUNDKIT then pcall(PlaySound, SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON) end
-        -- Step aside so the next click reaches the game's own button.
-        self:Hide()
-        C_Timer.After(ARM_TIME, function()
-            if settings.enabled and button:IsVisible() then self:Show() end
-            if note then note:Hide() end
-        end)
-    end)
-    shields[button] = cover
-    return cover
-end
+StaticPopupDialogs[POPUP_ROLL] = {
+    text = "Use your bonus roll?\n\nLoot goes to: |cffffd100%s|r",
+    button1 = "Roll",
+    button2 = CANCEL or "Cancel",
+    OnAccept = function()
+        local action = pendingAction
+        pendingAction = nil
+        if action then action() end
+    end,
+    OnCancel = function() pendingAction = nil end,
+    timeout = 0,
+    whileDead = false,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
+StaticPopupDialogs[POPUP_PASS] = {
+    text = "Give up this bonus roll?",
+    button1 = PASS or "Pass",
+    button2 = CANCEL or "Cancel",
+    OnAccept = function()
+        local action = pendingAction
+        pendingAction = nil
+        if action then action() end
+    end,
+    OnCancel = function() pendingAction = nil end,
+    timeout = 0,
+    whileDead = false,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
 
 local function RollButton()
     return BonusRollFrame and ((BonusRollFrame.PromptFrame and BonusRollFrame.PromptFrame.RollButton)
@@ -99,28 +90,53 @@ local function PassButton()
         or BonusRollFrame.PassButton)
 end
 
-local function Arm()
-    if not (settings and settings.enabled and BonusRollFrame) then return end
-    local roll, pass = RollButton(), PassButton()
-    local rollCover = Shield(roll, true)
-    if rollCover then rollCover:Show() end
-    local passCover = Shield(pass, false)
-    if passCover then passCover:SetShown(settings.guardPass) end
-    if note then note:Hide() end
+-- Wraps one game button. The wrapper stays for the session; with the module
+-- off (or Pass not guarded) it hands the click straight to the game.
+local function Wrap(button, isRoll)
+    if not button or wrapped[button] then return end
+    local original = button:GetScript("OnClick")
+    if not original then return end
+    wrapped[button] = true
+
+    button:SetScript("OnClick", function(self, mouse, down)
+        local guard = settings and settings.enabled and (isRoll or settings.guardPass)
+        if not guard then
+            return original(self, mouse, down)
+        end
+        pendingAction = function() original(self, mouse, down) end
+        if settings.sound and PlaySound and SOUNDKIT then
+            pcall(PlaySound, SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+        end
+        if isRoll then
+            StaticPopup_Show(POPUP_ROLL, LootSpecText())
+        else
+            StaticPopup_Show(POPUP_PASS)
+        end
+    end)
 end
 
-local function Disarm()
-    for _, cover in pairs(shields) do cover:Hide() end
-    if note then note:Hide() end
+local function Arm()
+    if not (settings and settings.enabled and BonusRollFrame) then return end
+    Wrap(RollButton(), true)
+    Wrap(PassButton(), false)
+end
+
+-- The roll window went away: a popup still open would act on nothing.
+local function ClosePopups()
+    pendingAction = nil
+    if StaticPopup_Hide then
+        StaticPopup_Hide(POPUP_ROLL)
+        StaticPopup_Hide(POPUP_PASS)
+    end
 end
 
 local eventFrame = CreateFrame("Frame")
 eventFrame:SetScript("OnEvent", function(_, event)
-    if event == "BONUS_ROLL_STARTED" or event == "SPELL_CONFIRMATION_PROMPT" then
-        -- The frame lays itself out first.
+    if event == "SPELL_CONFIRMATION_PROMPT" then
+        -- The window lays itself out first.
         C_Timer.After(0, Arm)
     else
-        Disarm()
+        ClosePopups()
     end
 end)
 
@@ -130,10 +146,10 @@ local function ShowOptions()
     if not optionsWindow then
         local w = API:CreateOptionsWindow("Bonus Roll Guard", 440, 220)
         optionsWindow = w
-        w:AddCheckbox(settings, "guardPass", "Also guard Pass", nil, Arm)
-        w:AddCheckbox(settings, "sound", "A click sound on the first press")
-        w:AddNote("The first click on Roll shows which spec the loot goes to; click again within "
-            .. ARM_TIME .. " seconds to roll. The roll itself is the game's own button.")
+        w:AddCheckbox(settings, "guardPass", "Also ask before Pass")
+        w:AddCheckbox(settings, "sound", "A sound when the question opens")
+        w:AddNote("Roll opens a question that names the spec the loot goes to. "
+            .. "Confirm rolls, Cancel or Escape keeps the coin. The roll itself is the game's own.")
     end
     optionsWindow:Show()
 end
@@ -158,16 +174,19 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "bonusrollguard",
         name     = "Bonus Roll Guard",
-        version  = "1.0.0",
+        version  = "1.1.0",
+        updated  = 20261024.2,  -- a confirm popup instead of a second click
         author   = "Oxed",
         category = "groups",
         keywords = { "bonus", "roll", "coin", "loot", "spec", "confirm", "raid" },
-        desc     = "A bonus roll needs two clicks, and shows which spec the loot goes to first.",
+        desc     = "Asks before a bonus roll is spent, and names the spec the loot goes to.",
         icon     = "Interface\\Icons\\INV_Misc_CuriousCoin",
         defaults = DEFAULTS,
         OnOptionsShow = function() ShowOptions() end,
         OnEnable = function(_, cfg)
             settings = cfg
+            eventFrame:RegisterEvent("SPELL_CONFIRMATION_PROMPT")
+            eventFrame:RegisterEvent("SPELL_CONFIRMATION_TIMEOUT")
             eventFrame:RegisterEvent("BONUS_ROLL_STARTED")
             eventFrame:RegisterEvent("BONUS_ROLL_FAILED")
             eventFrame:RegisterEvent("BONUS_ROLL_RESULT")
@@ -176,12 +195,13 @@ loginFrame:SetScript("OnEvent", function(self)
             if BonusRollFrame and not frameHooked then
                 frameHooked = true
                 BonusRollFrame:HookScript("OnShow", function() C_Timer.After(0, Arm) end)
+                BonusRollFrame:HookScript("OnHide", ClosePopups)
             end
-            if BonusRollFrame and BonusRollFrame:IsShown() then Arm() end
+            Arm()
         end,
         OnDisable = function()
             eventFrame:UnregisterAllEvents()
-            Disarm()
+            ClosePopups()
         end,
     })
 end)
