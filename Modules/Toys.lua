@@ -1103,7 +1103,7 @@ function Toys:RebuildCategoryTabs()
     -- shown; if the tab limit is reached it just reports so via chat.
     local addTab = makeTab("+", false, function()
         if #self:GetToyCategories() >= MAX_TOY_CATEGORIES then
-            UIErrorsFrame:AddMessage("OxedHub: Maximum of " .. MAX_TOY_CATEGORIES .. " toy tabs reached. Delete one first.", 1, 0.2, 0.2)
+            UIErrorsFrame:AddMessage(L["OxedHub: Maximum of "] .. MAX_TOY_CATEGORIES .. L[" toy tabs reached. Delete one first."], 1, 0.2, 0.2)
             return
         end
         self:ShowNewCategoryDialog(function(newName)
@@ -1161,7 +1161,7 @@ function Toys:ShowQuickMixesTab(parent)
 
     local title = gridFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     title:SetPoint("TOPLEFT", gridFrame, "TOPLEFT", 10, -10)
-    title:SetText("Quick Mixes")
+    title:SetText(L["Quick Mixes"])
 
     self:CreateQuickMixesUI(gridFrame)
 end
@@ -1238,7 +1238,7 @@ function Toys:RefreshQuickMixesGrid()
         btn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:AddLine(mixName, 1, 0.82, 0)
-            GameTooltip:AddLine("|cff00ff00Click to assign to selected emotion node|r", 0, 1, 0)
+            GameTooltip:AddLine(L["|cff00ff00Click to assign to selected emotion node|r"], 0, 1, 0)
             GameTooltip:Show()
         end)
         btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1247,11 +1247,11 @@ function Toys:RefreshQuickMixesGrid()
             local selectedEmotion = ToyRing and ToyRing.GetSelectedEmotion and ToyRing:GetSelectedEmotion()
             if selectedEmotion then
                 ToyRing:SetEmotionMapping(selectedEmotion, "toyMacro", mixName)
-                print("|cff00ff00[OxedHub]|r Assigned |cffffd100" .. mixName .. "|r to |cffffd100" .. selectedEmotion .. "|r")
+                print(L["|cff00ff00[OxedHub]|r Assigned |cffffd100"] .. mixName .. "|r to |cffffd100" .. selectedEmotion .. "|r")
                 ToyRing:RefreshAssignmentPanel()
                 ToyRing:RefreshNodeStyles()
             else
-                print("|cffff0000[OxedHub]|r Select an emotion node in the Ring tab first.")
+                print(L["|cffff0000[OxedHub]|r Select an emotion node in the Ring tab first."])
             end
         end)
 
@@ -1357,7 +1357,7 @@ function Toys:AddToyCategory(name)
     if toyNameLength(name) > MAX_TOY_CATEGORY_NAME_LEN then return false end
     if self:ToyCategoryExists(name) then return false end
     if #self:GetToyCategories() >= MAX_TOY_CATEGORIES then
-        print("|cffff0000OxedHub:|r Maximum of " .. MAX_TOY_CATEGORIES .. " toy tabs reached.")
+        print(L["|cffff0000OxedHub:|r Maximum of "] .. MAX_TOY_CATEGORIES .. L[" toy tabs reached."])
         return false
     end
     table.insert(self:GetToyCategories(), name)
@@ -1531,7 +1531,7 @@ end
 function Toys:ShowToyCategoryMenu(anchorButton, itemID)
     if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
     local _, toyName = C_ToyBox and C_ToyBox.GetToyInfo and C_ToyBox.GetToyInfo(itemID)
-    toyName = toyName or ("Toy #" .. itemID)
+    toyName = toyName or (L["Toy #"] .. itemID)
 
     MenuUtil.CreateContextMenu(anchorButton, function(owner, root)
         root:CreateTitle(toyName)
@@ -1566,10 +1566,10 @@ function Toys:ShowToyCategoryMenu(anchorButton, itemID)
         -- ToyBoxes Grouping Integration
         if self.GetToyBoxes then
             root:CreateDivider()
-            root:CreateTitle("|cFFFFD900Add to ToyBox|r")
+            root:CreateTitle(L["|cFFFFD900Add to ToyBox|r"])
             local boxes = self:GetToyBoxes()
             for _, box in ipairs(boxes) do
-                root:CreateCheckbox(box.name or "Box",
+                root:CreateCheckbox(box.name or L["Box"],
                     function() return self.IsToyInBox and self:IsToyInBox(box.id, itemID) end,
                     function()
                         if self.IsToyInBox and self:IsToyInBox(box.id, itemID) then
@@ -1590,8 +1590,8 @@ function Toys:ShowNewCategoryDialog(onAccept, initialText, titleText)
     if not StaticPopupDialogs["OXEDHUB_TOY_CATEGORY_NAME"] then
         StaticPopupDialogs["OXEDHUB_TOY_CATEGORY_NAME"] = {
             text = "%s",
-            button1 = ACCEPT or "Accept",
-            button2 = CANCEL or "Cancel",
+            button1 = ACCEPT or L["Accept"],
+            button2 = CANCEL or L["Cancel"],
             hasEditBox = true,
             maxLetters = 10,
             timeout = 0,
@@ -1717,7 +1717,7 @@ function Toys:RefreshToyGrid(parent, filter)
             btn:SetScript("OnClick", function(_, button)
                 if button == "RightButton" then
                     if IsShiftKeyDown() then
-                        local toyName = data and data.name or ("Toy #" .. itemID)
+                        local toyName = data and data.name or (L["Toy #"] .. itemID)
                         OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", itemID), toyName)
                         return
                     end
@@ -1801,7 +1801,11 @@ function Toys:CreateMixerUI(frame)
 
     local slotChoiceLabel = frame:CreateFontString(nil, 'OVERLAY')
     slotChoiceLabel:SetPoint('TOPLEFT', frame, 'TOPLEFT', 216, -55 + MIXER_CONTENT_Y_OFFSET)
-    slotChoiceLabel:SetFont(OxedHub:GetFont("Interface\\AddOns\\OxedHub\\Media\\Fonts\\Ronthel Brush DEMO.otf"), 34)
+    -- The Cyrillic stand-in (Morpheus) runs much wider than the brush font, so
+    -- the title comes down a size when it is in use.
+    local brushFont = "Interface\\AddOns\\OxedHub\\Media\\Fonts\\Ronthel Brush DEMO.otf"
+    local titleFont = OxedHub:GetFont(brushFont)
+    slotChoiceLabel:SetFont(titleFont, titleFont == brushFont and 34 or 26)
     slotChoiceLabel:SetText(L["TOY_CHOOSE_SLOT"] or "Choose toy or spell")
     slotChoiceLabel:SetTextColor(0.22, 0.18, 0.17, 1.0)
     
@@ -1843,7 +1847,7 @@ function Toys:CreateMixerUI(frame)
             local spellInfo = C_Spell.GetSpellInfo(slot.id)
             GameTooltip:SetSpellByID(slot.id)
             if spellInfo then
-                GameTooltip:AddLine("|cffaaaaaaSpell ID: " .. slot.id .. "|r")
+                GameTooltip:AddLine(L["|cffaaaaaaSpell ID: "] .. slot.id .. "|r")
             end
         end
         GameTooltip:Show()
@@ -1854,7 +1858,7 @@ function Toys:CreateMixerUI(frame)
             local slot = selectedSlots[1]
             if IsShiftKeyDown() and slot and slot.type == "toy" then
                 local _, toyName = C_ToyBox.GetToyInfo(slot.id)
-                OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", slot.id), toyName or ("Toy #" .. slot.id))
+                OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", slot.id), toyName or (L["Toy #"] .. slot.id))
                 return
             end
             selectedSlots[1] = nil
@@ -1941,7 +1945,7 @@ function Toys:CreateMixerUI(frame)
             local spellInfo = C_Spell.GetSpellInfo(slot.id)
             GameTooltip:SetSpellByID(slot.id)
             if spellInfo then
-                GameTooltip:AddLine("|cffaaaaaaSpell ID: " .. slot.id .. "|r")
+                GameTooltip:AddLine(L["|cffaaaaaaSpell ID: "] .. slot.id .. "|r")
             end
         end
         GameTooltip:Show()
@@ -1956,7 +1960,7 @@ function Toys:CreateMixerUI(frame)
             local slot = selectedSlots[2]
             if IsShiftKeyDown() and slot and slot.type == "toy" then
                 local _, toyName = C_ToyBox.GetToyInfo(slot.id)
-                OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", slot.id), toyName or ("Toy #" .. slot.id))
+                OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", slot.id), toyName or (L["Toy #"] .. slot.id))
                 return
             end
             selectedSlots[2] = nil
@@ -2063,7 +2067,7 @@ function Toys:CreateMixerUI(frame)
             local slot = selectedSlots[3]
             if IsShiftKeyDown() and slot and slot.type == "toy" then
                 local _, toyName = C_ToyBox.GetToyInfo(slot.id)
-                OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", slot.id), toyName or ("Toy #" .. slot.id))
+                OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", slot.id), toyName or (L["Toy #"] .. slot.id))
                 return
             end
             selectedSlots[3] = nil
@@ -2156,7 +2160,7 @@ function Toys:CreateMixerUI(frame)
             local slot = selectedSlots[4]
             if IsShiftKeyDown() and slot and slot.type == "toy" then
                 local _, toyName = C_ToyBox.GetToyInfo(slot.id)
-                OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", slot.id), toyName or ("Toy #" .. slot.id))
+                OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", slot.id), toyName or (L["Toy #"] .. slot.id))
                 return
             end
             selectedSlots[4] = nil
@@ -2292,7 +2296,7 @@ function Toys:CreateMixerUI(frame)
     local randomLabel = randomRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     randomLabel:SetPoint("LEFT", randomCheck, "RIGHT", 8, 0)
     local font, size, flags = randomLabel:GetFont()
-    randomLabel:SetFont(font, size + 1, "")
+    randomLabel:SetFont(OxedHub:GetFont(font), size + 1, "")
     randomLabel:SetShadowColor(0, 0, 0, 0)
     randomLabel:SetText(L["MIXER_RANDOM_TOYS"] or "Random Toys")
     randomLabel:SetTextColor(0.22, 0.18, 0.17, 1.0)
@@ -2474,13 +2478,13 @@ function Toys:CreateMixerUI(frame)
 
     local macroHint = macroFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     macroHint:SetPoint("BOTTOM", macroFrame, "BOTTOM", 0, 20)
-    macroHint:SetText("Click Run to execute")
+    macroHint:SetText(L["Click Run to execute"])
 
     -- Run Mix button - HIDDEN (functionality removed per user request)
     local runBtn = CreateFrame("Button", "OxedHubRunMixButton", macroFrame, "UIPanelButtonTemplate,SecureActionButtonTemplate")
     runBtn:SetSize(86, 24)
     runBtn:SetPoint("CENTER", frame, "CENTER", -5, -87 + MIXER_CONTENT_Y_OFFSET)
-    runBtn:SetText("Run Mix")
+    runBtn:SetText(L["Run Mix"])
     runBtn:Hide()  -- Hidden per user request
     
     macroHint:ClearAllPoints()
@@ -2495,13 +2499,29 @@ function Toys:CreateMixerUI(frame)
         local hasAny = false
         for i = 1, 4 do if selectedSlots[i] then hasAny = true; break end end
         if not hasAny then
-            print("|cffff0000OxedHub:|r Select a toy or spell first!")
+            print(L["|cffff0000OxedHub:|r Select a toy or spell first!"])
             return
         end
         self:SaveMix()
-        print("|cff00ff00OxedHub:|r Mix saved successfully!")
+        print(L["|cff00ff00OxedHub:|r Mix saved successfully!"])
     end)
     self.mixerSaveBtn = saveBtn
+
+    -- A key for any saved mix, without an ActionHub node (MixKeybinds.lua).
+    local keysBtn = CreateFrame("Button", nil, macroFrame, "UIPanelButtonTemplate")
+    keysBtn:SetSize(90, 24)
+    keysBtn:SetPoint("RIGHT", saveBtn, "LEFT", -6, 0)
+    keysBtn:SetText(L["Keybinds"])
+    keysBtn:SetScript("OnClick", function()
+        if OxedHub.MixKeybinds then OxedHub.MixKeybinds:Toggle() end
+    end)
+    keysBtn:SetScript("OnEnter", function(b)
+        GameTooltip:SetOwner(b, "ANCHOR_TOP")
+        GameTooltip:SetText(L["Mix keybinds"])
+        GameTooltip:AddLine(L["Press a key to run a mix, no ActionHub needed. /oxmixkeys"], 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    keysBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     -- Subtle flavor text above "Save Mix" using Ronthel Brush DEMO font
     local goWrongText = macroFrame:CreateFontString(nil, "OVERLAY")
@@ -2530,7 +2550,7 @@ function Toys:CreateMixerUI(frame)
         if self.mixerEmoteBtn then self.mixerEmoteBtn:SetText(L["TOYS_ACT_ADD_EMOTE"] or "Add Emote") end
         if self.mixerAnimBtn then self.mixerAnimBtn:SetText(L["TOYS_ACT_ADD_ANIM"] or "Add Animation") end
         if self.mixerChatBtn then self.mixerChatBtn:SetText(L["TOYS_ACT_ADD_TEXT"] or "Add Text") end
-        print("|cff00ff00[OxedHub]|r Mixer cleared. Select items to create a new mix.")
+        print(L["|cff00ff00[OxedHub]|r Mixer cleared. Select items to create a new mix."])
     end)
     self.mixerNewMixBtn = newMixBtn
     
@@ -2700,7 +2720,7 @@ function Toys:CreateMixerUI(frame)
             GameTooltip:SetToyByItemID(slot.id)
         elseif slot.type == "spell" then
             GameTooltip:SetSpellByID(slot.id)
-            GameTooltip:AddLine("|cffaaaaaaSpell ID: " .. slot.id .. "|r")
+            GameTooltip:AddLine(L["|cffaaaaaaSpell ID: "] .. slot.id .. "|r")
         end
         GameTooltip:Show()
     end)
@@ -2731,7 +2751,7 @@ function Toys:CreateMixerUI(frame)
             GameTooltip:SetToyByItemID(slot.id)
         elseif slot.type == "spell" then
             GameTooltip:SetSpellByID(slot.id)
-            GameTooltip:AddLine("|cffaaaaaaSpell ID: " .. slot.id .. "|r")
+            GameTooltip:AddLine(L["|cffaaaaaaSpell ID: "] .. slot.id .. "|r")
         end
         GameTooltip:Show()
     end)
@@ -2862,7 +2882,7 @@ function Toys:SaveMix()
         if self.mixerEmoteBtn then self.mixerEmoteBtn:SetText(L["TOYS_ACT_ADD_EMOTE"] or "Add Emote") end
         if self.mixerAnimBtn then self.mixerAnimBtn:SetText(L["TOYS_ACT_ADD_ANIM"] or "Add Animation") end
         if self.mixerChatBtn then self.mixerChatBtn:SetText(L["TOYS_ACT_ADD_TEXT"] or "Add Text") end
-        print("|cff00ff00[OxedHub]|r Mix updated. Mixer cleared for new creation.")
+        print(L["|cff00ff00[OxedHub]|r Mix updated. Mixer cleared for new creation."])
     end
 
     if self.savedMixesScrollChild then
@@ -2964,7 +2984,7 @@ function Toys:ShowSpellPickerForMixer()
     local clearBtn = CreateFrame("Button", nil, picker, "UIPanelButtonTemplate")
     clearBtn:SetSize(60, 22)
     clearBtn:SetPoint("LEFT", searchInput, "RIGHT", 8, 0)
-    clearBtn:SetText("Clear")
+    clearBtn:SetText(L["Clear"])
     clearBtn:SetScript("OnClick", function() searchInput:SetText(""); searchInput:ClearFocus() end)
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, picker, "UIPanelScrollFrameTemplate")
@@ -2982,7 +3002,7 @@ function Toys:ShowSpellPickerForMixer()
     local closeBtn = CreateFrame("Button", nil, picker, "UIPanelButtonTemplate")
     closeBtn:SetSize(80, 24)
     closeBtn:SetPoint("BOTTOMRIGHT", picker, "BOTTOMRIGHT", -18, 16)
-    closeBtn:SetText("Close")
+    closeBtn:SetText(L["Close"])
     closeBtn:SetScript("OnClick", function() picker:Hide() end)
 
     picker.searchInput = searchInput
@@ -3261,7 +3281,7 @@ function Toys:RefreshSavedMixesList()
             slot1Btn:SetScript("OnClick", function(self, button)
                 if button == "RightButton" and IsShiftKeyDown() and self.itemID then
                     local _, toyName = C_ToyBox.GetToyInfo(self.itemID)
-                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or ("Toy #" .. self.itemID))
+                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or (L["Toy #"] .. self.itemID))
                     return
                 end
                 Toys:EditMix(self.mixName)
@@ -3297,7 +3317,7 @@ function Toys:RefreshSavedMixesList()
             slot2Btn:SetScript("OnClick", function(self, button)
                 if button == "RightButton" and IsShiftKeyDown() and self.itemID then
                     local _, toyName = C_ToyBox.GetToyInfo(self.itemID)
-                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or ("Toy #" .. self.itemID))
+                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or (L["Toy #"] .. self.itemID))
                     return
                 end
                 Toys:EditMix(self.mixName)
@@ -3333,7 +3353,7 @@ function Toys:RefreshSavedMixesList()
             slot3Btn:SetScript("OnClick", function(self, button)
                 if button == "RightButton" and IsShiftKeyDown() and self.itemID then
                     local _, toyName = C_ToyBox.GetToyInfo(self.itemID)
-                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or ("Toy #" .. self.itemID))
+                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or (L["Toy #"] .. self.itemID))
                     return
                 end
                 Toys:EditMix(self.mixName)
@@ -3346,7 +3366,7 @@ function Toys:RefreshSavedMixesList()
                 elseif self.spellID then
                     GameTooltip:SetSpellByID(self.spellID)
                 else
-                    GameTooltip:AddLine("Slot 3 — click to assign", 1, 1, 1)
+                    GameTooltip:AddLine(L["Slot 3 — click to assign"], 1, 1, 1)
                 end
                 GameTooltip:AddLine("|cff00ff00" .. (L["MIXER_CLICK_TO_CHANGE"] or "Click to change") .. "|r")
                 GameTooltip:Show()
@@ -3369,7 +3389,7 @@ function Toys:RefreshSavedMixesList()
             slot4Btn:SetScript("OnClick", function(self, button)
                 if button == "RightButton" and IsShiftKeyDown() and self.itemID then
                     local _, toyName = C_ToyBox.GetToyInfo(self.itemID)
-                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or ("Toy #" .. self.itemID))
+                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or (L["Toy #"] .. self.itemID))
                     return
                 end
                 Toys:EditMix(self.mixName)
@@ -3382,7 +3402,7 @@ function Toys:RefreshSavedMixesList()
                 elseif self.spellID then
                     GameTooltip:SetSpellByID(self.spellID)
                 else
-                    GameTooltip:AddLine("Slot 4 — click to assign", 1, 1, 1)
+                    GameTooltip:AddLine(L["Slot 4 — click to assign"], 1, 1, 1)
                 end
                 GameTooltip:AddLine("|cff00ff00" .. (L["MIXER_CLICK_TO_CHANGE"] or "Click to change") .. "|r")
                 GameTooltip:Show()
@@ -3414,7 +3434,7 @@ function Toys:RefreshSavedMixesList()
             end)
             mixIconFrame:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:AddLine(self.mixName or "Mix", 1, 1, 1)
+                GameTooltip:AddLine(self.mixName or L["Mix"], 1, 1, 1)
                 if self.missingToyCount and self.missingToyCount > 0 then
                     GameTooltip:AddLine("|cffff6666" .. (L["MIXER_MISSING_TOYS"] or "Missing toys: ") .. self.missingToyCount .. "|r")
                 else
@@ -3495,7 +3515,7 @@ function Toys:RefreshSavedMixesList()
             shareBtn:SetScript("OnClick", function(self)
                 local Share = OxedHub.Share
                 if not Share then
-                    print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+                    print(L["|cffff0000Oxed Hub:|r Sharing module unavailable."])
                     return
                 end
                 if not self.mixName then return end
@@ -3504,8 +3524,8 @@ function Toys:RefreshSavedMixesList()
             shareBtn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(L["BTN_SHARE"] or "Share", 1, 0.82, 0)
-                GameTooltip:AddLine("Share only this mix in chat.", 1, 1, 1, true)
-                GameTooltip:AddLine("Others with Oxed Hub can click to import it.", 0.8, 0.8, 0.8, true)
+                GameTooltip:AddLine(L["Share only this mix in chat."], 1, 1, 1, true)
+                GameTooltip:AddLine(L["Others with Oxed Hub can click to import it."], 0.8, 0.8, 0.8, true)
                 GameTooltip:Show()
             end)
             shareBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3783,7 +3803,7 @@ end
 
 function Toys:DeleteMix(name)
     if InCombatLockdown() then
-        print("|cffff0000OxedHub:|r Cannot delete mixes in combat.")
+        print(L["|cffff0000OxedHub:|r Cannot delete mixes in combat."])
         return
     end
 
@@ -3795,9 +3815,9 @@ function Toys:DeleteMix(name)
 
     -- Show confirmation dialog
     StaticPopupDialogs["OXEDHUB_CONFIRM_DELETE_MIX"] = {
-        text = "Are you sure you wish to delete the mix '%s'?",
-        button1 = "Yes",
-        button2 = "No",
+        text = L["Are you sure you wish to delete the mix '%s'?"],
+        button1 = L["Yes"],
+        button2 = L["No"],
         OnAccept = function(self, data)
             Toys:_PerformDeleteMix(data)
         end,
@@ -3814,8 +3834,8 @@ function Toys:ShowRenameMixDialog(oldName)
     if not oldName then return end
     StaticPopupDialogs["OXEDHUB_RENAME_MIX"] = {
         text = (L["MIXER_RENAME_PROMPT"] or "Rename mix '%s' to:"),
-        button1 = ACCEPT or "Accept",
-        button2 = CANCEL or "Cancel",
+        button1 = ACCEPT or L["Accept"],
+        button2 = CANCEL or L["Cancel"],
         hasEditBox = true,
         maxLetters = 64,
         timeout = 0,
@@ -3851,14 +3871,14 @@ end
 
 function Toys:RenameMix(oldName, newName)
     if InCombatLockdown() then
-        print("|cffff0000OxedHub:|r Cannot rename mixes in combat.")
+        print(L["|cffff0000OxedHub:|r Cannot rename mixes in combat."])
         return
     end
 
     -- Rename via internal registry
     if OxedHub.MacroRegistry then
         if not OxedHub.MacroRegistry:RenameMacro(oldName, newName) then
-            print("|cffff0000OxedHub:|r Mix name '" .. newName .. "' already exists.")
+            print(L["|cffff0000OxedHub:|r Mix name '"] .. newName .. L["' already exists."])
             return
         end
     end
@@ -3986,7 +4006,7 @@ function Toys:EditMix(mixName)
     self.currentMixName = mixName
     self.editingMixName = mixName
     if self.mixerSaveBtn then
-        self.mixerSaveBtn:SetText("Update Mix")
+        self.mixerSaveBtn:SetText(L["Update Mix"])
     end
     if OxedHub.UI and OxedHub.UI.ShowToysSubTab then
         OxedHub.UI:ShowToysSubTab("Mixer")
@@ -3998,7 +4018,7 @@ function Toys:EditMixComponent(mixName, componentType)
     self.currentMixName = mixName
     self.editingMixName = mixName
     if self.mixerSaveBtn then
-        self.mixerSaveBtn:SetText("Update Mix")
+        self.mixerSaveBtn:SetText(L["Update Mix"])
     end
 
     local function SaveAndRefresh()
@@ -4216,7 +4236,7 @@ end
 function Toys:CreateMacroForMix(mixName, silent)
     if InCombatLockdown() then
         if not silent then
-            print("|cffff0000[OxedHub]|r Cannot create mix macros in combat.")
+            print(L["|cffff0000[OxedHub]|r Cannot create mix macros in combat."])
         end
         return
     end
@@ -4227,7 +4247,7 @@ function Toys:CreateMacroForMix(mixName, silent)
     end
     if type(mixData) ~= "table" then
         if not silent then
-            print("|cffff0000[OxedHub]|r Mix not found: " .. tostring(mixName))
+            print(L["|cffff0000[OxedHub]|r Mix not found: "] .. tostring(mixName))
         end
         return
     end
@@ -4235,7 +4255,7 @@ function Toys:CreateMacroForMix(mixName, silent)
     local body = self:GetMixMacroText(mixData)
     if not body or body == "#showtooltip\n" then
         if not silent then
-            print("|cffff0000[OxedHub]|r This mix has no usable toy, spell, or action.")
+            print(L["|cffff0000[OxedHub]|r This mix has no usable toy, spell, or action."])
         end
         return
     end
@@ -4251,24 +4271,24 @@ function Toys:CreateMacroForMix(mixName, silent)
     if index > 0 then
         EditMacro(index, macroName, icon, body)
         if not silent then
-            print("|cff00ff00[OxedHub]|r Mix macro updated. Drag the icon to your bar.")
+            print(L["|cff00ff00[OxedHub]|r Mix macro updated. Drag the icon to your bar."])
         end
     else
         local _, numChar = GetNumMacros()
         if numChar >= 18 then
             if not silent then
-                print("|cffff0000[OxedHub]|r Your Character Macro slots are full (18/18). Please delete one.")
+                print(L["|cffff0000[OxedHub]|r Your Character Macro slots are full (18/18). Please delete one."])
             end
             return
         end
         CreateMacro(macroName, icon, body, 1)
         if not silent then
-            print("|cff00ff00[OxedHub]|r Mix macro created. Drag the icon to your bar!")
+            print(L["|cff00ff00[OxedHub]|r Mix macro created. Drag the icon to your bar!"])
         end
     end
 
     if missingToys > 0 and not silent then
-        print("|cffffcc00[OxedHub]|r Mix |cffffff00" .. tostring(mixName) .. "|r has |cffffff00" .. missingToys .. "|r missing toy(s). Missing toys were skipped.")
+        print(L["|cffffcc00[OxedHub]|r Mix |cffffff00"] .. tostring(mixName) .. "|r has |cffffff00" .. missingToys .. L["|r missing toy(s). Missing toys were skipped."])
     end
 
     return macroName
@@ -4277,7 +4297,7 @@ end
 function Toys:CreateInternalMixMacro(silent)
     if InCombatLockdown() then
         if not silent then
-            print("|cffff0000[OxedHub]|r Cannot create mix macros in combat.")
+            print(L["|cffff0000[OxedHub]|r Cannot create mix macros in combat."])
         end
         return
     end
@@ -4296,7 +4316,7 @@ function Toys:CreateInternalMixMacro(silent)
     local body = self:GetMixMacroText(mixData)
     if not body or body == "#showtooltip\n" then
         if not silent then
-            print("|cffff0000[OxedHub]|r This mix has no usable toy, spell, or action.")
+            print(L["|cffff0000[OxedHub]|r This mix has no usable toy, spell, or action."])
         end
         return
     end
@@ -4319,19 +4339,19 @@ function Toys:CreateInternalMixMacro(silent)
     if index > 0 then
         EditMacro(index, macroName, firstIcon, body)
         if not silent then
-            print("|cff00ff00[OxedHub]|r Internal mix macro updated. Drag the icon to your bar.")
+            print(L["|cff00ff00[OxedHub]|r Internal mix macro updated. Drag the icon to your bar."])
         end
     else
         local _, numChar = GetNumMacros()
         if numChar >= 18 then
             if not silent then
-                print("|cffff0000[OxedHub]|r Your Character Macro slots are full (18/18). Please delete one.")
+                print(L["|cffff0000[OxedHub]|r Your Character Macro slots are full (18/18). Please delete one."])
             end
             return
         end
         CreateMacro(macroName, firstIcon, body, 1)
         if not silent then
-            print("|cff00ff00[OxedHub]|r Internal mix macro created. Drag the icon to your bar!")
+            print(L["|cff00ff00[OxedHub]|r Internal mix macro created. Drag the icon to your bar!"])
         end
     end
 
@@ -4348,7 +4368,7 @@ function Toys:GenerateAndExecuteMix(mixData)
     end
     
     if InCombatLockdown() then
-        print("|cffff0000[OxedHub]|r Cannot run mix in combat.")
+        print(L["|cffff0000[OxedHub]|r Cannot run mix in combat."])
         return
     end
 

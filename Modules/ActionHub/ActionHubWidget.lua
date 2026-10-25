@@ -1290,7 +1290,7 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
     -- those settings are stored per hub.
     local hubLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hubLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -34)
-    hubLabel:SetText("Unlocked hubs")
+    hubLabel:SetText(L["Unlocked hubs"])
     hubLabel:SetTextColor(0.9, 0.9, 0.9)
 
     f.hubToggles = {}
@@ -1298,7 +1298,7 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
     local allBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     allBtn:SetSize(52, 20)
     allBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -30)
-    allBtn:SetText("All")
+    allBtn:SetText(L["All"])
     allBtn:SetScript("OnClick", function()
         local hubs = ActionHub:GetHubs() or {}
         local set = ActionHub:GetMoveModeHubs()
@@ -1319,8 +1319,8 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
     end)
     allBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:AddLine("Unlock every hub at once.", 1, 1, 1)
-        GameTooltip:AddLine("Click again to leave only the focused one unlocked.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine(L["Unlock every hub at once."], 1, 1, 1)
+        GameTooltip:AddLine(L["Click again to leave only the focused one unlocked."], 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     allBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1349,12 +1349,12 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     GameTooltip:AddLine(self:GetText() or "", 1, 0.85, 0.2)
                     if not ActionHub:IsMinimizedMoveMode(self.hubIndex) then
-                        GameTooltip:AddLine("Locked. Click to unlock and drag its nodes.", 0.8, 0.8, 0.8, true)
+                        GameTooltip:AddLine(L["Locked. Click to unlock and drag its nodes."], 0.8, 0.8, 0.8, true)
                     elseif ActionHub.minimizedMoveModeHub == self.hubIndex then
-                        GameTooltip:AddLine("Focused: the grid and spacing sliders act on this hub.", 0.8, 0.8, 0.8, true)
-                        GameTooltip:AddLine("Click to lock it again.", 0.8, 0.8, 0.8, true)
+                        GameTooltip:AddLine(L["Focused: the grid and spacing sliders act on this hub."], 0.8, 0.8, 0.8, true)
+                        GameTooltip:AddLine(L["Click to lock it again."], 0.8, 0.8, 0.8, true)
                     else
-                        GameTooltip:AddLine("Unlocked. Click to focus the grid controls on it.", 0.8, 0.8, 0.8, true)
+                        GameTooltip:AddLine(L["Unlocked. Click to focus the grid controls on it."], 0.8, 0.8, 0.8, true)
                     end
                     GameTooltip:Show()
                 end)
@@ -1363,7 +1363,7 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
             end
 
             local db = ActionHub:GetHubDB(i)
-            btn:SetText((db and db.name) or ("Hub " .. i))
+            btn:SetText((db and db.name) or (L["Hub "] .. i))
             btn:SetWidth(math.max(58, (btn:GetTextWidth() or 40) + 20))
             btn.hubIndex = i
 
@@ -1411,7 +1411,7 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
     gridBtn:SetScript("OnClick", function(self)
         if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
         MenuUtil.CreateContextMenu(self, function(owner, root)
-            local titleText = L["AH_GRID_LABEL"] and string.gsub(L["AH_GRID_LABEL"], ":? ?%%s", "") or "Grid"
+            local titleText = L["AH_GRID_LABEL"] and string.gsub(L["AH_GRID_LABEL"], ":? ?%%s", "") or L["Grid"]
             root:CreateTitle(titleText)
             
             local function IsSelected(gridType) return (ActionHub.moveGridType or "off") == gridType end
@@ -1431,7 +1431,7 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
             
             root:CreateDivider()
             
-            local snapTitle = L["AH_SNAP_LABEL"] and string.gsub(L["AH_SNAP_LABEL"], ":? ?%%s", "") or "Snap"
+            local snapTitle = L["AH_SNAP_LABEL"] and string.gsub(L["AH_SNAP_LABEL"], ":? ?%%s", "") or L["Snap"]
             root:CreateCheckbox(snapTitle,
                 function() return ActionHub.moveSnap end,
                 function()
@@ -1476,9 +1476,9 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
         return slider
     end
 
-    f.hSpacingSlider = MakeSpacingSlider("Horizontal snap spacing", "snapStepX", 24, 120, gridBtn, -22)
-    f.vSpacingSlider = MakeSpacingSlider("Vertical snap spacing", "snapStepY", 24, 120, f.hSpacingSlider, -30)
-    f.magneticGapSlider = MakeSpacingSlider("Magnetic Gap", "magneticGap", -10, 10, gridBtn, -22)
+    f.hSpacingSlider = MakeSpacingSlider(L["Horizontal snap spacing"], "snapStepX", 24, 120, gridBtn, -22)
+    f.vSpacingSlider = MakeSpacingSlider(L["Vertical snap spacing"], "snapStepY", 24, 120, f.hSpacingSlider, -30)
+    f.magneticGapSlider = MakeSpacingSlider(L["Magnetic Gap"], "magneticGap", -10, 10, gridBtn, -22)
 
     -- Screen grid: a separate aid from the snap grid above.  It changes
     -- nothing about placement, it just draws guides to line things up by eye.
@@ -1491,11 +1491,11 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
     moveHint:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -182)
     moveHint:SetWidth(320)
     moveHint:SetJustifyH("LEFT")
-    moveHint:SetText("|cff88AAFFShift + drag a node|r moves that whole hub.")
+    moveHint:SetText(L["|cff88AAFFShift + drag a node|r moves that whole hub."])
 
     local screenGridLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     screenGridLabel:SetPoint("LEFT", screenGridCheck, "RIGHT", 4, 0)
-    screenGridLabel:SetText("Screen Grid")
+    screenGridLabel:SetText(L["Screen Grid"])
     screenGridLabel:SetTextColor(0.9, 0.9, 0.9)
 
     local gridStepSlider = CreateFrame("Slider", "OxedHubAHScreenGridStep", f, "OptionsSliderTemplate")
@@ -1510,13 +1510,13 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
     local stepText = gridStepSlider.Text or _G[gridStepSlider:GetName() .. "Text"]
     if stepLow  then stepLow:SetText("24") end
     if stepHigh then stepHigh:SetText("160") end
-    if stepText then stepText:SetText("Grid Spacing") end
+    if stepText then stepText:SetText(L["Grid Spacing"]) end
 
     gridStepSlider:SetValue(ActionHub.screenGridStep or 64)
     gridStepSlider:SetScript("OnValueChanged", function(_, value)
         value = math.floor(value + 0.5)
         ActionHub.screenGridStep = value
-        if stepText then stepText:SetText("Grid Spacing  " .. value) end
+        if stepText then stepText:SetText(L["Grid Spacing  "] .. value) end
         if ActionHub.screenGridOn then ActionHub:SetScreenGridShown(true, value) end
     end)
 
@@ -1536,9 +1536,9 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
     end)
     screenGridCheck:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Screen Grid", 1, 0.82, 0)
-        GameTooltip:AddLine("Draws guides over the whole screen while positioning.", 1, 1, 1, true)
-        GameTooltip:AddLine("Lines run out from the centre, so left and right match.", 0.8, 0.8, 0.8, true)
+        GameTooltip:SetText(L["Screen Grid"], 1, 0.82, 0)
+        GameTooltip:AddLine(L["Draws guides over the whole screen while positioning."], 1, 1, 1, true)
+        GameTooltip:AddLine(L["Lines run out from the centre, so left and right match."], 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     screenGridCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1552,7 +1552,7 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
 
     local snapLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     snapLabel:SetPoint("LEFT", snapCheck, "RIGHT", 4, 0)
-    snapLabel:SetText("Snap to Grid")
+    snapLabel:SetText(L["Snap to Grid"])
     snapLabel:SetTextColor(0.9, 0.9, 0.9)
 
     snapCheck:SetScript("OnClick", function(self)
@@ -1560,9 +1560,9 @@ function ActionHub:GetOrCreateMoveModeDoneFrame()
     end)
     snapCheck:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Snap to Grid", 1, 0.82, 0)
-        GameTooltip:AddLine("Nodes jump to the nearest grid intersection.", 1, 1, 1, true)
-        GameTooltip:AddLine("Works across hubs: they all snap to the same lines.", 0.8, 0.8, 0.8, true)
+        GameTooltip:SetText(L["Snap to Grid"], 1, 0.82, 0)
+        GameTooltip:AddLine(L["Nodes jump to the nearest grid intersection."], 1, 1, 1, true)
+        GameTooltip:AddLine(L["Works across hubs: they all snap to the same lines."], 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     snapCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2404,12 +2404,12 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
                 elseif s.type == "item" then
                     GameTooltip:SetText(string.format(L["TOOLTIP_ITEM_FORMAT"] or "Item: %s", tostring(s.label or s.id)))
                 elseif s.type == "spell" then
-                    GameTooltip:SetText(string.format("Spell: %s", tostring(s.label or s.id)))
+                    GameTooltip:SetText(string.format(L["Spell: %s"], tostring(s.label or s.id)))
                 elseif s.type == "macro" then
-                    GameTooltip:SetText(string.format("Macro: %s", tostring(s.label or s.id)))
+                    GameTooltip:SetText(string.format(L["Macro: %s"], tostring(s.label or s.id)))
                 elseif s.type == "module" then
                     local name, action = ActionHub:DescribeModuleNode(s.id)
-                    GameTooltip:SetText(string.format("Module: %s", name or tostring(s.id)))
+                    GameTooltip:SetText(string.format(L["Module: %s"], name or tostring(s.id)))
                     if action then GameTooltip:AddLine(action, 1, 1, 1) end
                 end
                 GameTooltip:Show()
@@ -2419,10 +2419,10 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
             if ActionHub:IsMoveModeActive() then
                 if not GameTooltip:IsOwned(self) then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText("Move Mode", 1, 0.82, 0)
+                    GameTooltip:SetText(L["Move Mode"], 1, 0.82, 0)
                 end
-                GameTooltip:AddLine("Drag to move this node.", 1, 1, 1)
-                GameTooltip:AddLine("Hold Shift and drag to move the whole hub.", 0.4, 0.8, 1)
+                GameTooltip:AddLine(L["Drag to move this node."], 1, 1, 1)
+                GameTooltip:AddLine(L["Hold Shift and drag to move the whole hub."], 0.4, 0.8, 1)
                 GameTooltip:Show()
             end
             local currentStyle = db.style or "square"
@@ -2448,7 +2448,7 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
         btn:RegisterForDrag("LeftButton")
         btn:SetScript("OnReceiveDrag", function(self)
             if InCombatLockdown() then
-                print("|cffff0000OxedHub:|r Cannot assign slots during combat.")
+                print(L["|cffff0000OxedHub:|r Cannot assign slots during combat."])
                 ClearCursor()
                 return
             end

@@ -10,6 +10,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 OxedHub.KickSyncKeystones = OxedHub.KickSyncKeystones or {}
 local KL = OxedHub.KickSyncKeystones
 
@@ -125,7 +126,7 @@ local function GetOwnKeystone()
         mapID   = mapID,
         level   = level or 0,
         class   = class or "WARRIOR",
-        dungeon = name or "Unknown",
+        dungeon = name or L["Unknown"],
         name    = UnitName("player"),
     }
 end
@@ -576,7 +577,7 @@ local function CreateRow(w, i)
         if id then
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             GameTooltip:SetSpellByID(id)
-            GameTooltip:AddLine("|cffffd100Click to teleport|r")
+            GameTooltip:AddLine(L["|cffffd100Click to teleport|r"])
             GameTooltip:Show()
         end
     end)
@@ -646,9 +647,9 @@ local function EnsureListUI()
 
     local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     title:SetPoint("LEFT", header, "LEFT", 2, 0)
-    title:SetText("Party Keystones")
+    title:SetText(L["Party Keystones"])
 
-    local close = HeaderButton(w, "Interface\\Buttons\\UI-StopButton", "Close", function()
+    local close = HeaderButton(w, "Interface\\Buttons\\UI-StopButton", L["Close"], function()
         -- The rows hold secure buttons, so the list cannot hide in combat.
         if not InCombatLockdown() then
             w:Hide()
@@ -656,12 +657,12 @@ local function EnsureListUI()
         end
     end)
     close:SetPoint("RIGHT", header, "RIGHT", -1, 0)
-    local gear = HeaderButton(w, "Interface\\Buttons\\UI-OptionsButton", "Settings", ShowKeysOptions)
+    local gear = HeaderButton(w, "Interface\\Buttons\\UI-OptionsButton", L["Settings"], ShowKeysOptions)
     gear:SetPoint("RIGHT", close, "LEFT", -4, 0)
-    local announce = HeaderButton(w, "Interface\\ChatFrame\\UI-ChatIcon-Chat-Up", "Announce to party",
+    local announce = HeaderButton(w, "Interface\\ChatFrame\\UI-ChatIcon-Chat-Up", L["Announce to party"],
         function() KL:AnnounceToChat() end)
     announce:SetPoint("RIGHT", gear, "LEFT", -4, 0)
-    local sync = HeaderButton(w, "Interface\\Buttons\\UI-RefreshButton", "Sync keys", function()
+    local sync = HeaderButton(w, "Interface\\Buttons\\UI-RefreshButton", L["Sync keys"], function()
         KL:SyncNow(true)
     end)
     sync:SetPoint("RIGHT", announce, "LEFT", -4, 0)
@@ -670,7 +671,7 @@ local function EnsureListUI()
     empty:SetPoint("TOPLEFT", w, "TOPLEFT", 4, -HEADER_H - 6)
     empty:SetPoint("TOPRIGHT", w, "TOPRIGHT", -4, -HEADER_H - 6)
     empty:SetJustifyH("LEFT")
-    empty:SetText("No keystones yet. Press sync or wait for the group.")
+    empty:SetText(L["No keystones yet. Press sync or wait for the group."])
     w.emptyLabel = empty
 
     w:SetScript("OnShow", function(self) SetHeaderHot(self, false) end)
@@ -727,7 +728,7 @@ function KL:UpdateListUI()
                 else
                     row.who:SetFormattedText("|c%s%s|r", cHex, item.name or "?")
                 end
-                row.dungeon:SetText(item.dungeon or "Mythic+")
+                row.dungeon:SetText(item.dungeon or L["Mythic+"])
 
                 row.btn:SetAttribute("spell", PortFor(item.mapID))
                 row:Show()
@@ -800,11 +801,11 @@ end
 function KL:ToggleWindow()
     KL:Initialize()
     if IsInRaid() then
-        print("|cff9d5db8MythicLooter:|r the keystone list is for parties; it does not show in a raid.")
+        print(L["|cff9d5db8MythicLooter:|r the keystone list is for parties; it does not show in a raid."])
         return
     end
     if InCombatLockdown() then
-        print("|cff9d5db8MythicLooter:|r the keystone list opens after combat.")
+        print(L["|cff9d5db8MythicLooter:|r the keystone list opens after combat."])
         return
     end
     local w = EnsureListUI()
@@ -869,16 +870,16 @@ function KL:AnnounceToChat()
     end
 
     if #entries == 0 then
-        print("|cff9d5db8MythicLooter:|r no keystones found in the group.")
+        print(L["|cff9d5db8MythicLooter:|r no keystones found in the group."])
         return
     end
 
     local chatTarget = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or nil)
-    local out = "Keys: " .. table.concat(entries, " | ")
+    local out = L["Keys: "] .. table.concat(entries, " | ")
     if chatTarget then
         SendChatMessage(out, chatTarget)
     else
-        print("|cff9d5db8MythicLooter|r (only you see this, you are not in a group): " .. out)
+        print(L["|cff9d5db8MythicLooter|r (only you see this, you are not in a group): "] .. out)
     end
 end
 

@@ -17,6 +17,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer
 
 local GoldStock = {}
@@ -60,9 +61,9 @@ end
 local function Ago(t)
     if not t then return "never" end
     local d = time() - t
-    if d < 3600 then return ("%dm ago"):format(math.max(1, math.floor(d / 60))) end
-    if d < 86400 then return ("%dh ago"):format(math.floor(d / 3600)) end
-    return ("%dd ago"):format(math.floor(d / 86400))
+    if d < 3600 then return (L["%dm ago"]):format(math.max(1, math.floor(d / 60))) end
+    if d < 86400 then return (L["%dh ago"]):format(math.floor(d / 3600)) end
+    return (L["%dd ago"]):format(math.floor(d / 86400))
 end
 
 local function Stock()
@@ -225,6 +226,7 @@ local TABS = {
     { key = "realms", label = "Realms" },
     { key = "guilds", label = "Guilds" },
 }
+OxedHub:RegisterLocalizedTable(TABS, "label")
 
 -- Columns per view: label, width, the value to sort by, the text shown.
 local FACTION_COLOUR = { Alliance = "ff4a8cff", Horde = "ffff3030", Neutral = "ffcccccc" }
@@ -264,17 +266,18 @@ local COLUMNS = {
         { label = "Updated", width = 70,  sort = function(r) return r.g.at or 0 end, text = function(r) return "|cff9d9d9d" .. Ago(r.g.at) .. "|r" end },
     },
 }
+for _, columns in pairs(COLUMNS) do OxedHub:RegisterLocalizedTable(columns, "label") end
 
 local Refresh
 
 local function ConfirmDelete(key)
     StaticPopupDialogs.OXEDHUB_GOLDSTOCK_DELETE = StaticPopupDialogs.OXEDHUB_GOLDSTOCK_DELETE or {
-        text = "Forget %s and its gold?",
-        button1 = DELETE or "Delete",
-        button2 = CANCEL or "Cancel",
+        text = L["Forget %s and its gold?"],
+        button1 = DELETE or L["Delete"],
+        button2 = CANCEL or L["Cancel"],
         OnAccept = function(_, data)
             Stock().chars[data] = nil
-            print(PREFIX .. ("forgot %s."):format(data))
+            print(PREFIX .. (L["forgot %s."]):format(data))
             Refresh()
         end,
         timeout = 0,
@@ -392,7 +395,7 @@ Refresh = function()
             row.action:SetScript("OnClick", function() ConfirmDelete(r.key) end)
             row.action:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText("Forget this character")
+                GameTooltip:SetText(L["Forget this character"])
                 GameTooltip:Show()
             end)
         elseif tab == "guilds" then
@@ -403,7 +406,7 @@ Refresh = function()
             end)
             row.action:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(r.g.skip and "Count this guild bank again" or "Leave this guild bank out of the totals")
+                GameTooltip:SetText(r.g.skip and L["Count this guild bank again"] or L["Leave this guild bank out of the totals"])
                 GameTooltip:Show()
             end)
         else
@@ -417,9 +420,9 @@ Refresh = function()
     window.empty:SetShown(#list == 0)
 
     local personal, guild, warband, total = Totals()
-    window.totals:SetText(("|cffffd100Characters|r %s    |cffffd100Guild banks|r %s    |cffffd100Warband bank|r %s%s\n|cffffd100Total|r %s")
+    window.totals:SetText((L["|cffffd100Characters|r %s    |cffffd100Guild banks|r %s    |cffffd100Warband bank|r %s%s\n|cffffd100Total|r %s"])
         :format(Coins(personal, true), Coins(guild, true), Coins(warband, true),
-            settings.stockWarbandInTotal ~= false and "" or " |cff9d9d9d(not in total)|r", Coins(total, true)))
+            settings.stockWarbandInTotal ~= false and "" or L[" |cff9d9d9d(not in total)|r"], Coins(total, true)))
 end
 
 -- ── Export ──────────────────────────────────────────────────────────────────
@@ -477,11 +480,11 @@ local function ShowExport(kind)
         f:RegisterForDrag("LeftButton")
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
-        if f.TitleText then f.TitleText:SetText("Gold Stock export") end
+        if f.TitleText then f.TitleText:SetText(L["Gold Stock export"]) end
         if f.CloseButton then f.CloseButton:SetScript("OnClick", function() f:Hide() end) end
         local hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         hint:SetPoint("TOPLEFT", 14, -30)
-        hint:SetText("Ctrl+A then Ctrl+C to copy.")
+        hint:SetText(L["Ctrl+A then Ctrl+C to copy."])
         local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
         scroll:SetPoint("TOPLEFT", 12, -46)
         scroll:SetPoint("BOTTOMRIGHT", -32, 12)
@@ -561,7 +564,7 @@ local function BuildWindow()
     search:SetScript("OnEnterPressed", search.ClearFocus)
     local searchHint = search:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
     searchHint:SetPoint("LEFT", 4, 0)
-    searchHint:SetText("Search")
+    searchHint:SetText(L["Search"])
     search:HookScript("OnTextChanged", function(self) searchHint:SetShown(self:GetText() == "") end)
     f.search = search
 
@@ -582,7 +585,7 @@ local function BuildWindow()
 
     f.empty = list:CreateFontString(nil, "OVERLAY", "GameFontDisable")
     f.empty:SetPoint("CENTER")
-    f.empty:SetText("Nothing yet. Each character is counted when it logs in; a guild bank when it is opened.")
+    f.empty:SetText(L["Nothing yet. Each character is counted when it logs in; a guild bank when it is opened."])
 
     f.totals = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     f.totals:SetPoint("BOTTOMLEFT", 14, 52)
@@ -607,9 +610,9 @@ local function BuildWindow()
         end)
         return box
     end
-    Check("stockWarbandInTotal", "Warband bank in total", true, 12)
-    Check("stockCombineFactions", "Realms: both factions together", false, 170)
-    Check("stockRoundDown", "Export whole gold", true, 370)
+    Check("stockWarbandInTotal", L["Warband bank in total"], true, 12)
+    Check("stockCombineFactions", L["Realms: both factions together"], false, 170)
+    Check("stockRoundDown", L["Export whole gold"], true, 370)
 
     local json = MakeButton(f, "JSON", 60, function() ShowExport("json") end)
     json:SetPoint("BOTTOMRIGHT", -12, 14)
@@ -617,7 +620,7 @@ local function BuildWindow()
     csv:SetPoint("RIGHT", json, "LEFT", -6, 0)
     local exportLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     exportLabel:SetPoint("RIGHT", csv, "LEFT", -6, 0)
-    exportLabel:SetText("Export")
+    exportLabel:SetText(L["Export"])
 
     -- The least gold a character needs to be listed.
     local minBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
@@ -635,11 +638,11 @@ local function BuildWindow()
     minBox:SetScript("OnEscapePressed", minBox.ClearFocus)
     local minLabel = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     minLabel:SetPoint("RIGHT", minBox, "LEFT", -8, 0)
-    minLabel:SetText("At least (g)")
+    minLabel:SetText(L["At least (g)"])
 
     -- Back to the gold world quest tracker, on the left of the title bar
     -- where the tracker keeps its own minimise button.
-    local tracker = MakeButton(f, "Tracker", 70, function()
+    local tracker = MakeButton(f, L["Tracker"], 70, function()
         f:Hide()
         if OxedHub.GoldWQShowTracker then OxedHub.GoldWQShowTracker() end
     end)
@@ -648,7 +651,7 @@ local function BuildWindow()
     tracker:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Gold World Quests")
-        GameTooltip:AddLine("Back to the quest tracker.", 1, 1, 1)
+        GameTooltip:AddLine(L["Back to the quest tracker."], 1, 1, 1)
         GameTooltip:Show()
     end)
     tracker:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -672,8 +675,8 @@ local function BuildWindow()
     if dash then dash:SetFont(STANDARD_TEXT_FONT, 18, "OUTLINE"); dash:SetTextColor(1, 0.82, 0) end
     mini:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Minimise to a gold coin")
-        GameTooltip:AddLine("Click the coin to open the tracker again.", 1, 1, 1)
+        GameTooltip:SetText(L["Minimise to a gold coin"])
+        GameTooltip:AddLine(L["Click the coin to open the tracker again."], 1, 1, 1)
         GameTooltip:Show()
     end)
     mini:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -740,7 +743,7 @@ end
 
 function GoldStock:Show()
     if not running then
-        print(PREFIX .. "Gold World Quests is switched off.")
+        print(PREFIX .. L["Gold World Quests is switched off."])
         return
     end
     BuildWindow()
@@ -750,7 +753,7 @@ end
 
 function GoldStock:Toggle()
     if not running then
-        print(PREFIX .. "Gold World Quests is switched off.")
+        print(PREFIX .. L["Gold World Quests is switched off."])
         return
     end
     BuildWindow()
@@ -764,12 +767,12 @@ function GoldStock:PrintSummary()
     ReadWarband()
     local list = CharacterRows()
     table.sort(list, function(a, b) return (a.c.copper or 0) > (b.c.copper or 0) end)
-    print(PREFIX .. "gold on this account:")
+    print(PREFIX .. L["gold on this account:"])
     for _, r in ipairs(list) do
         print(("   %s-%s  %s"):format(ClassName(r.c), r.c.realm or "?", Coins(r.c.copper, true)))
     end
     local personal, guild, warband, total = Totals()
-    print(("   Characters %s, guild banks %s, warband bank %s. |cffffd100Total %s|r")
+    print((L["   Characters %s, guild banks %s, warband bank %s. |cffffd100Total %s|r"])
         :format(Coins(personal, true), Coins(guild, true), Coins(warband, true), Coins(total, true)))
 end
 

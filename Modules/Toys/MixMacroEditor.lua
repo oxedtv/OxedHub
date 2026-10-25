@@ -485,7 +485,7 @@ function Toys:ShowMixMacroEditor(mixName)
             local Triggers = OxedHub.Triggers
             if Triggers and Triggers.GetCursorLineAndColumn then
                 local line, column = Triggers.GetCursorLineAndColumn(previewBox:GetText(), previewBox:GetCursorPosition())
-                cursorText:SetFormattedText("Line %d, Col %d", line, column)
+                cursorText:SetFormattedText(L["Line %d, Col %d"], line, column)
                 if Triggers.BuildMacroLineNumberText then
                     gutterText:SetText(Triggers.BuildMacroLineNumberText(previewBox:GetText(), line))
                 end

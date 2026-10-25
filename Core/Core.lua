@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 _G["OxedHub"] = OxedHub
 
@@ -883,10 +884,10 @@ function Core:Bootstrap()
     self:RegisterSlashCommands()
 
     -- Print load message
-    local loadMsg = OxedHub.L["ADDON_LOADED"] or "|cff00ff00Oxed Hub|r v%s loaded. Type |cffffff00/oxedhub|r or |cffffff00/ohub|r to open."
+    local loadMsg = OxedHub.L["ADDON_LOADED"] or L["|cff00ff00Oxed Hub|r v%s loaded. Type |cffffff00/oxedhub|r or |cffffff00/ohub|r to open."]
     print(string.format(loadMsg, OxedHub.CONFIG.VERSION))
     if seededProfiles > 0 then
-        print("|cff00ff00Oxed Hub:|r Added |cffffff00" .. seededProfiles .. "|r bundled profiles.")
+        print(L["|cff00ff00Oxed Hub:|r Added |cffffff00"] .. seededProfiles .. L["|r bundled profiles."])
     end
 
     -- Call refresh on all registered modules
@@ -917,11 +918,16 @@ function OxedHub:ApplyLanguage(langKey)
             langKey = "esES"
         elseif clientLocale == "arAR" then
             langKey = "arAR"
+        elseif clientLocale == "ruRU" then
+            langKey = "ruRU"
         else
             langKey = "enUS"
         end
     end
     
+    -- Set first: the lookups below would otherwise send L's fallback back here.
+    self.languageApplied = true
+
     -- Clear current table values
     wipe(self.L)
     
@@ -938,12 +944,54 @@ function OxedHub:ApplyLanguage(langKey)
             self.L[k] = v
         end
     end
+
+    -- 3. Tables built at load time hold English; translate their fields.
+    for _, entry in ipairs(self.LocalizedTables or {}) do
+        -- No fields named: the table maps keys straight to text.
+        if #entry.fields == 0 then
+            entry.en = entry.en or {}
+            for k, v in pairs(entry.tbl) do
+                if type(v) == "string" and v ~= "" then
+                    entry.en[k] = entry.en[k] or v
+                    entry.tbl[k] = self.L[entry.en[k]]
+                end
+            end
+        end
+        for _, row in pairs(entry.tbl) do
+            if type(row) == "table" then
+                for _, field in ipairs(entry.fields) do
+                    local en = row["_en_" .. field] or row[field]
+                    if type(en) == "string" and en ~= "" then
+                        row["_en_" .. field] = en
+                        row[field] = self.L[en]
+                    end
+                end
+            end
+        end
+    end
 end
 
 function OxedHub:GetFont(defaultFont)
     local lang = self.db and self.db.profile and self.db.profile.settings and self.db.profile.settings.language
     if lang == "arAR" then
         return "Interface\\AddOns\\OxedHub\\Media\\Fonts\\NotoSansArabic-Regular.ttf"
+    end
+    -- A font file set by path gets none of the game's per-alphabet fallback,
+    -- so on an English client FRIZQT__ and every bundled decorative font draw
+    -- Russian as empty boxes. The _CYR files ship with every western client;
+    -- Morpheus stands in for the bundled hand-drawn ones, which suits the
+    -- parchment they sit on better than the plain face.
+    if lang == "ruRU" then
+        local file = (defaultFont or "Fonts\\FRIZQT__.ttf"):lower()
+        if file:find("oxedhub\\media\\fonts\\", 1, true) then
+            return "Fonts\\MORPHEUS_CYR.TTF"
+        elseif file:find("frizqt__%.ttf$") then
+            return "Fonts\\FRIZQT___CYR.TTF"
+        elseif file:find("morpheus%.ttf$") then
+            return "Fonts\\MORPHEUS_CYR.TTF"
+        elseif file:find("skurri%.ttf$") then
+            return "Fonts\\SKURRI_CYR.TTF"
+        end
     end
     return defaultFont or "Fonts\\FRIZQT__.ttf"
 end
@@ -971,7 +1019,7 @@ end
 
 function OxedHub:GetSupportedClassProfiles()
     local classes = {
-        { token = false, name = "No Class" },
+        { token = false, name = L["No Class"] },
     }
 
     for _, token in ipairs(CLASS_PROFILE_ORDER) do
@@ -1070,8 +1118,8 @@ function OxedHub:ShowCopyURLDialog(url, titleText)
 
     if not StaticPopupDialogs["OXEDHUB_COPY_URL"] then
         StaticPopupDialogs["OXEDHUB_COPY_URL"] = {
-            text = "%s\n\n|cffffd100Press Ctrl+C to copy URL:|r",
-            button1 = OKAY or "Done",
+            text = L["%s\n\n|cffffd100Press Ctrl+C to copy URL:|r"],
+            button1 = OKAY or L["Done"],
             hasEditBox = true,
             editBoxWidth = 340,
             maxLetters = 256,
@@ -1095,7 +1143,7 @@ function OxedHub:ShowCopyURLDialog(url, titleText)
         }
     end
 
-    local title = titleText or "Wowhead Link"
+    local title = titleText or L["Wowhead Link"]
     local dialog = StaticPopup_Show("OXEDHUB_COPY_URL", "|cffffffff" .. title .. "|r")
     if dialog then
         dialog.data = { url = url }
@@ -1200,7 +1248,7 @@ function OxedHub:SwitchProfile(name, options)
     end
 
     if not (options and options.silent) then
-        print("|cff00ff00Oxed Hub:|r Switched to profile |cffffff00" .. name .. "|r.")
+        print(L["|cff00ff00Oxed Hub:|r Switched to profile |cffffff00"] .. name .. "|r.")
     end
     return true
 end
@@ -1223,7 +1271,7 @@ function Core:ApplyAutoClassProfile()
                 characterActiveProfiles[charKey] = classProfileName
                 OxedHubDB.globalSettings.characterActiveProfiles = characterActiveProfiles
                 OxedHub:SwitchProfile(classProfileName, { silent = true })
-                print("|cff00ff00Oxed Hub:|r Auto-switched to your class profile |cffffff00" .. classProfileName .. "|r.")
+                print(L["|cff00ff00Oxed Hub:|r Auto-switched to your class profile |cffffff00"] .. classProfileName .. "|r.")
                 return true
             end
         end
@@ -2858,7 +2906,7 @@ function OxedHub:RestoreImportBackup()
     if not backup then
         local Lang = OxedHub.L or {}
         print("|cffff5555Oxed Hub:|r " .. (Lang["IMPORT_BACKUP_NONE"]
-            or "No import backup to restore."))
+            or L["No import backup to restore."]))
         return false
     end
 
@@ -2878,7 +2926,7 @@ function OxedHub:RestoreImportBackup()
     -- throws away whatever was done since the first.
     OxedHubDB.globalSettings.importBackup = nil
 
-    print(("|cff00ff00Oxed Hub:|r restored '%s' from the pre-import backup. |cffffd100/reload|r to apply it everywhere."):format(name))
+    print((L["|cff00ff00Oxed Hub:|r restored '%s' from the pre-import backup. |cffffd100/reload|r to apply it everywhere."]):format(name))
     return true
 end
 
@@ -3133,7 +3181,7 @@ function Core:HandleSlashCommand(msg)
         -- can be checked without a logout cycle to inspect afterwards.
         if OxedHub.TrimSavedVariables then
             OxedHub.TrimSavedVariables(true)
-            print("|cff00ff00Oxed Hub:|r trimmed. |cffffd100/reload|r to write it out.")
+            print(L["|cff00ff00Oxed Hub:|r trimmed. |cffffd100/reload|r to write it out."])
         end
     elseif command == "perf" or command == "cpu" or command == "memory" then
         OxedHub:ReportPerformance(rest == "gc" or rest == "collect")
@@ -3183,7 +3231,7 @@ function Core:HandleSlashCommand(msg)
         ReloadUI()
     elseif command == "trigger" then
         if rest == "list" then
-            print("|cff00ff00Oxed Hub Triggers:|r")
+            print(L["|cff00ff00Oxed Hub Triggers:|r"])
             for id, trigger in pairs(OxedHub.db.profile.triggers) do
                 local status = trigger.enabled and "|cff00ff00ON|r" or "|cffff0000OFF|r"
                 print("  " .. status .. " " .. (trigger.name or id))
@@ -3193,7 +3241,7 @@ function Core:HandleSlashCommand(msg)
         if rest and rest ~= "" then
             OxedHub.EmotionRing:TriggerEmotion(rest)
         else
-            print("Usage: /oxedhub emotion <emotion_name>")
+            print(L["Usage: /oxedhub emotion <emotion_name>"])
         end
     elseif command == "mix" then
         if OxedHub.MacroRegistry then
@@ -3210,7 +3258,7 @@ function Core:HandleSlashCommand(msg)
         -- Run it in combat WITH the buff up to settle the "secret in combat" question.
         local sid = tonumber(rest)
         if not sid then
-            print("|cffff0000[OxedHub]|r Usage: /oxedhub auratest <spellID>   (run in combat with the buff active)")
+            print(L["|cffff0000[OxedHub]|r Usage: /oxedhub auratest <spellID>   (run in combat with the buff active)"])
         else
             local inCombat = InCombatLockdown()
             print(("|cff00ff00[AuraTest]|r spellID=%d  inCombat=%s"):format(sid, tostring(inCombat)))
@@ -3271,18 +3319,18 @@ function Core:HandleSlashCommand(msg)
                 tostring(C_UnitAuras and C_UnitAuras.AddPrivateAuraAppliedSound ~= nil)))
         end
     elseif command == "help" then
-        print("|cff00ff00Oxed Hub Commands:|r")
-        print("  /oxedhub or /ohub - Toggle main window")
-        print("  /oxedhub reload - Reload UI")
-        print("  /oxedhub trigger list - List all triggers")
-        print("  /oxedhub emotion <name> - Trigger an emotion")
-        print("  /oxedhub mix list - List saved mixes")
-        print("  /oxedhub mix run <name> - Run a mix")
+        print(L["|cff00ff00Oxed Hub Commands:|r"])
+        print(L["  /oxedhub or /ohub - Toggle main window"])
+        print(L["  /oxedhub reload - Reload UI"])
+        print(L["  /oxedhub trigger list - List all triggers"])
+        print(L["  /oxedhub emotion <name> - Trigger an emotion"])
+        print(L["  /oxedhub mix list - List saved mixes"])
+        print(L["  /oxedhub mix run <name> - Run a mix"])
         print("  /oxedhub debug - Toggle debug logging (aura, trigger, toy/mix)")
-        print("  /oxedhub auratest <spellID> - What OxedHub can see of a buff (run in combat)")
-        print("  /oxedhub help - Show this help")
+        print(L["  /oxedhub auratest <spellID> - What OxedHub can see of a buff (run in combat)"])
+        print(L["  /oxedhub help - Show this help"])
     else
-        print("Unknown command. Type |cffffff00/oxedhub help|r for available commands.")
+        print(L["Unknown command. Type |cffffff00/oxedhub help|r for available commands."])
     end
 end
 

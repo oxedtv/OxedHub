@@ -28,6 +28,8 @@ local SPREE_TIERS = {
     { value = 15, label = "Unstoppable (15)" },
     { value = 20, label = "Godlike (20+)" },
 }
+OxedHub:RegisterLocalizedTable(MULTIKILL_TIERS, "label")
+OxedHub:RegisterLocalizedTable(SPREE_TIERS, "label")
 
 -- Shared condition UI: a dropdown picking which milestone fires the trigger.
 local function CreateTierUI(frame, trigger, yOffset, tiers, labelText, defaultValue)

@@ -14,6 +14,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -121,7 +122,7 @@ end
 -- characters, so the list is the same wherever you happen to be flying.
 
 local function SoundName(id)
-    if not id or id == "" then return "The game's ready check sound" end
+    if not id or id == "" then return L["The game's ready check sound"] end
     local library = (OxedHub.GetSharedCustomSounds and OxedHub:GetSharedCustomSounds())
         or (OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.customSounds) or {}
     local sound = library[id]
@@ -287,7 +288,7 @@ local function Start(destination)
     flight.active = true
 
     local names = (flight.from and flight.to) and ("%s to %s"):format(flight.from, flight.to)
-        or (flight.to or "Flight")
+        or (flight.to or L["Flight"])
     bar.route:SetText(names)
     bar.time:SetText(flight.total and Clock(flight.total) or FIRST_FLIGHT)
     bar:SetMinMaxValues(0, flight.total or 1)
@@ -297,8 +298,8 @@ local function Start(destination)
 
     if settings.say then
         print(PREFIX .. (flight.total
-            and ("%s, about %s."):format(names, Clock(flight.total))
-            or ("%s. First time on this route: timing it."):format(names)))
+            and (L["%s, about %s."]):format(names, Clock(flight.total))
+            or (L["%s. First time on this route: timing it."]):format(names)))
     end
 
     watcher:SetScript("OnUpdate", Tick)
@@ -349,7 +350,7 @@ local function InstallHooks()
             local time = KnownTime(from, to)
             if time then
                 addingTooltip = true
-                self:AddLine("Duration: " .. Clock(time), 1, 1, 1)
+                self:AddLine(L["Duration: "] .. Clock(time), 1, 1, 1)
                 self:Show()
                 addingTooltip = false
             end
@@ -494,25 +495,25 @@ local function ShowOptions()
 
         w:AddCheckbox(settings, "locked", "Lock the bar",
             "Unlocked, drag the bar with the left button.")
-        AddSlider(w, "width", "Bar width", 120, 500, 10, "%s: %d")
-        AddSlider(w, "height", "Bar height", 10, 40, 1, "%s: %d")
-        AddSlider(w, "scale", "Scale", 0.5, 2, 0.05, "%s: %.2f")
+        AddSlider(w, "width", L["Bar width"], 120, 500, 10, "%s: %d")
+        AddSlider(w, "height", L["Bar height"], 10, 40, 1, "%s: %d")
+        AddSlider(w, "scale", L["Scale"], 0.5, 2, 0.05, "%s: %.2f")
 
         local pick = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         pick:SetSize(140, 22)
         pick:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        pick:SetText("Pick bar colour")
+        pick:SetText(L["Pick bar colour"])
         pick:SetScript("OnClick", PickColour)
         w.cursorY = w.cursorY - 30
 
         local forget = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         forget:SetSize(140, 22)
         forget:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        forget:SetText("Forget all times")
+        forget:SetText(L["Forget all times"])
         forget:SetScript("OnClick", function()
-            API:Confirm("Forget every flight time learned so far?", function()
+            API:Confirm(L["Forget every flight time learned so far?"], function()
                 wipe(settings.routes)
-                print(PREFIX .. "every route forgotten; they will be timed again.")
+                print(PREFIX .. L["every route forgotten; they will be timed again."])
             end)
         end)
         w.cursorY = w.cursorY - 30
@@ -531,7 +532,7 @@ SlashCmdList.OXEDHUBFLIGHT = function(msg)
 
     if msg == "forget" then
         wipe(settings.routes)
-        print(PREFIX .. "every route forgotten.")
+        print(PREFIX .. L["every route forgotten."])
         return
     end
 
@@ -541,15 +542,15 @@ SlashCmdList.OXEDHUBFLIGHT = function(msg)
             rows[#rows + 1] = ("  %s: %s"):format(key, Clock(seconds))
         end
         table.sort(rows)
-        print(PREFIX .. ("%d routes learned"):format(#rows))
+        print(PREFIX .. (L["%d routes learned"]):format(#rows))
         for index = 1, math.min(#rows, 30) do print(rows[index]) end
-        if #rows > 30 then print(("  ... and %d more"):format(#rows - 30)) end
+        if #rows > 30 then print((L["  ... and %d more"]):format(#rows - 30)) end
         return
     end
 
     local count = 0
     for _ in pairs(settings.routes) do count = count + 1 end
-    print(PREFIX .. ("%d routes learned. /oxflight list shows them, /oxflight forget clears them.")
+    print(PREFIX .. (L["%d routes learned. /oxflight list shows them, /oxflight forget clears them."])
         :format(count))
 end
 

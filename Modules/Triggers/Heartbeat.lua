@@ -264,7 +264,7 @@ OxedHub.Triggers:RegisterEventType("HEARTBEAT", {
         combatCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
         combatCheck:SetSize(20, 20)
         combatCheck:SetChecked(conditions.combatOnly or false)
-        combatCheck.text:SetText("Combat Only")
+        combatCheck.text:SetText(L["Combat Only"])
         combatCheck:SetScript("OnClick", function(self)
             conditions.combatOnly = self:GetChecked()
             AutoSaved()
@@ -274,7 +274,7 @@ OxedHub.Triggers:RegisterEventType("HEARTBEAT", {
         -- Volume boost slider
         local volLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         volLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, yOffset)
-        volLabel:SetText("Volume Boost (Multiplier)")
+        volLabel:SetText(L["Volume Boost (Multiplier)"])
         
         local volSliderName = "OxedHub_Heartbeat_Vol_" .. safeId
         local volSlider = CreateFrame("Slider", volSliderName, frame, "OptionsSliderTemplate")
@@ -304,9 +304,9 @@ OxedHub.Triggers:RegisterEventType("HEARTBEAT", {
 
         -- Sound Level Dropdown (cyclic button)
         local levels = {
-            {id = "normal", name = "Normal"},
-            {id = "lower", name = "Lower (-5 dB)"},
-            {id = "lowest", name = "Lowest (-10 dB)"}
+            {id = "normal", name = L["Normal"]},
+            {id = "lower", name = L["Lower (-5 dB)"]},
+            {id = "lowest", name = L["Lowest (-10 dB)"]}
         }
         
         local currentLevelIndex = 1
@@ -339,7 +339,7 @@ OxedHub.Triggers:RegisterEventType("HEARTBEAT", {
         
         local oocLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         oocLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", rightOffsetX, rightY)
-        oocLabel:SetText("Out of Combat Speed")
+        oocLabel:SetText(L["Out of Combat Speed"])
         
         local oocDropdown = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
         oocDropdown:SetPoint("TOPLEFT", oocLabel, "BOTTOMLEFT", 0, -5)
@@ -347,17 +347,17 @@ OxedHub.Triggers:RegisterEventType("HEARTBEAT", {
         
         local icLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         icLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", rightOffsetX, rightY - 50)
-        icLabel:SetText("In Combat Speed")
+        icLabel:SetText(L["In Combat Speed"])
         
         local icDropdown = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
         icDropdown:SetPoint("TOPLEFT", icLabel, "BOTTOMLEFT", 0, -5)
         icDropdown:SetSize(180, 26)
         
         local stateLevels = {
-            {id = "normal", name = "Normal"},
-            {id = "faster", name = "Faster"},
-            {id = "intense", name = "Intense"},
-            {id = "danger", name = "Danger"}
+            {id = "normal", name = L["Normal"]},
+            {id = "faster", name = L["Faster"]},
+            {id = "intense", name = L["Intense"]},
+            {id = "danger", name = L["Danger"]}
         }
 
         local function GetStateName(id, defId)

@@ -30,9 +30,11 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
+    minimapButton = true,   -- its own icon on the minimap while switched on
     enabled            = false,  -- off until the player switches it on (see ModuleAPI:Register)
 
     -- Tilt (dynamic pitch)
@@ -83,6 +85,7 @@ local DEFAULTS = {
 }
 
 local settings
+local minimapIcon, MinimapIcon   -- MinimapIcon is defined above the login code
 local optionsWindow
 local subWindows = {}
 local watcher = CreateFrame("Frame")
@@ -265,7 +268,7 @@ local function ApplyPreset(name)
     for key, value in pairs(preset) do settings[key] = value end
     Apply()
     RefreshWindows()
-    print(PREFIX .. ("camera preset: %s."):format(name))
+    print(PREFIX .. (L["camera preset: %s."]):format(name))
 end
 
 -- ── Events ──────────────────────────────────────────────────────────────────
@@ -356,13 +359,13 @@ local FOLLOW_STYLES = {
 
 local function BuildTiltWindow(API)
     local w = API:CreateOptionsWindow("Camera: Tilt and Shoulder", 460, 560)
-    Heading(w, "Tilt")
+    Heading(w, L["Tilt"])
     w:AddCheckbox(settings, "tilt", "Tilt the camera up", "Your character sits lower on screen and you see further ahead.", QueueApply)
     w:AddSlider(settings, "tiltAngle", "On foot", 0.01, 0.99, 0.01, "%s: %.2f", QueueApply)
     w:AddSlider(settings, "tiltAngleFlying", "Flying and skyriding", 0.01, 0.99, 0.01, "%s: %.2f", QueueApply)
     w:AddSlider(settings, "tiltDown", "Kept when looking down", 0, 1, 0.05, "%s: %.2f", QueueApply)
     w:AddSlider(settings, "tiltPivot", "Eases off when closer than", 0, 30, 1, "%s %d yards", QueueApply)
-    Heading(w, "Over the shoulder")
+    Heading(w, L["Over the shoulder"])
     w:AddCheckbox(settings, "shoulder", "Character to one side", nil, QueueApply)
     w:AddSlider(settings, "shoulderOffset", "Offset (negative: right)", -3, 3, 0.1, "%s: %.1f", QueueApply)
     w:AddCheckbox(settings, "noShoulderMounted", "Centred again while mounted or on a flight", nil, QueueApply)
@@ -372,13 +375,13 @@ end
 
 local function BuildMotionWindow(API)
     local w = API:CreateOptionsWindow("Camera: Head and Focus", 460, 620)
-    Heading(w, "Head movement")
+    Heading(w, L["Head movement"])
     w:AddCheckbox(settings, "headMove", "Follow the character's head", nil, QueueApply)
     w:AddSlider(settings, "headStrength", "Strength", 0, 2, 0.1, "%s: %.1f", QueueApply)
     w:AddSlider(settings, "headStanding", "Standing still", 0, 1, 0.05, "%s: %.2f", QueueApply)
     w:AddSlider(settings, "headMoving", "Moving", 0, 1, 0.05, "%s: %.2f", QueueApply)
     w:AddSlider(settings, "headRange", "Range", 1, 15, 0.5, "%s: %.1f", QueueApply)
-    Heading(w, "Target focus")
+    Heading(w, L["Target focus"])
     w:AddCheckbox(settings, "focusEnemy", "Turn toward your enemy target", nil, QueueApply)
     w:AddCheckbox(settings, "focusOnlyInCombat", "Only in a fight", nil, QueueApply)
     w:AddSlider(settings, "focusEnemyPitch", "Up and down", 0, 1, 0.05, "%s: %.2f", QueueApply)
@@ -392,17 +395,17 @@ end
 
 local function BuildViewWindow(API)
     local w = API:CreateOptionsWindow("Camera: Zoom and View", 460, 620)
-    Heading(w, "Zoom")
+    Heading(w, L["Zoom"])
     w:AddCheckbox(settings, "changeZoom", "Change zoom", "Off: the game's own values are left alone.", QueueApply)
     w:AddSlider(settings, "maxZoom", "Furthest zoom", 1, 2.6, 0.1, "%s: x%.1f", QueueApply)
     w:AddSlider(settings, "zoomSpeed", "Zoom speed", 1, 50, 1, "%s: %d", QueueApply)
-    Heading(w, "Turning")
+    Heading(w, L["Turning"])
     w:AddCheckbox(settings, "changeTurn", "Change turn speed", nil, QueueApply)
     w:AddSlider(settings, "yawSpeed", "Side to side", 30, 360, 10, "%s: %d", QueueApply)
     w:AddSlider(settings, "pitchSpeed", "Up and down", 30, 360, 10, "%s: %d", QueueApply)
     w:AddCheckbox(settings, "changeFollow", "Change how the camera follows", nil, QueueApply)
     w:AddChoice(settings, "followStyle", "Follows", FOLLOW_STYLES, QueueApply)
-    Heading(w, "View")
+    Heading(w, L["View"])
     w:AddCheckbox(settings, "changeFov", "Change field of view", nil, QueueApply)
     w:AddSlider(settings, "fov", "Field of view", 50, 90, 1, "%s: %d", QueueApply)
     w:AddCheckbox(settings, "seeThrough", "See through walls and trees", "The camera stays out instead of jumping in when something is behind you.", QueueApply)
@@ -418,21 +421,21 @@ local function ShowOptions()
     if not optionsWindow then
         optionsWindow = API:CreateOptionsWindow("Camera", 460, 520)
         local w = optionsWindow
-        Heading(w, "Presets")
+        Heading(w, L["Presets"])
         Row(w, {
             { "Subtle", function() ApplyPreset("subtle") end },
             { "Cinematic", function() ApplyPreset("cinematic") end },
             { "Action", function() ApplyPreset("action") end },
             { "Off", function() ApplyPreset("off") end },
         })
-        Heading(w, "In use")
+        Heading(w, L["In use"])
         w:AddCheckbox(settings, "tilt", "Tilt the camera up", nil, QueueApply)
         w:AddCheckbox(settings, "shoulder", "Over the shoulder", nil, QueueApply)
         w:AddCheckbox(settings, "headMove", "Head movement", nil, QueueApply)
         w:AddCheckbox(settings, "focusEnemy", "Turn toward enemies", nil, QueueApply)
         w:AddCheckbox(settings, "focusInteract", "Turn toward NPCs you talk to", nil, QueueApply)
         w:AddCheckbox(settings, "offInRaids", "All of it off in raids", nil, QueueApply)
-        Heading(w, "Settings")
+        Heading(w, L["Settings"])
         Row(w, {
             { "Tilt and Shoulder", function() ToggleSub("tilt", function() return BuildTiltWindow(API) end) end },
             { "Head and Focus", function() ToggleSub("motion", function() return BuildMotionWindow(API) end) end },
@@ -440,6 +443,10 @@ local function ShowOptions()
         Row(w, {
             { "Zoom and View", function() ToggleSub("view", function() return BuildViewWindow(API) end) end },
         })
+        w:AddCheckbox(settings, "minimapButton", "Show minimap button", nil, function()
+            local icon = MinimapIcon()
+            if icon then icon:Apply(settings.enabled == true) end
+        end)
         w:AddNote("Switching the module off puts every camera setting back as it was. /camera opens this window.")
         FitHeight(w)
         w:HookScript("OnHide", function()
@@ -471,10 +478,25 @@ SlashCmdList["OXEDCAMERA"] = function(msg)
     if not settings then return end
     msg = (msg or ""):lower():match("^%s*(.-)%s*$")
     if PRESETS[msg] then
-        if settings.enabled then ApplyPreset(msg) else print(PREFIX .. "switch the Camera module on first.") end
+        if settings.enabled then ApplyPreset(msg) else print(PREFIX .. L["switch the Camera module on first."]) end
     else
         ShowOptions()
     end
+end
+
+-- Its own icon on the minimap, like the other modules with a window: a click
+-- opens the options, a right-click the options.
+MinimapIcon = function()
+    if minimapIcon or not settings then return minimapIcon end
+    local API = OxedHub.ModuleAPI
+    minimapIcon = API and API.MinimapButton and API:MinimapButton({
+        key = "camera", label = L["Camera"], icon = "Interface\\Icons\\INV_Misc_Spyglass_03", config = settings,
+        hint = L["Click: options."],
+        onClick = function(mouse)
+            if mouse == "RightButton" then ShowOptions() else ShowOptions() end
+        end,
+    })
+    return minimapIcon
 end
 
 local loginFrame = CreateFrame("Frame")
@@ -491,8 +513,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "camera",
         name     = "Camera",
-        version  = "1.0.0",
-        updated  = 20261023.1,
+        version  = "1.1.0",
+        updated  = 20261025.6,  -- its own minimap button
         author   = "Oxed",
         category = "character",
         keywords = { "camera", "actioncam", "tilt", "pitch", "shoulder", "zoom", "fov", "focus", "motion" },
@@ -505,10 +527,13 @@ loginFrame:SetScript("OnEvent", function(self)
 
         OnEnable = function(_, config)
             settings = config
+            local icon = MinimapIcon()
+            if icon then icon:Apply(true) end
             Start()
         end,
 
         OnDisable = function()
+            if minimapIcon then minimapIcon:Apply(false) end
             Stop()
         end,
     })

@@ -16,6 +16,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -340,7 +341,7 @@ local function PaintPreview()
     if settings.shadow then preview.text:SetShadowOffset(1, -1) else preview.text:SetShadowOffset(0, 0) end
     -- Latin only: the game's default font on an English client has no Cyrillic
     -- and drew squares for it.
-    preview.text:SetText("Hello there, adventurer! Ready for the key?")
+    preview.text:SetText(L["Hello there, adventurer! Ready for the key?"])
     local w = math.min(380, preview.text:GetStringWidth() + 28)
     preview:SetSize(w, preview.text:GetStringHeight() + 22)
     preview:SetScale(tonumber(settings.scale) or 1)
@@ -372,7 +373,7 @@ local function ShowFontPicker(anchor)
         p:SetClampedToScreen(true)
         p:EnableMouse(true)
         local Panel = OxedHub.UIComponents and OxedHub.UIComponents.Panel
-        if Panel and Panel.ApplyOrnateFrame then Panel.ApplyOrnateFrame(p, "Bubble font", 0.97) end
+        if Panel and Panel.ApplyOrnateFrame then Panel.ApplyOrnateFrame(p, L["Bubble font"], 0.97) end
         p.rows = {}
         local y = -30
         for _, f in ipairs(FONTS) do
@@ -421,7 +422,7 @@ local function MinimapIcon()
     local API = OxedHub.ModuleAPI
     minimapIcon = API and API.MinimapButton and API:MinimapButton({
         key = "bubblechat", label = "BubbleChat", icon = "Interface\\Icons\\INV_Misc_Note_06", config = settings,
-        hint = "Click: options.",
+        hint = L["Click: options."],
         -- ShowOptions is defined below this, so through the module.
         onClick = function()
             local mod = API:GetModule("bubblechat")
@@ -441,7 +442,7 @@ local function ShowOptions()
         -- Font: a button opening the list, its name in the chosen font.
         local label = o:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         label:SetPoint("TOPLEFT", o, "TOPLEFT", 20, o.cursorY - 6)
-        label:SetText("Font")
+        label:SetText(L["Font"])
         local pick = CreateFrame("Button", nil, o, "UIPanelButtonTemplate")
         pick:SetSize(190, 22)
         pick:SetPoint("TOPLEFT", o, "TOPLEFT", o:GetWidth() - 230, o.cursorY - 2)
@@ -456,15 +457,15 @@ local function ShowOptions()
         o:AddSlider(settings, "size", "Font size", 8, 32, 1, "%s: %d", Changed)
         o:AddChoice(settings, "outline", "Outline", {
             { value = "", text = "None" },
-            { value = "OUTLINE", text = "Thin" },
-            { value = "THICKOUTLINE", text = "Thick" },
+            { value = "OUTLINE", text = L["Thin"] },
+            { value = "THICKOUTLINE", text = L["Thick"] },
         }, Changed)
         o:AddCheckbox(settings, "shadow", "Shadow under the text", nil, Changed)
 
         o:AddChoice(settings, "style", "Bubble look", {
-            { value = "dark", text = "Dark glass" },
-            { value = "stone", text = "OxedHub stone" },
-            { value = "clear", text = "Text only" },
+            { value = "dark", text = L["Dark glass"] },
+            { value = "stone", text = L["OxedHub stone"] },
+            { value = "clear", text = L["Text only"] },
             { value = "blizzard", text = "Blizzard" },
         }, Changed)
         o:AddCheckbox(settings, "tail", "Keep the tail on Blizzard bubbles", nil, Changed)
@@ -472,7 +473,7 @@ local function ShowOptions()
 
         local head = o:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         head:SetPoint("TOPLEFT", o, "TOPLEFT", 20, o.cursorY - 8)
-        head:SetText("No bubbles in")
+        head:SetText(L["No bubbles in"])
         o.cursorY = o.cursorY - 26
         o:AddCheckbox(settings, "hideDungeon", "Dungeons", nil, Changed)
         o:AddCheckbox(settings, "hideRaid", "Raids", nil, Changed)

@@ -14,6 +14,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 local DEFAULTS = {
     enabled     = false,  -- off until the player switches it on (see ModuleAPI:Register)
@@ -83,7 +84,7 @@ local function OnGossipShow()
         for _, option in ipairs(options) do
             if option.gossipOptionID and DUNGEON_HELPERS[option.gossipOptionID] then
                 if settings.report and option.name then
-                    print(PREFIX .. ("chose |cffffd100%s|r."):format(option.name))
+                    print(PREFIX .. (L["chose |cffffd100%s|r."]):format(option.name))
                 end
                 C_GossipInfo.SelectOption(option.gossipOptionID)
                 return
@@ -105,7 +106,7 @@ local function OnGossipShow()
     if IsLoop(npc, option.gossipOptionID) then return end
 
     if settings.report and option.name then
-        print(PREFIX .. ("chose |cffffd100%s|r."):format(option.name))
+        print(PREFIX .. (L["chose |cffffd100%s|r."]):format(option.name))
     end
     C_GossipInfo.SelectOption(option.gossipOptionID)
 end

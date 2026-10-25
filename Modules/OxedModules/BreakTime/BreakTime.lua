@@ -6,6 +6,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -45,7 +46,7 @@ local function PlayedText()
     -- (module just switched on, or off): dueAt was nil and this threw.
     local minutes = math.floor((GetTime() - (playingSince or GetTime())) / 60 + 0.5)
     if minutes >= 90 then
-        return ("%d hours %d minutes"):format(math.floor(minutes / 60), minutes % 60)
+        return (L["%d hours %d minutes"]):format(math.floor(minutes / 60), minutes % 60)
     end
     return ("%d minutes"):format(minutes)
 end
@@ -62,7 +63,7 @@ local function BuildReminder()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    if f.TitleText then f.TitleText:SetText("Break time") end
+    if f.TitleText then f.TitleText:SetText(L["Break time"]) end
     f.text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     f.text:SetPoint("TOP", 0, -40)
     f.text:SetWidth(300)
@@ -76,7 +77,7 @@ local function BuildReminder()
     local done = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     done:SetSize(130, 24)
     done:SetPoint("BOTTOMRIGHT", -30, 18)
-    done:SetText("I took a break")
+    done:SetText(L["I took a break"])
     done:SetScript("OnClick", function() Reset(); f:Hide() end)
     f:Hide()
     reminder = f
@@ -84,8 +85,8 @@ end
 
 local function ShowReminder()
     BuildReminder()
-    reminder.text:SetText(("You have been playing for %s.\nStand up, stretch, drink some water."):format(PlayedText()))
-    reminder.later:SetText(("Later (%d min)"):format(settings.snooze))
+    reminder.text:SetText((L["You have been playing for %s.\nStand up, stretch, drink some water."]):format(PlayedText()))
+    reminder.later:SetText((L["Later (%d min)"]):format(settings.snooze))
     reminder:Show()
     local API = OxedHub.ModuleAPI
     if not (API and API:PlaySound(settings.sound)) and PlaySound and SOUNDKIT then
@@ -134,7 +135,7 @@ local function ShowOptions()
         local test = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         test:SetSize(150, 22)
         test:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        test:SetText("Show it now")
+        test:SetText(L["Show it now"])
         test:SetScript("OnClick", ShowReminder)
         w.cursorY = w.cursorY - 32
         w:AddNote("Never shown in a fight or a boss encounter; it waits until you are out.")
@@ -170,7 +171,7 @@ loginFrame:SetScript("OnEvent", function(self)
         icon     = "Interface\\Icons\\INV_Misc_PocketWatch_01",
         defaults = DEFAULTS,
         OnOptionsShow = function() ShowOptions() end,
-        quick = { { text = "Show it now", func = function() ShowReminder() end } },
+        quick = { { text = L["Show it now"], func = function() ShowReminder() end } },
         OnEnable = function(_, cfg) settings = cfg; Start() end,
         OnDisable = function() Stop() end,
     })

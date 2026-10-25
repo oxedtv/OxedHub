@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 OxedHub.Triggers:RegisterEventType("EAT_BUFF", {
     name = "Food/Drink Buff",
@@ -22,19 +23,19 @@ OxedHub.Triggers:RegisterEventType("EAT_BUFF", {
         startCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
         startCheck:SetSize(20, 20)
         startCheck:SetChecked(conditions.onStart or false)
-        startCheck.text:SetText("Trigger on Start Eating")
+        startCheck.text:SetText(L["Trigger on Start Eating"])
         
         local stopCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
         stopCheck:SetPoint("LEFT", startCheck.text, "RIGHT", 10, 0)
         stopCheck:SetSize(20, 20)
         stopCheck:SetChecked(conditions.onStop or false)
-        stopCheck.text:SetText("Trigger on Stop Eating")
+        stopCheck.text:SetText(L["Trigger on Stop Eating"])
         
         local buffCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
         buffCheck:SetPoint("TOPLEFT", startCheck, "BOTTOMLEFT", 0, -5)
         buffCheck:SetSize(20, 20)
         buffCheck:SetChecked(conditions.onBuff ~= false) -- Default true for backward compat
-        buffCheck.text:SetText("Trigger on Buff Gained (Well Fed)")
+        buffCheck.text:SetText(L["Trigger on Buff Gained (Well Fed)"])
         
         startCheck:SetScript("OnClick", function(self)
             conditions.onStart = self:GetChecked()

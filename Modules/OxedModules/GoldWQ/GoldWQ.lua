@@ -13,6 +13,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer
 local Data = OxedHub.GoldWQData or {}
 
@@ -76,7 +77,7 @@ local function SecretValue(val)
 end
 
 local function CharKey()
-    local name = UnitName("player") or "Unknown"
+    local name = UnitName("player") or L["Unknown"]
     local realm = (GetNormalizedRealmName and GetNormalizedRealmName())
         or (GetRealmName and GetRealmName():gsub("[%s%-]", "")) or "Realm"
     if SecretValue(name) or SecretValue(realm) then return "Secret-Player" end
@@ -197,7 +198,7 @@ local function QuestTitle(id)
     local info = C_TaskQuest and C_TaskQuest.GetQuestInfoByQuestID and C_TaskQuest.GetQuestInfoByQuestID(id)
     if type(info) == "string" and info ~= "" then return info end
     local title = C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(id)
-    return title or ("Quest " .. tostring(id))
+    return title or (L["Quest "] .. tostring(id))
 end
 
 -- ── Remembered names ──────────────────────────────────────────────────────
@@ -255,9 +256,9 @@ local function ScanZone(z, j)
 
             local reason = nil
             if not isWQ then
-                reason = "not a world quest"
+                reason = L["not a world quest"]
             elseif not (C_TaskQuest and C_TaskQuest.IsActive and C_TaskQuest.IsActive(id)) then
-                reason = "not active"
+                reason = L["not active"]
             elseif left and left <= 0 then
                 reason = "expired"
             elseif C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted and C_QuestLog.IsQuestFlaggedCompleted(id) then
@@ -307,7 +308,7 @@ local function ScanZone(z, j)
 
                 j.active[#j.active + 1] = {
                     entry = entry,
-                    rew = loaded and table.concat(rewNames, ", ") or "(reward not loaded)"
+                    rew = loaded and table.concat(rewNames, ", ") or L["(reward not loaded)"]
                 }
                 if entry.copper > 0 then j.list[#j.list + 1] = entry end
                 if isSA then j.sa[#j.sa + 1] = entry end
@@ -338,7 +339,7 @@ local function FinishScan(j)
         shouldAnnounce = false
         local total = 0
         for _, q in ipairs(available) do total = total + q.copper end
-        print(PREFIX .. ("%d gold world quest(s) available (%s total). Type /gwq to view."):format(#available, MoneyString(total)))
+        print(PREFIX .. (L["%d gold world quest(s) available (%s total). Type /gwq to view."]):format(#available, MoneyString(total)))
     end
 end
 
@@ -450,7 +451,7 @@ end
 
 openQuest = function(q)
     if not q then return end
-    print(PREFIX .. "Waypoint set: |cffffd100" .. tostring(q.title) .. "|r")
+    print(PREFIX .. L["Waypoint set: |cffffd100"] .. tostring(q.title) .. "|r")
     SetNativeWaypoint(q.mapID, q.x, q.y, q.id, true)
 end
 
@@ -613,7 +614,7 @@ local function CreateRoutePin(index, q, isCurrent)
         GameTooltip:AddLine(MoneyString(q.copper), 1, 1, 1)
         GameTooltip:AddLine(q.zone, 0.7, 0.7, 0.7)
         if isCurrent then
-            GameTooltip:AddLine("|cff00ff00[Current Stop]|r", 0, 1, 0)
+            GameTooltip:AddLine(L["|cff00ff00[Current Stop]|r"], 0, 1, 0)
         end
         GameTooltip:Show()
     end)
@@ -709,7 +710,7 @@ clearRoute = function(quiet)
     activeRoute = nil
 
     if not quiet and wasActive then
-        print(PREFIX .. "Route cleared.")
+        print(PREFIX .. L["Route cleared."])
     end
 
     if updateRouteButtonText then updateRouteButtonText() end
@@ -732,7 +733,7 @@ local function ActivateRouteStop(index)
     -- Update pin highlights
     UpdatePinHighlights(index)
 
-    print(PREFIX .. ("Stop %d/%d: |cffffd100%s|r (%s) in %s. Waypoint set!"):format(
+    print(PREFIX .. (L["Stop %d/%d: |cffffd100%s|r (%s) in %s. Waypoint set!"]):format(
         index, #activeRoute.stops, q.title, MoneyString(q.copper), q.zone
     ))
 
@@ -743,7 +744,7 @@ end
 sendRoute = function()
     local route, maps = BuildRoute()
     if #route == 0 then
-        print(PREFIX .. "No gold world quests to route. Try clicking Rescan.")
+        print(PREFIX .. L["No gold world quests to route. Try clicking Rescan."])
         return
     end
 
@@ -772,9 +773,9 @@ sendRoute = function()
         names[#names + 1] = (mi and mi.name) or tostring(m)
     end
 
-    local provider = (_G.TomTom and _G.TomTom.AddWaypoint) and "Native Waypoint + TomTom" or "Native Waypoint"
-    print(PREFIX .. ("Shortest route calculated: %d stops (%s)."):format(#route, provider))
-    print(PREFIX .. "Zone order: " .. table.concat(names, " > "))
+    local provider = (_G.TomTom and _G.TomTom.AddWaypoint) and L["Native Waypoint + TomTom"] or L["Native Waypoint"]
+    print(PREFIX .. (L["Shortest route calculated: %d stops (%s)."]):format(#route, provider))
+    print(PREFIX .. L["Zone order: "] .. table.concat(names, " > "))
 
     ActivateRouteStop(1)
 end
@@ -814,7 +815,7 @@ local function AdvanceRoute(questID)
     table.remove(activeRoute.stops, foundIdx)
 
     if #activeRoute.stops == 0 then
-        print(PREFIX .. "|cff00ff00Route complete! All gold world quests finished.|r")
+        print(PREFIX .. L["|cff00ff00Route complete! All gold world quests finished.|r"])
         clearRoute(true)
     else
         local nextIdx = math.min(activeRoute.current, #activeRoute.stops)
@@ -824,10 +825,10 @@ end
 
 SkipRouteStop = function()
     if not activeRoute or not activeRoute.stops or #activeRoute.stops == 0 then
-        print(PREFIX .. "No active route running.")
+        print(PREFIX .. L["No active route running."])
         return
     end
-    print(PREFIX .. "Skipping current route stop...")
+    print(PREFIX .. L["Skipping current route stop..."])
     table.remove(activeRoute.stops, activeRoute.current)
     if #routeState >= activeRoute.current then
         if routeState[activeRoute.current].uid and _G.TomTom and _G.TomTom.RemoveWaypoint then
@@ -836,7 +837,7 @@ SkipRouteStop = function()
         table.remove(routeState, activeRoute.current)
     end
     if #activeRoute.stops == 0 then
-        print(PREFIX .. "Route finished.")
+        print(PREFIX .. L["Route finished."])
         clearRoute(true)
     else
         local nextIdx = math.min(activeRoute.current, #activeRoute.stops)
@@ -869,7 +870,7 @@ local function SpecialAssignmentState(sa)
         if z[2] == sa.zone then mapID = z[1] end
     end
     local e = {
-        id = sa.quest, title = "Special Assignment: " .. sa.name, zone = sa.zone, mapID = mapID,
+        id = sa.quest, title = L["Special Assignment: "] .. sa.name, zone = sa.zone, mapID = mapID,
         left = timeLeft(sa.quest) or timeLeft(sa.unlock)
     }
     if mapID and C_TaskQuest and C_TaskQuest.GetQuestLocation then
@@ -962,9 +963,9 @@ refreshUI = function()
     end
     table.sort(zoneNames, function(x, y) return zoneTotal[x] > zoneTotal[y] end)
 
-    AddRow(("|cffffd100Gold World Quests: %d (%s)|r"):format(#available, MoneyString(totalGold)))
+    AddRow((L["|cffffd100Gold World Quests: %d (%s)|r"]):format(#available, MoneyString(totalGold)))
     if #available == 0 then
-        AddRow("  |cff999999No gold world quests found. Click Rescan.|r")
+        AddRow(L["  |cff999999No gold world quests found. Click Rescan.|r"])
     end
     for _, zone in ipairs(zoneNames) do
         AddRow(("  |cffffffff%s|r |cff999999(%d, %s)|r"):format(zone, #groups[zone], MoneyString(zoneTotal[zone])))
@@ -974,7 +975,7 @@ refreshUI = function()
                 for sIdx, stop in ipairs(activeRoute.stops) do
                     if stop.id == q.id then
                         if sIdx == activeRoute.current then
-                            prefixTag = "|cff00ff00[Next] |r"
+                            prefixTag = L["|cff00ff00[Next] |r"]
                         else
                             prefixTag = ("|cffffd100[#%d] |r"):format(sIdx)
                         end
@@ -990,7 +991,7 @@ refreshUI = function()
 
     -- 2. Special Assignments
     AddRow(" ")
-    AddRow("|cffffd100Special Assignments|r")
+    AddRow(L["|cffffd100Special Assignments|r"])
     local rank = { done = 3, up = 2, locked = 1 }
     local best = {}
     for _, sa in ipairs(Data.SpecialAssignments or {}) do
@@ -1030,12 +1031,12 @@ refreshUI = function()
         local b = best[sa.zone]
         if b and b.sa == sa and (b.state == "locked" or b.state == "up") then
             if not headerShown then
-                AddRow("  |cff999999WQ progress toward unlock (3 in zone):|r")
+                AddRow(L["  |cff999999WQ progress toward unlock (3 in zone):|r"])
                 headerShown = true
             end
             local nDone = counts[NormName(sa.zone)] or 0
             if nDone >= 3 then
-                AddRow("    " .. sa.zone .. "  |cff00ff003/3 — unlocked|r")
+                AddRow("    " .. sa.zone .. L["  |cff00ff003/3 — unlocked|r"])
             else
                 AddRow("    " .. sa.zone .. "  " .. nDone .. "/3")
             end
@@ -1044,9 +1045,9 @@ refreshUI = function()
 
     -- 3. Weekly Caches
     AddRow(" ")
-    AddRow("|cffffd100Weekly Caches|r")
+    AddRow(L["|cffffd100Weekly Caches|r"])
     local apexDone = C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted and C_QuestLog.IsQuestFlaggedCompleted(93744)
-    AddRow(("   |cff999999Unity Against the Void: %s|r"):format(apexDone and "|cff00ff00done|r" or "|cffff6060not done|r"))
+    AddRow((L["   |cff999999Unity Against the Void: %s|r"]):format(apexDone and "|cff00ff00done|r" or L["|cffff6060not done|r"]))
 
     for _, cache in ipairs(TrackedCaches()) do
         local doneCount = ((cc and cc.caches) or {})[cache.name] or 0
@@ -1073,7 +1074,7 @@ refreshUI = function()
             AddRow("   |cff00ff00done|r    " .. cache.name .. extra)
         else
             local fresh = cc and cc.trackingSince and (time() - cc.trackingSince) < 6 * 86400
-            AddRow("   |cffff6060to do|r   " .. cache.name .. (fresh and " |cff999999(fresh tracking)|r" or extra))
+            AddRow(L["   |cffff6060to do|r   "] .. cache.name .. (fresh and L[" |cff999999(fresh tracking)|r"] or extra))
         end
     end
 
@@ -1159,9 +1160,9 @@ ShowCoin = function()
         end)
         coin:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            GameTooltip:SetText("Gold World Quests")
-            GameTooltip:AddLine(("%d available, %s in all"):format(#available, MoneyString(TotalCopper())), 1, 1, 1)
-            GameTooltip:AddLine("Click: open the list   Right-click: options   Drag: move", 0.7, 0.7, 0.7)
+            GameTooltip:SetText(L["Gold World Quests"])
+            GameTooltip:AddLine((L["%d available, %s in all"]):format(#available, MoneyString(TotalCopper())), 1, 1, 1)
+            GameTooltip:AddLine(L["Click: open the list   Right-click: options   Drag: move"], 0.7, 0.7, 0.7)
             GameTooltip:Show()
         end)
         coin:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1234,14 +1235,14 @@ buildUI = function()
     else
         rescan:SetPoint("TOPRIGHT", ui, "TOPRIGHT", -32, -6)
     end
-    rescan:SetText("Rescan")
+    rescan:SetText(L["Rescan"])
     ApplyRedButtonStyle(rescan)
     rescan:SetScript("OnClick", function() requestScan(0) end)
 
     local routeBtn = CreateFrame("Button", nil, ui, "UIPanelButtonTemplate")
     routeBtn:SetSize(58, 18)
     routeBtn:SetPoint("RIGHT", rescan, "LEFT", -3, 0)
-    routeBtn:SetText("Route")
+    routeBtn:SetText(L["Route"])
     ApplyRedButtonStyle(routeBtn)
     routeBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     routeBtn:SetScript("OnClick", function(self, button)
@@ -1261,16 +1262,16 @@ buildUI = function()
     end)
     routeBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Shortest Route (2-Opt)")
-        GameTooltip:AddLine("Calculates the optimal shortest path through all active gold world quests.", 1, 1, 1, true)
+        GameTooltip:SetText(L["Shortest Route (2-Opt)"])
+        GameTooltip:AddLine(L["Calculates the optimal shortest path through all active gold world quests."], 1, 1, 1, true)
         GameTooltip:AddLine(" ", 1, 1, 1)
         if activeRoute and activeRoute.stops and #activeRoute.stops > 0 then
-            GameTooltip:AddLine(("|cffffd100Left-click:|r Re-point waypoint to stop %d/%d"):format(activeRoute.current or 1, #activeRoute.stops), 0.9, 0.9, 0.9)
-            GameTooltip:AddLine("|cffffd100Shift + Left-click:|r Skip current stop", 0.9, 0.9, 0.9)
-            GameTooltip:AddLine("|cffffd100Right-click:|r Clear active route", 0.9, 0.9, 0.9)
+            GameTooltip:AddLine((L["|cffffd100Left-click:|r Re-point waypoint to stop %d/%d"]):format(activeRoute.current or 1, #activeRoute.stops), 0.9, 0.9, 0.9)
+            GameTooltip:AddLine(L["|cffffd100Shift + Left-click:|r Skip current stop"], 0.9, 0.9, 0.9)
+            GameTooltip:AddLine(L["|cffffd100Right-click:|r Clear active route"], 0.9, 0.9, 0.9)
         else
-            GameTooltip:AddLine("|cffffd100Left-click:|r Calculate & start shortest route", 0.9, 0.9, 0.9)
-            GameTooltip:AddLine("|cff999999Works with native Blizzard waypoints (TomTom synced if installed).|r", 0.8, 0.8, 0.8, true)
+            GameTooltip:AddLine(L["|cffffd100Left-click:|r Calculate & start shortest route"], 0.9, 0.9, 0.9)
+            GameTooltip:AddLine(L["|cff999999Works with native Blizzard waypoints (TomTom synced if installed).|r"], 0.8, 0.8, 0.8, true)
         end
         GameTooltip:Show()
     end)
@@ -1281,7 +1282,7 @@ buildUI = function()
         if activeRoute and activeRoute.stops and #activeRoute.stops > 0 then
             routeBtn:SetText(("%d/%d"):format(activeRoute.current or 1, #activeRoute.stops))
         else
-            routeBtn:SetText("Route")
+            routeBtn:SetText(L["Route"])
         end
     end
     updateRouteButtonText()
@@ -1289,7 +1290,7 @@ buildUI = function()
     local optBtn = CreateFrame("Button", nil, ui, "UIPanelButtonTemplate")
     optBtn:SetSize(52, 18)
     optBtn:SetPoint("RIGHT", routeBtn, "LEFT", -3, 0)
-    optBtn:SetText("Config")
+    optBtn:SetText(L["Config"])
     ApplyRedButtonStyle(optBtn)
     optBtn:SetScript("OnClick", function() toggleOptions() end)
 
@@ -1297,7 +1298,7 @@ buildUI = function()
     local goldBtn = CreateFrame("Button", nil, ui, "UIPanelButtonTemplate")
     goldBtn:SetSize(44, 18)
     goldBtn:SetPoint("RIGHT", optBtn, "LEFT", -3, 0)
-    goldBtn:SetText("Gold")
+    goldBtn:SetText(L["Gold"])
     ApplyRedButtonStyle(goldBtn)
     goldBtn:SetScript("OnClick", function()
         if not OxedHub.GoldStock then return end
@@ -1307,7 +1308,7 @@ buildUI = function()
     goldBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Gold Stock")
-        GameTooltip:AddLine("Gold on every character, guild bank and the warband bank.", 1, 1, 1, true)
+        GameTooltip:AddLine(L["Gold on every character, guild bank and the warband bank."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     goldBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1323,7 +1324,7 @@ buildUI = function()
     if dash then dash:SetFont(STANDARD_TEXT_FONT, 18, "OUTLINE"); dash:SetTextColor(1, 0.82, 0) end
     minBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Minimise to a gold coin")
+        GameTooltip:SetText(L["Minimise to a gold coin"])
         GameTooltip:Show()
     end)
     minBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1433,10 +1434,10 @@ end
 -- ── Minimap Button ──────────────────────────────────────────────────────────
 
 local function MMTooltip(tt)
-    tt:AddLine("|cffffd100Oxed Gold World Quests|r")
-    tt:AddLine("Left-click: Show / hide tracker window", 1, 1, 1)
-    tt:AddLine("Right-click: Open options window", 1, 1, 1)
-    tt:AddLine("Drag: Move minimap icon", 1, 1, 1)
+    tt:AddLine(L["|cffffd100Oxed Gold World Quests|r"])
+    tt:AddLine(L["Left-click: Show / hide tracker window"], 1, 1, 1)
+    tt:AddLine(L["Right-click: Open options window"], 1, 1, 1)
+    tt:AddLine(L["Drag: Move minimap icon"], 1, 1, 1)
 end
 
 local function MMClick(_, button)
@@ -1561,7 +1562,7 @@ local function ShowOptions()
         local btnOpen = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
         btnOpen:SetSize(130, 22)
         btnOpen:SetPoint("TOPLEFT", optionsWindow, "TOPLEFT", 20, optionsWindow.cursorY - 6)
-        btnOpen:SetText("Open Tracker")
+        btnOpen:SetText(L["Open Tracker"])
         ApplyRedButtonStyle(btnOpen)
         btnOpen:SetScript("OnClick", function()
             optionsWindow:Hide()
@@ -1573,7 +1574,7 @@ local function ShowOptions()
         local btnRoute = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
         btnRoute:SetSize(130, 22)
         btnRoute:SetPoint("LEFT", btnOpen, "RIGHT", 10, 0)
-        btnRoute:SetText("Shortest Route")
+        btnRoute:SetText(L["Shortest Route"])
         ApplyRedButtonStyle(btnRoute)
         btnRoute:SetScript("OnClick", function()
             sendRoute()
@@ -1583,7 +1584,7 @@ local function ShowOptions()
         local btnReset = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
         btnReset:SetSize(130, 22)
         btnReset:SetPoint("LEFT", btnRoute, "RIGHT", 10, 0)
-        btnReset:SetText("Reset Position")
+        btnReset:SetText(L["Reset Position"])
         ApplyRedButtonStyle(btnReset)
         btnReset:SetScript("OnClick", function()
             settings.ui = nil
@@ -1595,7 +1596,7 @@ local function ShowOptions()
                 ui.fullHeight = 420
                 if ui.SetCollapsed then ui.SetCollapsed(false) end
             end
-            print(PREFIX .. "Tracker HUD position reset to center.")
+            print(PREFIX .. L["Tracker HUD position reset to center."])
         end)
 
         optionsWindow.cursorY = optionsWindow.cursorY - 32
@@ -1613,7 +1614,7 @@ local function ShowOptions()
         local stockNote = optionsWindow:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         stockNote:SetPoint("LEFT", btnStock, "RIGHT", 10, 0)
         stockNote:SetTextColor(0.75, 0.75, 0.75)
-        stockNote:SetText("Gold on every character, guild bank and warband bank.")
+        stockNote:SetText(L["Gold on every character, guild bank and warband bank."])
 
         optionsWindow.cursorY = optionsWindow.cursorY - 32
 
@@ -1651,10 +1652,10 @@ end
 
 local function ShowAvailableChat()
     if #available == 0 then
-        print(PREFIX .. "No gold world quests found. Try /gwq scan in a moment.")
+        print(PREFIX .. L["No gold world quests found. Try /gwq scan in a moment."])
         return
     end
-    print(PREFIX .. "Gold world quests available now:")
+    print(PREFIX .. L["Gold world quests available now:"])
     for _, q in ipairs(available) do
         print(("  %s - %s [%s]"):format(MoneyString(q.copper), q.title, q.zone))
     end
@@ -1662,11 +1663,11 @@ end
 
 local function PrintWeeklyReport()
     EnsureData()
-    print(PREFIX .. "Weekly summary (resets at weekly reset):")
+    print(PREFIX .. L["Weekly summary (resets at weekly reset):"])
     for name, c in pairs(settings.chars or {}) do
         local count = 0
         for _ in pairs(c.weekQuests or {}) do count = count + 1 end
-        print(("  |cffffffff%s|r: %d gold WQs, %s (lifetime %s)"):format(
+        print((L["  |cffffffff%s|r: %d gold WQs, %s (lifetime %s)"]):format(
             name, count, MoneyString(c.weekCopper), MoneyString(c.totalCopper)
         ))
         for _, cache in ipairs(Data.Caches or {}) do
@@ -1700,7 +1701,7 @@ watcher:SetScript("OnEvent", function(self, event, ...)
 
         local isWQ = knownZone[questID] ~= nil or (C_QuestLog and C_QuestLog.IsWorldQuest and C_QuestLog.IsWorldQuest(questID))
         if isWQ then
-            c.wqDone[questID] = knownZone[questID] or ZoneName(questID, "Unknown zone")
+            c.wqDone[questID] = knownZone[questID] or ZoneName(questID, L["Unknown zone"])
         end
 
         if money and not SecretValue(money) and money > 0 and isWQ then
@@ -1742,7 +1743,7 @@ local function HandleSlash(msg)
     elseif msg == "minimap" then
         settings.minimapButton = not (settings.minimapButton ~= false)
         setMinimapShown(settings.minimapButton)
-        print(PREFIX .. "Minimap button " .. (settings.minimapButton and "shown." or "hidden."))
+        print(PREFIX .. L["Minimap button "] .. (settings.minimapButton and L["shown."] or L["hidden."]))
     elseif msg == "reset" then
         settings.ui = nil
         if ui then
@@ -1753,7 +1754,7 @@ local function HandleSlash(msg)
             ui.fullHeight = 420
             if ui.SetCollapsed then ui.SetCollapsed(false) end
         end
-        print(PREFIX .. "Window position reset.")
+        print(PREFIX .. L["Window position reset."])
     else
         toggleUI()
     end
@@ -1809,7 +1810,7 @@ loginFrame:SetScript("OnEvent", function(self)
 
         -- On the minimap button's right-click menu and as an Action Hub node.
         quick = {
-            { text = "Show or hide", func = function() toggleUI() end },
+            { text = L["Show or hide"], func = function() toggleUI() end },
             { text = "Gold Stock", func = function() if OxedHub.GoldStock then OxedHub.GoldStock:Toggle() end end },
         },
 
@@ -1839,7 +1840,7 @@ loginFrame:SetScript("OnEvent", function(self)
                         CurrentChar()
                         SnapshotCaches()
                         requestScan(2)
-                        print(PREFIX .. "Weekly reset detected, weekly counters cleared.")
+                        print(PREFIX .. L["Weekly reset detected, weekly counters cleared."])
                     end
                 end)
             end

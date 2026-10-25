@@ -17,6 +17,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -130,7 +131,7 @@ local function CreateAnchor()
     anchor.hint:SetColorTexture(0, 0.6, 1, 0.25)
     anchor.text = anchor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     anchor.text:SetPoint("BOTTOM", anchor, "TOP", 0, 2)
-    anchor.text:SetText("Enemy Casts: drag me")
+    anchor.text:SetText(L["Enemy Casts: drag me"])
 end
 
 local function NewBar()
@@ -364,14 +365,14 @@ end
 
 local function ShowTest()
     if not settings.enabled then
-        print("|cff00ccffOxedHub|r Switch Enemy Casts on first.")
+        print(L["|cff00ccffOxedHub|r Switch Enemy Casts on first."])
         return
     end
     if not (C_DurationUtil and C_DurationUtil.CreateDuration) then return end
     local samples = {
-        { "Test: Shadow Bolt", 136197, 3, false, "Healer" },
-        { "Test: Mind Shatter", 136207, 5, true, "Tank" },
-        { "Test: Flame Wave", 135808, 4, false, "" },
+        { L["Test: Shadow Bolt"], 136197, 3, false, L["Healer"] },
+        { L["Test: Mind Shatter"], 136207, 5, true, L["Tank"] },
+        { L["Test: Flame Wave"], 135808, 4, false, "" },
     }
     for i, s in ipairs(samples) do
         local unit = "test" .. i
@@ -411,7 +412,7 @@ local function ShowOptions()
         local test = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         test:SetSize(170, 22)
         test:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        test:SetText("Show test bars")
+        test:SetText(L["Show test bars"])
         test:SetScript("OnClick", ShowTest)
         w.cursorY = w.cursorY - 32
 
@@ -469,7 +470,7 @@ loginFrame:SetScript("OnEvent", function(self)
 
         defaults = DEFAULTS,
         OnOptionsShow = function() ShowOptions() end,
-        quick = { { text = "Test bars", func = function() ShowTest() end } },
+        quick = { { text = L["Test bars"], func = function() ShowTest() end } },
         OnEnable = function(_, cfg) settings = cfg; Start() end,
         OnDisable = function() Stop() end,
     })

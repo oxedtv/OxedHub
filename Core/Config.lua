@@ -2,7 +2,7 @@ local addonName, OxedHub = ...
 
 -- Configuration and Constants
 OxedHub.CONFIG = {
-    VERSION = "2.4.43",
+    VERSION = "2.4.44",
     DB_VERSION = 1,
 
     -- Shown in the Export/Import "About" panel. Edit freely.
@@ -179,6 +179,11 @@ OxedHub.CONFIG = {
     -- Animation
     DEFAULT_ANIMATION_FPS = 24,
 }
+
+OxedHub:RegisterLocalizedTable(OxedHub.CONFIG.EVENT_CATEGORIES, "label", "desc")
+OxedHub:RegisterLocalizedTable(OxedHub.CONFIG.EVENT_TYPES, "label", "desc")
+OxedHub:RegisterLocalizedTable(OxedHub.CONFIG.REACTIONS, "name")
+OxedHub:RegisterLocalizedTable({ OxedHub.CONFIG.CREDITS }, "thanks")
 
 
 -- Utility function to get localized string

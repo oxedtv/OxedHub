@@ -2,6 +2,7 @@
 -- Resolves Auction House prices for disenchant materials in Shattersight.
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 OxedHub.Shattersight = OxedHub.Shattersight or {}
@@ -88,8 +89,8 @@ end
 local function ScanNext()
     if #scanState.queue == 0 then
         scanState.active = false
-        local prefix = scanState.isAuto and "Auto-scan" or "Scan"
-        print(string.format("|cFF00FFFF[OxedHub Shattersight]:|r %s complete. Updated %d/%d prices.",
+        local prefix = scanState.isAuto and L["Auto-scan"] or L["Scan"]
+        print(string.format(L["|cFF00FFFF[OxedHub Shattersight]:|r %s complete. Updated %d/%d prices."],
             prefix, scanState.completed, scanState.total))
         return
     end
@@ -144,15 +145,15 @@ end
 function SS:ScanAHPrices(isAuto)
     if not AuctionHouseFrame or not AuctionHouseFrame:IsShown() then
         if not isAuto then
-            print("|cFF00FFFF[OxedHub Shattersight]:|r You must be at the Auction House to scan prices.")
-            print("  Tip: Open the AH, then run |cFFFFD700/ss scan|r")
+            print(L["|cFF00FFFF[OxedHub Shattersight]:|r You must be at the Auction House to scan prices."])
+            print(L["  Tip: Open the AH, then run |cFFFFD700/ss scan|r"])
         end
         return
     end
 
     if scanState.active then
         if not isAuto then
-            print("|cFF00FFFF[OxedHub Shattersight]:|r A scan is already in progress.")
+            print(L["|cFF00FFFF[OxedHub Shattersight]:|r A scan is already in progress."])
         end
         return
     end
@@ -160,8 +161,8 @@ function SS:ScanAHPrices(isAuto)
     local queue = BuildScanQueue()
     if #queue == 0 then
         if not isAuto then
-            print("|cFF00FFFF[OxedHub Shattersight]:|r No materials with cached names to scan.")
-            print("  Tip: Wait a moment after login for item names to load, then try again.")
+            print(L["|cFF00FFFF[OxedHub Shattersight]:|r No materials with cached names to scan."])
+            print(L["  Tip: Wait a moment after login for item names to load, then try again."])
         end
         return
     end
@@ -175,8 +176,8 @@ function SS:ScanAHPrices(isAuto)
     scanState.completed = 0
     scanState.total     = total
 
-    local prefix = isAuto and "Auto-scanning" or "Scanning"
-    print(string.format("|cFF00FFFF[OxedHub Shattersight]:|r %s prices (%d queries for %d mats)...",
+    local prefix = isAuto and L["Auto-scanning"] or L["Scanning"]
+    print(string.format(L["|cFF00FFFF[OxedHub Shattersight]:|r %s prices (%d queries for %d mats)..."],
         prefix, #queue, total))
     ScanNext()
 end

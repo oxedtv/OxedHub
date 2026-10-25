@@ -14,6 +14,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 local DEFAULTS = {
     enabled   = false,  -- off until the player switches it on (see ModuleAPI:Register)
@@ -125,14 +126,14 @@ local function DiminishingText(ratingId)
     local efficiency, here, perPoint = RatingEfficiency(ratingId, rating)
     if not efficiency then return nil end
 
-    local lines = { ("Each extra point of rating is worth %d%% of full value."):format(efficiency * 100 + 0.5) }
+    local lines = { (L["Each extra point of rating is worth %d%% of full value."]):format(efficiency * 100 + 0.5) }
     local lost = perPoint * rating - here
     if lost >= 0.01 then
-        lines[#lines + 1] = ("Lost to diminishing returns: %.2f%%"):format(lost)
+        lines[#lines + 1] = (L["Lost to diminishing returns: %.2f%%"]):format(lost)
     end
     local nextAt = NextThreshold(ratingId, rating, efficiency, perPoint)
     if nextAt then
-        lines[#lines + 1] = ("Worth less again after about %d more rating."):format(nextAt)
+        lines[#lines + 1] = (L["Worth less again after about %d more rating."]):format(nextAt)
     end
     return table.concat(lines, "\n")
 end
@@ -194,13 +195,13 @@ local function ReadSpeed()
 
     local text = ("%.0f%%"):format(percent)
     if gliding then
-        text = text .. " |cff808080(skyriding)|r"
+        text = text .. L[" |cff808080(skyriding)|r"]
     elseif inVehicle then
-        text = text .. " |cff808080(vehicle)|r"
+        text = text .. L[" |cff808080(vehicle)|r"]
     end
 
-    return text, STAT_MOVEMENT_SPEED or "Movement Speed",
-        ("Current: %.1f yards per second.\nStanding still reads 0%%."):format(current), percent
+    return text, STAT_MOVEMENT_SPEED or L["Movement Speed"],
+        (L["Current: %.1f yards per second.\nStanding still reads 0%%."]):format(current), percent
 end
 
 -- Run, swim and flight speed, each as a share of normal running speed: what
@@ -212,8 +213,8 @@ local function ReadTravelSpeeds()
     local base = BASE_MOVEMENT_SPEED or 7
     local function pct(value) return ("%.0f%%"):format((value or 0) / base * 100) end
     return ("%s / %s / %s"):format(pct(run), pct(swim), pct(flight)),
-        "Run / Swim / Fly",
-        "What you move at on foot, in water and on a flying mount, as a share of normal run speed. Skyriding shows live on the line above while you glide.",
+        L["Run / Swim / Fly"],
+        L["What you move at on foot, in water and on a flying mount, as a share of normal run speed. Skyriding shows live on the line above while you glide."],
         (run or 0) / base * 100
 end
 
@@ -221,8 +222,8 @@ local function ReadSpeedRating()
     if not GetSpeed then return nil end
     local bonus = GetSpeed()
     if not bonus or bonus <= 0 then return nil end
-    return WithRating(Percent(bonus), CR_SPEED), STAT_SPEED or "Speed",
-        WithDiminishing("Passive movement speed from the Speed secondary stat, on top of your normal run speed.", CR_SPEED),
+    return WithRating(Percent(bonus), CR_SPEED), STAT_SPEED or L["Speed"],
+        WithDiminishing(L["Passive movement speed from the Speed secondary stat, on top of your normal run speed."], CR_SPEED),
         bonus
 end
 
@@ -230,8 +231,8 @@ local function ReadLeech()
     if not GetLifesteal then return nil end
     local value = GetLifesteal()
     if not value or value <= 0 then return nil end
-    return WithRating(Percent(value), CR_LIFESTEAL), STAT_LIFESTEAL or "Leech",
-        WithDiminishing("Part of the damage and healing you do comes back to you as healing.", CR_LIFESTEAL),
+    return WithRating(Percent(value), CR_LIFESTEAL), STAT_LIFESTEAL or L["Leech"],
+        WithDiminishing(L["Part of the damage and healing you do comes back to you as healing."], CR_LIFESTEAL),
         value
 end
 
@@ -239,8 +240,8 @@ local function ReadAvoidance()
     if not GetAvoidance then return nil end
     local value = GetAvoidance()
     if not value or value <= 0 then return nil end
-    return WithRating(Percent(value), CR_AVOIDANCE), STAT_AVOIDANCE or "Avoidance",
-        WithDiminishing("Reduces the damage area effects do to you.", CR_AVOIDANCE),
+    return WithRating(Percent(value), CR_AVOIDANCE), STAT_AVOIDANCE or L["Avoidance"],
+        WithDiminishing(L["Reduces the damage area effects do to you."], CR_AVOIDANCE),
         value
 end
 
@@ -363,7 +364,7 @@ local function ReadTarget(entry)
         info.progress = highest > 0 and (current / highest) or 0
         info.relative = true
         info.text = ("%s  |cff808080%d|r"):format(Percent(current), rating or 0)
-        info.tip = "Set a target for this stat in the module's Options and this bar fills toward it, with the rating you still need.\n\nUntil then the bars are drawn against your highest secondary, so you can see which is behind."
+        info.tip = L["Set a target for this stat in the module's Options and this bar fills toward it, with the rating you still need.\n\nUntil then the bars are drawn against your highest secondary, so you can see which is behind."]
         return info
     end
 
@@ -373,16 +374,16 @@ local function ReadTarget(entry)
     if gap <= 0.01 then
         info.text = ("%s  |cff40ff40of %s|r"):format(Percent(current), Percent(target))
         info.state = "at"
-        info.tip = ("You are %.2f%% over the target you set (%s)."):format(-gap, Percent(target))
+        info.tip = (L["You are %.2f%% over the target you set (%s)."]):format(-gap, Percent(target))
     else
         local needed = RatingForBonus(entry.ratingId, target)
         if needed and rating and needed > rating then
-            info.text = ("%s  |cffff9933+%d rating|r"):format(Percent(current), needed - rating)
-            info.tip = ("%.2f%% short of your %s target.\nThat is about %d more rating, worked out from what the game says each amount is worth, so diminishing returns are already counted.")
+            info.text = (L["%s  |cffff9933+%d rating|r"]):format(Percent(current), needed - rating)
+            info.tip = (L["%.2f%% short of your %s target.\nThat is about %d more rating, worked out from what the game says each amount is worth, so diminishing returns are already counted."])
                 :format(gap, Percent(target), needed - rating)
         else
             info.text = ("%s  |cffff9933of %s|r"):format(Percent(current), Percent(target))
-            info.tip = ("%.2f%% short of your %s target."):format(gap, Percent(target))
+            info.tip = (L["%.2f%% short of your %s target."]):format(gap, Percent(target))
         end
         info.state = "below"
     end
@@ -408,7 +409,7 @@ local function PrimaryStatIndex()
 end
 
 local function StatName(index)
-    return _G["SPELL_STAT" .. index .. "_NAME"] or "Attribute"
+    return _G["SPELL_STAT" .. index .. "_NAME"] or L["Attribute"]
 end
 
 local function ReadPrimaryStat()
@@ -421,7 +422,7 @@ local function ReadPrimaryStat()
 
     local body
     if (positive and positive > 0) or (negative and negative < 0) then
-        body = ("Base: %d\nFrom gear and effects: %+d"):format(
+        body = (L["Base: %d\nFrom gear and effects: %+d"]):format(
             effective - (positive or 0) - (negative or 0), (positive or 0) + (negative or 0))
     end
     return tostring(effective), StatName(index), body, effective
@@ -432,7 +433,7 @@ local function ReadStamina()
     local effective = select(2, UnitStat("player", STAT_STAMINA))
     if not effective then return nil end
     return tostring(effective), StatName(STAT_STAMINA),
-        ("Health: %d"):format(UnitHealthMax and UnitHealthMax("player") or 0), effective
+        (L["Health: %d"]):format(UnitHealthMax and UnitHealthMax("player") or 0), effective
 end
 
 -- The lowest crit of the spell schools. A school left behind is the one that
@@ -466,15 +467,15 @@ local function ReadCrit()
     end
 
     return WithRating(Percent(value), ratingId),
-        STAT_CRITICAL_STRIKE or "Critical Strike",
-        WithDiminishing(("Melee: %s\nRanged: %s\nSpell: %s"):format(Percent(melee), Percent(ranged), Percent(spell)), ratingId),
+        STAT_CRITICAL_STRIKE or L["Critical Strike"],
+        WithDiminishing((L["Melee: %s\nRanged: %s\nSpell: %s"]):format(Percent(melee), Percent(ranged), Percent(spell)), ratingId),
         value
 end
 
 local function ReadHaste()
     if not GetHaste then return nil end
     local haste = GetHaste()
-    return WithRating(Percent(haste), CR_HASTE_MELEE), STAT_HASTE or "Haste",
+    return WithRating(Percent(haste), CR_HASTE_MELEE), STAT_HASTE or L["Haste"],
         WithDiminishing(nil, CR_HASTE_MELEE), haste
 end
 
@@ -482,8 +483,8 @@ local function ReadMastery()
     if not GetMasteryEffect then return nil end
     local value = GetMasteryEffect()
     if not value or value <= 0 then return nil end
-    return WithRating(Percent(value), CR_MASTERY), STAT_MASTERY or "Mastery",
-        WithDiminishing("Diminishing returns below are in mastery points, before your spec turns them into this percentage.", CR_MASTERY), value
+    return WithRating(Percent(value), CR_MASTERY), STAT_MASTERY or L["Mastery"],
+        WithDiminishing(L["Diminishing returns below are in mastery points, before your spec turns them into this percentage."], CR_MASTERY), value
 end
 
 -- Versatility is two numbers wearing one name: what it adds to the damage you
@@ -498,15 +499,15 @@ local function ReadVersatility()
         + GetVersatilityBonus(CR_VERSATILITY_DAMAGE_TAKEN)
 
     return WithRating(Percent(done), CR_VERSATILITY_DAMAGE_DONE),
-        STAT_VERSATILITY or "Versatility",
-        WithDiminishing(("Damage done: %s\nDamage taken: %s"):format(Percent(done), Percent(taken)), CR_VERSATILITY_DAMAGE_DONE),
+        STAT_VERSATILITY or L["Versatility"],
+        WithDiminishing((L["Damage done: %s\nDamage taken: %s"]):format(Percent(done), Percent(taken)), CR_VERSATILITY_DAMAGE_DONE),
         done
 end
 
 local function ReadDodge()
     if not GetDodgeChance then return nil end
     local dodge = GetDodgeChance()
-    return WithRating(Percent(dodge), CR_DODGE), DODGE_CHANCE or "Dodge",
+    return WithRating(Percent(dodge), CR_DODGE), DODGE_CHANCE or L["Dodge"],
         WithDiminishing(nil, CR_DODGE), dodge
 end
 
@@ -515,7 +516,7 @@ local function ReadParry()
     local value = GetParryChance()
     -- Classes that cannot parry read a flat zero; printing it says nothing.
     if not value or value <= 0 then return nil end
-    return WithRating(Percent(value), CR_PARRY), PARRY_CHANCE or "Parry",
+    return WithRating(Percent(value), CR_PARRY), PARRY_CHANCE or L["Parry"],
         WithDiminishing(nil, CR_PARRY), value
 end
 
@@ -528,10 +529,10 @@ local function ReadBlock()
     if GetShieldBlock then
         local amount = GetShieldBlock()
         if amount and amount > 0 then
-            body = ("A blocked hit is reduced by %d."):format(amount)
+            body = (L["A blocked hit is reduced by %d."]):format(amount)
         end
     end
-    return WithRating(Percent(value), CR_BLOCK), BLOCK_CHANCE or "Block",
+    return WithRating(Percent(value), CR_BLOCK), BLOCK_CHANCE or L["Block"],
         WithDiminishing(body, CR_BLOCK), value
 end
 
@@ -543,16 +544,16 @@ local function ReadStagger()
 
     local body
     if againstTarget and againstTarget ~= stagger then
-        body = ("Against your current target: %s"):format(Percent(againstTarget))
+        body = (L["Against your current target: %s"]):format(Percent(againstTarget))
     end
-    return Percent(stagger), STAT_STAGGER or "Stagger", body, stagger
+    return Percent(stagger), STAT_STAGGER or L["Stagger"], body, stagger
 end
 
 local function ReadArmor()
     if not UnitArmor then return nil end
     local effective = select(2, UnitArmor("player"))
     if not effective or effective <= 0 then return nil end
-    return tostring(effective), ARMOR or "Armor", nil, effective
+    return tostring(effective), ARMOR or L["Armor"], nil, effective
 end
 
 -- What the armour is actually worth, which the sheet only shows on hover.
@@ -569,10 +570,10 @@ local function ReadArmorReduction()
     if PaperDollFrame_GetArmorReductionAgainstTarget then
         local vsTarget = PaperDollFrame_GetArmorReductionAgainstTarget(effective)
         if vsTarget then
-            body = ("Against your current target: %s"):format(Percent(vsTarget))
+            body = (L["Against your current target: %s"]):format(Percent(vsTarget))
         end
     end
-    return Percent(reduction), "Damage reduction", body, reduction
+    return Percent(reduction), L["Damage reduction"], body, reduction
 end
 
 -- ── Worked out from the stats ───────────────────────────────────────────────
@@ -597,12 +598,12 @@ local function ReadGlobalCooldown()
     if not GetHaste then return nil end
     local haste = GetHaste() or 0
     if FixedGlobalCooldown() then
-        return "1.00 s", "Global cooldown",
-            "Fixed at one second for your class or form: haste does not shorten it.", 1
+        return "1.00 s", L["Global cooldown"],
+            L["Fixed at one second for your class or form: haste does not shorten it."], 1
     end
     local gcd = math.max(0.75, 1.5 / (1 + haste / 100))
-    return ("%.2f s"):format(gcd), "Global cooldown",
-        ("1.5 s reduced by %s haste, never below 0.75 s."):format(Percent(haste)), gcd
+    return ("%.2f s"):format(gcd), L["Global cooldown"],
+        (L["1.5 s reduced by %s haste, never below 0.75 s."]):format(Percent(haste)), gcd
 end
 
 local function Abbreviate(value)
@@ -635,8 +636,8 @@ local function ReadEffectiveHealth()
     if not ok or type(result) ~= "table" then return nil end
 
     return ("%s / %s"):format(Abbreviate(result.physical), Abbreviate(result.magic)),
-        "Effective health",
-        ("Physical / magic. Your %s health, after armour (%s) and versatility (%s) take their share of each hit.")
+        L["Effective health"],
+        (L["Physical / magic. Your %s health, after armour (%s) and versatility (%s) take their share of each hit."])
             :format(Abbreviate(result.health), Percent(result.armour * 100), Percent(result.vers * 100)),
         result.physical
 end
@@ -651,6 +652,7 @@ local GEAR_SLOTS = {
     { "Trinket0Slot", "Trinket 1" }, { "Trinket1Slot", "Trinket 2" },
     { "MainHandSlot", "Main hand" }, { "SecondaryHandSlot", "Off hand" },
 }
+OxedHub:RegisterLocalizedTable(GEAR_SLOTS, 2)
 
 local function SlotItemLevel(slotName)
     local slotID = GetInventorySlotInfo(slotName)
@@ -666,8 +668,8 @@ local function ReadItemLevel()
     if not GetAverageItemLevel then return nil end
     local overall, equipped = GetAverageItemLevel()
     if not equipped or equipped <= 0 then return nil end
-    return ("%.1f"):format(equipped), "Item level",
-        ("Equipped %.1f. The best you own, bags included: %.1f."):format(equipped, overall or equipped),
+    return ("%.1f"):format(equipped), L["Item level"],
+        (L["Equipped %.1f. The best you own, bags included: %.1f."]):format(equipped, overall or equipped),
         equipped
 end
 
@@ -691,8 +693,8 @@ local function ReadWeakestSlot()
     for i = 1, math.min(5, #list) do
         body[#body + 1] = ("%s  %d"):format(list[i].name, list[i].level)
     end
-    return ("%s  %d"):format(lowestName, lowestLevel), "Weakest slot",
-        "Lowest item level first, the upgrades worth chasing:\n" .. table.concat(body, "\n"),
+    return ("%s  %d"):format(lowestName, lowestLevel), L["Weakest slot"],
+        L["Lowest item level first, the upgrades worth chasing:\n"] .. table.concat(body, "\n"),
         lowestLevel
 end
 
@@ -738,6 +740,7 @@ local ROWS = {
     { group = "defense", id = "block", name = "Block", read = ReadBlock },
     { group = "defense", id = "stagger", name = "Stagger", read = ReadStagger },
 }
+OxedHub:RegisterLocalizedTable(ROWS, "header", "name")
 
 -- ── The lines ───────────────────────────────────────────────────────────────
 
@@ -977,8 +980,8 @@ local function DrawPanel()
     if panel.snapshotLabel then
         local snapshot = CurrentSnapshot()
         panel.snapshotLabel:SetText(snapshot and snapshot.at
-            and ("Compared with %s"):format(date("%d %b %H:%M", snapshot.at))
-            or "No snapshot saved")
+            and (L["Compared with %s"]):format(date("%d %b %H:%M", snapshot.at))
+            or L["No snapshot saved"])
     end
     local pendingHeader        -- drawn only once a value under it appears
 
@@ -1106,15 +1109,15 @@ local function BuildPanel()
     local save = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     save:SetSize(120, 22)
     save:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 6, 4)
-    save:SetText("Save snapshot")
+    save:SetText(L["Save snapshot"])
     save:SetScript("OnClick", function()
         SaveSnapshot()
         Refresh()
     end)
     save:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Save snapshot")
-        GameTooltip:AddLine("Remembers your stats as they are now. Change gear or talents afterwards and every line shows what went up in green and what went down in red.", 1, 1, 1, true)
+        GameTooltip:SetText(L["Save snapshot"])
+        GameTooltip:AddLine(L["Remembers your stats as they are now. Change gear or talents afterwards and every line shows what went up in green and what went down in red."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     save:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1122,7 +1125,7 @@ local function BuildPanel()
     local clear = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     clear:SetSize(60, 22)
     clear:SetPoint("LEFT", save, "RIGHT", 4, 0)
-    clear:SetText("Clear")
+    clear:SetText(L["Clear"])
     clear:SetScript("OnClick", function()
         ClearSnapshot()
         Refresh()
@@ -1231,7 +1234,7 @@ local function BuildTab()
 
     tab = CreateTabButton()
     if not tab then return end
-    tab:SetText(STAT_CATEGORY_ATTRIBUTES or "Attributes")
+    tab:SetText(STAT_CATEGORY_ATTRIBUTES or L["Attributes"])
     -- The tab is built as soon as the character window exists, which can be
     -- before settings are read. It starts hidden and OnEnable shows it, so a
     -- module that is off never puts a tab on the window.
@@ -1384,7 +1387,7 @@ local function BuildHud()
 
     hud.empty = hud:CreateFontString(nil, "OVERLAY", "GameFontDisable")
     hud.empty:SetPoint("CENTER")
-    hud.empty:SetText("Right-click to pick stats")
+    hud.empty:SetText(L["Right-click to pick stats"])
 
     -- Only the speed line moves between events; it is read a few times a
     -- second here and nothing else is.
@@ -1591,7 +1594,7 @@ local function BuildPicker()
 
     local title = picker:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOPLEFT", 12, -10)
-    title:SetText("Stats on screen")
+    title:SetText(L["Stats on screen"])
 
     local close = CreateFrame("Button", nil, picker, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", 2, 2)
@@ -1620,7 +1623,7 @@ local function BuildPicker()
     y = -32
     local head = picker:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     head:SetPoint("TOPLEFT", picker, "TOPLEFT", x, y)
-    head:SetText("Target bars (this spec)")
+    head:SetText(L["Target bars (this spec)"])
     y = y - 16
     for _, row in ipairs(ROWS) do
         if row.bar then
@@ -1629,7 +1632,7 @@ local function BuildPicker()
             local entry = row.bar
             PickerSlider(picker, x + 8, y, 190, 0, 60, 1,
                 function(value)
-                    return value <= 0 and "Target: |cff808080none|r" or ("Target: %d%%"):format(value)
+                    return value <= 0 and L["Target: |cff808080none|r"] or (L["Target: %d%%"]):format(value)
                 end,
                 function() return GetTarget(entry.key) or 0 end,
                 function(value)
@@ -1644,23 +1647,23 @@ local function BuildPicker()
     y = y - 4
     local look = picker:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     look:SetPoint("TOPLEFT", picker, "TOPLEFT", x, y)
-    look:SetText("Display")
+    look:SetText(L["Display"])
     y = y - 16
-    PickerCheck(picker, x, y, "Lock position",
+    PickerCheck(picker, x, y, L["Lock position"],
         function() return settings.hudLocked end,
         function(on) settings.hudLocked = on end)
     y = y - 20
-    PickerCheck(picker, x, y, "Only in combat",
+    PickerCheck(picker, x, y, L["Only in combat"],
         function() return settings.hudCombat end,
         function(on) settings.hudCombat = on; ApplyHudVisibility() end)
     y = y - 24
     PickerSlider(picker, x + 8, y, 190, 0.6, 1.6, 0.05,
-        function(value) return ("Scale: %.2f"):format(value) end,
+        function(value) return (L["Scale: %.2f"]):format(value) end,
         function() return tonumber(settings.hudScale) or 1 end,
         function(value) settings.hudScale = value; StyleHud() end)
     y = y - 36
     PickerSlider(picker, x + 8, y, 190, 0, 1, 0.05,
-        function(value) return ("Background: %d%%"):format(value * 100 + 0.5) end,
+        function(value) return (L["Background: %d%%"]):format(value * 100 + 0.5) end,
         function() return tonumber(settings.hudAlpha) or 0.75 end,
         function(value) settings.hudAlpha = value; StyleHud() end)
     y = y - 38
@@ -1668,12 +1671,12 @@ local function BuildPicker()
     local hide = CreateFrame("Button", nil, picker, "UIPanelButtonTemplate")
     hide:SetSize(120, 22)
     hide:SetPoint("TOPLEFT", picker, "TOPLEFT", x + 8, y)
-    hide:SetText("Hide display")
+    hide:SetText(L["Hide display"])
     hide:SetScript("OnClick", function()
         settings.hud = false
         ApplyHudVisibility()
         picker:Hide()
-        print("|cff00ccffOxedHub|r Stats display hidden. Bring it back with /oxstats.")
+        print(L["|cff00ccffOxedHub|r Stats display hidden. Bring it back with /oxstats."])
     end)
     y = y - 30
 
@@ -1714,7 +1717,7 @@ SLASH_OXEDHUBSTATS1 = "/oxstats"
 SlashCmdList.OXEDHUBSTATS = function(msg)
     if not settings then return end
     if settings.enabled == false then
-        print("|cff00ccffOxedHub|r Switch the Attributes module on first (Modules page).")
+        print(L["|cff00ccffOxedHub|r Switch the Attributes module on first (Modules page)."])
         return
     end
     msg = (msg or ""):lower()
@@ -1767,7 +1770,7 @@ local function AddTargetSlider(w, entry)
 
     local function ShowValue(value)
         if value <= 0 then
-            label:SetText(("%s: |cff808080none|r"):format(entry.label))
+            label:SetText((L["%s: |cff808080none|r"]):format(entry.label))
         else
             label:SetText(("%s: %d%%"):format(entry.label, value))
         end

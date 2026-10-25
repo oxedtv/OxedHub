@@ -22,9 +22,11 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
+    minimapButton = true,   -- its own icon on the minimap while switched on
     enabled      = false,   -- off until the player switches it on
 
     theme        = "custom", -- see THEMES
@@ -79,6 +81,7 @@ local DEFAULTS = {
 }
 
 local settings          -- OxedHubDB.modules.cursor, bound at login
+local minimapIcon, MinimapIcon   -- MinimapIcon is defined above the login code
 local optionsWindow
 local root              -- everything hangs off this; hidden means no OnUpdate
 local halo, shadow, arrow
@@ -1847,106 +1850,111 @@ local function ShowOptions()
         API:AddTabLine(w, under, 0, 0)
 
         -- ── Left: this theme ──
-        local left = Column(w, 24, -82, "This theme (saved for it alone)")
+        local left = Column(w, 24, -82, L["This theme (saved for it alone)"])
 
-        Check(left, "halo", "Glow around the hand", nil, RestyleAll)
-        Choice(left, "haloShape", "Glow shape", {
-            { key = "glow", name = "Glow" },
-            { key = "ring", name = "Ring" },
-            { key = "dot",  name = "Dot" },
-            { key = "star", name = "Star" },
+        Check(left, "halo", L["Glow around the hand"], nil, RestyleAll)
+        Choice(left, "haloShape", L["Glow shape"], {
+            { key = "glow", name = L["Glow"] },
+            { key = "ring", name = L["Ring"] },
+            { key = "dot",  name = L["Dot"] },
+            { key = "star", name = L["Star"] },
         }, RestyleAll)
-        Slider(left, "haloSize", "Glow size", 20, 120, 2, "%s: %d", RestyleAll)
-        Slider(left, "haloAlpha", "Glow strength", 0.1, 1, 0.05, "%s: %.2f")
-        Button(left, "Pick glow colour", 140, function() PickColour({ "haloR", "haloG", "haloB" }, function()
+        Slider(left, "haloSize", L["Glow size"], 20, 120, 2, "%s: %d", RestyleAll)
+        Slider(left, "haloAlpha", L["Glow strength"], 0.1, 1, 0.05, "%s: %.2f")
+        Button(left, L["Pick glow colour"], 140, function() PickColour({ "haloR", "haloG", "haloB" }, function()
             settings.haloOwnColour = true
             RefreshWindow(w)
         end) end, COLUMN_W - 140)
-        Check(left, "haloOwnColour", "Own colour for the glow",
-            "Off, the glow takes the theme's colour: orange for Fire, white-hot for Meteor, your class colour in Custom.")
+        Check(left, "haloOwnColour", L["Own colour for the glow"],
+            L["Off, the glow takes the theme's colour: orange for Fire, white-hot for Meteor, your class colour in Custom."])
 
-        Check(left, "shadow", "Shadow behind it",
-            "A soft dark disc that keeps the pointer readable over bright spell effects.", RestyleAll)
-        Slider(left, "shadowAlpha", "Shadow strength", 0.05, 0.8, 0.05, "%s: %.2f")
+        Check(left, "shadow", L["Shadow behind it"],
+            L["A soft dark disc that keeps the pointer readable over bright spell effects."], RestyleAll)
+        Slider(left, "shadowAlpha", L["Shadow strength"], 0.05, 0.8, 0.05, "%s: %.2f")
 
-        Check(left, "trail", "Trail of sparks")
-        Slider(left, "trailLength", "Trail density", 4, 60, 1, "%s: %d")
-        Slider(left, "trailSize", "Spark size", 6, 40, 1, "%s: %d")
+        Check(left, "trail", L["Trail of sparks"])
+        Slider(left, "trailLength", L["Trail density"], 4, 60, 1, "%s: %d")
+        Slider(left, "trailSize", L["Spark size"], 6, 40, 1, "%s: %d")
 
-        Check(left, "idleSwirl", "Magic circles when the mouse rests",
-            "Let go of the mouse and the sparks spiral around the pointer in the theme's colours instead of trailing behind it.")
-        Slider(left, "swirlDelay", "Circles start after", 0, 3, 0.1, "%s: %.1f s")
+        Check(left, "idleSwirl", L["Magic circles when the mouse rests"],
+            L["Let go of the mouse and the sparks spiral around the pointer in the theme's colours instead of trailing behind it."])
+        Slider(left, "swirlDelay", L["Circles start after"], 0, 3, 0.1, "%s: %.1f s")
 
         local customNote = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         customNote:SetPoint("TOPLEFT", w, "TOPLEFT", left.x, left.y - 6)
         customNote:SetTextColor(0.75, 0.75, 0.75)
-        customNote:SetText("Trail colour, for this theme:")
-        Button(left, "Pick trail colour", 140, function() PickColour({ "colourR", "colourG", "colourB" }, function()
+        customNote:SetText(L["Trail colour, for this theme:"])
+        Button(left, L["Pick trail colour"], 140, function() PickColour({ "colourR", "colourG", "colourB" }, function()
             settings.classColour, settings.rainbow = false, false
             settings.trailOwnColour = true
             RefreshWindow(w)
         end) end, COLUMN_W - 140)
         left.y = left.y - 30
-        Check(left, "trailOwnColour", "Own colour for the trail",
-            "Recolours this theme in the picked colour and keeps its shape. Untick for the theme's own colours.")
+        Check(left, "trailOwnColour", L["Own colour for the trail"],
+            L["Recolours this theme in the picked colour and keeps its shape. Untick for the theme's own colours."])
         -- On its own it recolours any theme in the class colour. Built-in
         -- themes start with it off (see LoadTheme), so none changes by itself.
-        Check(left, "classColour", "Class colour",
-            "Your class colour. On the Custom theme it is the trail's colour; on any other theme it recolours the trail and keeps its shape.",
+        Check(left, "classColour", L["Class colour"],
+            L["Your class colour. On the Custom theme it is the trail's colour; on any other theme it recolours the trail and keeps its shape."],
             function()
                 if settings.classColour then settings.rainbow = false end
                 RefreshWindow(w)
             end)
-        Check(left, "rainbow", "Rainbow", "Cycles through every colour; the trail runs through them too.")
+        Check(left, "rainbow", L["Rainbow"], L["Cycles through every colour; the trail runs through them too."])
 
         -- ── Right: every theme ──
-        local right = Column(w, 540, -82, "Every theme")
+        local right = Column(w, 540, -82, L["Every theme"])
 
-        Choice(right, "anchor", "The glow sits on", {
-            { key = "hand", name = "Hand" },
-            { key = "tip",  name = "Tip" },
+        Choice(right, "anchor", L["The glow sits on"], {
+            { key = "hand", name = L["Hand"] },
+            { key = "tip",  name = L["Tip"] },
         })
-        Slider(right, "offsetX", "Nudge sideways", -40, 40, 1, "%s: %d")
-        Slider(right, "offsetY", "Nudge up / down", -40, 40, 1, "%s: %d")
+        Slider(right, "offsetX", L["Nudge sideways"], -40, 40, 1, "%s: %d")
+        Slider(right, "offsetY", L["Nudge up / down"], -40, 40, 1, "%s: %d")
         right.y = right.y - 6
 
-        Check(right, "steering", "Show the pointer while turning the camera",
-            "Holding the right button to turn the camera hides the game's pointer. On, the module draws it where it froze. Off, the pointer and all its effects disappear, as they do without the module.")
-        Choice(right, "steerStyle", "Steering pointer", {
-            { key = "arrow", name = "Arrow" },
-            { key = "ghost", name = "Ghost" },
-            { key = "glow",  name = "Glow" },
+        Check(right, "steering", L["Show the pointer while turning the camera"],
+            L["Holding the right button to turn the camera hides the game's pointer. On, the module draws it where it froze. Off, the pointer and all its effects disappear, as they do without the module."])
+        Choice(right, "steerStyle", L["Steering pointer"], {
+            { key = "arrow", name = L["Arrow"] },
+            { key = "ghost", name = L["Ghost"] },
+            { key = "glow",  name = L["Glow"] },
         })
-        Slider(right, "steerScale", "Steering pointer size", 0.5, 2.5, 0.05, "%s: %.2f")
-        Slider(right, "steerAlpha", "Steering pointer strength", 0.2, 1, 0.05, "%s: %.2f")
-        Check(right, "steerGlow", "Theme glow behind it")
+        Slider(right, "steerScale", L["Steering pointer size"], 0.5, 2.5, 0.05, "%s: %.2f")
+        Slider(right, "steerAlpha", L["Steering pointer strength"], 0.2, 1, 0.05, "%s: %.2f")
+        Check(right, "steerGlow", L["Theme glow behind it"])
         right.y = right.y - 6
 
         -- The game's own pointer.
-        Choice(right, "pointerSize", "Game pointer size", {
-            { key = "game", name = "Game" },
-            { key = "auto", name = "Auto" },
+        Choice(right, "pointerSize", L["Game pointer size"], {
+            { key = "game", name = L["Game"] },
+            { key = "auto", name = L["Auto"] },
             { key = "32",   name = "32" },
             { key = "48",   name = "48" },
             { key = "64",   name = "64" },
             { key = "96",   name = "96" },
             { key = "128",  name = "128" },
         }, ApplyGamePointer)
-        Choice(right, "lookDelta", "Camera turns after", {
-            { key = "game",    name = "Game" },
-            { key = "instant", name = "At once" },
-            { key = "normal",  name = "Normal" },
-            { key = "late",    name = "Later" },
+        Choice(right, "lookDelta", L["Camera turns after"], {
+            { key = "game",    name = L["Game"] },
+            { key = "instant", name = L["At once"] },
+            { key = "normal",  name = L["Normal"] },
+            { key = "late",    name = L["Later"] },
         }, ApplyGamePointer)
         right.y = right.y - 6
-        Check(right, "ripple", "Ripple on every click")
-        Check(right, "shake", "Shake to find it", "Wiggle the mouse quickly left and right and the glow flares up.")
-        Check(right, "onlyCombat", "Only in combat", nil, ApplyVisibility)
-        Check(right, "fadeIdle", "Fade out when the mouse is still",
-            "Hides everything while the mouse is untouched. It turns the circles off too, since there is nothing left to see.")
+        Check(right, "ripple", L["Ripple on every click"])
+        Check(right, "shake", L["Shake to find it"], L["Wiggle the mouse quickly left and right and the glow flares up."])
+        Check(right, "onlyCombat", L["Only in combat"], nil, ApplyVisibility)
+        Check(right, "fadeIdle", L["Fade out when the mouse is still"],
+            L["Hides everything while the mouse is untouched. It turns the circles off too, since there is nothing left to see."])
+
+        Check(right, "minimapButton", L["Show minimap button"], nil, function()
+            local icon = MinimapIcon()
+            if icon then icon:Apply(settings.enabled == true) end
+        end)
 
         right.y = right.y - 14
-        Button(right, "Reset this theme", 150, function()
+        Button(right, L["Reset this theme"], 150, function()
             ResetTheme()
             RefreshWindow(w)
         end)
@@ -1969,6 +1977,21 @@ end
 
 -- ── Registration ────────────────────────────────────────────────────────────
 
+-- Its own icon on the minimap, like the other modules with a window: a click
+-- opens the options, a right-click the options.
+MinimapIcon = function()
+    if minimapIcon or not settings then return minimapIcon end
+    local API = OxedHub.ModuleAPI
+    minimapIcon = API and API.MinimapButton and API:MinimapButton({
+        key = "cursor", label = L["Cursor"], icon = "Interface\\Icons\\Spell_Arcane_Arcane04", config = settings,
+        hint = L["Click: options."],
+        onClick = function(mouse)
+            if mouse == "RightButton" then ShowOptions() else ShowOptions() end
+        end,
+    })
+    return minimapIcon
+end
+
 local loginFrame = CreateFrame("Frame")
 loginFrame:RegisterEvent("PLAYER_LOGIN")
 loginFrame:SetScript("OnEvent", function(self)
@@ -1983,8 +2006,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "cursor",
         name     = "Cursor",
-        version  = "1.1.2",
-        updated  = 20261023.2,  -- does nothing while the mouse rests
+        version  = "1.2.0",
+        updated  = 20261025.5,  -- its own minimap button
         author   = "Oxed",
         category = "character",
         keywords = { "cursor", "mouse", "pointer", "trail", "windows 95", "retro", "glow", "halo", "steering", "mouselook", "find", "fire", "frost", "meteor", "lightning", "void", "fel", "blood", "bubbles", "fairy" },
@@ -1998,10 +2021,13 @@ loginFrame:SetScript("OnEvent", function(self)
 
         OnEnable = function(_, config)
             settings = config
+            local icon = MinimapIcon()
+            if icon then icon:Apply(true) end
             Start()
         end,
 
         OnDisable = function()
+            if minimapIcon then minimapIcon:Apply(false) end
             Stop()
         end,
     })

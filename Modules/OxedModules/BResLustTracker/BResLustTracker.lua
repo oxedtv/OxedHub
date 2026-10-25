@@ -4,6 +4,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer
 
 local PREFIX = "|cffffd100BResLust:|r "
@@ -296,7 +297,7 @@ UpdateLayout = function()
         else
             BResFrame.label:Show()
             BResFrame.label:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
-            BResFrame.label:SetText("Res:")
+            BResFrame.label:SetText(L["Res:"])
             BResFrame.label:SetTextColor(1, 1, 1)
             BResFrame.label:SetPoint("TOPLEFT", BResFrame, "TOPRIGHT", 6, -2)
 
@@ -337,7 +338,7 @@ UpdateLayout = function()
         else
             LustFrame.label:Show()
             LustFrame.label:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
-            LustFrame.label:SetText("Sated")
+            LustFrame.label:SetText(L["Sated"])
             LustFrame.label:SetTextColor(1, 0.6, 0)
             LustFrame.label:SetPoint("TOPLEFT", LustFrame, "TOPRIGHT", 6, -2)
 
@@ -381,7 +382,7 @@ CreateUI = function()
             settings.locked = true
             UpdateLayout()
             UpdateDisplay()
-            print(PREFIX .. "Position locked. Tracker will now only show during combat/dungeons/heroism.")
+            print(PREFIX .. L["Position locked. Tracker will now only show during combat/dungeons/heroism."])
         end
     end)
 
@@ -392,7 +393,7 @@ CreateUI = function()
 
     MainFrame.moverHint = MainFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     MainFrame.moverHint:SetPoint("BOTTOM", MainFrame, "BOTTOM", 0, 3)
-    MainFrame.moverHint:SetText("Drag to move · Right-click to lock")
+    MainFrame.moverHint:SetText(L["Drag to move · Right-click to lock"])
     MainFrame.moverHint:Hide()
 
     MainFrame:ClearAllPoints()
@@ -872,7 +873,7 @@ local function OpenSoundPicker()
                 settings.sound = chosenSound
             end
             if optionsWindow and optionsWindow.soundLabel then
-                optionsWindow.soundLabel:SetText("Bloodlust sound: " .. SoundName(settings.sound))
+                optionsWindow.soundLabel:SetText(L["Bloodlust sound: "] .. SoundName(settings.sound))
             end
             if settings.sound ~= "None" then
                 PlayLustSound(settings.sound)
@@ -896,7 +897,7 @@ local function ShowOptions()
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnUnlock) end
 
         local function RefreshUnlockBtn()
-            btnUnlock:SetText(settings.locked and "Unlock / Move" or "Lock Position")
+            btnUnlock:SetText(settings.locked and L["Unlock / Move"] or L["Lock Position"])
         end
         RefreshUnlockBtn()
 
@@ -910,11 +911,11 @@ local function ShowOptions()
         local btnTest = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
         btnTest:SetSize(130, 22)
         btnTest:SetPoint("LEFT", btnUnlock, "RIGHT", 8, 0)
-        btnTest:SetText("Test Mode")
+        btnTest:SetText(L["Test Mode"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnTest) end
 
         local function RefreshTestBtn()
-            btnTest:SetText(previewMode and "Stop Test" or "Test Mode")
+            btnTest:SetText(previewMode and L["Stop Test"] or L["Test Mode"])
         end
         RefreshTestBtn()
 
@@ -927,7 +928,7 @@ local function ShowOptions()
         local btnReset = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
         btnReset:SetSize(130, 22)
         btnReset:SetPoint("LEFT", btnTest, "RIGHT", 8, 0)
-        btnReset:SetText("Reset Position")
+        btnReset:SetText(L["Reset Position"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnReset) end
 
         btnReset:SetScript("OnClick", function()
@@ -939,14 +940,14 @@ local function ShowOptions()
                 MainFrame:ClearAllPoints()
                 MainFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
             end
-            print(PREFIX .. "Position reset to center.")
+            print(PREFIX .. L["Position reset to center."])
         end)
 
         optionsWindow:HookScript("OnShow", function()
             RefreshUnlockBtn()
             RefreshTestBtn()
             if optionsWindow.soundLabel then
-                optionsWindow.soundLabel:SetText("Bloodlust sound: " .. SoundName(settings.sound))
+                optionsWindow.soundLabel:SetText(L["Bloodlust sound: "] .. SoundName(settings.sound))
             end
         end)
 
@@ -955,14 +956,14 @@ local function ShowOptions()
         -- Section: Style & Orientation
         optionsWindow:AddNote("|cffffd100Display & Layout|r")
 
-        AddChoiceRow(optionsWindow, "style", "Display Style", {
-            { key = "compact", name = "Compact Icons" },
-            { key = "full",    name = "With Text" },
+        AddChoiceRow(optionsWindow, "style", L["Display Style"], {
+            { key = "compact", name = L["Compact Icons"] },
+            { key = "full",    name = L["With Text"] },
         }, function() UpdateLayout(); UpdateDisplay() end)
 
-        AddChoiceRow(optionsWindow, "orientation", "Orientation", {
-            { key = "horizontal", name = "Horizontal" },
-            { key = "vertical",   name = "Vertical" },
+        AddChoiceRow(optionsWindow, "orientation", L["Orientation"], {
+            { key = "horizontal", name = L["Horizontal"] },
+            { key = "vertical",   name = L["Vertical"] },
         }, function() UpdateLayout(); UpdateDisplay() end)
 
         -- Section: Tracking & Conditions
@@ -998,13 +999,13 @@ local function ShowOptions()
         soundLabel:SetWordWrap(false)
         soundLabel:SetJustifyH("LEFT")
         soundLabel:SetTextColor(0.8, 0.8, 0.8)
-        soundLabel:SetText("Bloodlust sound: " .. SoundName(settings.sound))
+        soundLabel:SetText(L["Bloodlust sound: "] .. SoundName(settings.sound))
         optionsWindow.soundLabel = soundLabel
 
         local pickSound = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
         pickSound:SetSize(140, 22)
         pickSound:SetPoint("TOPLEFT", optionsWindow, "TOPLEFT", 260, optionsWindow.cursorY)
-        pickSound:SetText("Choose a sound")
+        pickSound:SetText(L["Choose a sound"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
             OxedHub.UI:ApplyRedButtonStyle(pickSound)
         end
@@ -1031,15 +1032,15 @@ local function ShowOptions()
         -- Section: Appearance Sliders
         optionsWindow:AddNote("|cffffd100Appearance|r")
 
-        AddSlider(optionsWindow, "scale", "UI Scale", 0.5, 2.0, 0.05, "%s: %.2fx", function(v)
+        AddSlider(optionsWindow, "scale", L["UI Scale"], 0.5, 2.0, 0.05, "%s: %.2fx", function(v)
             if MainFrame then MainFrame:SetScale(v) end
         end)
 
-        AddSlider(optionsWindow, "alpha", "Opacity", 0.2, 1.0, 0.05, "%s: %d%%", function(v)
+        AddSlider(optionsWindow, "alpha", L["Opacity"], 0.2, 1.0, 0.05, "%s: %d%%", function(v)
             if MainFrame then MainFrame:SetAlpha(v) end
         end)
 
-        AddSlider(optionsWindow, "iconSize", "Icon Size", 32, 64, 2, "%s: %d px", function()
+        AddSlider(optionsWindow, "iconSize", L["Icon Size"], 32, 64, 2, L["%s: %d px"], function()
             UpdateLayout()
             UpdateDisplay()
         end)

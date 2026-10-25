@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 -- Emotes Module - Game emote handling
 local Emotes = {}
@@ -29,12 +30,12 @@ function Emotes:ShowUI(parent)
     -- Title
     local title = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     title:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -10)
-    title:SetText("Emotes")
+    title:SetText(L["Emotes"])
     
     -- Search filter
     local searchLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     searchLabel:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -10)
-    searchLabel:SetText("Search:")
+    searchLabel:SetText(L["Search:"])
     
     local searchInput = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
     searchInput:SetSize(200, 20)
@@ -44,7 +45,7 @@ function Emotes:ShowUI(parent)
     -- Info text
     local infoText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     infoText:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -35)
-    infoText:SetText("|cffffcc00Check 'Merge with sound' to auto-play with sounds|r")
+    infoText:SetText(L["|cffffcc00Check 'Merge with sound' to auto-play with sounds|r"])
     infoText:SetJustifyH("RIGHT")
     
     -- Scroll frame

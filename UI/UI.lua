@@ -568,8 +568,8 @@ function UI:CreateMainFrame()
         end)
         newsBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-            GameTooltip:SetText("What's New")
-            GameTooltip:AddLine("Release notes for every version.", 1, 1, 1)
+            GameTooltip:SetText(L["What's New"])
+            GameTooltip:AddLine(L["Release notes for every version."], 1, 1, 1)
             GameTooltip:Show()
         end)
         newsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -699,12 +699,6 @@ function UI:CreateSidebar()
     
     for i, tabName in ipairs(tabs) do
         local label = L["TAB_" .. tabName:upper()] or tabName
-        -- Part of the label itself rather than a second string beside it: a
-        -- separate one would be placed by the label's width, and that width
-        -- changes whenever the text-size setting does.
-        if tabName == "Modules" then
-            label = label .. " |cffff3333*BETA|r"
-        end
         local btn = CreateNavButton(sidebar, tabName, label)
         btn:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 5, -yOffset)
         btn:SetFrameLevel(sidebar:GetFrameLevel() + 3)
@@ -1001,7 +995,7 @@ function UI:CreateDashboardTab()
 
     local function RefreshProfileDropdown()
         if not profileDropdown then return end
-        local activeName = OxedHub and OxedHub.GetActiveProfileName and OxedHub:GetActiveProfileName() or "Default"
+        local activeName = OxedHub and OxedHub.GetActiveProfileName and OxedHub:GetActiveProfileName() or L["Default"]
         if profileDropdown.SetupMenu then
             -- WowStyle1DropdownTemplate (modern)
             profileDropdown:SetupMenu(function(_, rootDescription)
@@ -1117,9 +1111,9 @@ function UI:CreateDashboardTab()
         end
         self:SetChecked(OxedHub.db.profile.animationsEnabled)
         if self:GetChecked() then
-            animSwitchText:SetText("|cff00ff00Animations: On|r")
+            animSwitchText:SetText(L["|cff00ff00Animations: On|r"])
         else
-            animSwitchText:SetText("|cff888888Animations: Off|r")
+            animSwitchText:SetText(L["|cff888888Animations: Off|r"])
         end
     end)
     
@@ -1127,11 +1121,11 @@ function UI:CreateDashboardTab()
         local isEnabled = self:GetChecked()
         OxedHub.db.profile.animationsEnabled = isEnabled
         if isEnabled then
-            animSwitchText:SetText("|cff00ff00Animations: On|r")
-            print("|cffffd100OxedHub:|r Animations have been turned |cff00ff00ON|r")
+            animSwitchText:SetText(L["|cff00ff00Animations: On|r"])
+            print(L["|cffffd100OxedHub:|r Animations have been turned |cff00ff00ON|r"])
         else
-            animSwitchText:SetText("|cff888888Animations: Off|r")
-            print("|cffffd100OxedHub:|r Animations have been turned |cffff0000OFF|r")
+            animSwitchText:SetText(L["|cff888888Animations: Off|r"])
+            print(L["|cffffd100OxedHub:|r Animations have been turned |cffff0000OFF|r"])
         end
     end)
 
@@ -1148,23 +1142,62 @@ function UI:CreateDashboardTab()
         end
         self:SetChecked(OxedHub.db.profile.soundsEnabled)
         if self:GetChecked() then
-            soundSwitchText:SetText("|cff00ff00Sounds: On|r")
+            soundSwitchText:SetText(L["|cff00ff00Sounds: On|r"])
         else
-            soundSwitchText:SetText("|cff888888Sounds: Off|r")
+            soundSwitchText:SetText(L["|cff888888Sounds: Off|r"])
         end
     end)
-    
+
     soundSwitch:SetScript("OnClick", function(self)
         local isEnabled = self:GetChecked()
         OxedHub.db.profile.soundsEnabled = isEnabled
         if isEnabled then
-            soundSwitchText:SetText("|cff00ff00Sounds: On|r")
-            print("|cffffd100OxedHub:|r Sounds have been turned |cff00ff00ON|r")
+            soundSwitchText:SetText(L["|cff00ff00Sounds: On|r"])
+            print(L["|cffffd100OxedHub:|r Sounds have been turned |cff00ff00ON|r"])
         else
-            soundSwitchText:SetText("|cff888888Sounds: Off|r")
-            print("|cffffd100OxedHub:|r Sounds have been turned |cffff0000OFF|r")
+            soundSwitchText:SetText(L["|cff888888Sounds: Off|r"])
+            print(L["|cffffd100OxedHub:|r Sounds have been turned |cffff0000OFF|r"])
         end
     end)
+
+    -- One switch for every module. Off remembers which were on and on brings
+    -- exactly those back (ModuleAPI:SetAllModulesEnabled).
+    local modulesSwitch = CreateFrame("CheckButton", nil, hero, "UICheckButtonTemplate")
+    modulesSwitch:SetPoint("LEFT", soundSwitchText, "RIGHT", 15, -1)
+    modulesSwitch:SetSize(26, 26)
+
+    local modulesSwitchText = modulesSwitch:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    modulesSwitchText:SetPoint("LEFT", modulesSwitch, "RIGHT", 4, 1)
+
+    local function ShowModulesState(self)
+        local API = OxedHub.ModuleAPI
+        local on = API and API:AnyModuleEnabled() or false
+        self:SetChecked(on)
+        modulesSwitchText:SetText(on and L["|cff00ff00Modules: On|r"] or L["|cff888888Modules: Off|r"])
+    end
+    modulesSwitch:SetScript("OnShow", ShowModulesState)
+
+    modulesSwitch:SetScript("OnClick", function(self)
+        local API = OxedHub.ModuleAPI
+        local on = self:GetChecked()
+        if not (API and API:SetAllModulesEnabled(on)) then
+            print(L["|cffffd100OxedHub:|r Modules cannot be switched in combat."])
+        elseif on and not API:AnyModuleEnabled() then
+            print(L["|cffffd100OxedHub:|r No modules to bring back. Switch them on in the Modules page."])
+        elseif on then
+            print(L["|cffffd100OxedHub:|r Modules have been turned |cff00ff00ON|r"])
+        else
+            print(L["|cffffd100OxedHub:|r All modules have been turned |cffff0000OFF|r. This switch brings the same ones back."])
+        end
+        ShowModulesState(self)
+    end)
+    modulesSwitch:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L["All modules"])
+        GameTooltip:AddLine(L["Off switches every module off at once. On brings back the ones that were on."], 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    modulesSwitch:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     local statsRow = CreateFrame("Frame", nil, scrollChild)
     statsRow:SetPoint("TOPLEFT", hero, "BOTTOMLEFT", 0, -12)
@@ -1308,14 +1341,14 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.43)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.44)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.43")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.44")
     local rName, rHeight, rFlags = relTitle:GetFont()
-    if rName then relTitle:SetFont(rName, rHeight * 1.1, rFlags) end
+    if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
     local relSubtitle = card1:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     relSubtitle:SetPoint("TOP", relTitle, "BOTTOM", 0, -4)
@@ -1357,8 +1390,8 @@ function UI:CreateDashboardTab()
 
         if not StaticPopupDialogs["OXEDHUB_PACK_URL"] then
             StaticPopupDialogs["OXEDHUB_PACK_URL"] = {
-                text = "Copy the CurseForge link (Ctrl+C):",
-                button1 = "Done",
+                text = L["Copy the CurseForge link (Ctrl+C):"],
+                button1 = L["Done"],
                 hasEditBox = true,
                 EditBoxOnEscapePressed = function(dialog)
                     dialog:GetParent():Hide()
@@ -1375,7 +1408,7 @@ function UI:CreateDashboardTab()
             -- Filled in here rather than in OnShow: the dialog is shared, so
             -- which pack was clicked is known at this point and nowhere else.
             if dialog.text then
-                dialog.text:SetText("Copy the " .. pack.title .. " link (Ctrl+C):")
+                dialog.text:SetText(L["Copy the "] .. pack.title .. L[" link (Ctrl+C):"])
             end
             if dialog.EditBox then
                 dialog.EditBox:SetText(pack.url)
@@ -1391,12 +1424,12 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        "•  New module: Item Tooltips. IDs, buff details and more on hover (/itt).",
-        "•  See how many of an item every alt holds, with the warband bank.",
-        "•  Collected or not: mounts, toys, battle pets and appearances.",
-        "•  Fixed: MemedOn spell Test sometimes did nothing.",
-        "•  Durability uses far less memory.",
-        "•  Grab either pack from CurseForge:",
+        L["•  New module: Item Tooltips. IDs, buff details and more on hover (/itt)."],
+        L["•  See how many of an item every alt holds, with the warband bank."],
+        L["•  Collected or not: mounts, toys, battle pets and appearances."],
+        L["•  Fixed: MemedOn spell Test sometimes did nothing."],
+        L["•  Durability uses far less memory."],
+        L["•  Grab either pack from CurseForge:"],
     }
 
     local listPanel = CreateFrame("Frame", nil, card1)
@@ -1416,7 +1449,7 @@ function UI:CreateDashboardTab()
             local memeLinkBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
             memeLinkBtn:SetSize(115, 22)
             memeLinkBtn:SetPoint("LEFT", listPanel, "TOPLEFT", 14, -((idx) * 32) + 2)
-            memeLinkBtn:SetText("Meme Pack Link")
+            memeLinkBtn:SetText(L["Meme Pack Link"])
             memeLinkBtn:SetNormalFontObject("GameFontNormalSmall")
             if ApplyRedButtonStyle then ApplyRedButtonStyle(memeLinkBtn) end
             memeLinkBtn:SetScript("OnClick", function() ShowPackLink("meme") end)
@@ -1424,7 +1457,7 @@ function UI:CreateDashboardTab()
             local gamingLinkBtn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
             gamingLinkBtn:SetSize(125, 22)
             gamingLinkBtn:SetPoint("LEFT", memeLinkBtn, "RIGHT", 8, 0)
-            gamingLinkBtn:SetText("Gaming Pack Link")
+            gamingLinkBtn:SetText(L["Gaming Pack Link"])
             gamingLinkBtn:SetNormalFontObject("GameFontNormalSmall")
             if ApplyRedButtonStyle then ApplyRedButtonStyle(gamingLinkBtn) end
             gamingLinkBtn:SetScript("OnClick", function() ShowPackLink("gaming") end)
@@ -1444,7 +1477,7 @@ function UI:CreateDashboardTab()
             mythicBtn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
                 GameTooltip:AddLine("MythicLooter", 1, 0.82, 0)
-                GameTooltip:AddLine("Opens the Modules page on MythicLooter.", 1, 1, 1, true)
+                GameTooltip:AddLine(L["Opens the Modules page on MythicLooter."], 1, 1, 1, true)
                 GameTooltip:Show()
             end)
             mythicBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1453,7 +1486,7 @@ function UI:CreateDashboardTab()
             kickSyncBtn:SetSize(120, 22)
             kickSyncBtn:SetPoint("LEFT", mythicBtn, "RIGHT", 8, 0)
             -- KickSync is gone; its party keystone list lives on in MythicLooter.
-            kickSyncBtn:SetText("Party Keys")
+            kickSyncBtn:SetText(L["Party Keys"])
             kickSyncBtn:SetNormalFontObject("GameFontNormalSmall")
             if ApplyRedButtonStyle then ApplyRedButtonStyle(kickSyncBtn) end
             kickSyncBtn:SetScript("OnClick", function()
@@ -1462,8 +1495,8 @@ function UI:CreateDashboardTab()
             end)
             kickSyncBtn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:AddLine("Party Keystones", 1, 0.82, 0)
-                GameTooltip:AddLine("Opens the list of your party's keys (also a tab in MythicLooter).", 1, 1, 1, true)
+                GameTooltip:AddLine(L["Party Keystones"], 1, 0.82, 0)
+                GameTooltip:AddLine(L["Opens the list of your party's keys (also a tab in MythicLooter)."], 1, 1, 1, true)
                 GameTooltip:Show()
             end)
             kickSyncBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1485,7 +1518,7 @@ function UI:CreateDashboardTab()
     packBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:AddLine(gamingPack.title, 1, 0.82, 0)
-        GameTooltip:AddLine("Click to copy CurseForge link", 1, 1, 1)
+        GameTooltip:AddLine(L["Click to copy CurseForge link"], 1, 1, 1)
         GameTooltip:Show()
     end)
     packBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1515,12 +1548,12 @@ function UI:CreateDashboardTab()
     local packTitle = packsCard:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     packTitle:SetPoint("TOPLEFT", packsCard, "TOPLEFT", 55, -14)
     packTitle:SetTextColor(1, 0.82, 0, 1)
-    packTitle:SetText("Sounds & Animations get their own packs")
+    packTitle:SetText(L["Sounds & Animations get their own packs"])
 
     local bigDays = packsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
     bigDays:SetPoint("TOPLEFT", packsCard, "TOPLEFT", 55, -52)
     local bName = bigDays:GetFont()
-    if bName then bigDays:SetFont(bName, 72, "THICKOUTLINE") end
+    if bName then bigDays:SetFont(OxedHub:GetFont(bName), 72, "THICKOUTLINE") end
     bigDays:SetTextColor(1, 0.55, 0.1, 1)
 
     local daysLabel = packsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -1534,10 +1567,10 @@ function UI:CreateDashboardTab()
     untilLabel:SetShadowOffset(0, 0)
 
     local packLines = {
-        "•  To make OxedHub lighter, its sounds and animations move into two packs.",
-        "•  A small set stays in OxedHub; the rest leaves it when the timer runs out.",
-        "•  Install the packs and every sound and animation you picked switches over",
-        "    by itself. Your triggers keep working and there is nothing to set up again.",
+        L["•  To make OxedHub lighter, its sounds and animations move into two packs."],
+        L["•  A small set stays in OxedHub; the rest leaves it when the timer runs out."],
+        L["•  Install the packs and every sound and animation you picked switches over"],
+        L["    by itself. Your triggers keep working and there is nothing to set up again."],
     }
     for i, text in ipairs(packLines) do
         local line = packsCard:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -1568,14 +1601,14 @@ function UI:CreateDashboardTab()
         local btn = CreateFrame("Button", nil, packsCard, "UIPanelButtonTemplate")
         btn:SetSize(140, 22)
         btn:SetPoint("TOP", tile, "BOTTOM", 0, -4)
-        btn:SetText(key == "sounds" and "Sounds Pack Link" or "Animations Pack Link")
+        btn:SetText(key == "sounds" and L["Sounds Pack Link"] or L["Animations Pack Link"])
         btn:SetNormalFontObject("GameFontNormalSmall")
         if ApplyRedButtonStyle then ApplyRedButtonStyle(btn) end
 
         local status = packsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
         status:SetPoint("TOP", btn, "BOTTOM", 0, -8)
         local sName = status:GetFont()
-        if sName then status:SetFont(sName, 20, "OUTLINE") end
+        if sName then status:SetFont(OxedHub:GetFont(sName), 20, "OUTLINE") end
         status:SetShadowOffset(0, 0)
         packStatus[key] = status
 
@@ -1585,7 +1618,7 @@ function UI:CreateDashboardTab()
         tile:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             GameTooltip:AddLine(pack.title, 1, 0.82, 0)
-            GameTooltip:AddLine("Click to copy the CurseForge link.", 1, 1, 1)
+            GameTooltip:AddLine(L["Click to copy the CurseForge link."], 1, 1, 1)
             GameTooltip:Show()
         end)
         tile:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1598,13 +1631,13 @@ function UI:CreateDashboardTab()
         local both = type(_G[PACKS.sounds.global]) == "table" and type(_G[PACKS.animations.global]) == "table"
         if left > 0 then
             bigDays:SetText(tostring(left))
-            daysLabel:SetText(left == 1 and "DAY LEFT" or "DAYS LEFT")
+            daysLabel:SetText(left == 1 and L["DAY LEFT"] or L["DAYS LEFT"])
         else
             bigDays:SetText("0")
-            daysLabel:SetText("DAYS LEFT")
+            daysLabel:SetText(L["DAYS LEFT"])
         end
-        untilLabel:SetText(("until they leave OxedHub (%d %s %d)"):format(PACK_DEADLINE.day,
-            CALENDAR_FULLDATE_MONTH_NAMES and CALENDAR_FULLDATE_MONTH_NAMES[PACK_DEADLINE.month] or "December",
+        untilLabel:SetText((L["until they leave OxedHub (%d %s %d)"]):format(PACK_DEADLINE.day,
+            CALENDAR_FULLDATE_MONTH_NAMES and OxedHub.T(CALENDAR_FULLDATE_MONTH_NAMES[PACK_DEADLINE.month]) or L["December"],
             PACK_DEADLINE.year))
         if both then
             bigDays:SetTextColor(0.25, 0.8, 0.3, 1)
@@ -1615,9 +1648,9 @@ function UI:CreateDashboardTab()
         end
         for key, fs in pairs(packStatus) do
             if type(_G[PACKS[key].global]) == "table" then
-                fs:SetText("|cff20a020Installed|r")
+                fs:SetText(L["|cff20a020Installed|r"])
             else
-                fs:SetText("|cffb02020Not installed|r")
+                fs:SetText(L["|cffb02020Not installed|r"])
             end
         end
     end
@@ -1626,7 +1659,7 @@ function UI:CreateDashboardTab()
     local hideBtn = CreateFrame("Button", nil, packsCard, "UIPanelButtonTemplate")
     hideBtn:SetSize(150, 24)
     hideBtn:SetPoint("BOTTOM", packsCard, "BOTTOM", 0, 24)
-    hideBtn:SetText("Got it, hide this")
+    hideBtn:SetText(L["Got it, hide this"])
     if ApplyRedButtonStyle then ApplyRedButtonStyle(hideBtn) end
     hideBtn:SetScript("OnClick", function()
         OxedHubDB = OxedHubDB or {}
@@ -1637,8 +1670,8 @@ function UI:CreateDashboardTab()
     end)
     hideBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine("Move this page back", 1, 0.82, 0)
-        GameTooltip:AddLine("The release notes open first and this page becomes the second one, for 10 days. Type /oxpacks to put it first again.", 1, 1, 1, true)
+        GameTooltip:AddLine(L["Move this page back"], 1, 0.82, 0)
+        GameTooltip:AddLine(L["The release notes open first and this page becomes the second one, for 10 days. Type /oxpacks to put it first again."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     hideBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1678,7 +1711,7 @@ function UI:CreateDashboardTab()
     showcaseTitle:SetTextColor(1, 0.82, 0, 1)
     showcaseTitle:SetText(L["SHOWCASE_TITLE"])
     local fName, fHeight, fFlags = showcaseTitle:GetFont()
-    if fName then showcaseTitle:SetFont(fName, fHeight * 1.1, fFlags) end
+    if fName then showcaseTitle:SetFont(OxedHub:GetFont(fName), fHeight * 1.1, fFlags) end
 
     local showcaseSubtitle = card2:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     showcaseSubtitle:SetPoint("TOP", showcaseTitle, "BOTTOM", 0, -4)
@@ -2100,7 +2133,7 @@ function UI:CreateDashboardTab()
     guideTitle:SetTextColor(1, 0.82, 0, 1)
     guideTitle:SetText(L["GUIDE_TITLE"])
     local gName, gHeight, gFlags = guideTitle:GetFont()
-    if gName then guideTitle:SetFont(gName, gHeight * 1.1, gFlags) end
+    if gName then guideTitle:SetFont(OxedHub:GetFont(gName), gHeight * 1.1, gFlags) end
 
     local guideSubtitle = card3:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     guideSubtitle:SetPoint("TOP", guideTitle, "BOTTOM", 0, -4)
@@ -2171,7 +2204,7 @@ function UI:CreateDashboardTab()
     ahTitle:SetTextColor(1, 0.82, 0, 1)
     ahTitle:SetText(L["AH_GUIDE_TITLE"])
     local aName, aHeight, aFlags = ahTitle:GetFont()
-    if aName then ahTitle:SetFont(aName, aHeight * 1.1, aFlags) end
+    if aName then ahTitle:SetFont(OxedHub:GetFont(aName), aHeight * 1.1, aFlags) end
 
     local ahSubtitle = card4:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     ahSubtitle:SetPoint("TOP", ahTitle, "BOTTOM", 0, -4)
@@ -2424,7 +2457,7 @@ function UI:CreateDashboardTab()
     oxedRingTitle:SetTextColor(1, 0.82, 0, 1)
     oxedRingTitle:SetText(L["OR_GUIDE_TITLE"])
     local oName, oHeight, oFlags = oxedRingTitle:GetFont()
-    if oName then oxedRingTitle:SetFont(oName, oHeight * 1.1, oFlags) end
+    if oName then oxedRingTitle:SetFont(OxedHub:GetFont(oName), oHeight * 1.1, oFlags) end
 
     local oxedRingSubtitle = card5:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     oxedRingSubtitle:SetPoint("TOP", oxedRingTitle, "BOTTOM", 0, -4)
@@ -2777,7 +2810,7 @@ function UI:ShowTriggerRowMenu(owner, elementData)
                     function()
                         if Triggers:CopyTriggerToProfile(triggerId, profileName) then
                             print(("|cff00ff00Oxed Hub:|r %s -> %s"):format(
-                                elementData.name or "Trigger", profileName))
+                                elementData.name or L["Trigger"], profileName))
                         else
                             print("|cffff5555Oxed Hub:|r " ..
                                 (L["TRIGGER_MENU_COPY_FAILED"] or "Could not copy that trigger."))
@@ -2791,11 +2824,11 @@ function UI:ShowTriggerRowMenu(owner, elementData)
         root:CreateButton(L["TRIGGER_MENU_SHARE"] or "Share", function()
             local Share = OxedHub.Share
             if not Share then
-                print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+                print(L["|cffff0000Oxed Hub:|r Sharing module unavailable."])
                 return
             end
             local label = elementData.name
-            if not label or label == "" then label = "Trigger" end
+            if not label or label == "" then label = L["Trigger"] end
             Share:ShowChannelPicker("triggers", { triggerIDs = { triggerId } }, label)
         end)
 
@@ -2996,7 +3029,7 @@ function UI:CreateTriggersTab()
                         if row.elementData and row.elementData.event and not row.elementData.isHeader then
                             GameTooltip:SetOwner(ehf, "ANCHOR_RIGHT")
                             GameTooltip:SetText(row.elementData.eventLabel or row.elementData.event, 1, 0.82, 0)
-                            GameTooltip:AddLine("|cff888888Event:|r " .. tostring(row.elementData.event), 0.8, 0.8, 0.8, false)
+                            GameTooltip:AddLine(L["|cff888888Event:|r "] .. tostring(row.elementData.event), 0.8, 0.8, 0.8, false)
                             if row.elementData.eventDesc and row.elementData.eventDesc ~= "" then
                                 GameTooltip:AddLine(row.elementData.eventDesc, 1, 1, 1, true)
                             end
@@ -3119,8 +3152,8 @@ function UI:CreateTriggersTab()
                 row.shareBtn:SetScript("OnEnter", function(self)
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     GameTooltip:SetText(L["BTN_SHARE"] or "Share", 1, 0.82, 0)
-                    GameTooltip:AddLine("Share just this trigger in chat.", 1, 1, 1, true)
-                    GameTooltip:AddLine("Others with Oxed Hub can click to import it.", 0.8, 0.8, 0.8, true)
+                    GameTooltip:AddLine(L["Share just this trigger in chat."], 1, 1, 1, true)
+                    GameTooltip:AddLine(L["Others with Oxed Hub can click to import it."], 0.8, 0.8, 0.8, true)
                     GameTooltip:Show()
                 end)
                 row.shareBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3281,7 +3314,7 @@ function UI:CreateTriggersTab()
                 -- "no actions" rather than "empty": the rule itself is set up,
                 -- it just has nothing to play, and "empty" read as if the whole
                 -- trigger were blank.
-                row.nameText:SetText("|cff888888" .. (elementData.name or "") .. "|r  |cffcc6666(no actions)|r")
+                row.nameText:SetText("|cff888888" .. (elementData.name or "") .. L["|r  |cffcc6666(no actions)|r"])
             else
                 row.nameText:SetText(elementData.name or "")
             end
@@ -3395,12 +3428,12 @@ function UI:CreateTriggersTab()
             row.shareBtn:SetScript("OnClick", function()
                 local Share = OxedHub.Share
                 if not Share then
-                    print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+                    print(L["|cffff0000Oxed Hub:|r Sharing module unavailable."])
                     return
                 end
                 if not elementData.id then return end
                 local label = elementData.name
-                if not label or label == "" then label = "Trigger" end
+                if not label or label == "" then label = L["Trigger"] end
                 Share:ShowChannelPicker("triggers", { triggerIDs = { elementData.id } }, label)
             end)
 
@@ -4114,7 +4147,7 @@ function UI:CreateSettingsTab()
                 function(val)
                     val = math.floor((tonumber(val) or 0) + 0.5)
                     if val == 0 then
-                        return WHITE_FONT_COLOR:WrapTextInColorCode("Normal")
+                        return WHITE_FONT_COLOR:WrapTextInColorCode(L["Normal"])
                     elseif val > 0 then
                         return WHITE_FONT_COLOR:WrapTextInColorCode("+" .. val .. " px")
                     else
@@ -4146,7 +4179,7 @@ function UI:CreateSettingsTab()
         local function UpdateValueText(val)
             val = math.floor(val + 0.5)
             if val == 0 then
-                textSizeValue:SetText("Normal")
+                textSizeValue:SetText(L["Normal"])
             elseif val > 0 then
                 textSizeValue:SetText("+" .. val .. " px")
             else
@@ -4175,6 +4208,7 @@ function UI:CreateSettingsTab()
     local languages = {
         { key = "enUS", name = "English (US)" },
         { key = "esES", name = "Español" },
+        { key = "ruRU", name = "Русский (testing)" },
         -- { key = "arAR", name = "Arabaci" },
     }
 
@@ -4199,9 +4233,9 @@ function UI:CreateSettingsTab()
         OxedHub:ApplyLanguage(langKey)
 
         StaticPopupDialogs["OXEDHUB_RELOAD_UI"] = {
-            text = OxedHub.L["LANGUAGE_RELOAD_PROMPT"] or "A reload of the UI is required to fully apply the language change. Reload now?",
+            text = OxedHub.L["LANGUAGE_RELOAD_PROMPT"] or L["A reload of the UI is required to fully apply the language change. Reload now?"],
             button1 = OxedHub.L["BTN_OK"] or "OK",
-            button2 = OxedHub.L["BTN_CANCEL"] or "Cancel",
+            button2 = OxedHub.L["BTN_CANCEL"] or L["Cancel"],
             OnAccept = function()
                 ReloadUI()
             end,
@@ -4403,25 +4437,25 @@ function UI:CreateSettingsTab()
     -- everyone now, so this card no longer lists them as test features.
     local cardHeader = testerFeaturesCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     cardHeader:SetPoint("TOPLEFT", testerFeaturesCard, "TOPLEFT", 16, -10)
-    cardHeader:SetText("|cFFFFD900Everything is live!|r")
+    cardHeader:SetText(L["|cFFFFD900Everything is live!|r"])
 
     local f1Title = testerFeaturesCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f1Title:SetPoint("TOPLEFT", cardHeader, "BOTTOMLEFT", 0, -6)
     f1Title:SetPoint("RIGHT", testerFeaturesCard, "RIGHT", -16, 0)
     f1Title:SetJustifyH("LEFT")
-    f1Title:SetText("Thanks for testing the previous features — they have all shipped.")
+    f1Title:SetText(L["Thanks for testing the previous features — they have all shipped."])
 
     local f2Title = testerFeaturesCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f2Title:SetPoint("TOPLEFT", f1Title, "BOTTOMLEFT", 0, -6)
     f2Title:SetPoint("RIGHT", testerFeaturesCard, "RIGHT", -16, 0)
     f2Title:SetJustifyH("LEFT")
-    f2Title:SetText("|cFFFFDD00Anti-AFK BG Guard|r and |cFFFFDD00Prey Hunt Tracker|r are now available to everyone.")
+    f2Title:SetText(L["|cFFFFDD00Anti-AFK BG Guard|r and |cFFFFDD00Prey Hunt Tracker|r are now available to everyone."])
 
     local hintText = testerFeaturesCard:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     hintText:SetPoint("TOPLEFT", f2Title, "BOTTOMLEFT", 0, -8)
     hintText:SetPoint("RIGHT", testerFeaturesCard, "RIGHT", -16, 0)
     hintText:SetJustifyH("LEFT")
-    hintText:SetText("|cff00ff00* Nothing is gated behind this toggle right now. New test features will appear here.|r")
+    hintText:SetText(L["|cff00ff00* Nothing is gated behind this toggle right now. New test features will appear here.|r"])
 
     local function UpdateTesterCardVisibility()
         local isChecked = testerModeToggle:GetChecked()
@@ -4468,8 +4502,8 @@ function UI:CreateSettingsTab()
         if not StaticPopupDialogs["OXEDHUB_RESET_SETTINGS"] then
             StaticPopupDialogs["OXEDHUB_RESET_SETTINGS"] = {
                 text = L["SETTINGS_RESET_CONFIRM_PROMPT"] or "Are you sure you want to reset all settings in this profile to their defaults?\n\n(Your triggers, custom sounds, and animations will NOT be deleted. The UI will reload to apply defaults).",
-                button1 = L["SETTINGS_BTN_RESET"] or L["BTN_RESET"] or "Reset",
-                button2 = L["SETTINGS_BTN_CANCEL"] or L["BTN_CANCEL"] or "Cancel",
+                button1 = L["SETTINGS_BTN_RESET"] or L["BTN_RESET"] or L["Reset"],
+                button2 = L["SETTINGS_BTN_CANCEL"] or L["BTN_CANCEL"] or L["Cancel"],
                 OnAccept = function()
                     if OxedHub.DEFAULTS and OxedHub.DEFAULTS.settings and OxedHub.db and OxedHub.db.profile then
                         OxedHub.db.profile.settings = CopyTable(OxedHub.DEFAULTS.settings)
@@ -4538,11 +4572,11 @@ function UI:CreateSettingsTab()
     heroTitle:SetPoint("TOPLEFT", heroIconFrame, "TOPRIGHT", 14, -2)
     heroTitle:SetPoint("RIGHT", activeHeroCard, "RIGHT", -16, 0)
     heroTitle:SetJustifyH("LEFT")
-    heroTitle:SetText("Profile Name")
+    heroTitle:SetText(L["Profile Name"])
 
     local heroSubtitle = activeHeroCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     heroSubtitle:SetPoint("TOPLEFT", heroTitle, "BOTTOMLEFT", 0, -4)
-    heroSubtitle:SetText("|cff00ff00• Active Profile|r")
+    heroSubtitle:SetText(L["|cff00ff00• Active Profile|r"])
 
     local switchLabel = activeHeroCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     switchLabel:SetPoint("BOTTOMLEFT", activeHeroCard, "BOTTOMLEFT", 18, 14)
@@ -4569,8 +4603,8 @@ function UI:CreateSettingsTab()
     profileColorBtn:SetScript("OnEnter", function(self)
         self:SetBackdropBorderColor(1, 1, 1, 1)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Profile Color", 1, 0.82, 0)
-        GameTooltip:AddLine("Click to change this profile's name color.", 1, 1, 1, true)
+        GameTooltip:SetText(L["Profile Color"], 1, 0.82, 0)
+        GameTooltip:AddLine(L["Click to change this profile's name color."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     profileColorBtn:SetScript("OnLeave", function(self)
@@ -4708,15 +4742,15 @@ function UI:CreateSettingsTab()
         if name == "" then return end
         local ok, reason = OxedHub:CreateProfile(name, selectedCreateClassToken)
         if ok then
-            print("|cff00ff00Oxed Hub:|r Profile |cffffff00" .. name .. "|r created.")
+            print(L["|cff00ff00Oxed Hub:|r Profile |cffffff00"] .. name .. L["|r created."])
             newProfileInput:SetText("")
             newProfileInput:ClearFocus()
             UI.RefreshProfileDropdown()
             if UI.RefreshProfileDetails then UI:RefreshProfileDetails() end
         elseif reason == "max_profiles" then
-            print("|cffff0000Oxed Hub:|r Maximum of |cffffff00" .. OxedHub:GetMaxProfileCount() .. "|r profiles reached.")
+            print(L["|cffff0000Oxed Hub:|r Maximum of |cffffff00"] .. OxedHub:GetMaxProfileCount() .. L["|r profiles reached."])
         else
-            print("|cffff0000Oxed Hub:|r Profile name already exists or is invalid.")
+            print(L["|cffff0000Oxed Hub:|r Profile name already exists or is invalid."])
         end
     end)
     newProfileInput:SetScript("OnEnterPressed", function(self)
@@ -4749,15 +4783,15 @@ function UI:CreateSettingsTab()
         end
         local ok, reason = OxedHub:CopyProfile(src, dest, selectedCreateClassToken)
         if ok then
-            print("|cff00ff00Oxed Hub:|r Copied |cffffff00" .. src .. "|r to |cffffff00" .. dest .. "|r.")
+            print(L["|cff00ff00Oxed Hub:|r Copied |cffffff00"] .. src .. "|r to |cffffff00" .. dest .. "|r.")
             newProfileInput:SetText("")
             newProfileInput:ClearFocus()
             UI.RefreshProfileDropdown()
             if UI.RefreshProfileDetails then UI:RefreshProfileDetails() end
         elseif reason == "max_profiles" then
-            print("|cffff0000Oxed Hub:|r Maximum of |cffffff00" .. OxedHub:GetMaxProfileCount() .. "|r profiles reached.")
+            print(L["|cffff0000Oxed Hub:|r Maximum of |cffffff00"] .. OxedHub:GetMaxProfileCount() .. L["|r profiles reached."])
         else
-            print("|cffff0000Oxed Hub:|r Could not copy. Name already exists or is invalid.")
+            print(L["|cffff0000Oxed Hub:|r Could not copy. Name already exists or is invalid."])
         end
     end)
 
@@ -4770,18 +4804,18 @@ function UI:CreateSettingsTab()
     renameBtn:SetScript("OnClick", function()
         local newName = newProfileInput:GetText():match("^%s*(.-)%s*$")
         if newName == "" then
-            print("|cffff0000Oxed Hub:|r Type a new name in the text field first, then click Rename.")
+            print(L["|cffff0000Oxed Hub:|r Type a new name in the text field first, then click Rename."])
             return
         end
         local oldName = OxedHub:GetActiveProfileName()
         if OxedHub:RenameProfile(oldName, newName) then
-            print("|cff00ff00Oxed Hub:|r Renamed |cffffff00" .. oldName .. "|r to |cffffff00" .. newName .. "|r.")
+            print(L["|cff00ff00Oxed Hub:|r Renamed |cffffff00"] .. oldName .. "|r to |cffffff00" .. newName .. "|r.")
             newProfileInput:SetText("")
             newProfileInput:ClearFocus()
             UI.RefreshProfileDropdown()
             if UI.RefreshProfileDetails then UI:RefreshProfileDetails() end
         else
-            print("|cffff0000Oxed Hub:|r Could not rename. Name already exists or is invalid.")
+            print(L["|cffff0000Oxed Hub:|r Could not rename. Name already exists or is invalid."])
         end
     end)
 
@@ -4795,13 +4829,13 @@ function UI:CreateSettingsTab()
         local activeName = OxedHub:GetActiveProfileName()
         local profiles = OxedHub:GetProfileList()
         if #profiles <= 1 then
-            print("|cffff0000Oxed Hub:|r Can't delete the only profile.")
+            print(L["|cffff0000Oxed Hub:|r Can't delete the only profile."])
             return
         end
         StaticPopupDialogs["OXEDHUB_DELETE_PROFILE"] = {
-            text = "Delete profile |cffffff00" .. activeName .. "|r?\nThis cannot be undone.",
-            button1 = "Delete",
-            button2 = "Cancel",
+            text = L["Delete profile |cffffff00"] .. activeName .. L["|r?\nThis cannot be undone."],
+            button1 = L["Delete"],
+            button2 = L["Cancel"],
             OnAccept = function()
                 for _, name in ipairs(profiles) do
                     if name ~= activeName then
@@ -4829,8 +4863,8 @@ function UI:CreateSettingsTab()
         -- Update hero card header
         heroTitle:SetText(OxedHub:GetProfileColoredName(activeName))
         local classToken = OxedHub:GetProfileClassToken(activeName)
-        local className = classToken and (OxedHub:GetClassDisplayName(classToken) or classToken) or "Any Class"
-        heroSubtitle:SetText("|cff00ff00• " .. (L["SETTINGS_PROFILE_STATUS_ACTIVE"] or "Active") .. "|r  |  |cffffd100Class:|r " .. className)
+        local className = classToken and (OxedHub:GetClassDisplayName(classToken) or classToken) or L["Any Class"]
+        heroSubtitle:SetText("|cff00ff00• " .. (L["SETTINGS_PROFILE_STATUS_ACTIVE"] or "Active") .. L["|r  |  |cffffd100Class:|r "] .. className)
 
         -- Update class crest on hero card
         if classToken and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classToken:upper()] then
@@ -4936,8 +4970,8 @@ function UI:CreateSettingsTab()
     end)
     exportBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Export Active Profile", 1, 0.82, 0)
-        GameTooltip:AddLine("Generate a compressed export string for your active profile and all its components.", 1, 1, 1, true)
+        GameTooltip:SetText(L["Export Active Profile"], 1, 0.82, 0)
+        GameTooltip:AddLine(L["Generate a compressed export string for your active profile and all its components."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     exportBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -4953,8 +4987,8 @@ function UI:CreateSettingsTab()
     end)
     scopedExportBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Detailed / Custom Export", 1, 0.82, 0)
-        GameTooltip:AddLine("Choose specific content to export: individual triggers, ActionHubs, OxedRing, or toy mixes.", 1, 1, 1, true)
+        GameTooltip:SetText(L["Detailed / Custom Export"], 1, 0.82, 0)
+        GameTooltip:AddLine(L["Choose specific content to export: individual triggers, ActionHubs, OxedRing, or toy mixes."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     scopedExportBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -4971,17 +5005,17 @@ function UI:CreateSettingsTab()
     shareLinkBtn:SetScript("OnClick", function()
         local Share = OxedHub.Share
         if not Share then
-            print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+            print(L["|cffff0000Oxed Hub:|r Sharing module unavailable."])
             return
         end
-        local profileName = OxedHub:GetActiveProfileName() or "Profile"
+        local profileName = OxedHub:GetActiveProfileName() or L["Profile"]
         Share:ShowChannelPicker("profile", nil, profileName)
     end)
     shareLinkBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(L["SETTINGS_SHARE_LINK_BTN"] or "Share to Chat (Link)")
-        GameTooltip:AddLine("Puts a clickable link in your chat box for the active profile.", 1, 1, 1, true)
-        GameTooltip:AddLine("Pick a channel and send it. Anyone with Oxed Hub can click to import.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine(L["Puts a clickable link in your chat box for the active profile."], 1, 1, 1, true)
+        GameTooltip:AddLine(L["Pick a channel and send it. Anyone with Oxed Hub can click to import."], 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     shareLinkBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -5048,7 +5082,7 @@ function UI:CreateSettingsTab()
     expInfoText:SetPoint("RIGHT", exportCard, "RIGHT", -16, 0)
     expInfoText:SetJustifyH("LEFT")
     expInfoText:SetSpacing(3)
-    expInfoText:SetText("|cff888888• Exports are compressed base64 strings safe for sharing.\n• Large configurations are automatically split into manageable parts.\n• Author metadata and notes are bundled with the export.|r")
+    expInfoText:SetText(L["|cff888888• Exports are compressed base64 strings safe for sharing.\n• Large configurations are automatically split into manageable parts.\n• Author metadata and notes are bundled with the export.|r"])
 
     -- Right Card: Import Hub
     local importCard = CreateFrame("Frame", nil, scrollChild, "BackdropTemplate")
@@ -5098,8 +5132,8 @@ function UI:CreateSettingsTab()
     end)
     importBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Open Import Dialog", 1, 0.82, 0)
-        GameTooltip:AddLine("Paste any export string to preview and import triggers, profiles, or hubs.", 1, 1, 1, true)
+        GameTooltip:SetText(L["Open Import Dialog"], 1, 0.82, 0)
+        GameTooltip:AddLine(L["Paste any export string to preview and import triggers, profiles, or hubs."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     importBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -5189,7 +5223,7 @@ function UI:CreateSettingsTab()
 
     local impFeaturesHeader = importCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     impFeaturesHeader:SetPoint("TOPLEFT", impDivider2, "BOTTOMLEFT", 0, -12)
-    impFeaturesHeader:SetText("Smart Import Features:")
+    impFeaturesHeader:SetText(L["Smart Import Features:"])
     impFeaturesHeader:SetTextColor(1, 0.82, 0, 1)
 
     local impFeaturesList = importCard:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -5198,10 +5232,10 @@ function UI:CreateSettingsTab()
     impFeaturesList:SetJustifyH("LEFT")
     impFeaturesList:SetSpacing(6)
     impFeaturesList:SetText(table.concat({
-        "• |cffffd100Auto-Scope Detection:|r Automatically detects full profiles, triggers, rings, or action hubs.",
-        "• |cffffd100Safe Confirmation:|r Previews authors, notes, and full content tables before applying.",
-        "• |cffffd100Non-Destructive:|r Partial imports merge safely into your active profile without data loss.",
-        "• |cffffd100Multi-Part Paste:|r Paste chunked multi-part strings in any order without confusion.",
+        L["• |cffffd100Auto-Scope Detection:|r Automatically detects full profiles, triggers, rings, or action hubs."],
+        L["• |cffffd100Safe Confirmation:|r Previews authors, notes, and full content tables before applying."],
+        L["• |cffffd100Non-Destructive:|r Partial imports merge safely into your active profile without data loss."],
+        L["• |cffffd100Multi-Part Paste:|r Paste chunked multi-part strings in any order without confusion."],
     }, "\n"))
 
     -- Flows under the feature list rather than being pinned to the bottom of
@@ -5297,9 +5331,9 @@ function UI:CreateSettingsTab()
     clearCreditsBtn:SetNormalFontObject("GameFontNormalSmall")
     clearCreditsBtn:SetScript("OnClick", function()
         StaticPopupDialogs["OXEDHUB_CLEAR_CREDITS"] = {
-            text = "Clear the import history for the active profile?\nThis only removes the credits list, not the imported content.",
-            button1 = YES or "Yes",
-            button2 = NO or "No",
+            text = L["Clear the import history for the active profile?\nThis only removes the credits list, not the imported content."],
+            button1 = YES or L["Yes"],
+            button2 = NO or L["No"],
             OnAccept = function()
                 local db = OxedHubDB.profiles and OxedHubDB.profiles[OxedHubDB.activeProfile]
                 if db then
@@ -5317,7 +5351,7 @@ function UI:CreateSettingsTab()
         local name = OxedHubDB and OxedHubDB.activeProfile
         local db = name and OxedHubDB.profiles and OxedHubDB.profiles[name]
         if not db then
-            detailsName:SetText("|cffff5555No active profile|r")
+            detailsName:SetText(L["|cffff5555No active profile|r"])
             detailsMeta:SetText("")
             detailsCol1:SetText("")
             detailsCol2:SetText("")
@@ -5354,22 +5388,22 @@ function UI:CreateSettingsTab()
         end
 
         detailsCol1:SetText(table.concat({
-            Row("Triggers", s.triggers, s.triggers > 0 and string.format(" |cff888888(%d on)|r", s.triggersEnabled) or ""),
-            Row("Action Hubs", s.hubs),
-            Row("Ring Nodes", s.ringNodes),
-            Row("Toy Mixes", s.toyMixes),
+            Row(L["Triggers"], s.triggers, s.triggers > 0 and string.format(L[" |cff888888(%d on)|r"], s.triggersEnabled) or ""),
+            Row(L["Action Hubs"], s.hubs),
+            Row(L["Ring Nodes"], s.ringNodes),
+            Row(L["Toy Mixes"], s.toyMixes),
         }, "\n"))
 
         detailsCol2:SetText(table.concat({
-            Row("Custom Sounds", s.customSounds),
-            Row("Animations", s.animations),
-            Row("Chat Templates", s.chatTemplates),
-            Row("Toy Tabs", s.toyCategories),
+            Row(L["Custom Sounds"], s.customSounds),
+            Row(L["Animations"], s.animations),
+            Row(L["Chat Templates"], s.chatTemplates),
+            Row(L["Toy Tabs"], s.toyCategories),
         }, "\n"))
 
         local credits = UI:GetProfileCredits(db)
         if #credits == 0 then
-            creditsBody:SetText("|cff888888Nothing has been imported into this profile yet.|r")
+            creditsBody:SetText(L["|cff888888Nothing has been imported into this profile yet.|r"])
             clearCreditsBtn:Hide()
         else
             local lines = {}
@@ -5447,11 +5481,11 @@ function UI:CreateSettingsTab()
     olderCheck:SetSize(22, 22)
     olderCheck:SetPoint("TOPRIGHT", copyBtn, "BOTTOMRIGHT", -150, -4)
     olderCheck.text:SetFontObject("GameFontHighlightSmall")
-    olderCheck.text:SetText("Show older versions")
+    olderCheck.text:SetText(L["Show older versions"])
     olderCheck:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Show older versions", 1, 0.82, 0)
-        GameTooltip:AddLine("Off: only problems that happened in the version you are running now. On: everything kept, with the version each one last happened in.", 1, 1, 1, true)
+        GameTooltip:SetText(L["Show older versions"], 1, 0.82, 0)
+        GameTooltip:AddLine(L["Off: only problems that happened in the version you are running now. On: everything kept, with the version each one last happened in."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     olderCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -5504,15 +5538,15 @@ function UI:CreateSettingsTab()
     ApplyRedButtonStyle(perfBtn)
     perfBtn:SetSize(130, 24)
     perfBtn:SetPoint("RIGHT", retryNativeBtn, "LEFT", -6, 0)
-    perfBtn:SetText("Performance")
+    perfBtn:SetText(L["Performance"])
     perfBtn:SetNormalFontObject("GameFontNormalSmall")
     perfBtn:SetScript("OnClick", function()
         if OxedHub.Performance then OxedHub.Performance:Open() end
     end)
     perfBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Performance", 1, 0.82, 0)
-        GameTooltip:AddLine("How many milliseconds each part of OxedHub takes -- every trigger, sound, animation and timer -- and what was running during each lag spike. Press Start there, then play.", 1, 1, 1, true)
+        GameTooltip:SetText(L["Performance"], 1, 0.82, 0)
+        GameTooltip:AddLine(L["How many milliseconds each part of OxedHub takes -- every trigger, sound, animation and timer -- and what was running during each lag spike. Press Start there, then play."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     perfBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -5593,14 +5627,14 @@ function UI:CreateSettingsTab()
         local summary
         if count == 0 then
             summary = showAll and (L["DEBUG_NONE"] or "No problems recorded.")
-                or ("No problems in %s."):format(version)
+                or (L["No problems in %s."]):format(version)
         elseif showAll then
             summary = (L["DEBUG_SUMMARY"] or "%d problem(s), %d occurrence(s)"):format(count, occurrences)
         else
-            summary = ("%d problem(s) in %s, %d occurrence(s)"):format(count, version, occurrences)
+            summary = (L["%d problem(s) in %s, %d occurrence(s)"]):format(count, version, occurrences)
         end
         if hidden > 0 then
-            summary = summary .. ("   |cff888888%d from older versions hidden|r"):format(hidden)
+            summary = summary .. (L["   |cff888888%d from older versions hidden|r"]):format(hidden)
         end
         debugSummary:SetText(summary)
 
@@ -5647,7 +5681,7 @@ function UI:CreateSettingsTab()
             row.body:SetText(entry.message or "")
 
             local meta = {}
-            meta[#meta + 1] = entry.lastVersion and ("v" .. entry.lastVersion) or "older version"
+            meta[#meta + 1] = entry.lastVersion and ("v" .. entry.lastVersion) or L["older version"]
             if entry.source then meta[#meta + 1] = entry.source end
             meta[#meta + 1] = (L["DEBUG_LAST_SEEN"] or "last %s"):format(date("%d.%m %H:%M:%S", entry.lastSeen or time()))
             if (entry.count or 1) > 1 and entry.firstSeen then
@@ -6263,7 +6297,7 @@ function UI:CreateAnimationsTab()
     -- Title
     local title = tab:CreateFontString(nil, "OVERLAY", "GameFontHighlightLeft")
     title:SetPoint("TOPLEFT", tab, "TOPLEFT", 15, -15)
-    title:SetText("Animations Engine")
+    title:SetText(L["Animations Engine"])
     title:Hide()
     
     -- Sub-tabs container
@@ -6280,7 +6314,7 @@ function UI:CreateAnimationsTab()
         local btn = CreateFrame("Button", nil, subTabs, "UIPanelButtonTemplate")
         btn:SetSize(120, 25)
         btn:SetPoint("TOPLEFT", subTabs, "TOPLEFT", xOffset, 0)
-        btn:SetText(name == "Classic" and "Classic Engine" or "Advanced Engine")
+        btn:SetText(name == "Classic" and L["Classic Engine"] or L["Advanced Engine"])
         btn:SetScript("OnClick", function()
             UI:ShowAnimationsSubTab(name)
         end)
@@ -6413,7 +6447,7 @@ function UI:ShowMainWindow()
             -- Show() is equally protected; only possible if the frame is already
             -- shown-but-soft-hidden. If it's truly hidden, we can't open in combat.
             if not mainFrame:IsShown() then
-                print("|cffff0000[OxedHub]|r Cannot open the window during combat.")
+                print(L["|cffff0000[OxedHub]|r Cannot open the window during combat."])
                 return
             end
         else
@@ -6586,7 +6620,7 @@ function UI:SerializeProfile(activeOnly)
     if activeOnly then
         local activeDB = activeProfile and OxedHubDB.profiles and OxedHubDB.profiles[activeProfile]
         if not activeDB then
-            return nil, "Active profile not found."
+            return nil, L["Active profile not found."]
         end
 
         return AceSerializer:Serialize(BuildProfileExportPayload(activeProfile, activeDB))
@@ -6607,7 +6641,7 @@ end
 
 function UI:SerializeSelectedProfiles(profileNames)
     if type(profileNames) ~= "table" or #profileNames == 0 then
-        return nil, "No profiles selected."
+        return nil, L["No profiles selected."]
     end
 
     local export = {
@@ -6624,7 +6658,7 @@ function UI:SerializeSelectedProfiles(profileNames)
     end
 
     if not next(export.profiles) then
-        return nil, "Selected profiles were not found."
+        return nil, L["Selected profiles were not found."]
     end
 
     return AceSerializer:Serialize(export)
@@ -6795,47 +6829,48 @@ UI.EXPORT_SCOPES = {
     { key = "hubs_all", scope = "hubs", label = "All Hubs", desc = "Exports all Action Hub quadrants and configured widgets.", needs = nil },
     { key = "hub_specific", scope = "hubs", label = "Specific Hub", desc = "Exports a single Action Hub widget by number.", needs = "hub" },
 }
+OxedHub:RegisterLocalizedTable(UI.EXPORT_SCOPES, "label", "desc")
 
 -- Human-readable summary of what an envelope contains (for the import preview).
 function UI:DescribeEnvelope(env)
-    if type(env) ~= "table" then return "Unknown data" end
+    if type(env) ~= "table" then return L["Unknown data"] end
     local scope = env.scope
     local p = env.payload or {}
     if scope == "profiles" then
         local n = 0
         for _ in pairs(p.profiles or {}) do n = n + 1 end
-        return string.format("%d profile(s)", n)
+        return string.format(L["%d profile(s)"], n)
     elseif scope == "profile" then
-        return "1 profile (" .. tostring(p.profileName or "?") .. ")"
+        return L["1 profile ("] .. tostring(p.profileName or "?") .. ")"
     elseif scope == "triggers" then
         local n = 0
         for _ in pairs(p.triggers or {}) do n = n + 1 end
-        return string.format("%d trigger(s)", n)
+        return string.format(L["%d trigger(s)"], n)
     elseif scope == "oxedring" then
         -- Count with pairs rather than '#': the node table is not guaranteed to
         -- be a gapless array, and '#' silently reports 0 on a hashed table.
         local n = 0
         for _ in pairs(p.oxedRingNodes or {}) do n = n + 1 end
-        return string.format("OxedRing config (%d nodes)", n)
+        return string.format(L["OxedRing config (%d nodes)"], n)
     elseif scope == "toymixes" then
         local n = 0
         for _ in pairs(p.toyMixes or {}) do n = n + 1 end
-        return string.format("%d toy mix(es)", n)
+        return string.format(L["%d toy mix(es)"], n)
     elseif scope == "hubs" then
         local hubs = p.hubs or {}
         if #hubs == 1 and type(hubs[1]) == "table" then
             return "ActionHub: |cff88ff88" .. tostring(hubs[1].name or "Hub") .. "|r"
         end
-        return string.format("%d ActionHub(s)", #hubs)
+        return string.format(L["%d ActionHub(s)"], #hubs)
     end
-    return "Unknown scope"
+    return L["Unknown scope"]
 end
 
 -- Everything the confirmation popup needs to describe an incoming import:
 -- what it contains, who made it, and where it will land.
 function UI:BuildImportSummary(data)
     if type(data) ~= "table" then
-        return "Unknown import data.", false
+        return L["Unknown import data."], false
     end
 
     -- One "Triggers 12  •  Ring nodes 8  •  ..." line describing a profile
@@ -6847,14 +6882,14 @@ function UI:BuildImportSummary(data)
         local function Add(label, n)
             if n and n > 0 then table.insert(bits, label .. " |cffffffff" .. n .. "|r") end
         end
-        Add("Triggers", s.triggers)
-        Add("Ring nodes", s.ringNodes)
-        Add("Hubs", s.hubs)
-        Add("Toy mixes", s.toyMixes)
+        Add(L["Triggers"], s.triggers)
+        Add(L["Ring nodes"], s.ringNodes)
+        Add(L["Hubs"], s.hubs)
+        Add(L["Toy mixes"], s.toyMixes)
         Add("Sounds", s.customSounds)
-        Add("Animations", s.animations)
+        Add(L["Animations"], s.animations)
         Add("Chat", s.chatTemplates)
-        if #bits == 0 then return (indent or "") .. "|cff888888(empty)|r" end
+        if #bits == 0 then return (indent or "") .. L["|cff888888(empty)|r"] end
         return (indent or "") .. "|cffaaaaaa" .. table.concat(bits, "  •  ") .. "|r"
     end
 
@@ -6887,7 +6922,7 @@ function UI:BuildImportSummary(data)
             table.insert(lines, ProfileContents(p, "   "))
         elseif scope == "profiles" then
             local rows, count = DescribeProfileSet(p.profiles)
-            table.insert(lines, string.format("|cffffd100Contains:|r %d profile(s)", count))
+            table.insert(lines, string.format(L["|cffffd100Contains:|r %d profile(s)"], count))
             for _, row in ipairs(rows) do table.insert(lines, row) end
         else
             table.insert(lines, "|cffffd100Contains:|r " .. self:DescribeEnvelope(data))
@@ -6912,7 +6947,7 @@ function UI:BuildImportSummary(data)
         -- v1 (single profile) / v2 (multi-profile) legacy payloads.
         if data.profiles then
             local rows, count = DescribeProfileSet(data.profiles)
-            table.insert(lines, string.format("|cffffd100Contains:|r %d profile(s)", count))
+            table.insert(lines, string.format(L["|cffffd100Contains:|r %d profile(s)"], count))
             for _, row in ipairs(rows) do table.insert(lines, row) end
         else
             table.insert(lines, "|cffffd100Profile:|r |cff88ff88"
@@ -6982,7 +7017,7 @@ function UI:DescribeToySlot(itemID)
 
     local label = "   "
     if toyIcon then label = label .. "|T" .. toyIcon .. ":16:16:0:0:64:64:5:59:5:59|t " end
-    label = label .. (toyName or ("Toy #" .. itemID))
+    label = label .. (toyName or (L["Toy #"] .. itemID))
 
     local owned
     if PlayerHasToy then
@@ -6992,9 +7027,9 @@ function UI:DescribeToySlot(itemID)
 
     local note
     if owned == true then
-        note = "|cff88ff88you have it|r"
+        note = L["|cff88ff88you have it|r"]
     elseif owned == false then
-        note = "|cffff6666not collected|r"
+        note = L["|cffff6666not collected|r"]
     else
         note = "|cff888888unknown|r"
     end
@@ -7038,7 +7073,7 @@ function UI:DescribeHubSlot(slot)
         end
     elseif kind == "macro" then
         -- The macro body travels inside the slot, so it works on any account.
-        note = slot.body and "macro |cff88ff88(included)|r" or "macro |cffff6666(empty)|r"
+        note = slot.body and L["macro |cff88ff88(included)|r"] or L["macro |cffff6666(empty)|r"]
     end
 
     local label = "   "
@@ -7066,20 +7101,20 @@ function UI:DescribeRingNode(node, payload)
         -- Otherwise the node points at a toy mix by name.
         name = name or tostring(node.id)
         local bundled = payload and payload.toyMixes and payload.toyMixes[node.id]
-        note = bundled and "toy mix |cff88ff88(included)|r" or "toy mix |cffff8800(not included)|r"
+        note = bundled and L["toy mix |cff88ff88(included)|r"] or L["toy mix |cffff8800(not included)|r"]
 
     elseif kind == "trigger" then
         local trig = payload and payload.triggers and payload.triggers[node.id]
         name = (trig and trig.name) or name or tostring(node.id)
-        note = trig and "trigger |cff88ff88(included)|r" or "trigger |cffff8800(not included)|r"
+        note = trig and L["trigger |cff88ff88(included)|r"] or L["trigger |cffff8800(not included)|r"]
 
     elseif kind == "marker" or kind == "targetmarker" then
         local markerID = tonumber(node.id)
         if markerID and markerID > 0 then
             icon = icon or ("Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. markerID)
-            name = name or ("Marker " .. markerID)
+            name = name or (L["Marker "] .. markerID)
         else
-            name = name or "Clear marker"
+            name = name or L["Clear marker"]
         end
 
     elseif kind == "emote" then
@@ -7109,8 +7144,8 @@ function UI:GetRingDetailRows(p)
         end
     end
 
-    table.insert(out, { "   Slices", #nodes })
-    table.insert(out, { "   Assigned", string.format("%d |cff888888of %d|r", filled, #nodes) })
+    table.insert(out, { L["   Slices"], #nodes })
+    table.insert(out, { L["   Assigned"], string.format("%d |cff888888of %d|r", filled, #nodes) })
     for kind, count in pairs(byType) do
         table.insert(out, { "      |cff888888" .. kind .. "|r", count })
     end
@@ -7122,10 +7157,10 @@ function UI:GetRingDetailRows(p)
         end
     end
 
-    table.insert(out, { "   Radius", p.oxedRingRadius or "default" })
-    table.insert(out, { "   Keybind", p.oxedRingBinding or "none" })
+    table.insert(out, { L["   Radius"], p.oxedRingRadius or "default" })
+    table.insert(out, { L["   Keybind"], p.oxedRingBinding or "none" })
     if p.oxedRingStyle then
-        table.insert(out, { "   Style", tostring(p.oxedRingStyle) })
+        table.insert(out, { L["   Style"], tostring(p.oxedRingStyle) })
     end
 
     return out, #nodes
@@ -7164,11 +7199,11 @@ function UI:GetHubDetailRows(hub, index)
         end
     end
 
-    AddSide("Main side", mainSlots)
-    AddSide("Dual side", dualSlots)
+    AddSide(L["Main side"], mainSlots)
+    AddSide(L["Dual side"], dualSlots)
 
     if hub.style then
-        table.insert(out, { "    |cff888888Style|r", tostring(hub.style) })
+        table.insert(out, { L["    |cff888888Style|r"], tostring(hub.style) })
     end
 
     return out
@@ -7214,7 +7249,7 @@ function UI:AppendProfileSection(rows, title, items, makeRow)
     end
 
     if count > PROFILE_SECTION_LIMIT then
-        local more = { "   |cff888888... and " .. (count - PROFILE_SECTION_LIMIT) .. " more|r", "" }
+        local more = { L["   |cff888888... and "] .. (count - PROFILE_SECTION_LIMIT) .. " more|r", "" }
         more.section = title
         table.insert(rows, more)
     end
@@ -7235,10 +7270,10 @@ function UI:AppendProfileDetails(rows, p)
         return tostring(a.trig.name or a.id) < tostring(b.trig.name or b.id)
     end)
 
-    self:AppendProfileSection(rows, "Triggers", triggers, function(entry)
+    self:AppendProfileSection(rows, L["Triggers"], triggers, function(entry)
         local trig = entry.trig
         local out = { { "   " .. tostring(trig.name or entry.id),
-            (trig.event or "?") .. (trig.enabled == false and " |cff888888(off)|r" or "") } }
+            (trig.event or "?") .. (trig.enabled == false and L[" |cff888888(off)|r"] or "") } }
         local summary = self:CompactActionSummary(trig.actions)
         if summary then
             table.insert(out, { "      |cff888888" .. summary .. "|r", "" })
@@ -7253,7 +7288,7 @@ function UI:AppendProfileDetails(rows, p)
     end
     table.sort(mixes, function(a, b) return tostring(a.name) < tostring(b.name) end)
 
-    self:AppendProfileSection(rows, "Toy mixes", mixes, function(entry)
+    self:AppendProfileSection(rows, L["Toy mixes"], mixes, function(entry)
         local toyIDs = {}
         for _, s in ipairs(type(entry.mix) == "table" and entry.mix.slots or {}) do
             if type(s) == "table" and s.type == "toy" and s.id then
@@ -7282,7 +7317,7 @@ function UI:AppendProfileDetails(rows, p)
     end
 
     -- Same detail the hub-only share shows.
-    self:AppendProfileSection(rows, "Action Hubs", hubs, function(hub)
+    self:AppendProfileSection(rows, L["Action Hubs"], hubs, function(hub)
         return self:GetHubDetailRows(hub)
     end)
 
@@ -7316,6 +7351,7 @@ local IMPORT_ACTION_FIELDS = {
     { key = "chatMessage",       kind = "chat",  label = "Chat message" },
     { key = "toy",               kind = "toy",   label = "Toy" },
 }
+OxedHub:RegisterLocalizedTable(IMPORT_ACTION_FIELDS, "label")
 
 -- Detail lines for one trigger: what it will actually do once imported.
 function UI:GetTriggerActionRows(trig, payload)
@@ -7336,12 +7372,12 @@ function UI:GetTriggerActionRows(trig, payload)
     if actions.emote then table.insert(warnings, "emotes") end
     if actions.toy then table.insert(warnings, "uses toy") end
     if #warnings > 0 then
-        table.insert(out, { "   |cffff8800! Will act for you|r",
+        table.insert(out, { L["   |cffff8800! Will act for you|r"],
             "|cffff8800" .. table.concat(warnings, ", ") .. "|r" })
     end
 
     if #out == 0 then
-        table.insert(out, { "   |cff888888No actions|r", "" })
+        table.insert(out, { L["   |cff888888No actions|r"], "" })
     end
 
     return out
@@ -7349,22 +7385,22 @@ end
 
 function UI:GetImportDetails(data)
     local rows, authorLines = {}, {}
-    local header, scopeText = "Unknown data", nil
+    local header, scopeText = L["Unknown data"], nil
     local isPartial = false
 
     local function StatRows(payloadDB)
         local s = self:GetProfileStats(payloadDB)
         local out = {
-            { "Triggers", s.triggers > 0
-                and string.format("%d |cff888888(%d enabled)|r", s.triggers, s.triggersEnabled)
+            { L["Triggers"], s.triggers > 0
+                and string.format(L["%d |cff888888(%d enabled)|r"], s.triggers, s.triggersEnabled)
                 or "0" },
-            { "OxedRing nodes", s.ringNodes },
-            { "Action Hubs", s.hubs },
-            { "Toy mixes", s.toyMixes },
-            { "Toy tabs", s.toyCategories },
-            { "Custom sounds", s.customSounds },
-            { "Animations", s.animations },
-            { "Chat templates", s.chatTemplates },
+            { L["OxedRing nodes"], s.ringNodes },
+            { L["Action Hubs"], s.hubs },
+            { L["Toy mixes"], s.toyMixes },
+            { L["Toy tabs"], s.toyCategories },
+            { L["Custom sounds"], s.customSounds },
+            { L["Animations"], s.animations },
+            { L["Chat templates"], s.chatTemplates },
         }
 
         -- Count the triggers that will act on the player's behalf.  A profile
@@ -7384,7 +7420,7 @@ function UI:GetImportDetails(data)
             if chats > 0 then table.insert(bits, chats .. " send chat") end
             if emotes > 0 then table.insert(bits, emotes .. " emote") end
             if toys > 0 then table.insert(bits, toys .. " use toys") end
-            table.insert(out, { "|cffff8800! Acts for you|r",
+            table.insert(out, { L["|cffff8800! Acts for you|r"],
                 "|cffff8800" .. table.concat(bits, ", ") .. "|r" })
         end
 
@@ -7400,7 +7436,7 @@ function UI:GetImportDetails(data)
         isPartial = not (scope == "profile" or scope == "profiles")
 
         if scope == "profile" then
-            header = "Profile: |cff88ff88" .. tostring(p.profileName or "?") .. "|r"
+            header = L["Profile: |cff88ff88"] .. tostring(p.profileName or "?") .. "|r"
             rows = StatRows(p)
             self:AppendProfileDetails(rows, p)
         elseif scope == "profiles" then
@@ -7409,17 +7445,17 @@ function UI:GetImportDetails(data)
                 count = count + 1
                 local s = self:GetProfileStats(pdb)
                 table.insert(rows, { "|cff88ff88" .. tostring(name) .. "|r",
-                    string.format("%d triggers, %d ring, %d hubs, %d mixes",
+                    string.format(L["%d triggers, %d ring, %d hubs, %d mixes"],
                         s.triggers, s.ringNodes, s.hubs, s.toyMixes) })
             end
-            header = string.format("%d profile(s)", count)
+            header = string.format(L["%d profile(s)"], count)
         else
             header = self:DescribeEnvelope(data)
             scopeText = scope
             if scope == "triggers" then
                 for id, trig in pairs(p.triggers or {}) do
                     table.insert(rows, { "|cffffd100" .. tostring(trig.name or id) .. "|r",
-                        (trig.event or "?") .. (trig.enabled == false and " |cff888888(off)|r" or "") })
+                        (trig.event or "?") .. (trig.enabled == false and L[" |cff888888(off)|r"] or "") })
                     -- Show what the trigger actually does, not just its name.
                     for _, detail in ipairs(self:GetTriggerActionRows(trig, p)) do
                         table.insert(rows, detail)
@@ -7452,7 +7488,7 @@ function UI:GetImportDetails(data)
                     if type(acts) == "table" then
                         for _, field in ipairs({
                             { key = "sound",     kind = "sound", label = "Sound" },
-                            { key = "animation", kind = "anim",  label = "Animation" },
+                            { key = "animation", kind = "anim",  label = L["Animation"] },
                             { key = "emote",     kind = "emote", label = "Emote" },
                             { key = "chat",      kind = "chat",  label = "Chat" },
                         }) do
@@ -7465,7 +7501,7 @@ function UI:GetImportDetails(data)
                             local bits = {}
                             if acts.chat then table.insert(bits, "sends chat") end
                             if acts.emote then table.insert(bits, "emotes") end
-                            table.insert(rows, { "   |cffff8800! Will act for you|r",
+                            table.insert(rows, { L["   |cffff8800! Will act for you|r"],
                                 "|cffff8800" .. table.concat(bits, ", ") .. "|r" })
                         end
                     end
@@ -7504,12 +7540,12 @@ function UI:GetImportDetails(data)
                 count = count + 1
                 local s = self:GetProfileStats(pdb)
                 table.insert(rows, { "|cff88ff88" .. tostring(name) .. "|r",
-                    string.format("%d triggers, %d ring, %d hubs, %d mixes",
+                    string.format(L["%d triggers, %d ring, %d hubs, %d mixes"],
                         s.triggers, s.ringNodes, s.hubs, s.toyMixes) })
             end
-            header = string.format("%d profile(s)", count)
+            header = string.format(L["%d profile(s)"], count)
         else
-            header = "Profile: |cff88ff88" .. tostring(data.profileName or "?") .. "|r"
+            header = L["Profile: |cff88ff88"] .. tostring(data.profileName or "?") .. "|r"
             rows = StatRows(data)
             self:AppendProfileDetails(rows, data)
         end
@@ -7643,7 +7679,7 @@ function UI:ShowImportConfirm(data, onImported)
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
         tinsert(UISpecialFrames, "OxedHubImportConfirmFrame")
-        if f.TitleText then f.TitleText:SetText("Confirm Import") end
+        if f.TitleText then f.TitleText:SetText(L["Confirm Import"]) end
         if f.CloseButton then f.CloseButton:SetScript("OnClick", function() f:Hide() end) end
 
         f.header = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -7678,20 +7714,20 @@ function UI:ShowImportConfirm(data, onImported)
         ApplyRedButtonStyle(f.cancelBtn)
         f.cancelBtn:SetSize(100, 26)
         f.cancelBtn:SetPoint("BOTTOMRIGHT", -14, 16)
-        f.cancelBtn:SetText(CANCEL or "Cancel")
+        f.cancelBtn:SetText(CANCEL or L["Cancel"])
         f.cancelBtn:SetScript("OnClick", function() f:Hide() end)
 
         f.newProfileBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
         ApplyRedButtonStyle(f.newProfileBtn)
         f.newProfileBtn:SetSize(140, 26)
         f.newProfileBtn:SetPoint("RIGHT", f.cancelBtn, "LEFT", -8, 0)
-        f.newProfileBtn:SetText("New Profile")
+        f.newProfileBtn:SetText(L["New Profile"])
 
         f.importBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
         ApplyRedButtonStyle(f.importBtn)
         f.importBtn:SetSize(100, 26)
         f.importBtn:SetPoint("RIGHT", f.newProfileBtn, "LEFT", -8, 0)
-        f.importBtn:SetText("Import")
+        f.importBtn:SetText(L["Import"])
 
         UI.importConfirmFrame = f
     end
@@ -7730,8 +7766,8 @@ function UI:ShowImportConfirm(data, onImported)
     local targetText
     if isPartial then
         -- Partial data merges into a profile you pick, so overwriting is real.
-        targetText = "|cffffd100Imports into:|r " .. target
-            .. "\n|cffff8800Items with the same name or ID will be overwritten.|r"
+        targetText = L["|cffffd100Imports into:|r "] .. target
+            .. L["\n|cffff8800Items with the same name or ID will be overwritten.|r"]
         f.newProfileBtn:Show()
     else
         -- Full profiles always land in a new profile; a clashing name gets a
@@ -7741,11 +7777,11 @@ function UI:ShowImportConfirm(data, onImported)
         if p and p.profileName then incoming = p.profileName end
 
         if OxedHubDB.profiles and OxedHubDB.profiles[incoming] then
-            targetText = "|cffffd100Creates profile:|r " .. incoming .. " (Imported)"
-                .. "\n|cff888888You already have a profile called '" .. incoming
-                .. "' — it will not be touched.|r"
+            targetText = L["|cffffd100Creates profile:|r "] .. incoming .. " (Imported)"
+                .. L["\n|cff888888You already have a profile called '"] .. incoming
+                .. L["' — it will not be touched.|r"]
         else
-            targetText = "|cffffd100Creates profile:|r " .. incoming
+            targetText = L["|cffffd100Creates profile:|r "] .. incoming
         end
         -- Nothing for the button to do here: the import is already non-destructive.
         f.newProfileBtn:Hide()
@@ -7761,7 +7797,7 @@ function UI:ShowImportConfirm(data, onImported)
         table.insert(missing, #missingAnimations .. " animation(s)")
     end
     if #missing > 0 then
-        targetText = targetText .. "\n|cffffcc00Missing on this client: "
+        targetText = targetText .. L["\n|cffffcc00Missing on this client: "]
             .. table.concat(missing, ", ") .. "|r"
     end
     f.targetLine:SetText(targetText)
@@ -7786,8 +7822,8 @@ function UI:ShowImportConfirm(data, onImported)
 
         local ok, err = OxedHub:CreateProfile(name, false)
         if not ok then
-            print("|cffff0000Oxed Hub:|r Could not create a profile"
-                .. (err == "max_profiles" and " — profile limit reached." or "."))
+            print(L["|cffff0000Oxed Hub:|r Could not create a profile"]
+                .. (err == "max_profiles" and L[" — profile limit reached."] or "."))
             return
         end
 
@@ -7795,7 +7831,7 @@ function UI:ShowImportConfirm(data, onImported)
         f:Hide()
         UI:ApplyImport(data)
         if onImported then onImported() end
-        print("|cff00ff00Oxed Hub:|r Imported into new profile |cffffff00" .. name .. "|r.")
+        print(L["|cff00ff00Oxed Hub:|r Imported into new profile |cffffff00"] .. name .. "|r.")
         UI:ReportMissingSoundsAfterImport(data)
     end)
 
@@ -7808,7 +7844,7 @@ function UI:SerializeScoped(scope, opts)
     opts = opts or {}
     local activeName = OxedHubDB.activeProfile
     local profile = OxedHubDB.profiles and OxedHubDB.profiles[activeName]
-    if not profile then return nil, "No active profile." end
+    if not profile then return nil, L["No active profile."] end
 
     local envelope = {
         oxedhub = true,
@@ -7830,7 +7866,7 @@ function UI:SerializeScoped(scope, opts)
         else
             for n, db in pairs(OxedHubDB.profiles) do out.profiles[n] = BuildProfileExportPayload(n, db) end
         end
-        if not next(out.profiles) then return nil, "No profiles to export." end
+        if not next(out.profiles) then return nil, L["No profiles to export."] end
         envelope.payload = out
     elseif scope == "triggers" then
         local out = {}
@@ -7840,7 +7876,7 @@ function UI:SerializeScoped(scope, opts)
         else
             for id, t in pairs(src) do out[id] = t end
         end
-        if not next(out) then return nil, "No triggers to export." end
+        if not next(out) then return nil, L["No triggers to export."] end
         envelope.payload = { triggers = out }
 
         -- Bundle the custom sound definitions these triggers reference, so the
@@ -7873,11 +7909,11 @@ function UI:SerializeScoped(scope, opts)
             if out[k] == nil then out[k] = profile[k] end
         end
         if not (out.oxedRingNodes and next(out.oxedRingNodes)) then
-            return nil, "No ring nodes to export."
+            return nil, L["No ring nodes to export."]
         end
         envelope.payload = out
     elseif scope == "toymixes" then
-        if not (profile.toyMixes and next(profile.toyMixes)) then return nil, "No toy mixes to export." end
+        if not (profile.toyMixes and next(profile.toyMixes)) then return nil, L["No toy mixes to export."] end
         -- opts.mixNames narrows the export to specific mixes; without it the
         -- whole collection goes, which is what the bulk export button wants.
         if opts.mixNames and #opts.mixNames > 0 then
@@ -7885,7 +7921,7 @@ function UI:SerializeScoped(scope, opts)
             for _, mixName in ipairs(opts.mixNames) do
                 if profile.toyMixes[mixName] then picked[mixName] = profile.toyMixes[mixName] end
             end
-            if not next(picked) then return nil, "Toy mix not found." end
+            if not next(picked) then return nil, L["Toy mix not found."] end
             envelope.payload = { toyMixes = picked }
         else
             envelope.payload = { toyMixes = profile.toyMixes }
@@ -7895,14 +7931,14 @@ function UI:SerializeScoped(scope, opts)
         local hubs = ah.hubs or {}
         if opts.hubIndex then
             local one = hubs[opts.hubIndex]
-            if not one then return nil, "Hub not found." end
+            if not one then return nil, L["Hub not found."] end
             envelope.payload = { hubs = { one } }
         else
-            if #hubs == 0 then return nil, "No hubs to export." end
+            if #hubs == 0 then return nil, L["No hubs to export."] end
             envelope.payload = { hubs = hubs }
         end
     else
-        return nil, "Unknown export scope: " .. tostring(scope)
+        return nil, L["Unknown export scope: "] .. tostring(scope)
     end
 
     return AceSerializer:Serialize(envelope)
@@ -7914,7 +7950,7 @@ function UI:GetProfileOriginText(db)
     if type(db) ~= "table" or type(db.importSources) ~= "table" or #db.importSources == 0 then
         return nil
     end
-    local lines = { "|cffffd100Imported content:|r" }
+    local lines = { L["|cffffd100Imported content:|r"] }
     for _, src in ipairs(db.importSources) do
         local a = src.author or {}
         local who = a.character and (a.character .. "-" .. tostring(a.realm or "?")) or "unknown"
@@ -7941,11 +7977,11 @@ end
 
 local function CompressExportString(serialized)
     if not serialized or serialized == "" then
-        return nil, "No export data generated."
+        return nil, L["No export data generated."]
     end
 
     if not C_EncodingUtil or not C_EncodingUtil.CompressString or not C_EncodingUtil.EncodeBase64 then
-        return nil, "Compression API unavailable."
+        return nil, L["Compression API unavailable."]
     end
 
     local compressionMethod = Enum and Enum.CompressionMethod and Enum.CompressionMethod.Deflate or 0
@@ -7954,12 +7990,12 @@ local function CompressExportString(serialized)
 
     local okCompress, compressed = pcall(C_EncodingUtil.CompressString, serialized, compressionMethod, compressionLevel)
     if not okCompress or not compressed or compressed == "" then
-        return nil, "Compression failed."
+        return nil, L["Compression failed."]
     end
 
     local okEncode, encoded = pcall(C_EncodingUtil.EncodeBase64, compressed, base64Variant)
     if not okEncode or not encoded or encoded == "" then
-        return nil, "Base64 encoding failed."
+        return nil, L["Base64 encoding failed."]
     end
 
     return EXPORT_COMPRESSED_PREFIX .. encoded
@@ -7967,7 +8003,7 @@ end
 
 local function DecompressExportString(encodedText)
     if not encodedText or encodedText == "" then
-        return nil, "Empty import string."
+        return nil, L["Empty import string."]
     end
 
     if encodedText:sub(1, #EXPORT_COMPRESSED_PREFIX) ~= EXPORT_COMPRESSED_PREFIX then
@@ -7975,7 +8011,7 @@ local function DecompressExportString(encodedText)
     end
 
     if not C_EncodingUtil or not C_EncodingUtil.DecodeBase64 or not C_EncodingUtil.DecompressString then
-        return false, "This export uses compressed format, but the WoW client cannot decode it."
+        return false, L["This export uses compressed format, but the WoW client cannot decode it."]
     end
 
     local payload = encodedText:sub(#EXPORT_COMPRESSED_PREFIX + 1)
@@ -7984,12 +8020,12 @@ local function DecompressExportString(encodedText)
 
     local okDecode, decoded = pcall(C_EncodingUtil.DecodeBase64, payload, base64Variant)
     if not okDecode or not decoded or decoded == "" then
-        return false, "Failed to decode compressed export string."
+        return false, L["Failed to decode compressed export string."]
     end
 
     local okDecompress, serialized = pcall(C_EncodingUtil.DecompressString, decoded, compressionMethod)
     if not okDecompress or not serialized or serialized == "" then
-        return false, "Failed to decompress export string."
+        return false, L["Failed to decompress export string."]
     end
 
     return serialized
@@ -8000,12 +8036,12 @@ end
 -- Returns data, or nil plus an error message.
 function UI:DecodeExportString(text)
     if type(text) ~= "string" or text == "" then
-        return nil, "Empty import string."
+        return nil, L["Empty import string."]
     end
 
     local decompressed, err = DecompressExportString(text)
     if decompressed == false then
-        return nil, err or "Compressed import failed."
+        return nil, err or L["Compressed import failed."]
     elseif decompressed then
         text = decompressed
     end
@@ -8015,7 +8051,7 @@ function UI:DecodeExportString(text)
         and (deserialized.version or deserialized.formatVersion == 3
             or deserialized.profiles or deserialized.profileName)
     if not looksValid then
-        return nil, "Invalid import string."
+        return nil, L["Invalid import string."]
     end
 
     return deserialized
@@ -8043,7 +8079,7 @@ end
 
 local function BuildCompressedOrRawExport(serialized)
     if not serialized then
-        return nil, "No export data generated."
+        return nil, L["No export data generated."]
     end
 
     local compressed, compressErr = CompressExportString(serialized)
@@ -8064,12 +8100,12 @@ function UI:BuildExportStringUnbounded(profileNames, forceMultiProfile)
     end
 
     if not serialized then
-        return nil, serializeErr or "Failed to serialize export data."
+        return nil, serializeErr or L["Failed to serialize export data."]
     end
 
     local exportString = BuildCompressedOrRawExport(serialized)
     if not exportString then
-        return nil, "Failed to build export string."
+        return nil, L["Failed to build export string."]
     end
 
     return exportString
@@ -8082,7 +8118,7 @@ function UI:BuildExportString(profileNames, forceMultiProfile)
     end
 
     if #exportString > EXPORT_MAX_CHARS then
-        return nil, string.format("Export is too large: %d / %d characters.", #exportString, EXPORT_MAX_CHARS)
+        return nil, string.format(L["Export is too large: %d / %d characters."], #exportString, EXPORT_MAX_CHARS)
     end
 
     return exportString
@@ -8093,9 +8129,9 @@ function UI:BuildScopedExportString(scope, opts)
     local serialized, err = self:SerializeScoped(scope, opts)
     if not serialized then return nil, err end
     local exportString = BuildCompressedOrRawExport(serialized)
-    if not exportString then return nil, "Failed to build export string." end
+    if not exportString then return nil, L["Failed to build export string."] end
     if #exportString > EXPORT_MAX_CHARS then
-        return nil, string.format("Export is too large: %d / %d characters.", #exportString, EXPORT_MAX_CHARS)
+        return nil, string.format(L["Export is too large: %d / %d characters."], #exportString, EXPORT_MAX_CHARS)
     end
     return exportString
 end
@@ -8118,7 +8154,7 @@ local function ParseChunkedImport(text)
     part = tonumber(part)
     total = tonumber(total)
     if not part or not total or part < 1 or total < 1 or part > total or not payload or payload == "" then
-        return false, "Invalid OxedHub chunk header."
+        return false, L["Invalid OxedHub chunk header."]
     end
 
     return {
@@ -8164,14 +8200,14 @@ function UI:HandleChunkedImport(frame, chunkInfo)
     end
 
     if state.received < state.total then
-        self:UpdateChunkStatus(frame, string.format("Imported part %d/%d. Paste the next part.", chunkInfo.part, chunkInfo.total))
+        self:UpdateChunkStatus(frame, string.format(L["Imported part %d/%d. Paste the next part."], chunkInfo.part, chunkInfo.total))
         return nil, "pending"
     end
 
     local combined = {}
     for index = 1, state.total do
         if not state.parts[index] then
-            self:UpdateChunkStatus(frame, string.format("Missing part %d of %d.", index, state.total), "error")
+            self:UpdateChunkStatus(frame, string.format(L["Missing part %d of %d."], index, state.total), "error")
             return nil, "pending"
         end
         combined[index] = state.parts[index]
@@ -8210,22 +8246,22 @@ function UI:CollectSoundReferences(data)
         for _, key in ipairs({ "sound", "successSound", "failSound",
             "groundSound", "flyingSound", "aquaticSound",
             "enterSound", "exitSound" }) do
-            Note(a[key], "Trigger: " .. label)
+            Note(a[key], L["Trigger: "] .. label)
         end
     end
 
     for id, mapping in pairs(data.emotionMappings or {}) do
-        Note(mapping.sound, "Reaction: " .. tostring(id))
+        Note(mapping.sound, L["Reaction: "] .. tostring(id))
     end
 
     for name, mix in pairs(data.toyMixes or {}) do
         if type(mix) == "table" then
             for _, act in ipairs(mix.actions or {}) do
                 if type(act) == "table" then
-                    Note(act.sound or (act.type == "sound" and act.id), "Toy mix: " .. tostring(name))
+                    Note(act.sound or (act.type == "sound" and act.id), L["Toy mix: "] .. tostring(name))
                 end
             end
-            Note(mix.sound, "Toy mix: " .. tostring(name))
+            Note(mix.sound, L["Toy mix: "] .. tostring(name))
         end
     end
 
@@ -8233,14 +8269,14 @@ function UI:CollectSoundReferences(data)
     for hubIndex, hub in ipairs(hubs) do
         for _, slot in pairs(hub.slots or {}) do
             if type(slot) == "table" and slot.type == "sound" then
-                Note(slot.id, "Action Hub " .. hubIndex)
+                Note(slot.id, L["Action Hub "] .. hubIndex)
             end
         end
     end
 
     for _, node in pairs(data.oxedRingNodes or {}) do
         if type(node) == "table" then
-            Note(node.sound, "OxedRing node")
+            Note(node.sound, L["OxedRing node"])
         end
     end
 
@@ -8405,7 +8441,7 @@ function UI:ReportMissingSoundsAfterImport(data)
         local problems = UI:FindUnplayableSounds(data)
         if #problems == 0 then return end
 
-        print(("|cffffcc00Oxed Hub:|r %d imported sound(s) are missing on your PC.")
+        print((L["|cffffcc00Oxed Hub:|r %d imported sound(s) are missing on your PC."])
             :format(#problems))
         UI:ShowMissingSoundsDialog(problems)
     end)
@@ -8428,7 +8464,7 @@ function UI:ShowMissingSoundsDialog(problems)
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
         tinsert(UISpecialFrames, "OxedHubMissingSoundsFrame")
-        if f.TitleText then f.TitleText:SetText("Missing Sounds") end
+        if f.TitleText then f.TitleText:SetText(L["Missing Sounds"]) end
         if f.CloseButton then f.CloseButton:SetScript("OnClick", function() f:Hide() end) end
 
         f.intro = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -8450,13 +8486,13 @@ function UI:ShowMissingSoundsDialog(problems)
         ApplyRedButtonStyle(f.replaceAllBtn)
         f.replaceAllBtn:SetSize(190, 26)
         f.replaceAllBtn:SetPoint("BOTTOMLEFT", 16, 16)
-        f.replaceAllBtn:SetText("Replace All With Suggested")
+        f.replaceAllBtn:SetText(L["Replace All With Suggested"])
 
         f.closeBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
         ApplyRedButtonStyle(f.closeBtn)
         f.closeBtn:SetSize(110, 26)
         f.closeBtn:SetPoint("BOTTOMRIGHT", -16, 16)
-        f.closeBtn:SetText(CLOSE or "Close")
+        f.closeBtn:SetText(CLOSE or L["Close"])
         f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 
         UI.missingSoundsFrame = f
@@ -8472,8 +8508,8 @@ function UI:ShowMissingSoundsDialog(problems)
     local Render
     Render = function()
         f.intro:SetText(("|cffff8800%d sound(s) used by this profile can't be played on your PC.|r\n"
-            .. "The audio files live on the sender's computer and can't be transferred. "
-            .. "Pick a replacement you already have, or leave them silent until you add the files.")
+            .. L["The audio files live on the sender's computer and can't be transferred. "]
+            .. L["Pick a replacement you already have, or leave them silent until you add the files."])
             :format(#problems))
 
         for _, row in ipairs(f.rows) do row:Hide() end
@@ -8505,7 +8541,7 @@ function UI:ShowMissingSoundsDialog(problems)
                 ApplyRedButtonStyle(row.clearBtn)
                 row.clearBtn:SetSize(100, 22)
                 row.clearBtn:SetPoint("LEFT", row.replaceBtn, "RIGHT", 6, 0)
-                row.clearBtn:SetText("Remove")
+                row.clearBtn:SetText(L["Remove"])
                 f.rows[i] = row
             end
 
@@ -8518,20 +8554,20 @@ function UI:ShowMissingSoundsDialog(problems)
             -- say so rather than showing a meaningless string as a "name".
             local label = tostring(problem.name)
             if label == tostring(problem.id) then
-                label = "|cffff5555Unknown sound|r |cff888888(" .. tostring(problem.id) .. ")|r"
+                label = L["|cffff5555Unknown sound|r |cff888888("] .. tostring(problem.id) .. ")|r"
             else
                 label = "|cffffd100" .. label .. "|r |cff888888(" .. tostring(problem.id) .. ")|r"
             end
             row.name:SetText(label)
 
             local used = table.concat(problem.usedBy or {}, ", ")
-            if used == "" then used = "not referenced" end
-            row.used:SetText("Used by: " .. used)
+            if used == "" then used = L["not referenced"] end
+            row.used:SetText(L["Used by: "] .. used)
 
             if problem.suggestion then
-                row.suggested:SetText("|cff888888Will use:|r |cff00ff00"
+                row.suggested:SetText(L["|cff888888Will use:|r |cff00ff00"]
                     .. FullSoundName(problem.suggestion) .. "|r")
-                row.replaceBtn:SetText("Replace")
+                row.replaceBtn:SetText(L["Replace"])
                 row.replaceBtn:Enable()
                 row.replaceBtn:SetScript("OnClick", function()
                     UI:ReplaceSoundEverywhere(problem.id, problem.suggestion)
@@ -8539,8 +8575,8 @@ function UI:ShowMissingSoundsDialog(problems)
                     if #problems == 0 then f:Hide() else Render() end
                 end)
             else
-                row.suggested:SetText("|cff888888No similar sound found — use Remove.|r")
-                row.replaceBtn:SetText("No match")
+                row.suggested:SetText(L["|cff888888No similar sound found — use Remove.|r"])
+                row.replaceBtn:SetText(L["No match"])
                 row.replaceBtn:Disable()
             end
 
@@ -8573,7 +8609,7 @@ function UI:ShowMissingSoundsDialog(problems)
         end
 
         if #swaps > 0 then
-            print(("|cff00ff00Oxed Hub:|r Replaced %d missing sound(s):"):format(#swaps))
+            print((L["|cff00ff00Oxed Hub:|r Replaced %d missing sound(s):"]):format(#swaps))
             for _, line in ipairs(swaps) do print("   " .. line) end
         end
 
@@ -8762,7 +8798,7 @@ function UI:ApplyScopedImport(env)
     end
     local db = OxedHubDB.profiles and OxedHubDB.profiles[targetName]
     if not db then
-        print("|cffff0000Oxed Hub:|r No profile to import into.")
+        print(L["|cffff0000Oxed Hub:|r No profile to import into."])
         return
     end
 
@@ -8782,7 +8818,7 @@ function UI:ApplyScopedImport(env)
             db.triggers[id] = trig      -- replace-by-id
             n = n + 1
         end
-        summary = n .. " trigger(s)"
+        summary = n .. L[" trigger(s)"]
         if OxedHub.Triggers then
             if OxedHub.Triggers.InvalidateEnabledEventCache then OxedHub.Triggers:InvalidateEnabledEventCache() end
             if OxedHub.Triggers.RefreshTriggersList then OxedHub.Triggers:RefreshTriggersList() end
@@ -8804,7 +8840,7 @@ function UI:ApplyScopedImport(env)
         -- invisible.  Pin the imported ring to this profile rather than
         -- overwriting the ring every other profile shares.
         db.oxedRingUnique = true
-        summary = "OxedRing config"
+        summary = L["OxedRing config"]
         if OxedHub.OxedRing and OxedHub.OxedRing.UpdateSecureAttributes then
             OxedHub.OxedRing:UpdateSecureAttributes()
         end
@@ -8827,7 +8863,7 @@ function UI:ApplyScopedImport(env)
             db.toyMixes[name] = mix      -- replace-by-name
             n = n + 1
         end
-        summary = n .. " toy mix(es)"
+        summary = n .. L[" toy mix(es)"]
         if OxedHub.MacroRegistry and OxedHub.MacroRegistry.SaveMacro then
             for name, mix in pairs(payload.toyMixes or {}) do
                 pcall(function() OxedHub.MacroRegistry:SaveMacro(name, mix) end)
@@ -8843,22 +8879,22 @@ function UI:ApplyScopedImport(env)
             table.insert(db.actionHub.hubs, CopyTable(hub))   -- hubs always append
             n = n + 1
         end
-        summary = n .. " hub(s)"
+        summary = n .. L[" hub(s)"]
         if OxedHub.ActionHub then
             if OxedHub.ActionHub.RefreshAllWidgets then OxedHub.ActionHub:RefreshAllWidgets() end
             if OxedHub.ActionHub.RefreshTab then OxedHub.ActionHub:RefreshTab() end
         end
     else
-        print("|cffff0000Oxed Hub:|r Unknown import scope: " .. tostring(scope))
+        print(L["|cffff0000Oxed Hub:|r Unknown import scope: "] .. tostring(scope))
         return
     end
 
     self:StampImportSource(db, author, scope)
     local who = self:FormatAuthorName(author)
-    print(string.format("|cff00ff00Oxed Hub:|r Imported %s from |cffffff00%s|r into profile |cffffff00%s|r.",
+    print(string.format(L["|cff00ff00Oxed Hub:|r Imported %s from |cffffff00%s|r into profile |cffffff00%s|r."],
         summary or "data", who, targetName))
     if UI.importStatus then
-        UI.importStatus:SetText(string.format("|cff00ff00Imported %s|r\nfrom %s into '%s'. Type /reload to apply.",
+        UI.importStatus:SetText(string.format(L["|cff00ff00Imported %s|r\nfrom %s into '%s'. Type /reload to apply."],
             summary or "data", who, targetName))
     end
     if UI.RefreshProfileDetails then UI:RefreshProfileDetails() end
@@ -8952,9 +8988,9 @@ function UI:ApplyImport(data)
         end
     end
 
-    print("|cff00ff00Oxed Hub:|r Import complete. Processed |cffffff00" .. importedCount .. "|r profiles.")
+    print(L["|cff00ff00Oxed Hub:|r Import complete. Processed |cffffff00"] .. importedCount .. L["|r profiles."])
     if skippedCount > 0 then
-        print("|cffffcc00Oxed Hub:|r Skipped |cffffff00" .. skippedCount .. "|r profile(s) because the maximum of |cffffff00" .. maxProfiles .. "|r profiles was reached.")
+        print(L["|cffffcc00Oxed Hub:|r Skipped |cffffff00"] .. skippedCount .. L["|r profile(s) because the maximum of |cffffff00"] .. maxProfiles .. L["|r profiles was reached."])
     end
     
     -- Force switch back to the last imported profile to show changes
@@ -8981,11 +9017,11 @@ function UI:ApplyImport(data)
     end
 
     if UI.importStatus then
-        local statusText = "|cff00ff00Import completed successfully!|r\nImported |cffffff00" .. importedCount .. "|r profiles."
+        local statusText = L["|cff00ff00Import completed successfully!|r\nImported |cffffff00"] .. importedCount .. L["|r profiles."]
         if skippedCount > 0 then
-            statusText = statusText .. "\nSkipped |cffffff00" .. skippedCount .. "|r because the maximum of |cffffff00" .. maxProfiles .. "|r profiles was reached."
+            statusText = statusText .. L["\nSkipped |cffffff00"] .. skippedCount .. L["|r because the maximum of |cffffff00"] .. maxProfiles .. L["|r profiles was reached."]
         end
-        statusText = statusText .. "\nPlease type /reload to apply all changes."
+        statusText = statusText .. L["\nPlease type /reload to apply all changes."]
         UI.importStatus:SetText(statusText)
     end
 end
@@ -9138,14 +9174,14 @@ function UI:CreateImportExportPopup(titleText, isImport)
     if isImport then
         local hint = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         hint:SetPoint("TOPLEFT", 12, -28)
-        hint:SetText("Paste export string here — you'll see what it contains before it's applied")
+        hint:SetText(L["Paste export string here — you'll see what it contains before it's applied"])
         hint:SetTextColor(1, 0.82, 0, 1)
 
         -- Target profile for partial imports (ring / triggers / mixes / hubs).
         -- Full-profile imports create their own profiles and ignore this.
         local targetLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         targetLabel:SetPoint("BOTTOMLEFT", 14, 58)
-        targetLabel:SetText("Import into:")
+        targetLabel:SetText(L["Import into:"])
         targetLabel:SetTextColor(1, 0.82, 0, 1)
 
         local targetDropdown = CreateFrame("DropdownButton", nil, f, "WowStyle1DropdownTemplate")
@@ -9173,7 +9209,7 @@ function UI:CreateImportExportPopup(titleText, isImport)
             for _, name in ipairs(OxedHub:GetProfileList()) do
                 local isActive = (name == OxedHubDB.activeProfile)
                 rootDescription:CreateRadio(
-                    OxedHub:GetProfileColoredName(name) .. (isActive and " |cff888888(active)|r" or ""),
+                    OxedHub:GetProfileColoredName(name) .. (isActive and L[" |cff888888(active)|r"] or ""),
                     function() return UI.importTargetProfile == name end,
                     function()
                         UI.importTargetProfile = name
@@ -9186,9 +9222,9 @@ function UI:CreateImportExportPopup(titleText, isImport)
 
         targetDropdown:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Where partial data goes")
-            GameTooltip:AddLine("Rings, triggers, toy mixes and hubs are imported into this profile.", 1, 1, 1, true)
-            GameTooltip:AddLine("Full-profile imports always create their own profile and ignore this.", 0.7, 0.7, 0.7, true)
+            GameTooltip:SetText(L["Where partial data goes"])
+            GameTooltip:AddLine(L["Rings, triggers, toy mixes and hubs are imported into this profile."], 1, 1, 1, true)
+            GameTooltip:AddLine(L["Full-profile imports always create their own profile and ignore this."], 0.7, 0.7, 0.7, true)
             GameTooltip:Show()
         end)
         targetDropdown:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -9199,7 +9235,7 @@ function UI:CreateImportExportPopup(titleText, isImport)
                 local text = (edit:GetText() or ""):gsub("%s", "")
                 local decompressedText, decompressErr = DecompressExportString(text)
                 if decompressedText == false then
-                    UI:UpdateChunkStatus(f, decompressErr or "Compressed import failed.", "error")
+                    UI:UpdateChunkStatus(f, decompressErr or L["Compressed import failed."], "error")
                     return
                 elseif decompressedText then
                     text = decompressedText
@@ -9209,7 +9245,7 @@ function UI:CreateImportExportPopup(titleText, isImport)
 
                 local chunkInfo, chunkErr = ParseChunkedImport(text)
                 if chunkInfo == false then
-                    UI:UpdateChunkStatus(f, chunkErr or "Invalid import chunk.", "error")
+                    UI:UpdateChunkStatus(f, chunkErr or L["Invalid import chunk."], "error")
                     return
                 elseif chunkInfo then
                     local combinedText, status = UI:HandleChunkedImport(f, chunkInfo)
@@ -9221,7 +9257,7 @@ function UI:CreateImportExportPopup(titleText, isImport)
 
                     local decompressedCombined, combinedErr = DecompressExportString(text)
                     if decompressedCombined == false then
-                        UI:UpdateChunkStatus(f, combinedErr or "Compressed import failed.", "error")
+                        UI:UpdateChunkStatus(f, combinedErr or L["Compressed import failed."], "error")
                         return
                     elseif decompressedCombined then
                         text = decompressedCombined
@@ -9236,8 +9272,8 @@ function UI:CreateImportExportPopup(titleText, isImport)
                 local looksValid = ok and type(deserialized) == "table"
                     and (deserialized.version or deserialized.formatVersion == 3 or deserialized.profiles or deserialized.profileName)
                 if not looksValid then
-                    print("|cffff0000Oxed Hub:|r Invalid import string. Please ensure you copied the entire string.")
-                    UI:UpdateChunkStatus(f, "Import failed. Check that all parts were pasted.", "error")
+                    print(L["|cffff0000Oxed Hub:|r Invalid import string. Please ensure you copied the entire string."])
+                    UI:UpdateChunkStatus(f, L["Import failed. Check that all parts were pasted."], "error")
                     return
                 end
                 data = deserialized
@@ -9252,7 +9288,7 @@ function UI:CreateImportExportPopup(titleText, isImport)
         ApplyRedButtonStyle(importBtn)
         importBtn:SetPoint("BOTTOMRIGHT", -12, 14)
         importBtn:SetSize(120, 26)
-        importBtn:SetText("Import")
+        importBtn:SetText(L["Import"])
         importBtn:SetScript("OnClick", DoImport)
 
         -- Auto-import on paste: detect text change, validate after short delay
@@ -9308,7 +9344,7 @@ function UI:CreateImportExportPopup(titleText, isImport)
         ApplyRedButtonStyle(prevBtn)
         prevBtn:SetPoint("BOTTOMLEFT", 12, 14)
         prevBtn:SetSize(80, 26)
-        prevBtn:SetText("Prev")
+        prevBtn:SetText(L["Prev"])
         prevBtn:Hide()
         f.prevChunkButton = prevBtn
 
@@ -9316,7 +9352,7 @@ function UI:CreateImportExportPopup(titleText, isImport)
         ApplyRedButtonStyle(nextBtn)
         nextBtn:SetPoint("LEFT", prevBtn, "RIGHT", 8, 0)
         nextBtn:SetSize(80, 26)
-        nextBtn:SetText("Next")
+        nextBtn:SetText(L["Next"])
         nextBtn:Hide()
         f.nextChunkButton = nextBtn
 
@@ -9382,8 +9418,8 @@ function UI:UpdateExportChunkDisplay()
         frame.nextChunkButton:Show()
         frame.chunkLabel:Show()
         frame.chunkHint:Show()
-        frame.chunkLabel:SetText(string.format("Part %d/%d", index, total))
-        frame.chunkHint:SetText("Copy and share each part. On import, paste the parts one by one in any order.")
+        frame.chunkLabel:SetText(string.format(L["Part %d/%d"], index, total))
+        frame.chunkHint:SetText(L["Copy and share each part. On import, paste the parts one by one in any order."])
         frame.prevChunkButton:SetEnabled(index > 1)
         frame.nextChunkButton:SetEnabled(index < total)
     else
@@ -9401,11 +9437,11 @@ function UI:PopulateExportFrame(exportString, titleText)
         UI.importFrame:Hide()
     end
     if not UI.exportFrame then
-        UI.exportFrame = UI:CreateImportExportPopup(titleText or "Export Profile", false)
+        UI.exportFrame = UI:CreateImportExportPopup(titleText or L["Export Profile"], false)
     end
 
     if UI.exportFrame.title then
-        UI.exportFrame.title:SetText(titleText or "Export Profile")
+        UI.exportFrame.title:SetText(titleText or L["Export Profile"])
     end
 
     UI.exportFrame:Show()
@@ -9416,9 +9452,9 @@ function UI:PopulateExportFrame(exportString, titleText)
     UI:UpdateExportChunkDisplay()
 
     if #chunks > 1 then
-        print("|cffffcc00Oxed Hub:|r Export was split into " .. #chunks .. " parts. Share all parts and paste them one by one when importing.")
+        print(L["|cffffcc00Oxed Hub:|r Export was split into "] .. #chunks .. L[" parts. Share all parts and paste them one by one when importing."])
     else
-        print("|cff00ff00Oxed Hub:|r Export is ready for sharing.")
+        print(L["|cff00ff00Oxed Hub:|r Export is ready for sharing."])
     end
 end
 
@@ -9451,7 +9487,7 @@ function UI:ShowScopedExportFrame()
 
         local title = f:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
         title:SetPoint("TOPLEFT", 18, -14)
-        title:SetText("Detailed Export")
+        title:SetText(L["Detailed Export"])
         title:SetTextColor(1, 0.82, 0, 1)
 
         local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -9466,7 +9502,7 @@ function UI:ShowScopedExportFrame()
 
         local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         subtitle:SetPoint("TOPLEFT", 18, -46)
-        subtitle:SetText("Choose What to Export:")
+        subtitle:SetText(L["Choose What to Export:"])
         subtitle:SetTextColor(1, 0.82, 0, 1)
 
         -- Scrollable list of export scopes
@@ -9541,7 +9577,7 @@ function UI:ShowScopedExportFrame()
         -- Note field
         local noteLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         noteLabel:SetPoint("TOPLEFT", targetArea, "BOTTOMLEFT", 0, -4)
-        noteLabel:SetText("Export Note (optional):")
+        noteLabel:SetText(L["Export Note (optional):"])
         noteLabel:SetTextColor(1, 0.82, 0, 1)
 
         local noteBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
@@ -9557,7 +9593,7 @@ function UI:ShowScopedExportFrame()
         if ApplyRedButtonStyle then ApplyRedButtonStyle(genBtn) end
         genBtn:SetSize(200, 26)
         genBtn:SetPoint("BOTTOM", 0, 14)
-        genBtn:SetText("Generate Export String")
+        genBtn:SetText(L["Generate Export String"])
         genBtn:SetNormalFontObject("GameFontNormalSmall")
         genBtn:SetScript("OnClick", function() UI:GenerateScopedExport(f) end)
 
@@ -9600,7 +9636,7 @@ function UI:RefreshScopedExportTarget(f)
     local needs = f.selectedScope and f.selectedScope.needs
     if needs == "profile" then
         local lbl = track(area:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"))
-        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText("Select Profile:")
+        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText(L["Select Profile:"])
         lbl:SetTextColor(1, 0.82, 0, 1)
         local names = {}
         for n in pairs(OxedHubDB.profiles or {}) do table.insert(names, n) end
@@ -9617,14 +9653,14 @@ function UI:RefreshScopedExportTarget(f)
         upd()
     elseif needs == "hub" then
         local lbl = track(area:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"))
-        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText("Select Action Hub:")
+        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText(L["Select Action Hub:"])
         lbl:SetTextColor(1, 0.82, 0, 1)
         local profile = OxedHubDB.profiles[OxedHubDB.activeProfile]
         local hubs = (profile.actionHub and profile.actionHub.hubs) or {}
         f.targetValue = f.targetValue or (#hubs > 0 and 1 or nil)
         local hdd = track(CreateFrame("DropdownButton", nil, area, "WowStyle1DropdownTemplate"))
         hdd:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -4); hdd:SetWidth(280)
-        local function hubName(i) local h = hubs[i]; return (h and h.name) or ("Hub " .. i) end
+        local function hubName(i) local h = hubs[i]; return (h and h.name) or (L["Hub "] .. i) end
         local function upd() hdd:OverrideText(f.targetValue and hubName(f.targetValue) or "—") end
         hdd:SetupMenu(function(_, root)
             for i = 1, #hubs do
@@ -9634,7 +9670,7 @@ function UI:RefreshScopedExportTarget(f)
         upd()
     elseif needs == "triggers" then
         local lbl = track(area:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"))
-        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText("Tick triggers to include in export:")
+        lbl:SetPoint("TOPLEFT", 0, 0); lbl:SetText(L["Tick triggers to include in export:"])
         lbl:SetTextColor(1, 0.82, 0, 1)
         local scroll = track(CreateFrame("ScrollFrame", nil, area, "UIPanelScrollFrameTemplate"))
         scroll:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -4)
@@ -9684,9 +9720,9 @@ function UI:GenerateScopedExport(f)
     if str then
         f:Hide()
         -- reuse the standard export-string window (handles copy + chunking)
-        UI:PopulateExportFrame(str, "Export: " .. sc.label)
+        UI:PopulateExportFrame(str, L["Export: "] .. sc.label)
     else
-        print("|cffff0000Oxed Hub:|r " .. (err or "Export failed."))
+        print("|cffff0000Oxed Hub:|r " .. (err or L["Export failed."]))
     end
 end
 
@@ -9755,24 +9791,24 @@ function UI:ShowExportFrame()
     end
 
     if not UI.exportFrame then
-        UI.exportFrame = UI:CreateImportExportPopup("Export Active Profile", false)
+        UI.exportFrame = UI:CreateImportExportPopup(L["Export Active Profile"], false)
     elseif UI.exportFrame.title then
-        UI.exportFrame.title:SetText("Export Active Profile")
+        UI.exportFrame.title:SetText(L["Export Active Profile"])
     end
 
     UI.exportFrame:Show()
     UI.exportFrame:Raise()
-    UI.exportFrame.editBox:SetText("Generating export string... please wait.")
+    UI.exportFrame.editBox:SetText(L["Generating export string... please wait."])
     UI.exportFrame.exportChunks = nil
     UI.exportFrame.currentChunkIndex = 1
 
     C_Timer.After(0.1, function()
         local exportString, err = UI:BuildExportString(nil, false)
         if exportString then
-            UI:PopulateExportFrame(exportString, "Export Active Profile")
+            UI:PopulateExportFrame(exportString, L["Export Active Profile"])
             UI:WarnAboutUntransferableSounds()
         else
-            UI.exportFrame.editBox:SetText(err or "Error generating export string. Data may be too large or corrupted.")
+            UI.exportFrame.editBox:SetText(err or L["Error generating export string. Data may be too large or corrupted."])
         end
     end)
 end
@@ -9805,9 +9841,9 @@ function UI:WarnAboutUntransferableSounds()
     for i = 1, math.min(#names, 5) do table.insert(shown, names[i]) end
     local extra = (#names > 5) and (" and " .. (#names - 5) .. " more") or ""
 
-    print(("|cffffcc00Oxed Hub:|r %d sound(s) in this export use your own files "
-        .. "(%s%s). Whoever imports it won't have those audio files — send them the "
-        .. "files too, or swap to built-in sounds."):format(#names, table.concat(shown, ", "), extra))
+    print((L["|cffffcc00Oxed Hub:|r %d sound(s) in this export use your own files "]
+        .. L["(%s%s). Whoever imports it won't have those audio files — send them the "]
+        .. L["files too, or swap to built-in sounds."]):format(#names, table.concat(shown, ", "), extra))
 end
 
 function UI:CreateExportSelectionFrame()
@@ -9837,7 +9873,7 @@ function UI:CreateExportSelectionFrame()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", 0, -12)
-    title:SetText("Select Profiles to Export")
+    title:SetText(L["Select Profiles to Export"])
 
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -4, -4)
@@ -9847,7 +9883,7 @@ function UI:CreateExportSelectionFrame()
     hint:SetPoint("TOPLEFT", 16, -42)
     hint:SetWidth(388)
     hint:SetJustifyH("LEFT")
-    hint:SetText("Select the profiles you want to include. The final export must stay within 500000 characters.")
+    hint:SetText(L["Select the profiles you want to include. The final export must stay within 500000 characters."])
     hint:SetTextColor(1, 0.82, 0, 1)
 
     local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
@@ -9876,7 +9912,7 @@ function UI:CreateExportSelectionFrame()
     ApplyRedButtonStyle(exportBtn)
     exportBtn:SetPoint("BOTTOMRIGHT", -16, 16)
     exportBtn:SetSize(130, 26)
-    exportBtn:SetText("Export Selected")
+    exportBtn:SetText(L["Export Selected"])
     exportBtn:SetEnabled(false)
     f.exportSelectedButton = exportBtn
 
@@ -9884,7 +9920,7 @@ function UI:CreateExportSelectionFrame()
     ApplyRedButtonStyle(cancelBtn)
     cancelBtn:SetPoint("RIGHT", exportBtn, "LEFT", -8, 0)
     cancelBtn:SetSize(90, 26)
-    cancelBtn:SetText("Cancel")
+    cancelBtn:SetText(L["Cancel"])
     cancelBtn:SetScript("OnClick", function() f:Hide() end)
 
     f.profileCheckboxes = {}
@@ -9917,39 +9953,39 @@ function UI:RefreshExportSelectionEstimate()
     local selectedProfiles = self:GetSelectedProfileNames()
     if #selectedProfiles == 0 then
         frame.pendingExportString = nil
-        frame.estimateLabel:SetText("Estimated export size: 0 / " .. EXPORT_MAX_CHARS)
-        frame.statusLabel:SetText("|cffffcc00Select at least one profile to export.|r")
+        frame.estimateLabel:SetText(L["Estimated export size: 0 / "] .. EXPORT_MAX_CHARS)
+        frame.statusLabel:SetText(L["|cffffcc00Select at least one profile to export.|r"])
         frame.exportSelectedButton:SetEnabled(false)
         return
     end
 
-    frame.estimateLabel:SetText("Calculating export size...")
+    frame.estimateLabel:SetText(L["Calculating export size..."])
     frame.statusLabel:SetText("")
     local size, estimateErr = self:GetExportEstimate(selectedProfiles, true)
     if not size then
         frame.pendingExportString = nil
-        frame.estimateLabel:SetText("Estimated export size: unavailable")
-        frame.statusLabel:SetText("|cffff0000" .. (estimateErr or "Failed to calculate export size.") .. "|r")
+        frame.estimateLabel:SetText(L["Estimated export size: unavailable"])
+        frame.statusLabel:SetText("|cffff0000" .. (estimateErr or L["Failed to calculate export size."]) .. "|r")
         frame.exportSelectedButton:SetEnabled(false)
         return
     end
 
-    frame.estimateLabel:SetText(string.format("Estimated export size: %d / %d", size, EXPORT_MAX_CHARS))
+    frame.estimateLabel:SetText(string.format(L["Estimated export size: %d / %d"], size, EXPORT_MAX_CHARS))
     if size <= EXPORT_MAX_CHARS then
         local exportString, err = self:BuildExportString(selectedProfiles, true)
         if exportString then
             frame.pendingExportString = exportString
-            frame.statusLabel:SetText(string.format("|cff00ff00Ready to export %d profile(s).|r", #selectedProfiles))
+            frame.statusLabel:SetText(string.format(L["|cff00ff00Ready to export %d profile(s).|r"], #selectedProfiles))
             frame.exportSelectedButton:SetEnabled(true)
             return
         end
 
         frame.pendingExportString = nil
-        frame.statusLabel:SetText("|cffff0000" .. (err or "Export is too large.") .. "|r")
+        frame.statusLabel:SetText("|cffff0000" .. (err or L["Export is too large."]) .. "|r")
         frame.exportSelectedButton:SetEnabled(false)
     else
         frame.pendingExportString = nil
-        frame.statusLabel:SetText("|cffff0000Export is too large. Deselect some profiles before exporting.|r")
+        frame.statusLabel:SetText(L["|cffff0000Export is too large. Deselect some profiles before exporting.|r"])
         frame.exportSelectedButton:SetEnabled(false)
     end
 end
@@ -10016,7 +10052,7 @@ function UI:ShowExportSelectionFrame()
                 return
             end
             self.exportSelectionFrame:Hide()
-            self:PopulateExportFrame(exportString, "Export Selected Profiles")
+            self:PopulateExportFrame(exportString, L["Export Selected Profiles"])
         end)
     end
 
@@ -10047,7 +10083,7 @@ function UI:ShowImportFrame()
         UI.importFrame:Hide()
         UI.importFrame = nil
     end
-    UI.importFrame = UI:CreateImportExportPopup("Import Profile", true)
+    UI.importFrame = UI:CreateImportExportPopup(L["Import Profile"], true)
     UI.importFrame.editBox:SetText("")
     UI.importFrame:Show()
     UI.importFrame:Raise()
@@ -10135,5 +10171,5 @@ SlashCmdList.OXEDHUBPACKS = function()
     OxedHubDB.globalSettings.packCardHidden = nil
     if UI.ApplyPackCardOrder then UI:ApplyPackCardOrder() end
     if UI.SetDashboardCard then UI:SetDashboardCard(1, false) end
-    print("|cff00ff00OxedHub:|r the Sounds & Animations packs page is the first page again.")
+    print(L["|cff00ff00OxedHub:|r the Sounds & Animations packs page is the first page again."])
 end

@@ -122,6 +122,20 @@ local function ShowOptions()
             if RT and RT.ShowOptions then RT:ShowOptions() end
         end)
 
+        -- The window on joining a group lives in Inviter Info, not here.
+        local btnReminder = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
+        btnReminder:SetSize(200, 24)
+        btnReminder:SetPoint("LEFT", btnRun, "RIGHT", 10, 0)
+        btnReminder:SetText(OxedHub.T("Group window (Inviter Info)"))
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
+            OxedHub.UI:ApplyRedButtonStyle(btnReminder)
+        end
+        btnReminder:SetScript("OnClick", function()
+            local mods = OxedHub.ModuleAPI and OxedHub.ModuleAPI.modules
+            local mod = mods and mods.inviterinfo
+            if mod and mod.OnOptionsShow then optionsWindow:Hide(); mod:OnOptionsShow() end
+        end)
+
         optionsWindow.cursorY = optionsWindow.cursorY - 32
 
         -- Helper for DB checkboxes
@@ -196,18 +210,6 @@ local function ShowOptions()
             "Prompts your preferred loot spec before the mythic+ countdown ends."
         )
 
-        AddDBCheckbox(
-            function()
-                local DB = MythicLooter.DB
-                return DB and DB:Get("settings.mythicplusNotification.enable")
-            end,
-            function(val)
-                local DB = MythicLooter.DB
-                if DB then DB:Set("settings.mythicplusNotification.enable", val) end
-            end,
-            "LFG Application Notification",
-            "Shows dungeon loot overview when applying to Mythic+ groups."
-        )
 
         AddDBCheckbox(
             function()
@@ -279,8 +281,8 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "mythiclooter",
         name     = "MythicLooter",
-        version  = "2.21.0",
-        updated  = 20261024.4,  -- group joined: details in the window and a line in chat
+        version  = "2.22.2",
+        updated  = 20261025.16,  -- group window moved to Inviter Info; this one no longer opens
         author   = "Oxed",
         category = "groups",
         keywords = { "mythiclooter", "keystoneloot", "m+", "loot", "dungeon", "raid", "bis", "vault", "item" },

@@ -194,7 +194,7 @@ L["ABOUT_UPDATES_DESC"] =
 L["ABOUT_CARD_COMMUNITY"] = "المجتمع والمساهمون"
 L["ABOUT_COMMUNITY_DESC"] = "انضم إلى مجتمع ديسكورد لمشاركة الملفات الشخصية، والحصول على الدعم، واقتراح الميزات الجديدة."
 L["ABOUT_BTN_DISCORD"] = "الانضمام إلى ديسكورد"
-L["ABOUT_THANKS"] = "شكرًا جزيلًا إلى |cffa335eeCaritas|r، |cffa335eeRiyadh|r و|cffa335eeialaaeldin|r على الاقتراحات والمساعدة في الاختبار!\nشكر خاص لـ |cffa335eeRomanv|r على الترجمة الإسبانية.\nإذا كنت ترغب في المساهمة في الترجمة، يرجى التواصل معنا!"
+L["ABOUT_THANKS"] = "شكرًا جزيلًا إلى |cffa335eeCaritas|r، |cffa335eeRiyadh|r و|cffa335eeialaaeldin|r على الاقتراحات والمساعدة في الاختبار!\nشكر خاص لـ |cffa335eeRomanv|r على الترجمة الإسبانية.\nشكر خاص لـ |cffa335eeZamestoTV|r على الترجمة الروسية.\nإذا كنت ترغب في المساهمة في الترجمة، يرجى التواصل معنا!"
 L["ABOUT_CREATED_BY"] = "تم تطوير الإضافة بواسطة Oxed وThe Lav Forge."
 L["ABOUT_DISCORD_LABEL"] = "|cff00ff00مجتمع ديسكورد:|r انسخ الرابط أدناه وافتحه في متصفحك."
 

@@ -264,7 +264,7 @@ Triggers:RegisterEventType("PVP_HEALER_CC", {
 
         local info = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         info:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset - 4)
-        info:SetText("|cff00ff00Native Engine|r")
+        info:SetText(L["|cff00ff00Native Engine|r"])
         info:SetTextColor(1, 0.82, 0, 1)
         yOffset = yOffset - 20
 
@@ -273,11 +273,11 @@ Triggers:RegisterEventType("PVP_HEALER_CC", {
         desc:SetWidth(450)
         desc:SetJustifyH("LEFT")
         desc:SetText(
-            "Plays an alert sound when a friendly healer in your party/raid is crowd "
-            .. "controlled. Uses the 12.1 AddAuraSound API to reliably track CC "
-            .. "auras across all healers in the group automatically.\n\n"
-            .. "Note: Icons and Animations are NOT supported for this trigger "
-            .. "due to Blizzard PvP restrictions. Only Sounds will play."
+            L["Plays an alert sound when a friendly healer in your party/raid is crowd "]
+            .. L["controlled. Uses the 12.1 AddAuraSound API to reliably track CC "]
+            .. L["auras across all healers in the group automatically.\n\n"]
+            .. L["Note: Icons and Animations are NOT supported for this trigger "]
+            .. L["due to Blizzard PvP restrictions. Only Sounds will play."]
         )
         yOffset = yOffset - 40
         

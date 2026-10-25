@@ -63,7 +63,7 @@ function MinimapButton:Init()
         GameTooltip:AddLine(L["MINIMAP_TOOLTIP_TOGGLE"], 1, 1, 1)
         GameTooltip:AddLine(L["MINIMAP_TOOLTIP_MENU"], 1, 1, 1)
         if OxedHub.Performance then
-            GameTooltip:AddLine("Ctrl+click: Performance monitor", 1, 1, 1)
+            GameTooltip:AddLine(L["Ctrl+click: Performance monitor"], 1, 1, 1)
         end
         GameTooltip:Show()
     end)
@@ -148,7 +148,7 @@ local function ModuleShortcuts()
 
     local lines = {}
     if #list == 0 then return lines end
-    lines[#lines + 1] = { text = "Modules", isTitle = true, notCheckable = true }
+    lines[#lines + 1] = { text = L["Modules"], isTitle = true, notCheckable = true }
     for _, mod in ipairs(list) do
         local name = tostring(mod.name or mod.id)
         for _, action in ipairs(mod.quick) do
@@ -267,7 +267,7 @@ function MinimapButton:ShowDebugLog()
         local perfBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
         perfBtn:SetPoint("RIGHT", closeBtn, "LEFT", -10, 0)
         perfBtn:SetSize(110, 25)
-        perfBtn:SetText("Performance")
+        perfBtn:SetText(L["Performance"])
         perfBtn:SetScript("OnClick", function()
             OxedHub.Performance:Open()
         end)

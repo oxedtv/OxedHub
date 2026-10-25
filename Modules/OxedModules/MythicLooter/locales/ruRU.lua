@@ -1,10 +1,21 @@
 local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; AddonName = "MythicLooter";
 
-if (GetLocale() ~= "ruRU") then
-    return;
-end
-
 local L = KeystoneLoot.L;
+
+-- On another client with OxedHub set to Russian, these lines go into
+-- OxedHub's Russian dictionary instead, where locale.lua's fallback finds
+-- them. OxedHub's own lines win where both have one.
+if (GetLocale() ~= "ruRU") then
+    local ru = OxedHub.Locales and OxedHub.Locales.ruRU;
+    if (not ru) then
+        return;
+    end
+    L = setmetatable({}, {
+        __newindex = function(_, key, value)
+            if (ru[key] == nil) then rawset(ru, key, value); end
+        end
+    });
+end
 
 -- keystoneloot_frame.lua
 L["%s (%s Season %d)"] = "%s (%s сезон %d)";

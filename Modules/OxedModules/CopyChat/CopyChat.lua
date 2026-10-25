@@ -13,6 +13,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -170,17 +171,17 @@ local function BuildWindow()
     local all = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
     all:SetSize(110, 20)
     all:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -14, 12)
-    all:SetText("Select all")
+    all:SetText(L["Select all"])
     all:SetScript("OnClick", function(self)
         window.wholeLog = not window.wholeLog
-        self:SetText(window.wholeLog and "One line" or "Select all")
+        self:SetText(window.wholeLog and L["One line"] or L["Select all"])
         window:Redraw()
     end)
 
     local hint = window:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("BOTTOMLEFT", window, "BOTTOMLEFT", 16, 16)
     hint:SetTextColor(0.75, 0.75, 0.75)
-    hint:SetText("Click a line to select it, then Ctrl+C. Escape closes.")
+    hint:SetText(L["Click a line to select it, then Ctrl+C. Escape closes."])
 
     window.Redraw = Redraw
 
@@ -246,7 +247,7 @@ local function ShowText(frame, title)
     -- An empty window is worth saying out loud: a blank page looks like the
     -- copy failed, when the window simply has nothing in it.
     if count == 0 then
-        lines = { ("This chat window (%s) holds no messages."):format(frame:GetName() or "?") }
+        lines = { (L["This chat window (%s) holds no messages."]):format(frame:GetName() or "?") }
     end
 
     window.lines = lines
@@ -421,7 +422,7 @@ local function MakeButton(frame, name, describe, copy)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         describe(GameTooltip)
         if settings.buttonUnlocked then
-            GameTooltip:AddLine("Unlocked: drag to move. Lock it again in Options.", 1, 0.82, 0, true)
+            GameTooltip:AddLine(L["Unlocked: drag to move. Lock it again in Options."], 1, 0.82, 0, true)
         end
         GameTooltip:Show()
         self:SetAlpha(1)
@@ -451,8 +452,8 @@ local function AttachButton(index)
 
     frame.OxedCopyButton = MakeButton(frame, "OxedHubCopyChatButton" .. index,
         function(tooltip)
-            tooltip:SetText(("Copy %s"):format(TabTitle(index)))
-            tooltip:AddLine(("%d line(s) in this window."):format(frame:GetNumMessages() or 0), 1, 1, 1)
+            tooltip:SetText((L["Copy %s"]):format(TabTitle(index)))
+            tooltip:AddLine((L["%d line(s) in this window."]):format(frame:GetNumMessages() or 0), 1, 1, 1)
         end,
         function() ShowText(frame, TabTitle(index)) end)
 end
@@ -465,8 +466,8 @@ local function AttachChattynatorButtons()
         elseif settings.button ~= false then
             frame.OxedCopyButton = MakeButton(frame, "OxedHubCopyChattynatorButton" .. index,
                 function(tooltip)
-                    tooltip:SetText("Copy this chat window")
-                    tooltip:AddLine("Opens Chattynator's copy window for it.", 1, 1, 1, true)
+                    tooltip:SetText(L["Copy this chat window"])
+                    tooltip:AddLine(L["Opens Chattynator's copy window for it."], 1, 1, 1, true)
                 end,
                 function() ChattynatorCopy(frame) end)
         end
@@ -493,7 +494,7 @@ local function CopyCurrent(index)
     end
     local frame = (index and _G["ChatFrame" .. index]) or SELECTED_CHAT_FRAME or DEFAULT_CHAT_FRAME
     if not frame then
-        print("|cffff5555OxedHub:|r no chat window found.")
+        print(L["|cffff5555OxedHub:|r no chat window found."])
         return
     end
     ShowText(frame, TabTitle(frame:GetID() or 1))
@@ -543,7 +544,7 @@ local function InstallHooks()
             local frame = FCF_GetCurrentChatFrame and FCF_GetCurrentChatFrame()
             if not frame then return end
             root:CreateDivider()
-            root:CreateButton("Copy this window", function()
+            root:CreateButton(L["Copy this window"], function()
                 ShowText(frame, TabTitle(frame:GetID() or 1))
             end)
         end)
@@ -591,7 +592,7 @@ local function ShowOptions()
         local reset = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
         reset:SetSize(140, 22)
         reset:SetPoint("TOPLEFT", optionsWindow, "TOPLEFT", 44, optionsWindow.cursorY + 2)
-        reset:SetText("Reset position")
+        reset:SetText(L["Reset position"])
         reset:SetScript("OnClick", function()
             settings.buttonX, settings.buttonY = DEFAULTS.buttonX, DEFAULTS.buttonY
             PlaceAllButtons()

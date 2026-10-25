@@ -16,6 +16,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 local DEFAULTS = {
     enabled  = false,   -- off until the player switches it on
@@ -50,18 +51,18 @@ local function Supported()
     local _, _, _, build = GetBuildInfo()
     if type(build) ~= "number" or build < 120100 then
         supported = false
-        whyNot = ("this game version (%s) does not have it yet; it comes with 12.1"):format(tostring(build))
+        whyNot = (L["this game version (%s) does not have it yet; it comes with 12.1"]):format(tostring(build))
         return false
     end
     if C_AddOns and C_AddOns.LoadAddOn then
         local okLoad, loaded, reason = pcall(C_AddOns.LoadAddOn, "Blizzard_AuraContainer")
-        if okLoad and not loaded and reason then whyNot = "the game's aura container did not load: " .. tostring(reason) end
+        if okLoad and not loaded and reason then whyNot = L["the game's aura container did not load: "] .. tostring(reason) end
     end
-    if InCombatLockdown() then whyNot = "waiting for the fight to end"; return false end
+    if InCombatLockdown() then whyNot = L["waiting for the fight to end"]; return false end
     local ok, probe = pcall(CreateFrame, "AuraContainer", nil, UIParent, "CustomAuraContainerTemplate")
     supported = ok and probe and type(probe.AddAuraGroup) == "function" or false
-    if not ok then whyNot = "the game refused the container: " .. tostring(probe)
-    elseif not supported then whyNot = "the container has no aura groups in this game version" end
+    if not ok then whyNot = L["the game refused the container: "] .. tostring(probe)
+    elseif not supported then whyNot = L["the container has no aura groups in this game version"] end
     if ok and probe then
         if probe.SetEnabled then pcall(probe.SetEnabled, probe, false) end
         probe:Hide()
@@ -89,7 +90,7 @@ local function CreateAnchor()
     anchor.hint:SetColorTexture(0, 0.6, 1, 0.25)
     anchor.text = anchor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     anchor.text:SetPoint("BOTTOM", anchor, "TOP", 0, 2)
-    anchor.text:SetText("Buff Tracker: drag me")
+    anchor.text:SetText(L["Buff Tracker: drag me"])
 end
 
 local function ShowHint()
@@ -215,7 +216,7 @@ local function Build()
                     forceNewLine = false, elementWidth = size, elementHeight = size, layoutIndex = 1,
                 },
             })
-            if not okGroup then whyNot = "the game refused the buff filter" end
+            if not okGroup then whyNot = L["the game refused the buff filter"] end
             if okGroup and container.SetUnit then
                 pcall(container.SetUnit, container, "player")
                 -- A container starts switched off: nothing shows until it runs.
@@ -259,18 +260,18 @@ SyncSpells = function()
 end
 
 local function Status()
-    if not settings.enabled then return "|cffaaaaaaSwitched off.|r" end
+    if not settings.enabled then return L["|cffaaaaaaSwitched off.|r"] end
     if #entries > 0 then
         local e = entries[1].container
         local okS, shown = pcall(e.IsShown, e)
         local okV, visible = pcall(e.IsVisible, e)
         local okW, w, h = pcall(e.GetSize, e)
         local okC, children = pcall(e.GetNumChildren, e)
-        return ("|cff40ff40Working: watching %d buff(s).|r |cffaaaaaa(buttons made %d, shown %s, visible %s, size %s x %s, children %s)|r"):format(
+        return (L["|cff40ff40Working: watching %d buff(s).|r |cffaaaaaa(buttons made %d, shown %s, visible %s, size %s x %s, children %s)|r"]):format(
             #entries, buttonsMade, tostring(okS and shown), tostring(okV and visible),
             tostring(okW and w), tostring(okW and h), tostring(okC and children))
     end
-    return "|cffff6060Not working: " .. whyNot .. ".|r"
+    return L["|cffff6060Not working: "] .. whyNot .. ".|r"
 end
 
 local function SpellList()

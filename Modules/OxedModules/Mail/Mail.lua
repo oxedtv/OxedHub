@@ -18,6 +18,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -159,9 +160,9 @@ local function StopRun(reason)
     local took = #parts > 0 and table.concat(parts, " and ") or "nothing"
 
     if reason == "full" then
-        print(PREFIX .. ("bags are full. Took %s; make room and press it again."):format(took))
+        print(PREFIX .. (L["bags are full. Took %s; make room and press it again."]):format(took))
     elseif reason == "done" then
-        print(PREFIX .. ("took %s."):format(took))
+        print(PREFIX .. (L["took %s."]):format(took))
     end
 
     run.sessionMoney = (run.sessionMoney or 0) + run.money
@@ -252,7 +253,7 @@ local function StartRun()
 
     local count = GetInboxNumItems and GetInboxNumItems() or 0
     if count < 1 then
-        print(PREFIX .. "the box is empty.")
+        print(PREFIX .. L["the box is empty."])
         return
     end
 
@@ -321,7 +322,7 @@ local function SendNext()
     local entry = table.remove(queue, 1)
     if not entry then return end
     if SendMail then pcall(SendMail, entry.name, entry.subject, entry.body) end
-    print(PREFIX .. ("copy sent to |cffffd100%s|r."):format(entry.name))
+    print(PREFIX .. (L["copy sent to |cffffd100%s|r."]):format(entry.name))
     if #queue > 0 then C_Timer.After(1.2, SendNext) end
 end
 
@@ -384,7 +385,7 @@ local function BuildBook()
     window:RegisterForDrag("LeftButton")
     window:SetScript("OnDragStart", window.StartMoving)
     window:SetScript("OnDragStop", window.StopMovingOrSizing)
-    if window.TitleText then window.TitleText:SetText("Address Book") end
+    if window.TitleText then window.TitleText:SetText(L["Address Book"]) end
     tinsert(UISpecialFrames, "OxedHubMailBook")
 
     -- ⚠ SetAutoFocus(false): a new EditBox takes the keyboard the moment it
@@ -397,7 +398,7 @@ local function BuildBook()
 
     local hint = window:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     hint:SetPoint("TOPLEFT", search, "BOTTOMLEFT", 0, -4)
-    hint:SetText("Click a name to write to it, right-click to forget it.")
+    hint:SetText(L["Click a name to write to it, right-click to forget it."])
 
     local scroll, content = ScrollArea(window, 44)
 
@@ -443,7 +444,7 @@ local function BuildBook()
 
     window.empty = window:CreateFontString(nil, "OVERLAY", "GameFontDisable")
     window.empty:SetPoint("CENTER", scroll, "CENTER")
-    window.empty:SetText("No names yet")
+    window.empty:SetText(L["No names yet"])
 
     search:SetScript("OnTextChanged", Refresh)
     search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
@@ -452,11 +453,11 @@ local function BuildBook()
     local add = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
     add:SetSize(110, 22)
     add:SetPoint("BOTTOMLEFT", window, "BOTTOMLEFT", 14, 14)
-    add:SetText("Add the To name")
+    add:SetText(L["Add the To name"])
     add:SetScript("OnClick", function()
         local name = SendMailNameEditBox and SendMailNameEditBox:GetText()
         if NameKey(name) == "" then
-            print(PREFIX .. "write a name on the send page first.")
+            print(PREFIX .. L["write a name on the send page first."])
             return
         end
         Remember(name)
@@ -467,7 +468,7 @@ local function BuildBook()
     local copies = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
     copies:SetSize(110, 22)
     copies:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -14, 14)
-    copies:SetText("Copy to all")
+    copies:SetText(L["Copy to all"])
     copies:SetScript("OnClick", function()
         local subject = SendMailSubjectEditBox and SendMailSubjectEditBox:GetText() or ""
         local body = SendMailBodyEditBox and SendMailBodyEditBox:GetText() or ""
@@ -477,15 +478,15 @@ local function BuildBook()
             if name ~= to then names[#names + 1] = name end
         end
         if #names == 0 then
-            print(PREFIX .. "no other names to copy to.")
+            print(PREFIX .. L["no other names to copy to."])
             return
         end
         if subject == "" and body == "" then
-            print(PREFIX .. "write the letter first; copies carry its text, never its attachments.")
+            print(PREFIX .. L["write the letter first; copies carry its text, never its attachments."])
             return
         end
         QueueCopies(names, subject, body)
-        print(PREFIX .. ("sending %d copies, one a second."):format(#names))
+        print(PREFIX .. (L["sending %d copies, one a second."]):format(#names))
     end)
 
     window:SetScript("OnShow", Refresh)
@@ -544,8 +545,8 @@ local function RefreshChecks()
                 box:SetScript("OnEnter", function(self)
                     if not settings.tooltips then return end
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText("Pick this letter")
-                    GameTooltip:AddLine("Then use Return or Tidy up on the bar below.", 1, 1, 1, true)
+                    GameTooltip:SetText(L["Pick this letter"])
+                    GameTooltip:AddLine(L["Then use Return or Tidy up on the bar below."], 1, 1, 1, true)
                     GameTooltip:Show()
                 end)
                 box:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -563,7 +564,7 @@ end
 -- Runs one action over a list of letters, spaced, and says what it did.
 local function RunOver(indices, action, verb)
     if #indices == 0 then
-        print(PREFIX .. "no letters picked.")
+        print(PREFIX .. L["no letters picked."])
         return
     end
     for step, index in ipairs(indices) do
@@ -571,7 +572,7 @@ local function RunOver(indices, action, verb)
             if MailFrame and MailFrame:IsShown() then pcall(action, index) end
         end)
     end
-    print(PREFIX .. ("%s %d letters."):format(verb, #indices))
+    print(PREFIX .. (L["%s %d letters."]):format(verb, #indices))
     C_Timer.After(STEP * (#indices + 1), function()
         ClearSelection()
         if CheckInbox then pcall(CheckInbox) end
@@ -580,9 +581,9 @@ end
 
 local function ReturnSelected()
     local indices = SelectedIndices()
-    if #indices == 0 then return print(PREFIX .. "tick the letters to send back first.") end
-    OxedHub.ModuleAPI:Confirm(("Send %d letters back to their senders?"):format(#indices), function()
-        RunOver(indices, ReturnInboxItem, "sending back")
+    if #indices == 0 then return print(PREFIX .. L["tick the letters to send back first."]) end
+    OxedHub.ModuleAPI:Confirm((L["Send %d letters back to their senders?"]):format(#indices), function()
+        RunOver(indices, ReturnInboxItem, L["sending back"])
     end)
 end
 
@@ -599,11 +600,11 @@ local function TidyUp()
         end
     end
     if #empties == 0 then
-        print(PREFIX .. "nothing to tidy: every letter still holds something.")
+        print(PREFIX .. L["nothing to tidy: every letter still holds something."])
         return
     end
-    OxedHub.ModuleAPI:Confirm(("Throw away %d read letters that hold nothing?"):format(#empties), function()
-        RunOver(empties, DeleteInboxItem, "throwing away")
+    OxedHub.ModuleAPI:Confirm((L["Throw away %d read letters that hold nothing?"]):format(#empties), function()
+        RunOver(empties, DeleteInboxItem, L["throwing away"])
     end)
 end
 
@@ -625,7 +626,7 @@ local function BagItems(filter)
                     local okName, itemName = pcall(C_Item.GetItemNameByID, info.itemID)
                     if okName then name = SafeText(itemName) end
                 end
-                name = name or ("Item " .. tostring(info.itemID))
+                name = name or (L["Item "] .. tostring(info.itemID))
                 if filter == "" or name:lower():find(filter, 1, true) then
                     list[#list + 1] = {
                         bag = bag, slot = slot, name = name,
@@ -651,7 +652,7 @@ end
 -- One item onto the letter. The cursor is ours for that instant only.
 local function AttachItem(bag, slot)
     if AttachedCount() >= ATTACH_SLOTS then
-        print(PREFIX .. "the letter is full: twelve attachments is the limit.")
+        print(PREFIX .. L["the letter is full: twelve attachments is the limit."])
         return false
     end
     if not (C_Container and C_Container.PickupContainerItem and ClickSendMailItemButton) then return false end
@@ -678,7 +679,7 @@ local function BuildAttachWindow()
     window:RegisterForDrag("LeftButton")
     window:SetScript("OnDragStart", window.StartMoving)
     window:SetScript("OnDragStop", window.StopMovingOrSizing)
-    if window.TitleText then window.TitleText:SetText("Attach from bags") end
+    if window.TitleText then window.TitleText:SetText(L["Attach from bags"]) end
     tinsert(UISpecialFrames, "OxedHubMailAttach")
 
     local search = CreateFrame("EditBox", nil, window, "InputBoxTemplate")
@@ -688,7 +689,7 @@ local function BuildAttachWindow()
 
     local hint = window:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     hint:SetPoint("TOPLEFT", search, "BOTTOMLEFT", 0, -4)
-    hint:SetText("Click an item to attach it. Twelve fit on a letter.")
+    hint:SetText(L["Click an item to attach it. Twelve fit on a letter."])
 
     local scroll, content = ScrollArea(window, 14)
 
@@ -780,7 +781,7 @@ end
 local function Forward(to)
     local index = OpenLetterIndex()
     if not index then
-        print(PREFIX .. "open a letter first.")
+        print(PREFIX .. L["open a letter first."])
         return
     end
     local letter = LetterAt(index)
@@ -791,7 +792,7 @@ local function Forward(to)
         local ok, text = pcall(GetInboxText, index)
         if ok then body = SafeText(text) or "" end
     end
-    local subject = letter.subject or "Forwarded mail"
+    local subject = letter.subject or L["Forwarded mail"]
     if not subject:find("^Fwd: ") then subject = "Fwd: " .. subject end
 
     local function WriteIt(attachments)
@@ -804,13 +805,13 @@ local function Forward(to)
             if AttachItem(place.bag, place.slot) then attached = attached + 1 end
         end
         Remember(to)
-        print(PREFIX .. ("ready to forward to |cffffd100%s|r%s. Press Send when it looks right."):format(
-            to, attached > 0 and (" with %d attachments"):format(attached) or ""))
+        print(PREFIX .. (L["ready to forward to |cffffd100%s|r%s. Press Send when it looks right."]):format(
+            to, attached > 0 and (L[" with %d attachments"]):format(attached) or ""))
     end
 
     if letter.items > 0 then
         if FreeBagSlots() < letter.items then
-            print(PREFIX .. "not enough room in the bags to hold the attachments on the way.")
+            print(PREFIX .. L["not enough room in the bags to hold the attachments on the way."])
             return
         end
         local before = BagSnapshot()
@@ -826,9 +827,9 @@ local function AskForward()
     if not (StaticPopupDialogs and StaticPopup_Show) then return end
     if not StaticPopupDialogs["OXEDHUB_MAIL_FORWARD"] then
         StaticPopupDialogs["OXEDHUB_MAIL_FORWARD"] = {
-            text = "Forward this letter to:",
-            button1 = ACCEPT or "Accept",
-            button2 = CANCEL or "Cancel",
+            text = L["Forward this letter to:"],
+            button1 = ACCEPT or L["Accept"],
+            button2 = CANCEL or L["Cancel"],
             hasEditBox = true,
             maxLetters = 60,
             OnShow = function(self)
@@ -894,15 +895,15 @@ local function BuildBar()
     bar.rows = { {}, {}, {} }   -- filled below, then laid out by Layout()
 
     local openAll = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
-    openAll:SetText("Collect All")
+    openAll:SetText(L["Collect All"])
     openAll:SetScript("OnClick", StartRun)
-    BarTip(openAll, "Collect All",
-        "Takes the attachments and the coins, one letter at a time, and stops when the bags fill rather than leaving half a letter behind. Cash on delivery letters are walked past. Press again to stop.")
+    BarTip(openAll, L["Collect All"],
+        L["Takes the attachments and the coins, one letter at a time, and stops when the bags fill rather than leaving half a letter behind. Cash on delivery letters are walked past. Press again to stop."])
     bar.openAll = openAll
 
     local gold = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
-    gold:SetText("Gold only")
-    BarTip(gold, "Gold only", "Takes the coins and leaves every attachment where it is, for when the bags are full.")
+    gold:SetText(L["Gold only"])
+    BarTip(gold, L["Gold only"], L["Takes the coins and leaves every attachment where it is, for when the bags are full."])
     gold:SetScript("OnClick", function()
         -- Coins only: the attachments are left where they are, which is what
         -- you want when the bags are full and the auction house has paid.
@@ -920,17 +921,17 @@ local function BuildBar()
             end
         end
         if taken == 0 then
-            print(PREFIX .. "no coins waiting.")
+            print(PREFIX .. L["no coins waiting."])
         else
-            print(PREFIX .. ("taking %s from %d letters."):format(Gold(total), taken))
+            print(PREFIX .. (L["taking %s from %d letters."]):format(Gold(total), taken))
             run.sessionMoney = (run.sessionMoney or 0) + total
         end
     end)
     bar.gold = gold
 
     local book = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
-    book:SetText("Address Book")
-    BarTip(book, "Address Book", "The names you write to. Click one to start a letter, right-click to forget it.")
+    book:SetText(L["Address Book"])
+    BarTip(book, L["Address Book"], L["The names you write to. Click one to start a letter, right-click to forget it."])
     book:SetScript("OnClick", function()
         local window = BuildBook()
         if window then ShowOnly(not window:IsShown() and window or nil) end
@@ -940,19 +941,19 @@ local function BuildBar()
     -- Second row: what to do with the letters you ticked, and the button
     -- that fills a letter from the bags.
     local returnPicked = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
-    returnPicked:SetText("Return picked")
-    BarTip(returnPicked, "Return picked", "Sends the ticked letters back to whoever sent them. It asks first.")
+    returnPicked:SetText(L["Return picked"])
+    BarTip(returnPicked, L["Return picked"], L["Sends the ticked letters back to whoever sent them. It asks first."])
     returnPicked:SetScript("OnClick", ReturnSelected)
 
     local tidy = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
-    tidy:SetText("Tidy up")
-    BarTip(tidy, "Tidy up", "Throws away read letters that hold nothing at all: no attachment, no coin, nothing owed. It asks first.")
+    tidy:SetText(L["Tidy up"])
+    BarTip(tidy, L["Tidy up"], L["Throws away read letters that hold nothing at all: no attachment, no coin, nothing owed. It asks first."])
     tidy:SetScript("OnClick", TidyUp)
 
     local attach = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
     -- Just "Bags": the long name did not fit the button on a mailbox this narrow.
-    attach:SetText("Bags")
-    BarTip(attach, "Attach from bags", "A searchable list of your bags. Click an item to put it on the letter.")
+    attach:SetText(L["Bags"])
+    BarTip(attach, L["Attach from bags"], L["A searchable list of your bags. Click an item to put it on the letter."])
     attach:SetScript("OnClick", function()
         local window = BuildAttachWindow()
         if window then ShowOnly(not window:IsShown() and window or nil) end
@@ -1013,9 +1014,9 @@ local function BuildBar()
             local parts = { ("%d letters"):format(letters) }
             if items > 0 then parts[#parts + 1] = ("%d attachments"):format(items) end
             if money > 0 then parts[#parts + 1] = Gold(money) end
-            if cod > 0 then parts[#parts + 1] = ("|cffff8800%d cash on delivery|r"):format(cod) end
+            if cod > 0 then parts[#parts + 1] = (L["|cffff8800%d cash on delivery|r"]):format(cod) end
             if settings.warnExpiring and expiring > 0 then
-                parts[#parts + 1] = ("|cffff3333%d expire within %d days|r"):format(expiring, EXPIRING_DAYS)
+                parts[#parts + 1] = (L["|cffff3333%d expire within %d days|r"]):format(expiring, EXPIRING_DAYS)
             end
             summary:SetText(table.concat(parts, "   "))
             summary:Show()
@@ -1023,7 +1024,7 @@ local function BuildBar()
             summary:Hide()
         end
 
-        openAll:SetText(run.active and "Stop" or "Collect All")
+        openAll:SetText(run.active and L["Stop"] or L["Collect All"])
         book.wanted = settings.addressBook == true
         returnPicked.wanted = settings.ticks == true
         tidy.wanted = settings.ticks == true
@@ -1066,13 +1067,13 @@ local function EnsureForwardButton()
     else
         forwardButton:SetPoint("BOTTOMLEFT", OpenMailFrame, "BOTTOMLEFT", 22, 56)
     end
-    forwardButton:SetText("Forward")
+    forwardButton:SetText(L["Forward"])
     forwardButton:SetScript("OnClick", AskForward)
     forwardButton:SetScript("OnEnter", function(self)
         if not settings.tooltips then return end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Forward this letter")
-        GameTooltip:AddLine("Its text goes to the name you give. Attachments come to your bags and are put back on the new letter, so look it over before you press Send.", 1, 1, 1, true)
+        GameTooltip:SetText(L["Forward this letter"])
+        GameTooltip:AddLine(L["Its text goes to the name you give. Attachments come to your bags and are put back on the new letter, so look it over before you press Send."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     forwardButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1100,7 +1101,7 @@ local function OnMailClosed()
     if settings and settings.sessionTotal then
         local money, items = run.sessionMoney or 0, run.sessionItems or 0
         if money > 0 or items > 0 then
-            print(PREFIX .. ("this visit: %s and %d items."):format(Gold(money), items))
+            print(PREFIX .. (L["this visit: %s and %d items."]):format(Gold(money), items))
         end
     end
     run.sessionMoney, run.sessionItems = 0, 0
@@ -1209,8 +1210,8 @@ SlashCmdList.OXEDHUBMAIL = function(msg)
     end
     local count = 0
     for _ in pairs(settings.contacts) do count = count + 1 end
-    print(PREFIX .. ("%s, %d names in the book. /oxmail all collects, /oxmail book opens it.")
-        :format(settings.enabled == false and "switched off" or "on", count))
+    print(PREFIX .. (L["%s, %d names in the book. /oxmail all collects, /oxmail book opens it."])
+        :format(settings.enabled == false and L["switched off"] or "on", count))
 end
 
 -- ── Registration ────────────────────────────────────────────────────────────

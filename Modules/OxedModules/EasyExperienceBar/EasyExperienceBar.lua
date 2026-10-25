@@ -6,6 +6,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer
 
 local DEFAULTS = {
@@ -217,9 +218,9 @@ local function BuildBar()
     barFrame:SetScript("OnEnter", function(self)
         if settings and not settings.locked then
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText("OxedHub Experience Bar")
-            GameTooltip:AddLine("Left-click and drag to reposition.", 1, 1, 1)
-            GameTooltip:AddLine("Type /oxexp lock or use settings to lock position.", 0.7, 0.7, 0.7)
+            GameTooltip:SetText(L["OxedHub Experience Bar"])
+            GameTooltip:AddLine(L["Left-click and drag to reposition."], 1, 1, 1)
+            GameTooltip:AddLine(L["Type /oxexp lock or use settings to lock position."], 0.7, 0.7, 0.7)
             GameTooltip:Show()
         end
     end)
@@ -529,14 +530,14 @@ local function UpdateDisplay()
 
     -- Text 1: Level
     if isMax and not previewMode then
-        barFrame.levelText:SetText("Max Level")
+        barFrame.levelText:SetText(L["Max Level"])
     else
-        barFrame.levelText:SetText("Level " .. level)
+        barFrame.levelText:SetText(L["Level "] .. level)
     end
 
     -- Text 2: Current / Max (Remaining)
     if isMax and not previewMode then
-        barFrame.progressText:SetText("|cffffd100Maximum Level Reached|r")
+        barFrame.progressText:SetText(L["|cffffd100Maximum Level Reached|r"])
     else
         barFrame.progressText:SetText(("%s / %s (%s)"):format(
             FormatXP(currentXP), FormatXP(maxXP), FormatXP(remainingXP)
@@ -556,29 +557,29 @@ local function UpdateDisplay()
 
     -- Text 4: Time this level
     if isMax and not previewMode then
-        barFrame.levelTimeText:SetText("Time played: " .. FormatTime(totalTime))
+        barFrame.levelTimeText:SetText(L["Time played: "] .. FormatTime(totalTime))
     else
-        barFrame.levelTimeText:SetText("Time this level: " .. FormatTime(levelTime))
+        barFrame.levelTimeText:SetText(L["Time this level: "] .. FormatTime(levelTime))
     end
 
     -- Text 5: Total played
-    barFrame.totalPlayedText:SetText("Played: " .. FormatTime(totalTime))
+    barFrame.totalPlayedText:SetText(L["Played: "] .. FormatTime(totalTime))
 
     -- Text 6: Session time
-    barFrame.sessionTimeText:SetText("Session: " .. FormatTime(sessionTime))
+    barFrame.sessionTimeText:SetText(L["Session: "] .. FormatTime(sessionTime))
 
     -- Text 7: Next level estimate & XP/Hour
     if isMax and not previewMode then
         barFrame.timeToLevelText:SetText("")
     else
         if timeToLevel > 0 and hourlyXP > 0 then
-            barFrame.timeToLevelText:SetText(("Level in: %s (%s/h)"):format(
+            barFrame.timeToLevelText:SetText((L["Level in: %s (%s/h)"]):format(
                 FormatTime(timeToLevel), FormatXP(hourlyXP)
             ))
         elseif hourlyXP > 0 then
-            barFrame.timeToLevelText:SetText(("Pace: %s/h"):format(FormatXP(hourlyXP)))
+            barFrame.timeToLevelText:SetText((L["Pace: %s/h"]):format(FormatXP(hourlyXP)))
         else
-            barFrame.timeToLevelText:SetText("Pace: --")
+            barFrame.timeToLevelText:SetText(L["Pace: --"])
         end
     end
 
@@ -586,7 +587,7 @@ local function UpdateDisplay()
     if isMax and not previewMode then
         barFrame.questRestedText:SetText("")
     else
-        barFrame.questRestedText:SetText(("Quests: |cffff9900%.1f%%|r  Rested: |cff44aaff%.1f%%|r"):format(
+        barFrame.questRestedText:SetText((L["Quests: |cffff9900%.1f%%|r  Rested: |cff44aaff%.1f%%|r"]):format(
             pctQuest, pctRested
         ))
     end
@@ -945,7 +946,7 @@ local function ShowOptions()
         btnUnlock:SetPoint("TOPLEFT", p1, "TOPLEFT", 20, p1.cursorY)
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnUnlock) end
         local function RefreshUnlockText()
-            btnUnlock:SetText(settings.locked and "Unlock" or "Lock Bar")
+            btnUnlock:SetText(settings.locked and L["Unlock"] or L["Lock Bar"])
         end
         RefreshUnlockText()
         btnUnlock:SetScript("OnClick", function()
@@ -959,7 +960,7 @@ local function ShowOptions()
         btnTest:SetPoint("LEFT", btnUnlock, "RIGHT", 8, 0)
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnTest) end
         local function RefreshTestText()
-            btnTest:SetText(previewMode and "Stop Test" or "Test Mode")
+            btnTest:SetText(previewMode and L["Stop Test"] or L["Test Mode"])
         end
         RefreshTestText()
         btnTest:SetScript("OnClick", function()
@@ -971,7 +972,7 @@ local function ShowOptions()
         local btnResetPos = CreateFrame("Button", nil, p1, "UIPanelButtonTemplate")
         btnResetPos:SetSize(110, 22)
         btnResetPos:SetPoint("LEFT", btnTest, "RIGHT", 8, 0)
-        btnResetPos:SetText("Reset Pos")
+        btnResetPos:SetText(L["Reset Pos"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnResetPos) end
         btnResetPos:SetScript("OnClick", function()
             settings.point = "TOP"
@@ -979,43 +980,43 @@ local function ShowOptions()
             settings.x = 0
             settings.y = -65
             Restyle()
-            print(PREFIX .. "Position reset to top center.")
+            print(PREFIX .. L["Position reset to top center."])
         end)
 
         local btnResetStats = CreateFrame("Button", nil, p1, "UIPanelButtonTemplate")
         btnResetStats:SetSize(110, 22)
         btnResetStats:SetPoint("LEFT", btnResetPos, "RIGHT", 8, 0)
-        btnResetStats:SetText("Reset Stats")
+        btnResetStats:SetText(L["Reset Stats"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnResetStats) end
         btnResetStats:SetScript("OnClick", function()
             ResetSessionStats()
-            print(PREFIX .. "Session stats and timers reset.")
+            print(PREFIX .. L["Session stats and timers reset."])
         end)
 
         p1.cursorY = p1.cursorY - 32
 
         p1:AddNote("|cffffd100Geometry & Appearance|r")
-        AddSlider(p1, "width", "Bar width", 200, 1100, 10, "%s: %d")
-        AddSlider(p1, "height", "Bar height", 12, 50, 1, "%s: %d")
-        AddSlider(p1, "fontSize", "Font size", 8, 22, 1, "%s: %d")
+        AddSlider(p1, "width", L["Bar width"], 200, 1100, 10, "%s: %d")
+        AddSlider(p1, "height", L["Bar height"], 12, 50, 1, "%s: %d")
+        AddSlider(p1, "fontSize", L["Font size"], 8, 22, 1, "%s: %d")
 
-        AddChoiceRow(p1, "texture", "Bar texture", {
-            { key = "smooth",   name = "Smooth" },
-            { key = "flat",     name = "Flat" },
+        AddChoiceRow(p1, "texture", L["Bar texture"], {
+            { key = "smooth",   name = L["Smooth"] },
+            { key = "flat",     name = L["Flat"] },
             { key = "blizzard", name = "Blizzard" },
         })
 
-        AddChoiceRow(p1, "fontOutline", "Text outline", {
+        AddChoiceRow(p1, "fontOutline", L["Text outline"], {
             { key = "NONE",         name = "None" },
-            { key = "OUTLINE",      name = "Outline" },
-            { key = "THICKOUTLINE", name = "Thick" },
+            { key = "OUTLINE",      name = L["Outline"] },
+            { key = "THICKOUTLINE", name = L["Thick"] },
         })
 
-        AddChoiceRow(p1, "strata", "Frame strata", {
-            { key = "BACKGROUND", name = "Back" },
-            { key = "LOW",        name = "Low" },
-            { key = "MEDIUM",     name = "Medium" },
-            { key = "HIGH",       name = "High" },
+        AddChoiceRow(p1, "strata", L["Frame strata"], {
+            { key = "BACKGROUND", name = L["Back"] },
+            { key = "LOW",        name = L["Low"] },
+            { key = "MEDIUM",     name = L["Medium"] },
+            { key = "HIGH",       name = L["High"] },
         })
 
         p1:AddCheckbox(settings, "showQuestBar", "Show Completed Quest XP Bar (Orange)",
@@ -1092,11 +1093,11 @@ SlashCmdList.OXEDHUBEXP = function(msg)
 
     if msg == "test" then
         previewMode = not previewMode
-        print(PREFIX .. (previewMode and "Test mode enabled." or "Test mode disabled."))
+        print(PREFIX .. (previewMode and L["Test mode enabled."] or L["Test mode disabled."]))
         UpdateDisplay()
     elseif msg == "lock" or msg == "unlock" then
         settings.locked = not settings.locked
-        print(PREFIX .. (settings.locked and "Bar locked." or "Bar unlocked (drag to move)."))
+        print(PREFIX .. (settings.locked and L["Bar locked."] or L["Bar unlocked (drag to move)."]))
         Restyle()
     elseif msg == "reset" then
         settings.point = "TOP"
@@ -1104,10 +1105,10 @@ SlashCmdList.OXEDHUBEXP = function(msg)
         settings.x = 0
         settings.y = -65
         Restyle()
-        print(PREFIX .. "Position reset to top center.")
+        print(PREFIX .. L["Position reset to top center."])
     elseif msg == "stats" then
         ResetSessionStats()
-        print(PREFIX .. "Session stats reset.")
+        print(PREFIX .. L["Session stats reset."])
     else
         ShowOptions()
     end

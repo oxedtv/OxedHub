@@ -2,6 +2,7 @@
 -- Core logic: initialization, tooltip hook, display formatting, slash commands, and ActionHub Trigger.
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 OxedHub.Shattersight = OxedHub.Shattersight or {}
 local SS = OxedHub.Shattersight
@@ -58,8 +59,8 @@ local function InitDB()
     if db.settings.showBreakdown == nil then db.settings.showBreakdown = true end
 
     if not db.chars then db.chars = {} end
-    local charName  = UnitName("player") or "Unknown"
-    local realmName = GetRealmName()     or "Unknown"
+    local charName  = UnitName("player") or L["Unknown"]
+    local realmName = GetRealmName()     or L["Unknown"]
     local charKey   = realmName .. "-" .. charName
     if not db.chars[charKey] then db.chars[charKey] = {} end
     local charDb = db.chars[charKey]
@@ -109,7 +110,7 @@ local function GetMatName(mat)
         local fallbackName = SafeGetItemInfo(mat.id)
         if fallbackName then return fallbackName end
     end
-    return mat.name or ("Item #" .. (mat.id or "?"))
+    return mat.name or (L["Item #"] .. (mat.id or "?"))
 end
 
 -- ---------------------------------------------------------------------------
@@ -157,11 +158,15 @@ local function BuildDisenchantLines(tooltip, data)
 
         local stackCount = 1
         if IsShiftKeyDown and IsShiftKeyDown() then
+            -- Only a bag slot has a bag above it. The owner can be anything
+            -- else (the auction house, a bank tab, another addon's button,
+            -- a frame with no parent at all), so nothing is assumed.
             local owner = tooltip:GetOwner()
-            if owner and owner.GetParent and owner.GetID then
-                local bag  = owner:GetParent():GetID()
+            local parent = owner and owner.GetParent and owner:GetParent()
+            if parent and parent.GetID and owner.GetID then
+                local bag  = parent:GetID()
                 local slot = owner:GetID()
-                if bag and slot and bag >= 0 and bag <= 5 then
+                if type(bag) == "number" and type(slot) == "number" and bag >= 0 and bag <= 5 then
                     local info = C_Container.GetContainerItemInfo(bag, slot)
                     if info and info.stackCount and info.stackCount > 1 then
                         stackCount = info.stackCount
@@ -172,26 +177,26 @@ local function BuildDisenchantLines(tooltip, data)
 
         tooltip:AddLine(" ")
         if price then
-            local staleTag = stale and (" " .. COLOR_WARN .. "[stale]" .. COLOR_RESET) or ""
+            local staleTag = stale and (" " .. COLOR_WARN .. L["[stale]"] .. COLOR_RESET) or ""
             local srcTag   = (not stale and SS.db.settings.showSource and source)
                 and (" |cFF888888[" .. source .. "]|r") or ""
 
             tooltip:AddDoubleLine(
-                COLOR_TITLE .. "AH Price" .. COLOR_RESET,
+                COLOR_TITLE .. L["AH Price"] .. COLOR_RESET,
                 SS:FormatGold(price) .. staleTag .. srcTag,
                 1, 1, 1, 1, 1, 1)
 
             if stackCount > 1 then
                 tooltip:AddDoubleLine(
-                    COLOR_TITLE .. "Stack Value" .. COLOR_RESET
+                    COLOR_TITLE .. L["Stack Value"] .. COLOR_RESET
                         .. string.format(" |cFF888888(x%d)|r", stackCount),
                     SS:FormatGold(price * stackCount),
                     1, 1, 1, 1, 1, 1)
             end
         else
             tooltip:AddDoubleLine(
-                COLOR_TITLE .. "AH Price" .. COLOR_RESET,
-                COLOR_ERR .. "No price — run /ss scan" .. COLOR_RESET,
+                COLOR_TITLE .. L["AH Price"] .. COLOR_RESET,
+                COLOR_ERR .. L["No price — run /ss scan"] .. COLOR_RESET,
                 1, 1, 1, 1, 1, 1)
         end
         tooltip:Show()
@@ -208,8 +213,8 @@ local function BuildDisenchantLines(tooltip, data)
     local results = SS:GetDisenchantResults(quality, expansionID)
     if not results or #results == 0 then
         tooltip:AddLine(" ")
-        tooltip:AddLine(COLOR_TITLE .. "Disenchanting" .. COLOR_RESET
-            .. "  |cFF888888(expansion not supported)|r")
+        tooltip:AddLine(COLOR_TITLE .. L["Disenchanting"] .. COLOR_RESET
+            .. L["  |cFF888888(expansion not supported)|r"])
         tooltip:Show()
         return
     end
@@ -262,7 +267,7 @@ local function BuildDisenchantLines(tooltip, data)
         else
             name = (C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID))
                 or SafeGetItemInfo(itemID)
-                or ("Item #" .. itemID)
+                or (L["Item #"] .. itemID)
         end
 
         local qualityIcon = mat and mat.qualityTier and QUALITY_ICONS[mat.qualityTier]
@@ -279,10 +284,10 @@ local function BuildDisenchantLines(tooltip, data)
         if SS.db.settings.showBreakdown then
             if dataSource == "observed" then
                 if entry.dropChance then
-                    leftText = string.format("  %s  |cFFFFFFFF%.0f%%|r · |cFFFFFFFFavg %.1fx|r",
+                    leftText = string.format(L["  %s  |cFFFFFFFF%.0f%%|r · |cFFFFFFFFavg %.1fx|r"],
                         name, entry.dropChance * 100, entry.avgQtyWhenReceived)
                 else
-                    leftText = string.format("  %s  |cFFFFFFFFavg %.2fx|r", name, avgQty)
+                    leftText = string.format(L["  %s  |cFFFFFFFFavg %.2fx|r"], name, avgQty)
                 end
             else
                 local result = entry.result
@@ -307,20 +312,20 @@ local function BuildDisenchantLines(tooltip, data)
                 or  expectedCopper
             rightText = SS:FormatGold(displayCopper)
             if stale then
-                rightText = rightText .. " " .. COLOR_WARN .. "[stale]" .. COLOR_RESET
+                rightText = rightText .. " " .. COLOR_WARN .. L["[stale]"] .. COLOR_RESET
             elseif SS.db.settings.showSource and source then
                 rightText = rightText .. " " .. "|cFF888888[" .. source .. "]" .. COLOR_RESET
             end
         else
             allHavePrices = false
-            rightText = COLOR_ERR .. "No price" .. COLOR_RESET
+            rightText = COLOR_ERR .. L["No price"] .. COLOR_RESET
         end
 
         table.insert(lines, { left = leftText, right = rightText })
     end
 
     tooltip:AddLine(" ")
-    tooltip:AddLine(COLOR_TITLE .. "Disenchanting" .. COLOR_RESET)
+    tooltip:AddLine(COLOR_TITLE .. L["Disenchanting"] .. COLOR_RESET)
 
     if SS.db.settings.showBreakdown then
         for _, line in ipairs(lines) do
@@ -330,19 +335,19 @@ local function BuildDisenchantLines(tooltip, data)
 
     if totalCopper > 0 then
         tooltip:AddLine("|cFF555555" .. string.rep("-", 50) .. "|r")
-        local totalLabel = "  " .. COLOR_GOLD .. "Expected Value" .. COLOR_RESET
+        local totalLabel = "  " .. COLOR_GOLD .. L["Expected Value"] .. COLOR_RESET
         tooltip:AddDoubleLine(totalLabel, SS:FormatGold(totalCopper), 1, 1, 1, 1, 1, 1)
 
         if sellPrice and sellPrice > 0 then
             local diff = totalCopper - sellPrice
             if diff > 0 then
                 tooltip:AddDoubleLine(
-                    "  |cFF00FF00Disenchant Profit|r",
+                    L["  |cFF00FF00Disenchant Profit|r"],
                     "|cFF00FF00+" .. SS:FormatGold(diff) .. "|r",
                     1, 1, 1, 1, 1, 1)
             elseif diff < 0 then
                 tooltip:AddDoubleLine(
-                    "  |cFFFF4444Vendor is Better|r",
+                    L["  |cFFFF4444Vendor is Better|r"],
                     "|cFFFF4444+" .. SS:FormatGold(-diff) .. "|r",
                     1, 1, 1, 1, 1, 1)
             end
@@ -350,17 +355,17 @@ local function BuildDisenchantLines(tooltip, data)
     end
 
     if dataSource == "static" then
-        tooltip:AddLine("  |cFF888888Estimated baseline (disenchant to build data)|r")
+        tooltip:AddLine(L["  |cFF888888Estimated baseline (disenchant to build data)|r"])
     elseif rateSource == "community" then
-        tooltip:AddLine(string.format("  |cFF888888Community data (%d disenchant(s))|r", trackedAttempts))
+        tooltip:AddLine(string.format(L["  |cFF888888Community data (%d disenchant(s))|r"], trackedAttempts))
     else
-        tooltip:AddLine(string.format("  |cFF888888Based on %d disenchant(s)|r", trackedAttempts))
+        tooltip:AddLine(string.format(L["  |cFF888888Based on %d disenchant(s)|r"], trackedAttempts))
     end
 
     if not allHavePrices then
-        tooltip:AddLine("  " .. COLOR_WARN .. "Visit the AH and /ss scan for prices" .. COLOR_RESET)
+        tooltip:AddLine("  " .. COLOR_WARN .. L["Visit the AH and /ss scan for prices"] .. COLOR_RESET)
     elseif anyStale then
-        tooltip:AddLine("  " .. COLOR_WARN .. "Prices may be outdated — run /ss scan" .. COLOR_RESET)
+        tooltip:AddLine("  " .. COLOR_WARN .. L["Prices may be outdated — run /ss scan"] .. COLOR_RESET)
     end
 
     tooltip:Show()
@@ -490,7 +495,7 @@ SlashCmdList["OXEDHUB_SHATTERSIGHT"] = function(msg)
             itemLink = link
         end
         if not itemLink then
-            print(COLOR_TITLE .. "[OxedHub Shattersight]:|r No item currently in tooltip.")
+            print(COLOR_TITLE .. L["[OxedHub Shattersight]:|r No item currently in tooltip."])
         else
             local name, _, quality, ilvl, _, _, _, _, equipLoc, _, _, _, _, _, expansionID =
                 C_Item.GetItemInfo(itemLink)
@@ -506,15 +511,15 @@ SlashCmdList["OXEDHUB_SHATTERSIGHT"] = function(msg)
             end
         end
     else
-        print(COLOR_TITLE .. "[OxedHub Shattersight] Commands:" .. COLOR_RESET)
-        print("  /ss scan        — Scan AH mat prices (at Auction House)")
-        print("  /ss autoscan    — Toggle auto-scan on AH open")
-        print("  /ss toggle      — Toggle tooltip display")
-        print("  /ss breakdown   — Toggle per-mat breakdown lines")
-        print("  /ss source      — Toggle price source tag (TSM/cache)")
-        print("  /ss setprice    — Set a mat price: /ss setprice <id> <g>")
-        print("  /ss stats       — Open stats window")
-        print("  /ss prices      — Show price lookup diagnostics")
+        print(COLOR_TITLE .. L["[OxedHub Shattersight] Commands:"] .. COLOR_RESET)
+        print(L["  /ss scan        — Scan AH mat prices (at Auction House)"])
+        print(L["  /ss autoscan    — Toggle auto-scan on AH open"])
+        print(L["  /ss toggle      — Toggle tooltip display"])
+        print(L["  /ss breakdown   — Toggle per-mat breakdown lines"])
+        print(L["  /ss source      — Toggle price source tag (TSM/cache)"])
+        print(L["  /ss setprice    — Set a mat price: /ss setprice <id> <g>"])
+        print(L["  /ss stats       — Open stats window"])
+        print(L["  /ss prices      — Show price lookup diagnostics"])
         print("  /ss debug       — Show data for hovered item")
     end
 end
@@ -534,7 +539,7 @@ local ShattersightTriggerHandler = {
         enableCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
         enableCheck:SetSize(20, 20)
         enableCheck:SetChecked(SS.db and SS.db.settings and SS.db.settings.showTooltip ~= false)
-        enableCheck.text:SetText("Enable Disenchant Tooltips (Shattersight)")
+        enableCheck.text:SetText(L["Enable Disenchant Tooltips (Shattersight)"])
         enableCheck:SetScript("OnClick", function(self)
             local isChecked = self:GetChecked()
             conditions.enableTooltip = isChecked
@@ -549,7 +554,7 @@ local ShattersightTriggerHandler = {
         breakdownCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
         breakdownCheck:SetSize(20, 20)
         breakdownCheck:SetChecked(SS.db and SS.db.settings and SS.db.settings.showBreakdown ~= false)
-        breakdownCheck.text:SetText("Show Per-Material Drop Breakdown")
+        breakdownCheck.text:SetText(L["Show Per-Material Drop Breakdown"])
         breakdownCheck:SetScript("OnClick", function(self)
             local isChecked = self:GetChecked()
             conditions.showBreakdown = isChecked
@@ -564,7 +569,7 @@ local ShattersightTriggerHandler = {
         autoScanCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
         autoScanCheck:SetSize(20, 20)
         autoScanCheck:SetChecked(SS.db and SS.db.settings and SS.db.settings.autoScan ~= false)
-        autoScanCheck.text:SetText("Auto-scan Reagent Prices at Auction House")
+        autoScanCheck.text:SetText(L["Auto-scan Reagent Prices at Auction House"])
         autoScanCheck:SetScript("OnClick", function(self)
             local isChecked = self:GetChecked()
             conditions.autoScan = isChecked
@@ -578,7 +583,7 @@ local ShattersightTriggerHandler = {
         local statsBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
         statsBtn:SetSize(160, 24)
         statsBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
-        statsBtn:SetText("Open Stats Window")
+        statsBtn:SetText(L["Open Stats Window"])
         statsBtn:SetScript("OnClick", function()
             SS:ToggleStatsFrame()
         end)

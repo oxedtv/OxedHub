@@ -15,6 +15,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -106,7 +107,7 @@ local function CreateAnchor()
     anchor.hint:SetColorTexture(0, 0.6, 1, 0.25)
     anchor.text = anchor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     anchor.text:SetPoint("BOTTOM", anchor, "TOP", 0, 2)
-    anchor.text:SetText("Party Interrupts: drag me")
+    anchor.text:SetText(L["Party Interrupts: drag me"])
 end
 
 local function NewBar()
@@ -339,7 +340,7 @@ end
 
 local function ShowTest()
     if not settings.enabled then
-        print("|cff00ccffOxedHub|r Switch Party Interrupts on first.")
+        print(L["|cff00ccffOxedHub|r Switch Party Interrupts on first."])
         return
     end
     local guid = UnitGUID("player")
@@ -360,7 +361,7 @@ local function ShowOptions()
         local test = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         test:SetSize(170, 22)
         test:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        test:SetText("Show a test")
+        test:SetText(L["Show a test"])
         test:SetScript("OnClick", ShowTest)
         w.cursorY = w.cursorY - 32
         w:AddCheckbox(settings, "showOwn", "Your interrupt", nil, UpdateOwn)
@@ -411,7 +412,7 @@ loginFrame:SetScript("OnEvent", function(self)
 
         defaults = DEFAULTS,
         OnOptionsShow = function() ShowOptions() end,
-        quick = { { text = "Test", func = function() ShowTest() end } },
+        quick = { { text = L["Test"], func = function() ShowTest() end } },
         OnEnable = function(_, cfg) settings = cfg; Start() end,
         OnDisable = function() Stop() end,
     })

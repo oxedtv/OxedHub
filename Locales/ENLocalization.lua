@@ -330,7 +330,7 @@ L["ABOUT_UPDATES_DESC"] = "• |cffffd100UI Improvements:|r Repositioned control
 L["ABOUT_CARD_COMMUNITY"] = "Community & Credits"
 L["ABOUT_COMMUNITY_DESC"] = "Join our Discord community to share profiles, get support, and suggest new features."
 L["ABOUT_BTN_DISCORD"] = "Join Discord"
-L["ABOUT_THANKS"] = "Special Thanks to |cffa335eeCaritas|r, |cffa335eeRiyadh|r & |cffa335eeialaaeldin|r for suggestions and testing!\nSpecial thanks to |cffa335eeRomanv|r for Spanish localization.\nIf you wish to contribute to translation, please contact us!"
+L["ABOUT_THANKS"] = "Special Thanks to |cffa335eeCaritas|r, |cffa335eeRiyadh|r & |cffa335eeialaaeldin|r for suggestions and testing!\nSpecial thanks to |cffa335eeRomanv|r for Spanish localization.\nSpecial thanks to |cffa335eeZamestoTV|r for Russian localization.\nIf you wish to contribute to translation, please contact us!"
 L["ABOUT_CREATED_BY"] = "Created by Oxed and The Lav Forge."
 L["ABOUT_DISCORD_LABEL"] = "|cff00ff00Discord Community:|r  Copy the link below and paste it in your browser"
 
@@ -821,7 +821,7 @@ L["ANIM_PLAY"] = "Play"
 L["ANIM_STOP"] = "Stop"
 L["ANIM_SAVE"] = "Save Animation"
 
-L["RELEASE_TITLE"] = "Release 2.4.43"
+L["RELEASE_TITLE"] = "Release 2.4.44"
 L["RELEASE_SUBTITLE"] = "What's New in this Update"
 L["ANIM_CUSTOM_TITLE"] = "Custom Animations"
 L["ANIM_CUSTOM_DESC"] = "Manage your animation library here. Use Add Animations for custom sprite-sheet setup."

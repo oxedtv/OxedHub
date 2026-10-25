@@ -32,6 +32,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -132,8 +133,8 @@ end
 
 local function RolesText(tank, healer, dps)
     local parts = {}
-    if tank then parts[#parts + 1] = CreateAtlasMarkup("roleicon-tiny-tank", 14, 14) .. " |cff00aeefTank|r" end
-    if healer then parts[#parts + 1] = CreateAtlasMarkup("roleicon-tiny-healer", 14, 14) .. " |cff00ff7fHealer|r" end
+    if tank then parts[#parts + 1] = CreateAtlasMarkup("roleicon-tiny-tank", 14, 14) .. L[" |cff00aeefTank|r"] end
+    if healer then parts[#parts + 1] = CreateAtlasMarkup("roleicon-tiny-healer", 14, 14) .. L[" |cff00ff7fHealer|r"] end
     if dps then parts[#parts + 1] = CreateAtlasMarkup("roleicon-tiny-dps", 14, 14) .. " |cffff6060DPS|r" end
     return table.concat(parts, ",  ")
 end
@@ -153,7 +154,7 @@ local function ReportRoles(tank, healer, dps)
     local now = GetTime()
     if now - lastReport < 2 then return end
     lastReport = now
-    print(PREFIX .. "signed up as " .. RolesText(tank, healer, dps))
+    print(PREFIX .. L["signed up as "] .. RolesText(tank, healer, dps))
 end
 
 -- ── Dungeon Finder: role check and ready check ─────────────────────────────
@@ -226,8 +227,8 @@ local function AcceptReady()
     if PlaySound and SOUNDKIT and SOUNDKIT.READY_CHECK then
         pcall(PlaySound, SOUNDKIT.READY_CHECK, "Master")
     end
-    print(PREFIX .. "your group is ready" .. (dungeon and (" for |cffffffff" .. dungeon .. "|r") or "")
-        .. ". |cffffd100Press Enter yourself|r: the game does not let an addon do it.")
+    print(PREFIX .. L["your group is ready"] .. (dungeon and (" for |cffffffff" .. dungeon .. "|r") or "")
+        .. L[". |cffffd100Press Enter yourself|r: the game does not let an addon do it."])
 end
 
 local function StartProposalWatch()
@@ -422,6 +423,7 @@ end
 local BTN_SIZE, BTN_GAP = 46, 18
 local ROLE_ORDER = { "tank", "healer", "dps" }
 local ROLE_NAMES = { tank = "|cff00aeefTank|r", healer = "|cff00ff7fHealer|r", dps = "|cffff6060DPS|r" }
+OxedHub:RegisterLocalizedTable(ROLE_NAMES)
 local ROLE_COORDS = {
     tank   = { 0.00, 0.25, 0.25, 0.50 },
     healer = { 0.25, 0.50, 0.00, 0.25 },
@@ -455,11 +457,11 @@ local function RoleTooltip(button)
     GameTooltip:SetOwner(button, "ANCHOR_BOTTOM")
     GameTooltip:SetText(ROLE_NAMES[button.role])
     if not AvailableRoles()[button.role] then
-        GameTooltip:AddLine("Not available for this class", 0.6, 0.6, 0.6)
+        GameTooltip:AddLine(L["Not available for this class"], 0.6, 0.6, 0.6)
     elseif PickedRoles()[button.role] then
-        GameTooltip:AddLine("Queued as this role", 0.3, 1, 0.3)
+        GameTooltip:AddLine(L["Queued as this role"], 0.3, 1, 0.3)
     else
-        GameTooltip:AddLine("Not queued as this role", 1, 0.4, 0.4)
+        GameTooltip:AddLine(L["Not queued as this role"], 1, 0.4, 0.4)
     end
     GameTooltip:Show()
 end
@@ -487,10 +489,10 @@ local function BuildRoleBar()
 
     local hint = roleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hint:SetPoint("BOTTOM", roleBar, "BOTTOM", 0, 20)
-    hint:SetText("|cffaaaaaaNone picked: your spec's role|r")
+    hint:SetText(L["|cffaaaaaaNone picked: your spec's role|r"])
     local hint2 = roleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hint2:SetPoint("BOTTOM", roleBar, "BOTTOM", 0, 7)
-    hint2:SetText("|cffaaaaaaHold Shift when signing up to write a note|r")
+    hint2:SetText(L["|cffaaaaaaHold Shift when signing up to write a note|r"])
 
     for i, role in ipairs(ROLE_ORDER) do
         local button = CreateFrame("Button", nil, roleBar)
@@ -563,7 +565,7 @@ local function BuildRoleBar()
     toggleButton:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Auto Queue")
-        GameTooltip:AddLine("Show or hide the role picker.", 1, 1, 1)
+        GameTooltip:AddLine(L["Show or hide the role picker."], 1, 1, 1)
         GameTooltip:Show()
     end)
     toggleButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -581,15 +583,15 @@ local function BuildRoleBar()
     text:SetPoint("TOPLEFT", 10, -10)
     text:SetWidth(240)
     text:SetJustifyH("LEFT")
-    text:SetText("|cff00ff00Auto Queue|r: this square shows or hides the role picker, "
-        .. "to queue as several roles or as a role your spec is not. "
-        .. "With none picked, your current spec's role is used.\n\n"
-        .. "Roles are saved per character.\n\n"
-        .. "|cffffff00Tip: double-click a listing to sign up.|r")
+    text:SetText(L["|cff00ff00Auto Queue|r: this square shows or hides the role picker, "]
+        .. L["to queue as several roles or as a role your spec is not. "]
+        .. L["With none picked, your current spec's role is used.\n\n"]
+        .. L["Roles are saved per character.\n\n"]
+        .. L["|cffffff00Tip: double-click a listing to sign up.|r"])
     local gotIt = CreateFrame("Button", nil, tutorial, "UIPanelButtonTemplate")
     gotIt:SetSize(80, 22)
     gotIt:SetPoint("TOP", text, "BOTTOM", 0, -10)
-    gotIt:SetText("Got it")
+    gotIt:SetText(L["Got it"])
     gotIt:SetScript("OnClick", function()
         settings.tutorialSeen = true
         tutorial:Hide()
@@ -708,7 +710,7 @@ local function SetupEyeButton()
     eyeMoverOverlay:SetBackdropColor(0.1, 0.8, 0.3, 0.15)
     local label = eyeMoverOverlay:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     label:SetPoint("BOTTOM", eyeMoverOverlay, "TOP", 0, 3)
-    label:SetText("LFG Eye")
+    label:SetText(L["LFG Eye"])
     label:SetTextColor(0.4, 1.0, 0.5)
     eyeMoverOverlay:Hide()
 
@@ -773,8 +775,10 @@ local QUEUE_CATEGORIES = {
     { "LE_LFG_CATEGORY_WORLDPVP", "World PvP" },
     { "LE_LFG_CATEGORY_BATTLEFIELD", "Brawl" },
 }
+OxedHub:RegisterLocalizedTable(QUEUE_CATEGORIES, 2)
 local QUEUED_MODES = { queued = true, rolecheck = true, proposal = true, suspended = true }
 local MODE_WORDS = { rolecheck = "Role check", proposal = "Ready", suspended = "Paused" }
+OxedHub:RegisterLocalizedTable(MODE_WORDS)
 
 local Q_WIDTH, Q_HEADER, Q_ROW, Q_ICON, Q_MAX = 310, 20, 44, 36, 12
 local ICON_DUNGEON = "Interface\\Icons\\INV_Misc_GroupNeedMore"
@@ -975,8 +979,8 @@ local function CollectQueues(rows)
                 local okApps, applicants = false, nil
                 if C_LFGList.GetApplicants then okApps, applicants = pcall(C_LFGList.GetApplicants) end
                 local count = okApps and type(applicants) == "table" and not issecretvalue(applicants) and #applicants or nil
-                rows[#rows + 1] = { icon or ICON_LISTING, nil, "Your listing", GREEN,
-                    TitleOr(title, name or "Listed"),
+                rows[#rows + 1] = { icon or ICON_LISTING, nil, L["Your listing"], GREEN,
+                    TitleOr(title, name or L["Listed"]),
                     Join({ name, count and count > 0 and (count .. (count == 1 and " applicant" or " applicants")) or nil }) }
             end
         end
@@ -1004,9 +1008,9 @@ local function CollectQueues(rows)
                         local leaderName = info and info.leaderName
                         local short = name and name:gsub(" %(Mythic Keystone%)$", "") or nil
                         rows[#rows + 1] = { icon or ICON_LISTING, nil,
-                            (invited and "Invited" or "Signed up") .. (style and ("  ·  " .. style) or ""),
+                            (invited and L["Invited"] or L["Signed up"]) .. (style and ("  ·  " .. style) or ""),
                             invited and GREEN or GOLD,
-                            TitleOr(title, name or "Group"),
+                            TitleOr(title, name or L["Group"]),
                             Join({ short,
                                 type(score) == "number" and score > 0 and ("score " .. math.floor(score)) or nil,
                                 type(members) == "number" and members > 0 and (members .. "/5") or nil,
@@ -1112,7 +1116,7 @@ local function QueueRow(i)
     end)
     row.leave:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(self.data and self.data.resultID and "Cancel this application" or "Leave this queue")
+        GameTooltip:SetText(self.data and self.data.resultID and L["Cancel this application"] or L["Leave this queue"])
         GameTooltip:Show()
     end)
     row.leave:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1194,7 +1198,7 @@ local function FillQueuePanel()
 
     local extra = #rows - shown
     queuePanel.more:SetShown(extra > 0)
-    if extra > 0 then queuePanel.more:SetFormattedText("and %d more", extra) end
+    if extra > 0 then queuePanel.more:SetFormattedText(L["and %d more"], extra) end
     queuePanel.empty:SetShown(#rows == 0)
     queuePanel.count:SetText(#rows > 0 and tostring(#rows) or "")
 
@@ -1217,7 +1221,7 @@ local function BuildQueuePanel()
 
     local title = queuePanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     title:SetPoint("TOPLEFT", queuePanel, "TOPLEFT", 7, -5)
-    title:SetText("Queued For")
+    title:SetText(L["Queued For"])
     queuePanel.count = queuePanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     queuePanel.count:SetPoint("TOPRIGHT", queuePanel, "TOPRIGHT", -7, -5)
 
@@ -1229,7 +1233,7 @@ local function BuildQueuePanel()
 
     queuePanel.empty = queuePanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     queuePanel.empty:SetPoint("TOPLEFT", queuePanel, "TOPLEFT", 8, -Q_HEADER - 8)
-    queuePanel.empty:SetText("Not in any queue.")
+    queuePanel.empty:SetText(L["Not in any queue."])
 
     queuePanel.more = queuePanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     queuePanel.more:SetPoint("BOTTOMLEFT", queuePanel, "BOTTOMLEFT", 8, 5)
@@ -1252,8 +1256,8 @@ local function BuildQueuePanel()
     end)
     handle:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Queued For")
-        GameTooltip:AddLine("Drag to move. Hides itself when you are not queued.", 1, 1, 1, true)
+        GameTooltip:SetText(L["Queued For"])
+        GameTooltip:AddLine(L["Drag to move. Hides itself when you are not queued."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     handle:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1436,7 +1440,7 @@ end
 
 local function Start()
     if StandaloneLoaded() then
-        print(PREFIX .. "Auto Queue is off while the AutoQueue addon is loaded: it does the same job. Disable one of them.")
+        print(PREFIX .. L["Auto Queue is off while the AutoQueue addon is loaded: it does the same job. Disable one of them."])
         return
     end
     for _, event in ipairs(EVENTS) do watcher:RegisterEvent(event) end
@@ -1461,12 +1465,12 @@ end
 -- ── Slash command ───────────────────────────────────────────────────────────
 
 local function PrintStatus()
-    print(PREFIX .. "Auto Queue is " .. (Active() and "|cff00ff00on|r" or "|cffff4444off|r") .. ".")
+    print(PREFIX .. L["Auto Queue is "] .. (Active() and "|cff00ff00on|r" or "|cffff4444off|r") .. ".")
     local picked = PickedRoles()
     local any = picked.tank or picked.healer or picked.dps
-    print("  Queue roles: " .. (any and RolesText(picked.tank, picked.healer, picked.dps)
-        or ("your spec's (" .. RolesText(QueueRoles()) .. ")")))
-    print("  /aq on, /aq off, /aq eye (preview), or Options on its card under Modules.")
+    print(L["  Queue roles: "] .. (any and RolesText(picked.tank, picked.healer, picked.dps)
+        or (L["your spec's ("] .. RolesText(QueueRoles()) .. ")")))
+    print(L["  /aq on, /aq off, /aq eye (preview), or Options on its card under Modules."])
 end
 
 SLASH_OXEDAUTOQUEUE1 = "/aq"
@@ -1484,10 +1488,10 @@ SlashCmdList["OXEDAUTOQUEUE"] = function(message)
             settings.enabled = on
             if on then Start() else Stop() end
         end
-        print(PREFIX .. "Auto Queue " .. (on and "on." or "off."))
+        print(PREFIX .. "Auto Queue " .. (on and L["on."] or L["off."]))
     elseif message == "eye" or message == "eyetest" or message == "testeye" then
         SetEyeTestMode(not eyeTestMode)
-        print(PREFIX .. "LFG Eye test preview " .. (eyeTestMode and "|cff00ff00enabled|r." or "|cffff4444disabled|r."))
+        print(PREFIX .. L["LFG Eye test preview "] .. (eyeTestMode and L["|cff00ff00enabled|r."] or L["|cffff4444disabled|r."]))
     elseif message == "reseteye" then
         if settings then
             settings.eyePoint = nil
@@ -1496,7 +1500,7 @@ SlashCmdList["OXEDAUTOQUEUE"] = function(message)
         end
         RestoreEyePosition()
         UpdateEyeAppearance()
-        print(PREFIX .. "LFG Eye position reset to default.")
+        print(PREFIX .. L["LFG Eye position reset to default."])
     else
         PrintStatus()
     end
@@ -1506,7 +1510,7 @@ SLASH_OXEDAUTOQUEUE_EYE1 = "/eye"
 SLASH_OXEDAUTOQUEUE_EYE2 = "/lfgeye"
 SlashCmdList["OXEDAUTOQUEUE_EYE"] = function()
     SetEyeTestMode(not eyeTestMode)
-    print(PREFIX .. "LFG Eye test preview " .. (eyeTestMode and "|cff00ff00enabled|r." or "|cffff4444disabled|r."))
+    print(PREFIX .. L["LFG Eye test preview "] .. (eyeTestMode and L["|cff00ff00enabled|r."] or L["|cffff4444disabled|r."]))
 end
 
 -- ── Settings ────────────────────────────────────────────────────────────────
@@ -1542,12 +1546,12 @@ local function ShowListOptions()
         local reset = CreateFrame("Button", nil, o, "UIPanelButtonTemplate")
         reset:SetSize(160, 24)
         reset:SetPoint("TOPLEFT", o, "TOPLEFT", 18, o.cursorY)
-        reset:SetText("Reset Position")
+        reset:SetText(L["Reset Position"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(reset) end
         reset:SetScript("OnClick", function()
             settings.queuePoint = nil
             Refresh()
-            print(PREFIX .. "queue list moved back to its starting place.")
+            print(PREFIX .. L["queue list moved back to its starting place."])
         end)
         o.cursorY = o.cursorY - 34
         o:AddNote("Press Preview List in Auto Queue's options to see changes without being queued.")
@@ -1611,7 +1615,7 @@ local function ShowOptions()
         local testEyeBtn = CreateFrame("Button", nil, eyeBtnRow, "UIPanelButtonTemplate")
         testEyeBtn:SetSize(120, 24)
         testEyeBtn:SetPoint("LEFT", eyeBtnRow, "LEFT", 0, 0)
-        testEyeBtn:SetText("Test / Drag Eye")
+        testEyeBtn:SetText(L["Test / Drag Eye"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
             OxedHub.UI:ApplyRedButtonStyle(testEyeBtn)
         end
@@ -1622,7 +1626,7 @@ local function ShowOptions()
         local resetEyeBtn = CreateFrame("Button", nil, eyeBtnRow, "UIPanelButtonTemplate")
         resetEyeBtn:SetSize(120, 24)
         resetEyeBtn:SetPoint("LEFT", testEyeBtn, "RIGHT", 10, 0)
-        resetEyeBtn:SetText("Reset Position")
+        resetEyeBtn:SetText(L["Reset Position"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
             OxedHub.UI:ApplyRedButtonStyle(resetEyeBtn)
         end
@@ -1634,7 +1638,7 @@ local function ShowOptions()
             end
             RestoreEyePosition()
             UpdateEyeAppearance()
-            print(PREFIX .. "LFG Eye position reset to default.")
+            print(PREFIX .. L["LFG Eye position reset to default."])
         end)
 
         w.cursorY = w.cursorY - 32
@@ -1647,18 +1651,18 @@ local function ShowOptions()
         local previewBtn = CreateFrame("Button", nil, listRow, "UIPanelButtonTemplate")
         previewBtn:SetSize(120, 24)
         previewBtn:SetPoint("LEFT", listRow, "LEFT", 0, 0)
-        previewBtn:SetText("Preview List")
+        previewBtn:SetText(L["Preview List"])
         local resetListBtn = CreateFrame("Button", nil, listRow, "UIPanelButtonTemplate")
         resetListBtn:SetSize(120, 24)
         resetListBtn:SetPoint("LEFT", previewBtn, "RIGHT", 10, 0)
-        resetListBtn:SetText("List Settings")
+        resetListBtn:SetText(L["List Settings"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
             OxedHub.UI:ApplyRedButtonStyle(previewBtn)
             OxedHub.UI:ApplyRedButtonStyle(resetListBtn)
         end
         previewBtn:SetScript("OnClick", function(self)
             queuePreview = not queuePreview
-            self:SetText(queuePreview and "Stop Preview" or "Preview List")
+            self:SetText(queuePreview and L["Stop Preview"] or L["Preview List"])
             UpdatePinnedList()
             if not queuePreview and queuePanel and not Active("queueList") then queuePanel:Hide() end
         end)
@@ -1666,7 +1670,7 @@ local function ShowOptions()
             -- Closing Options ends the preview.
             if queuePreview then
                 queuePreview = false
-                self:SetText("Preview List")
+                self:SetText(L["Preview List"])
                 UpdatePinnedList()
                 if queuePanel and not Active("queueList") then queuePanel:Hide() end
             end

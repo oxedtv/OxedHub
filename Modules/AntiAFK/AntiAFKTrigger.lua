@@ -77,7 +77,7 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
         -- ----------------------------------------------------
         local featureHeader = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         featureHeader:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
-        featureHeader:SetText("|cFFFFD900Anti-AFK Protection & Visual Displays|r")
+        featureHeader:SetText(L["|cFFFFD900Anti-AFK Protection & Visual Displays|r"])
         yOffset = yOffset - 24
 
         -- Top Timer Checkbox
@@ -108,15 +108,15 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
         local previewMoveBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
         previewMoveBtn:SetPoint("LEFT", frame, "TOPLEFT", 320, yOffset - 2)
         previewMoveBtn:SetSize(140, 22)
-        previewMoveBtn:SetText("Test / Move Banner")
+        previewMoveBtn:SetText(L["Test / Move Banner"])
         previewMoveBtn:SetNormalFontObject("GameFontNormalSmall")
         previewMoveBtn:SetScript("OnClick", function(self)
             if AntiAFK.ToggleMoveBannerPreview then
                 local isShown = AntiAFK:ToggleMoveBannerPreview(trigger)
                 if isShown then
-                    self:SetText("Hide Banner")
+                    self:SetText(L["Hide Banner"])
                 else
-                    self:SetText("Test / Move Banner")
+                    self:SetText(L["Test / Move Banner"])
                 end
             end
         end)
@@ -152,7 +152,7 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
         local resetPosBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
         resetPosBtn:SetPoint("LEFT", frame, "TOPLEFT", 320, yOffset - 2)
         resetPosBtn:SetSize(140, 22)
-        resetPosBtn:SetText("Reset HUD Positions")
+        resetPosBtn:SetText(L["Reset HUD Positions"])
         resetPosBtn:SetNormalFontObject("GameFontNormalSmall")
         resetPosBtn:SetScript("OnClick", function()
             conditions.timerCustomPos = false
@@ -176,7 +176,7 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
         -- ----------------------------------------------------
         local lookHeader = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         lookHeader:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
-        lookHeader:SetText("|cFFFFD900Appearance (Font, Size & Colors)|r")
+        lookHeader:SetText(L["|cFFFFD900Appearance (Font, Size & Colors)|r"])
         yOffset = yOffset - 26
 
         -- Keep the HUD on screen while the look is being adjusted, otherwise
@@ -185,10 +185,10 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
         previewBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, yOffset)
         previewBtn:SetSize(150, 22)
         previewBtn:SetNormalFontObject("GameFontNormalSmall")
-        previewBtn:SetText("Preview On Screen")
+        previewBtn:SetText(L["Preview On Screen"])
         previewBtn:SetScript("OnClick", function(self)
             local on = AntiAFK.TogglePreview and AntiAFK:TogglePreview(trigger)
-            self:SetText(on and "Hide Preview" or "Preview On Screen")
+            self:SetText(on and L["Hide Preview"] or L["Preview On Screen"])
         end)
         yOffset = yOffset - 30
 
@@ -242,13 +242,13 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
             return slider
         end
 
-        AddFontSlider("Timer Font Size", "timerFontSize", 46, 20, 90)
-        AddFontSlider("MOVE Banner Size", "moveFontSize", 96, 40, 160)
+        AddFontSlider(L["Timer Font Size"], "timerFontSize", 46, 20, 90)
+        AddFontSlider(L["MOVE Banner Size"], "moveFontSize", 96, 40, 160)
 
         -- Font face -------------------------------------------------------
         local fontLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         fontLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, yOffset)
-        fontLabel:SetText("Font:")
+        fontLabel:SetText(L["Font:"])
 
         local fontIndex = 1
         for i, def in ipairs(AntiAFK.FONTS) do
@@ -269,7 +269,7 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
         local function ShowFontOnDropdown(def)
             fontDropdown:OverrideText(def.label)
             fontSample:SetFont(def.path, 18, "OUTLINE")
-            fontSample:SetText("RUN!!!")
+            fontSample:SetText(L["RUN!!!"])
         end
 
         fontDropdown:SetupMenu(function(_, rootDescription)
@@ -293,7 +293,7 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
         -- Timer readout ---------------------------------------------------
         local formatLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         formatLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, yOffset)
-        formatLabel:SetText("Timer Shows:")
+        formatLabel:SetText(L["Timer Shows:"])
 
         local formatIndex = 1
         for i, def in ipairs(AntiAFK.TIMER_FORMATS) do
@@ -328,7 +328,7 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
 
         local labelHint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         labelHint:SetPoint("LEFT", labelInput, "RIGHT", 8, 0)
-        labelHint:SetText("label (optional)")
+        labelHint:SetText(L["label (optional)"])
 
         local function CommitLabel(box)
             conditions.timerLabel = box:GetText()
@@ -340,7 +340,7 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
         yOffset = yOffset - 30
         local outlineLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         outlineLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, yOffset)
-        outlineLabel:SetText("Text Outline:")
+        outlineLabel:SetText(L["Text Outline:"])
 
         local outlineIndex = 1
         for i, def in ipairs(AntiAFK.FONT_OUTLINES) do
@@ -368,13 +368,13 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
 
         local colorLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         colorLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, yOffset)
-        colorLabel:SetText("Stage Colors:")
+        colorLabel:SetText(L["Stage Colors:"])
         yOffset = yOffset - 24
 
         local colorDefs = {
-            { key = "none",   label = "Safe" },
-            { key = "yellow", label = "Early" },
-            { key = "red",    label = "Critical" },
+            { key = "none",   label = L["Safe"] },
+            { key = "yellow", label = L["Early"] },
+            { key = "red",    label = L["Critical"] },
             { key = "move",   label = "MOVE" },
         }
 
@@ -442,7 +442,7 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
 
         local bannerLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         bannerLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, yOffset)
-        bannerLabel:SetText("Warning Message:")
+        bannerLabel:SetText(L["Warning Message:"])
 
         local bannerInput = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
         bannerInput:SetPoint("LEFT", bannerLabel, "RIGHT", 10, 0)
@@ -462,7 +462,7 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
         local resetLookBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
         resetLookBtn:SetPoint("LEFT", bannerInput, "RIGHT", 12, 0)
         resetLookBtn:SetSize(110, 22)
-        resetLookBtn:SetText("Reset Look")
+        resetLookBtn:SetText(L["Reset Look"])
         resetLookBtn:SetNormalFontObject("GameFontNormalSmall")
         resetLookBtn:SetScript("OnClick", function()
             conditions.timerFontSize = nil
@@ -489,27 +489,27 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
         -- ----------------------------------------------------
         local stageHeader = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         stageHeader:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
-        stageHeader:SetText("|cFFFFD900Warning Alerts (Sounds & Animations per Stage)|r")
+        stageHeader:SetText(L["|cFFFFD900Warning Alerts (Sounds & Animations per Stage)|r"])
         yOffset = yOffset - 24
 
         local stages = {
             { 
                 key = "yellow", 
-                label = "|cFFFFDD00Stage 1 — Early Warning (2:00)|r", 
+                label = L["|cFFFFDD00Stage 1 — Early Warning (2:00)|r"], 
                 soundKey = "yellowSound",
                 animKey = "yellowAnimation",
                 defaultMode = "loop"
             },
             { 
                 key = "red", 
-                label = "|cFFFF6600Stage 2 — Critical Warning (3:00)|r", 
+                label = L["|cFFFF6600Stage 2 — Critical Warning (3:00)|r"], 
                 soundKey = "redSound",
                 animKey = "redAnimation",
                 defaultMode = "loop"
             },
             { 
                 key = "move", 
-                label = "|cFFFF2200Stage 3 — Urgent \"MOVE\" Alarm (3:30)|r", 
+                label = L["|cFFFF2200Stage 3 — Urgent \"MOVE\" Alarm (3:30)|r"], 
                 soundKey = "moveSound",
                 animKey = "moveAnimation",
                 defaultMode = "once"
@@ -576,7 +576,7 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
             local playSoundBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
             playSoundBtn:SetPoint("LEFT", soundBtn, "RIGHT", 4, 0)
             playSoundBtn:SetSize(40, 22)
-            playSoundBtn:SetText("Play")
+            playSoundBtn:SetText(L["Play"])
             playSoundBtn:SetNormalFontObject("GameFontNormalSmall")
             playSoundBtn:SetScript("OnClick", function()
                 local val = actions[st.soundKey] or conditions[st.soundKey]
@@ -678,19 +678,19 @@ OxedHub.Triggers:RegisterEventType("PVP_ANTI_AFK", {
             local playOnceCheck = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
             playOnceCheck:SetPoint("TOPLEFT", parent, "TOPLEFT", 38, yOffset)
             playOnceCheck:SetSize(18, 18)
-            playOnceCheck.text:SetText("Play Once")
+            playOnceCheck.text:SetText(L["Play Once"])
             playOnceCheck.text:SetFontObject("GameFontHighlightSmall")
 
             local loopCheck = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
             loopCheck:SetPoint("LEFT", playOnceCheck.text, "RIGHT", 14, 0)
             loopCheck:SetSize(18, 18)
-            loopCheck.text:SetText("Continuous Loop")
+            loopCheck.text:SetText(L["Continuous Loop"])
             loopCheck.text:SetFontObject("GameFontHighlightSmall")
 
             local repeatCheck = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
             repeatCheck:SetPoint("LEFT", loopCheck.text, "RIGHT", 14, 0)
             repeatCheck:SetSize(18, 18)
-            repeatCheck.text:SetText("Repeat:")
+            repeatCheck.text:SetText(L["Repeat:"])
             repeatCheck.text:SetFontObject("GameFontHighlightSmall")
 
             local repeatInput = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")

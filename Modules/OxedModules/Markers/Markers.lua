@@ -17,6 +17,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -123,19 +124,19 @@ local function Explain()
     if not settings or settings.enabled == false then return end
     local reasons = {}
     if settings.hideAlone and IsInGroup and not IsInGroup() then
-        reasons[#reasons + 1] = "you are not in a group"
+        reasons[#reasons + 1] = L["you are not in a group"]
     end
     if settings.needAssist and not MayMark() then
-        reasons[#reasons + 1] = "you are not the leader or an assistant"
+        reasons[#reasons + 1] = L["you are not the leader or an assistant"]
     end
     if settings.needTarget and not UnitExists("target") then
-        reasons[#reasons + 1] = "you have nothing targeted"
+        reasons[#reasons + 1] = L["you have nothing targeted"]
     end
     if not (settings.raidBar or settings.worldBar or settings.controls) then
-        reasons[#reasons + 1] = "all three bars are switched off"
+        reasons[#reasons + 1] = L["all three bars are switched off"]
     end
     if #reasons == 0 then return end
-    print(PREFIX .. ("the bars are hidden because %s. Change that in Options, or type /oxmark.")
+    print(PREFIX .. (L["the bars are hidden because %s. Change that in Options, or type /oxmark."])
         :format(table.concat(reasons, " and ")))
 end
 
@@ -187,7 +188,7 @@ end
 
 local function NewBar(kind, keyX, keyY)
     local frame = CreateFrame("Frame", "OxedHubMarkers" .. kind, UIParent, "BackdropTemplate")
-    frame.kind, frame.keyX, frame.keyY, frame.keyPoint = kind, keyX, keyY, keyX .. "Point"
+    frame.kind, frame.keyX, frame.keyY, frame.keyPoint = kind, keyX, keyY, keyX .. L["Point"]
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
     frame:EnableMouse(true)
@@ -304,15 +305,15 @@ local function BuildRaidBar()
         local icon = button:CreateTexture(nil, "ARTWORK")
         icon:SetAllPoints()
         icon:SetTexture(RAID_ICON:format(index))
-        Tip(button, RAID_NAMES[index] or ("Mark %d"):format(index),
-            "Puts this mark on your target.")
+        Tip(button, RAID_NAMES[index] or (L["Mark %d"]):format(index),
+            L["Puts this mark on your target."])
     end
 
     local clear = SecureButton(frame, { type1 = "macro", macrotext1 = "/tm 0" })
     local icon = clear:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints()
     icon:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-    Tip(clear, "Clear the mark", "Takes the mark off your target.")
+    Tip(clear, L["Clear the mark"], L["Takes the mark off your target."])
 
     return frame
 end
@@ -341,10 +342,10 @@ local function BuildWorldBar()
         glow:SetBlendMode("ADD")
         glow:SetVertexColor(unpack(WORLD_COLOURS[index]))
         button.flare2 = glow
-        Tip(button, ("World marker %d"):format(index),
-            "Left click puts this flare where you are standing, right click takes it away. "
-            .. "Dimmed means the game will refuse it: world markers need a real group, and in a raid "
-            .. "the leader or an assistant. A follower dungeon does not count, since its companions are NPCs.")
+        Tip(button, (L["World marker %d"]):format(index),
+            L["Left click puts this flare where you are standing, right click takes it away. "]
+            .. L["Dimmed means the game will refuse it: world markers need a real group, and in a raid "]
+            .. L["the leader or an assistant. A follower dungeon does not count, since its companions are NPCs."])
     end
 
     local clear = SecureButton(frame, { type1 = "macro", macrotext1 = "/cwm all" })
@@ -352,7 +353,7 @@ local function BuildWorldBar()
     icon:SetAllPoints()
     icon:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
     clear.dimmable = icon
-    Tip(clear, "Clear the flares", "Takes every world marker off the ground. A real group, and lead or assist, again.")
+    Tip(clear, L["Clear the flares"], L["Takes every world marker off the ground. A real group, and lead or assist, again."])
 
     return frame
 end
@@ -376,23 +377,23 @@ end
 local function BuildControlBar()
     local frame = NewBar("control", "controlX", "controlY")
 
-    PlainButton(frame, "Interface\\Icons\\Spell_Holy_Rune", "Ready check",
-        "Asks the group whether everyone is ready.", function()
-            if not MayMark() then return print(PREFIX .. "only the leader or an assistant can do that.") end
+    PlainButton(frame, "Interface\\Icons\\Spell_Holy_Rune", L["Ready check"],
+        L["Asks the group whether everyone is ready."], function()
+            if not MayMark() then return print(PREFIX .. L["only the leader or an assistant can do that."]) end
             if DoReadyCheck then pcall(DoReadyCheck) end
         end)
 
-    PlainButton(frame, "Interface\\Icons\\INV_Misc_GroupNeedMore", "Role check",
-        "Asks everyone to name their role again.", function()
-            if not MayMark() then return print(PREFIX .. "only the leader or an assistant can do that.") end
+    PlainButton(frame, "Interface\\Icons\\INV_Misc_GroupNeedMore", L["Role check"],
+        L["Asks everyone to name their role again."], function()
+            if not MayMark() then return print(PREFIX .. L["only the leader or an assistant can do that."]) end
             if InitiateRolePoll then pcall(InitiateRolePoll) end
         end)
 
-    PlainButton(frame, "Interface\\Icons\\INV_Misc_PocketWatch_01", "Countdown",
-        "Left click starts the pull timer, right click the short one, shift click stops it.",
+    PlainButton(frame, "Interface\\Icons\\INV_Misc_PocketWatch_01", L["Countdown"],
+        L["Left click starts the pull timer, right click the short one, shift click stops it."],
         function(_, button)
             if not (C_PartyInfo and C_PartyInfo.DoCountdown) then return end
-            if not MayMark() then return print(PREFIX .. "only the leader or an assistant can do that.") end
+            if not MayMark() then return print(PREFIX .. L["only the leader or an assistant can do that."]) end
             if IsShiftKeyDown() then
                 pcall(C_PartyInfo.DoCountdown, 0)
                 return
@@ -563,13 +564,13 @@ local function ShowOptions()
         w:AddCheckbox(settings, "locked", "Lock the bars in place",
             "Unlocked, drag a bar by any of its buttons. A plain click still marks.")
         w:AddCheckbox(settings, "backdrop", "Show the panel behind the buttons", nil, Redraw)
-        AddSlider(w, "panelAlpha", "Panel opacity", 0, 1, 0.05, "%s: %.2f")
+        AddSlider(w, "panelAlpha", L["Panel opacity"], 0, 1, 0.05, "%s: %.2f")
         w:AddCheckbox(settings, "tooltips", "Tooltips")
 
-        AddSlider(w, "size", "Button size", 16, 64, 1, "%s: %d")
-        AddSlider(w, "spacing", "Space between", 0, 16, 1, "%s: %d")
-        AddSlider(w, "columns", "Buttons in a row", 1, 9, 1, "%s: %d")
-        AddSlider(w, "scale", "Scale", 0.5, 2, 0.05, "%s: %.2f")
+        AddSlider(w, "size", L["Button size"], 16, 64, 1, "%s: %d")
+        AddSlider(w, "spacing", L["Space between"], 0, 16, 1, "%s: %d")
+        AddSlider(w, "columns", L["Buttons in a row"], 1, 9, 1, "%s: %d")
+        AddSlider(w, "scale", L["Scale"], 0.5, 2, 0.05, "%s: %.2f")
 
         w:AddCheckbox(settings, "hideAlone", "Hide while you are on your own",
             "On, the bars only appear once you are in a group. Off, they are always there.", Redraw)
@@ -577,8 +578,8 @@ local function ShowOptions()
             "In a raid the marks only work for the leader and assistants.", Redraw)
         w:AddCheckbox(settings, "needTarget", "Show the marks only with a target", nil, Redraw)
 
-        AddSlider(w, "countdown", "Countdown, left click", 0, 30, 1, "%s: %d s")
-        AddSlider(w, "countdown2", "Countdown, right click", 0, 30, 1, "%s: %d s")
+        AddSlider(w, "countdown", L["Countdown, left click"], 0, 30, 1, "%s: %d s")
+        AddSlider(w, "countdown2", L["Countdown, right click"], 0, 30, 1, "%s: %d s")
 
         w:AddNote("Nothing on screen? One of the three boxes above is hiding the bars. /oxmark show turns all three off.")
         w:AddNote("A world marker goes down where you stand: left click sets it, right click clears that one, and the last button clears them all. The game refuses all of it outside a group, and in a raid for anyone who is neither the leader nor an assistant.")
@@ -594,20 +595,20 @@ SlashCmdList.OXEDHUBMARKERS = function(msg)
     msg = (msg or ""):lower()
     if msg == "lock" then
         settings.locked = not settings.locked
-        print(PREFIX .. (settings.locked and "bars locked." or "bars unlocked, drag them where you like."))
+        print(PREFIX .. (settings.locked and L["bars locked."] or L["bars unlocked, drag them where you like."]))
         return
     end
     if msg == "show" then
         settings.hideAlone, settings.needAssist, settings.needTarget = false, false, false
         Redraw()
-        print(PREFIX .. "every bar is on screen now; the hiding rules are off.")
+        print(PREFIX .. L["every bar is on screen now; the hiding rules are off."])
         return
     end
     -- Where each bar thinks it is, for a bar that is on but not to be seen.
     if msg == "debug" then
         debugClicks = not debugClicks
-        print(PREFIX .. (debugClicks and "click tracing on: press a marker button."
-            or "click tracing off."))
+        print(PREFIX .. (debugClicks and L["click tracing on: press a marker button."]
+            or L["click tracing off."]))
         return
     end
     if msg == "where" then
@@ -631,7 +632,7 @@ SlashCmdList.OXEDHUBMARKERS = function(msg)
         end
         for _, frame in pairs(bars) do settings[frame.keyPoint] = nil end
         LayoutAll()
-        print(PREFIX .. "bars put back where they started.")
+        print(PREFIX .. L["bars put back where they started."])
         return
     end
     ShowOptions()

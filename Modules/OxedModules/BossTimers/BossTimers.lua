@@ -13,6 +13,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -98,6 +99,7 @@ local KIND_NAME = {
     tank = "Tank", healer = "Healer", targeted = "Targeted",
     mechanic = "Mechanic", special = "Special", other = "Other",
 }
+OxedHub:RegisterLocalizedTable(KIND_NAME)
 
 local TICK       = 0.1   -- bar and warning refresh while anything is coming
 
@@ -205,7 +207,7 @@ local function CreateAnchor()
     -- Above the box, so the bars never cover it.
     local text = anchor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     text:SetPoint("BOTTOM", anchor, "TOP", 0, 2)
-    text:SetText("Boss Timers: drag me")
+    text:SetText(L["Boss Timers: drag me"])
     anchor.text = text
     anchor:Hide()
 end
@@ -443,14 +445,14 @@ end
 
 local function ShowTest()
     if not settings.enabled then
-        print("|cff00ccffOxedHub|r Switch Boss Timers on first.")
+        print(L["|cff00ccffOxedHub|r Switch Boss Timers on first."])
         return
     end
     Engine:AddTestEvents({
-        { name = "Test: Crushing Blow", icon = 136025, duration = 6, kind = "tank" },
-        { name = "Test: Shadow Burst", icon = 136197, duration = 10, kind = "mechanic" },
-        { name = "Test: Healing Check", icon = 136218, duration = 14, kind = "healer" },
-        { name = "Test: Fixate", icon = 136219, duration = 18, kind = "targeted" },
+        { name = L["Test: Crushing Blow"], icon = 136025, duration = 6, kind = "tank" },
+        { name = L["Test: Shadow Burst"], icon = 136197, duration = 10, kind = "mechanic" },
+        { name = L["Test: Healing Check"], icon = 136218, duration = 14, kind = "healer" },
+        { name = L["Test: Fixate"], icon = 136219, duration = 18, kind = "targeted" },
     })
 end
 
@@ -469,8 +471,8 @@ local function SortedEncounters()
                 instance = EJ_GetInstanceInfo(journalInstance)
             end
         end
-        list[#list + 1] = { id = id, enc = enc, instance = instance or "Unknown",
-            boss = boss or ("Encounter " .. id) }
+        list[#list + 1] = { id = id, enc = enc, instance = instance or L["Unknown"],
+            boss = boss or (L["Encounter "] .. id) }
     end
     -- Each dungeon's trash, first in its dungeon, as one more "boss".
     if OxedHub.TrashSpellsForInstance then
@@ -479,7 +481,7 @@ local function SortedEncounters()
         for mapID, name in pairs(names) do
             local spells = OxedHub.TrashSpellsForInstance(mapID)
             if spells then
-                list[#list + 1] = { id = "trash", instance = name, boss = "Trash",
+                list[#list + 1] = { id = "trash", instance = name, boss = L["Trash"],
                     enc = { abilities = spells, raid = false, order = 0, mapID = mapID } }
             end
         end
@@ -549,7 +551,7 @@ local function BuildAbilitiesWindow()
                 row.more = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
                 row.more:SetSize(90, 20)
                 row.more:SetPoint("RIGHT", 0, 0)
-                row.more:SetText("Text & time")
+                row.more:SetText(L["Text & time"])
                 abilityRows[index] = row
             end
             row:ClearAllPoints()
@@ -563,7 +565,7 @@ local function BuildAbilitiesWindow()
                 local name = (own and own.text and own.text ~= "" and own.text) or Engine:AbilityName(ability)
                 local extra = KIND_NAME[ability.kind] or ""
                 if own and own.warnAt then extra = extra .. ", " .. own.warnAt .. " s" end
-                if own and own.mute then extra = extra .. ", silent"
+                if own and own.mute then extra = extra .. L[", silent"]
                 elseif own and own.sound and own.sound ~= "" then
                     extra = extra .. ", " .. API:SoundName(own.sound)
                 end
@@ -583,7 +585,7 @@ local function BuildAbilitiesWindow()
                 else
                     GameTooltip:SetText(Engine:AbilityName(ability))
                 end
-                GameTooltip:AddLine("Kind: " .. (KIND_NAME[ability.kind] or "Other"), 1, 1, 1)
+                GameTooltip:AddLine(L["Kind: "] .. (KIND_NAME[ability.kind] or L["Other"]), 1, 1, 1)
                 GameTooltip:Show()
             end)
             row:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -604,7 +606,7 @@ local function BuildAbilitiesWindow()
             row.more:SetScript("OnClick", function()
                 local own = Own(true)
                 StaticPopupDialogs["OXEDHUB_BOSSTIMER_TEXT"] = {
-                    text = "Text on the bar for %s, and seconds before it to warn (empty: the usual). Add \"mute\" for no sound.\nExample:  Soak 4   or   Spread mute",
+                    text = L["Text on the bar for %s, and seconds before it to warn (empty: the usual). Add \"mute\" for no sound.\nExample:  Soak 4   or   Spread mute"],
                     button1 = ACCEPT, button2 = CANCEL,
                     hasEditBox = true, maxLetters = 60,
                     OnShow = function(popup)
@@ -667,7 +669,7 @@ local function BuildAbilitiesWindow()
                     header.label = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                     header.label:SetPoint("LEFT", 2, 0)
                 end
-                header.label:SetText((item.enc.raid and "Raid: " or "") .. item.instance)
+                header.label:SetText((item.enc.raid and L["Raid: "] or "") .. item.instance)
                 header:SetScript("OnClick", nil)
                 header:Show()
                 y = y + 20
@@ -736,8 +738,8 @@ local function ShowLook()
         lookWindow = w
         w:HookScript("OnShow", function() Restyle() end)
         w:HookScript("OnHide", function() Restyle() end)
-        AddButton(w, "Show test bars", 20, ShowTest)
-        AddButton(w, "Colours", 250, ShowColours)
+        AddButton(w, L["Show test bars"], 20, ShowTest)
+        AddButton(w, L["Colours"], 250, ShowColours)
         w.cursorY = w.cursorY - 32
 
         w:AddCheckbox(settings, "locked", "Lock the bars",
@@ -752,13 +754,13 @@ local function ShowLook()
         w:AddChoice(settings, "texture", "Bar texture", TextureChoices(), Relayout)
         w:AddSlider(settings, "background", "Background", 0, 1, 0.05, "%s: %.2f", Relayout)
         w:AddChoice(settings, "iconSide", "Icon", {
-            { value = "left", text = "Left" }, { value = "right", text = "Right" },
-            { value = "none", text = "Hidden" },
+            { value = "left", text = L["Left"] }, { value = "right", text = L["Right"] },
+            { value = "none", text = L["Hidden"] },
         }, Relayout)
 
         w:AddSlider(settings, "fontSize", "Text size", 8, 24, 1, "%s: %d", Relayout)
         w:AddChoice(settings, "outline", "Text outline", {
-            { value = "OUTLINE", text = "Thin" }, { value = "THICKOUTLINE", text = "Thick" },
+            { value = "OUTLINE", text = L["Thin"] }, { value = "THICKOUTLINE", text = L["Thick"] },
             { value = "", text = "None" },
         }, Relayout)
         w:AddCheckbox(settings, "nameFirst", "Name on the left, time on the right", nil, Relayout)
@@ -778,10 +780,10 @@ local function ShowOptions()
         w:HookScript("OnShow", function() Restyle() end)
         w:HookScript("OnHide", function() Restyle() end)
 
-        AddButton(w, "Abilities, one by one", 20, ShowAbilities)
-        AddButton(w, "Look", 250, ShowLook)
+        AddButton(w, L["Abilities, one by one"], 20, ShowAbilities)
+        AddButton(w, L["Look"], 250, ShowLook)
         w.cursorY = w.cursorY - 28
-        AddButton(w, "Show test bars", 20, ShowTest)
+        AddButton(w, L["Show test bars"], 20, ShowTest)
         w.cursorY = w.cursorY - 32
 
         w:AddCheckbox(settings, "inDungeons", "In dungeons")
@@ -850,8 +852,8 @@ loginFrame:SetScript("OnEvent", function(self)
         OnOptionsShow = function() ShowOptions() end,
 
         quick = {
-            { text = "Test bars", func = function() ShowTest() end },
-            { text = "Abilities", func = function() ShowAbilities() end },
+            { text = L["Test bars"], func = function() ShowTest() end },
+            { text = L["Abilities"], func = function() ShowAbilities() end },
         },
 
         OnEnable = function(_, cfg)

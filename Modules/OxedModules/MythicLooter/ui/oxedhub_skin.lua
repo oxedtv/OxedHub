@@ -1,13 +1,10 @@
 -- MythicLooter in OxedHub's own look: the stone backdrop and ornate border
 -- the rest of the hub uses, in place of Blizzard's portrait frame.
 --
--- Runs at READY, after every frame exists. Skipped when EllesmereUI is
--- loaded, since that skin restyles the same frames its own way.
+-- Runs at READY, after every frame exists. Always ours, whatever UI addon is
+-- loaded: the popups are guarded (Guard, below) so another addon's skin
+-- cannot paint over them afterwards.
 local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter;
-
-if (EllesmereUI and EllesmereUI.RegisterSkin) then
-    return;
-end
 
 local function NoShow() end
 
@@ -55,6 +52,43 @@ local function AddShell(frame, title, alpha)
     Panel.ApplyOrnateFrame(shell, title, alpha or 0.96);
     frame.oxedShell = shell;
     return shell;
+end
+
+-- Keeps a frame as we left it. What it holds now is ours; a texture, child
+-- frame or backdrop that turns up later is another addon's skin, and is
+-- taken away each time the frame is shown (and once more a frame later, for
+-- skins that wait a frame themselves).
+local function Guard(frame, keepChildren)
+    if (not frame or frame.oxedGuarded) then
+        return;
+    end
+    frame.oxedGuarded = true;
+
+    local ownRegions, ownChildren = {}, {};
+    for _, region in ipairs({ frame:GetRegions() }) do ownRegions[region] = true; end
+    for _, child in ipairs({ frame:GetChildren() }) do ownChildren[child] = true; end
+
+    local function Sweep()
+        for _, region in ipairs({ frame:GetRegions() }) do
+            if (not ownRegions[region]) then
+                KillTexture(region);
+            end
+        end
+        for _, child in ipairs(keepChildren and {} or { frame:GetChildren() }) do
+            if (not ownChildren[child]) then
+                KillFrame(child);
+            end
+        end
+        if (frame.backdropInfo and frame.ClearBackdrop) then
+            pcall(frame.ClearBackdrop, frame);
+        end
+    end
+
+    Sweep();
+    frame:HookScript("OnShow", function()
+        Sweep();
+        C_Timer.After(0, Sweep);
+    end);
 end
 
 local function RedButton(button)
@@ -285,7 +319,13 @@ local function SkinTeleportPopup(frame)
     if (frame.Open) then
         hooksecurefunc(frame, "Open", function(self)
             local w = math.max(POPUP_MIN_WIDTH, card.DungeonName:GetStringWidth() + 40,
-                self.Title:GetStringWidth() + 56);
+                self.Title:GetStringWidth() + 56,
+                self.TeleportHint and self.TeleportHint:IsShown() and self.TeleportHint:GetStringWidth() + 40 or 0);
+            -- With the group's details under the circle, keep the width Open
+            -- gave them, or the description wraps into a narrow column.
+            if (self.hasDetails) then
+                w = math.max(w, self:GetWidth());
+            end
             self:SetWidth(w);
         end);
     end
@@ -309,6 +349,16 @@ local function Apply()
 
         for _, button in ipairs({ OxMythicLooterReminderFrame and OxMythicLooterReminderFrame.LootSpecButton }) do
             RedButton(button);
+        end
+
+        Guard(OxMythicLooterReminderFrame);
+        -- Its item rows are child frames made as loot comes in; keep those.
+        Guard(OxMythicLooterDropNotificationFrame, true);
+        local teleport = OxMythicLooterMythicPlusNotificationFrame;
+        if (teleport) then
+            Guard(teleport);
+            Guard(teleport.Card);
+            Guard(teleport.CloseButton);
         end
     end);
     if (not ok and OxedHub.debug) then

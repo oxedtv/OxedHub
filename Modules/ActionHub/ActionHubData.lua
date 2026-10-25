@@ -376,14 +376,14 @@ function ActionHub:GetModuleNodeChoices(forRing)
         end
         if forRing then
             if mod.OnOptionsShow then
-                list[#list + 1] = { id = mod.id .. "|options", name = name, action = "Settings",
+                list[#list + 1] = { id = mod.id .. "|options", name = name, action = L["Settings"],
                     icon = mod.icon or MODULE_ICON }
             end
-            list[#list + 1] = { id = mod.id .. "|toggle", name = name, action = "On / off",
+            list[#list + 1] = { id = mod.id .. "|toggle", name = name, action = L["On / off"],
                 icon = mod.icon or MODULE_ICON }
         else
             list[#list + 1] = { id = mod.id .. "|main", name = name,
-                action = "Left: settings, right: switch", icon = mod.icon or MODULE_ICON }
+                action = L["Left: settings, right: switch"], icon = mod.icon or MODULE_ICON }
         end
     end
     return list
@@ -398,15 +398,15 @@ function ActionHub:DescribeModuleNode(id)
     if not mod then return nil end
     local text
     if action == "main" then
-        text = "Left-click: settings|nRight-click: " .. (API:IsModuleEnabled(modId) and "switch off" or "switch on")
+        text = L["Left-click: settings|nRight-click: "] .. (API:IsModuleEnabled(modId) and L["switch off"] or L["switch on"])
     elseif action == "options" then
-        text = "Settings"
+        text = L["Settings"]
     elseif action == "toggle" then
-        text = API:IsModuleEnabled(modId) and "Switch off" or "Switch on"
+        text = API:IsModuleEnabled(modId) and L["Switch off"] or L["Switch on"]
     else
         local index = tonumber(action:match("^q(%d+)$") or "")
         local quick = index and type(mod.quick) == "table" and mod.quick[index]
-        text = quick and tostring(quick.text or "Open") or "Open"
+        text = quick and tostring(quick.text or "Open") or L["Open"]
     end
     return tostring(mod.name or modId), text, mod.icon or MODULE_ICON
 end
@@ -427,7 +427,7 @@ function ActionHub:RunModuleNode(id, button)
     end
     local mod = modId and API and API.modules and API.modules[modId]
     if not mod then
-        print("|cff00ccffOxedHub|r that module is not there any more.")
+        print(L["|cff00ccffOxedHub|r that module is not there any more."])
         return
     end
     local name = tostring(mod.name or modId)
@@ -435,16 +435,16 @@ function ActionHub:RunModuleNode(id, button)
         if mod.OnOptionsShow then pcall(mod.OnOptionsShow, mod) end
     elseif action == "toggle" then
         if InCombatLockdown() then
-            print(("|cff00ccffOxedHub|r %s can be switched on or off after the fight."):format(name))
+            print((L["|cff00ccffOxedHub|r %s can be switched on or off after the fight."]):format(name))
             return
         end
         local on = not API:IsModuleEnabled(modId)
         API:SetModuleEnabled(modId, on)
-        print(("|cff00ccffOxedHub|r %s %s."):format(name, on and "switched on" or "switched off"))
+        print(("|cff00ccffOxedHub|r %s %s."):format(name, on and L["switched on"] or L["switched off"]))
         if API.RefreshModulesTab then pcall(API.RefreshModulesTab, API) end
     else
         if not API:IsModuleEnabled(modId) then
-            print(("|cff00ccffOxedHub|r %s is switched off. Switch it on on the Modules page."):format(name))
+            print((L["|cff00ccffOxedHub|r %s is switched off. Switch it on on the Modules page."]):format(name))
             return
         end
         local index = tonumber(action:match("^q(%d+)$") or "")

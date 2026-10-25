@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 OxedHub.Triggers:RegisterEventType("MOUNT", {
     name = OxedHub.L["TR_MOUNTS_NAME"] or "Mount Up / Dismount",
@@ -31,7 +32,7 @@ OxedHub.Triggers:RegisterEventType("MOUNT", {
             
             infoIcon:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(OxedHub.L["TR_MOUNTS_EMOTE_NOTE"] or "Note: Not every emote animation can be played while mounted up, so experiment!", nil, nil, nil, nil, true)
+                GameTooltip:SetText(OxedHub.L["TR_MOUNTS_EMOTE_NOTE"] or L["Note: Not every emote animation can be played while mounted up, so experiment!"], nil, nil, nil, nil, true)
                 GameTooltip:Show()
             end)
             infoIcon:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -49,20 +50,20 @@ OxedHub.Triggers:RegisterEventType("MOUNT", {
         -- Trigger On
         local actionLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         actionLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
-        actionLabel:SetText(OxedHub.L["TR_MOUNTS_TRIGGER_ON"] or "Trigger On:")
+        actionLabel:SetText(OxedHub.L["TR_MOUNTS_TRIGGER_ON"] or L["Trigger On:"])
         yOffset = yOffset - 25
         
         local upCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
         upCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, yOffset)
         upCheck:SetSize(20, 20)
         upCheck:SetChecked(conditions.onUp)
-        upCheck.text:SetText(OxedHub.L["TR_MOUNTS_MOUNT_UP"] or "Mount Up")
+        upCheck.text:SetText(OxedHub.L["TR_MOUNTS_MOUNT_UP"] or L["Mount Up"])
         
         local downCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
         downCheck:SetPoint("LEFT", upCheck.text, "RIGHT", 80, 0)
         downCheck:SetSize(20, 20)
         downCheck:SetChecked(conditions.onDown)
-        downCheck.text:SetText(OxedHub.L["TR_MOUNTS_DISMOUNT"] or "Dismount")
+        downCheck.text:SetText(OxedHub.L["TR_MOUNTS_DISMOUNT"] or L["Dismount"])
         
         upCheck:SetScript("OnClick", function(self)
             conditions.onUp = self:GetChecked()
@@ -110,7 +111,7 @@ OxedHub.Triggers:RegisterEventType("MOUNT", {
             local colTestBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
             colTestBtn:SetPoint("LEFT", titleLabel, "RIGHT", 6, 0)
             colTestBtn:SetSize(42, 18)
-            colTestBtn:SetText(OxedHub.L["BTN_TEST"] or "Test")
+            colTestBtn:SetText(OxedHub.L["BTN_TEST"] or L["Test"])
             colTestBtn:SetNormalFontObject("GameFontNormalSmall")
             colTestBtn:SetScript("OnClick", function()
                 if OxedHub.Triggers and OxedHub.Triggers.TestTrigger then
@@ -119,8 +120,8 @@ OxedHub.Triggers:RegisterEventType("MOUNT", {
             end)
             colTestBtn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText((OxedHub.L["BTN_TEST"] or "Test") .. ": " .. title, 1, 0.82, 0)
-                GameTooltip:AddLine("Test this mount type's sound, animation, and emote.", 1, 1, 1, true)
+                GameTooltip:SetText((OxedHub.L["BTN_TEST"] or L["Test"]) .. ": " .. title, 1, 0.82, 0)
+                GameTooltip:AddLine(L["Test this mount type's sound, animation, and emote."], 1, 1, 1, true)
                 GameTooltip:Show()
             end)
             colTestBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -172,7 +173,7 @@ OxedHub.Triggers:RegisterEventType("MOUNT", {
             
             local animLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             animLabel:SetPoint("BOTTOMLEFT", animIcon, "TOPLEFT", 0, 2)
-            animLabel:SetText(OxedHub.L["TR_MOUNTS_ANIMATION"] or "Animation:")
+            animLabel:SetText(OxedHub.L["TR_MOUNTS_ANIMATION"] or L["Animation:"])
             
             local animBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
             animBtn:SetPoint("LEFT", animIcon, "RIGHT", 4, 0)
@@ -209,14 +210,14 @@ OxedHub.Triggers:RegisterEventType("MOUNT", {
             local posCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
             posCheck:SetSize(18, 18)
             posCheck:SetPoint("TOPLEFT", animIcon, "BOTTOMLEFT", 0, -2)
-            posCheck.text:SetText(OxedHub.L["LBL_CUSTOM_POSITION"] or "Custom Position")
+            posCheck.text:SetText(OxedHub.L["LBL_CUSTOM_POSITION"] or L["Custom Position"])
             posCheck.text:SetFontObject("GameFontHighlightSmall")
 
             local posBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
             posBtn:SetPoint("TOPLEFT", posCheck, "BOTTOMLEFT", 4, -2)
             posBtn:SetSize(110, 20)
             posBtn:SetNormalFontObject("GameFontNormalSmall")
-            posBtn:SetText(OxedHub.L["ANIM_MOVE_SCALE"] or "Move / Scale")
+            posBtn:SetText(OxedHub.L["ANIM_MOVE_SCALE"] or L["Move / Scale"])
 
             local function RefreshPosControls()
                 local val = actions[prefix.."Anim"]
@@ -257,7 +258,7 @@ OxedHub.Triggers:RegisterEventType("MOUNT", {
             
             local emoteLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             emoteLabel:SetPoint("BOTTOMLEFT", emoteIcon, "TOPLEFT", 0, 2)
-            emoteLabel:SetText(OxedHub.L["TR_MOUNTS_EMOTE"] or "Emote:")
+            emoteLabel:SetText(OxedHub.L["TR_MOUNTS_EMOTE"] or L["Emote:"])
             
             local emoteBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
             emoteBtn:SetPoint("LEFT", emoteIcon, "RIGHT", 4, 0)
@@ -278,7 +279,7 @@ OxedHub.Triggers:RegisterEventType("MOUNT", {
                 -- Wait, let's verify if ShowEmotePicker does support it. If not, I can just patch it here!
                 OxedHub.Triggers.currentTriggerForPicker = trigger
                 if not OxedHub.Triggers.emotePicker then
-                    OxedHub.Triggers.emotePicker = OxedHub.Triggers:CreateGenericPicker("Emote", "Pick Emote", prefix.."Emote")
+                    OxedHub.Triggers.emotePicker = OxedHub.Triggers:CreateGenericPicker("Emote", L["Pick Emote"], prefix.."Emote")
                 end
                 OxedHub.Triggers.emotePicker.currentActionType = prefix.."Emote"
                 OxedHub.Triggers:HideAllPickers()
@@ -296,9 +297,9 @@ OxedHub.Triggers:RegisterEventType("MOUNT", {
             colY = colY - 38
         end
         
-        CreateColumn(OxedHub.L["TR_MOUNTS_GROUND"] or "Ground Mount", 0, "ground")
-        CreateColumn(OxedHub.L["TR_MOUNTS_FLYING"] or "Flying Mount", 155, "flying")
-        CreateColumn(OxedHub.L["TR_MOUNTS_AQUATIC"] or "Aquatic Mount", 310, "aquatic")
+        CreateColumn(OxedHub.L["TR_MOUNTS_GROUND"] or L["Ground Mount"], 0, "ground")
+        CreateColumn(OxedHub.L["TR_MOUNTS_FLYING"] or L["Flying Mount"], 155, "flying")
+        CreateColumn(OxedHub.L["TR_MOUNTS_AQUATIC"] or L["Aquatic Mount"], 310, "aquatic")
         
         -- Taller than before: each column now carries the Custom Position row
         -- and Move / Scale button under its animation picker.

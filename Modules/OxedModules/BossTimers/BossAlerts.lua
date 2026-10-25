@@ -20,6 +20,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -163,11 +164,11 @@ local function BuildFrames()
     if countFrame then return end
     countFrame = CreateFrame("Frame", "OxedHubBossAlertsCountdown", UIParent)
     countFrame:SetSize(360, 40)
-    MakeMovable(countFrame, "count", "Boss Alerts countdown: drag me", 0, 180)
+    MakeMovable(countFrame, "count", L["Boss Alerts countdown: drag me"], 0, 180)
 
     flashFrame = CreateFrame("Frame", "OxedHubBossAlertsText", UIParent)
     flashFrame:SetSize(500, 50)
-    MakeMovable(flashFrame, "flash", "Boss Alerts text: drag me", 0, 260)
+    MakeMovable(flashFrame, "flash", L["Boss Alerts text: drag me"], 0, 260)
     flashFrame.label = flashFrame:CreateFontString(nil, "OVERLAY")
     flashFrame.label:SetPoint("CENTER")
     -- The pop when the text appears is on the label, never on the frame:
@@ -272,7 +273,7 @@ local function Tick()
                 local warnAt = (own and own.warnAt) or defaultWarnAt
                 if settings.flash and not ev.flashed and left <= warnAt then
                     ev.flashed = true
-                    Flash(DisplayName(ev) or "Ability coming")
+                    Flash(DisplayName(ev) or L["Ability coming"])
                     if settings.flashSound then Play(settings.flashSoundID) end
                 end
                 if settings.countdown and left <= settings.countFrom then
@@ -299,7 +300,7 @@ local function Tick()
         if row.ev ~= ev or row.number ~= shownNumber then
             row.ev, row.number = ev, shownNumber
             local number = settings.countDecimals and ("%.1f"):format(left) or tostring(shownNumber)
-            row:SetText((DisplayName(ev) or "Ability") .. "  " .. number)
+            row:SetText((DisplayName(ev) or L["Ability"]) .. "  " .. number)
         end
         local colorTier = (left <= 1.5 and 1) or (left <= 3 and 2) or 3
         if row.colorTier ~= colorTier then
@@ -372,7 +373,7 @@ warningFrame:SetScript("OnEvent", function(_, _, info)
     local row = severity and SEVERITY[severity]
     if not row or not settings[row.setting] then return end
     local ev = LandingNow()
-    local text = ev and DisplayName(ev) or "Warning"
+    local text = ev and DisplayName(ev) or L["Warning"]
     Flash(text, row.colour[1], row.colour[2], row.colour[3])
     Play(settings[row.sound])
 end)
@@ -398,15 +399,15 @@ end
 
 local function ShowTest()
     if not settings.enabled then
-        print("|cff00ccffOxedHub|r Switch Boss Alerts on first.")
+        print(L["|cff00ccffOxedHub|r Switch Boss Alerts on first."])
         return
     end
     Engine:AddTestEvents({
-        { name = "Test: Crushing Blow", icon = 136025, duration = 4, kind = "tank" },
-        { name = "Test: Shadow Burst", icon = 136197, duration = 7, kind = "mechanic" },
-        { name = "Test: Fixate", icon = 136219, duration = 9, kind = "targeted" },
+        { name = L["Test: Crushing Blow"], icon = 136025, duration = 4, kind = "tank" },
+        { name = L["Test: Shadow Burst"], icon = 136197, duration = 7, kind = "mechanic" },
+        { name = L["Test: Fixate"], icon = 136219, duration = 9, kind = "targeted" },
     })
-    C_Timer.After(1, function() Flash("Test: game warning", 1, 0.25, 0.2) end)
+    C_Timer.After(1, function() Flash(L["Test: game warning"], 1, 0.25, 0.2) end)
 end
 
 -- ── Options ─────────────────────────────────────────────────────────────────
@@ -451,8 +452,8 @@ local function ShowOptions()
         w:HookScript("OnShow", function() Restyle() end)
         w:HookScript("OnHide", function() Restyle() end)
 
-        AddButton(w, "Show a test", 20, ShowTest)
-        AddButton(w, "Text and warnings", 250, ShowTextOptions)
+        AddButton(w, L["Show a test"], 20, ShowTest)
+        AddButton(w, L["Text and warnings"], 250, ShowTextOptions)
         w.cursorY = w.cursorY - 32
 
         w:AddCheckbox(settings, "locked", "Lock the alerts",
@@ -515,7 +516,7 @@ loginFrame:SetScript("OnEvent", function(self)
         OnOptionsShow = function() ShowOptions() end,
 
         quick = {
-            { text = "Test", func = function() ShowTest() end },
+            { text = L["Test"], func = function() ShowTest() end },
         },
 
         OnEnable = function(_, cfg)

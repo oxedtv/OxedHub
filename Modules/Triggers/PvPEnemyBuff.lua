@@ -403,7 +403,7 @@ Triggers:RegisterEventType("PVP_ENEMY_BUFF", {
         -- Info text explaining how this trigger works.
         local info = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         info:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset - 4)
-        info:SetText("|cff00ff00Native Engine|r")
+        info:SetText(L["|cff00ff00Native Engine|r"])
         info:SetTextColor(1, 0.82, 0, 1)
         yOffset = yOffset - 20
 
@@ -412,12 +412,12 @@ Triggers:RegisterEventType("PVP_ENEMY_BUFF", {
         desc:SetWidth(420)
         desc:SetJustifyH("LEFT")
         desc:SetText(
-            "Automatically announces enemy buffs (defensives, offensives, utility) "
-            .. "using the 12.1 AddAuraSound API. Tracks your target, focus, and arena "
-            .. "enemies. The sound you pick in the 'Actions' tab below will play "
-            .. "instantly when an enemy gains a tracked buff.\n\n"
-            .. "Note: Icons and Animations are NOT supported for this trigger "
-            .. "due to Blizzard PvP restrictions. Only Sounds will play."
+            L["Automatically announces enemy buffs (defensives, offensives, utility) "]
+            .. L["using the 12.1 AddAuraSound API. Tracks your target, focus, and arena "]
+            .. L["enemies. The sound you pick in the 'Actions' tab below will play "]
+            .. L["instantly when an enemy gains a tracked buff.\n\n"]
+            .. L["Note: Icons and Animations are NOT supported for this trigger "]
+            .. L["due to Blizzard PvP restrictions. Only Sounds will play."]
         )
         yOffset = yOffset - 40
         

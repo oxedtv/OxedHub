@@ -192,7 +192,7 @@ Triggers:RegisterEventType("PVP_SELF_CC", {
 
         local info = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         info:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset - 4)
-        info:SetText("|cff00ff00Native Engine|r")
+        info:SetText(L["|cff00ff00Native Engine|r"])
         info:SetTextColor(1, 0.82, 0, 1)
         yOffset = yOffset - 20
 
@@ -201,11 +201,11 @@ Triggers:RegisterEventType("PVP_SELF_CC", {
         desc:SetWidth(450)
         desc:SetJustifyH("LEFT")
         desc:SetText(
-            "Plays a voice alert when you get CC'd (stunned, feared, polymorphed, "
-            .. "silenced, etc.). Uses the 12.1 AddAuraSound API for instant, "
-            .. "in-combat detection.\n\n"
-            .. "Note: Icons and Animations are NOT supported for this trigger "
-            .. "due to Blizzard PvP restrictions. Only Sounds will play."
+            L["Plays a voice alert when you get CC'd (stunned, feared, polymorphed, "]
+            .. L["silenced, etc.). Uses the 12.1 AddAuraSound API for instant, "]
+            .. L["in-combat detection.\n\n"]
+            .. L["Note: Icons and Animations are NOT supported for this trigger "]
+            .. L["due to Blizzard PvP restrictions. Only Sounds will play."]
         )
         yOffset = yOffset - 40
         

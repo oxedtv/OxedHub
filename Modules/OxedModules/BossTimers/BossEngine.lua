@@ -27,6 +27,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local Engine = {}
@@ -93,7 +94,7 @@ function Engine:AbilityName(ability)
     if not ability then return nil end
     if ability.label then return ability.label end
     local name = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(ability.spell)
-    return name or ("Spell " .. tostring(ability.spell))
+    return name or (L["Spell "] .. tostring(ability.spell))
 end
 
 function Engine:AbilityIcon(ability)

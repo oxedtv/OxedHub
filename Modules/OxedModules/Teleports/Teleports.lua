@@ -21,6 +21,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -325,8 +326,8 @@ local function ShowEntryTooltip(button)
         GameTooltip:SetItemByID(entry.id)
     end
     GameTooltip:AddLine(" ")
-    GameTooltip:AddLine(entry.hidden and "Right-click to bring it back"
-        or "Right-click to put it away", 0.6, 0.8, 1)
+    GameTooltip:AddLine(entry.hidden and L["Right-click to bring it back"]
+        or L["Right-click to put it away"], 0.6, 0.8, 1)
     GameTooltip:Show()
 end
 
@@ -688,7 +689,7 @@ end
 -- step further on, after the end).
 local function AddPointAfter(g, point)
     if PointCount(g) >= BEND_MAX then
-        print(("|cff00ff00OxedHub:|r an arm has at most %d points."):format(BEND_MAX))
+        print((L["|cff00ff00OxedHub:|r an arm has at most %d points."]):format(BEND_MAX))
         return
     end
     FreezePath(g)
@@ -711,7 +712,7 @@ end
 -- Ctrl-click: this point out of the arm.
 local function RemovePoint(g, point)
     if PointCount(g) <= BEND_MIN then
-        print(("|cff00ff00OxedHub:|r an arm needs at least %d points."):format(BEND_MIN))
+        print((L["|cff00ff00OxedHub:|r an arm needs at least %d points."]):format(BEND_MIN))
         return
     end
     FreezePath(g)
@@ -793,18 +794,18 @@ local function Handle(groupKey, point, parent)
     end)
     h:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(("%s, point %d of %d"):format(GROUP_LABEL[groupKey] or groupKey, self.point, PointCount(groupKey)))
-        GameTooltip:AddLine("Drag it: the arm runs through its points.", 1, 1, 1)
-        GameTooltip:AddLine("Shift-click: add a point after this one.", 1, 1, 1)
-        GameTooltip:AddLine("Ctrl-click: remove this point.", 1, 1, 1)
+        GameTooltip:SetText((L["%s, point %d of %d"]):format(GROUP_LABEL[groupKey] or groupKey, self.point, PointCount(groupKey)))
+        GameTooltip:AddLine(L["Drag it: the arm runs through its points."], 1, 1, 1)
+        GameTooltip:AddLine(L["Shift-click: add a point after this one."], 1, 1, 1)
+        GameTooltip:AddLine(L["Ctrl-click: remove this point."], 1, 1, 1)
         if HasCustomPath(groupKey) then
-            GameTooltip:AddLine("Shaped by hand: the wheel does not bend it.", 0.7, 0.9, 1)
+            GameTooltip:AddLine(L["Shaped by hand: the wheel does not bend it."], 0.7, 0.9, 1)
         else
-            GameTooltip:AddLine("Mouse wheel: bend the spiral (Shift: finer).", 1, 1, 1)
-            GameTooltip:AddLine(("Bend now: %.2f"):format(ArmCurl(groupKey)), 0.7, 0.9, 1)
+            GameTooltip:AddLine(L["Mouse wheel: bend the spiral (Shift: finer)."], 1, 1, 1)
+            GameTooltip:AddLine((L["Bend now: %.2f"]):format(ArmCurl(groupKey)), 0.7, 0.9, 1)
         end
-        GameTooltip:AddLine("Right-click: back to its spiral.", 0.7, 0.7, 0.7)
-        GameTooltip:AddLine("Drag a teleport onto another arm to move it there.", 0.6, 0.8, 1)
+        GameTooltip:AddLine(L["Right-click: back to its spiral."], 0.7, 0.7, 0.7)
+        GameTooltip:AddLine(L["Drag a teleport onto another arm to move it there."], 0.6, 0.8, 1)
         GameTooltip:Show()
     end)
     h:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1070,7 +1071,7 @@ RenderSpiral = function(groups, size)
     PlaceHandles()
 
     if opened and count == 0 then
-        print("|cff00ff00OxedHub:|r no teleports found yet. Hearthstones, toys and your class's own teleports appear as you get them.")
+        print(L["|cff00ff00OxedHub:|r no teleports found yet. Hearthstones, toys and your class's own teleports appear as you get them."])
         CloseAll()
     end
 end
@@ -1229,7 +1230,7 @@ function Render()
     end
 
     if opened and not anyShown then
-        print("|cff00ff00OxedHub:|r no teleports found yet. Hearthstones, toys and your class's own teleports appear as you get them.")
+        print(L["|cff00ff00OxedHub:|r no teleports found yet. Hearthstones, toys and your class's own teleports appear as you get them."])
         CloseAll()
     end
 end
@@ -1250,7 +1251,7 @@ end
 
 local function OpenAll()
     if InCombatLockdown() then
-        print("|cff00ff00OxedHub:|r teleports cannot be laid out during combat.")
+        print(L["|cff00ff00OxedHub:|r teleports cannot be laid out during combat."])
         return
     end
     EnsureAnchor()
@@ -1262,7 +1263,7 @@ end
 
 local function Toggle()
     if not settings or settings.enabled == false then
-        print("|cff00ff00OxedHub:|r the Teleports module is switched off. Turn it on in Modules.")
+        print(L["|cff00ff00OxedHub:|r the Teleports module is switched off. Turn it on in Modules."])
         return
     end
     if opened then CloseAll() else OpenAll() end
@@ -1298,13 +1299,13 @@ function EnsureAnchor()
 
     anchor:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Teleports")
-        GameTooltip:AddLine("Click for your teleports, or type /tp.", 1, 1, 1)
-        GameTooltip:AddLine("Each group flies out its own way -- set that in Options.", 0.6, 0.8, 1)
+        GameTooltip:SetText(L["Teleports"])
+        GameTooltip:AddLine(L["Click for your teleports, or type /tp."], 1, 1, 1)
+        GameTooltip:AddLine(L["Each group flies out its own way -- set that in Options."], 0.6, 0.8, 1)
         if settings.lockButton then
-            GameTooltip:AddLine("Shift-drag to move it.", 0.6, 0.8, 1)
+            GameTooltip:AddLine(L["Shift-drag to move it."], 0.6, 0.8, 1)
         else
-            GameTooltip:AddLine("Drag to move it.", 0.6, 0.8, 1)
+            GameTooltip:AddLine(L["Drag to move it."], 0.6, 0.8, 1)
         end
         GameTooltip:Show()
     end)
@@ -1505,7 +1506,7 @@ local function AddDirectionRow(w, groupKey, label)
     count:SetJustifyH("LEFT")
     table.insert(w.spiralOnly, count)
     local function ShowCount()
-        count:SetFormattedText("%d %s", PointCount(groupKey), HasCustomPath(groupKey) and "pts" or "pts |cff9d9d9d(auto)|r")
+        count:SetFormattedText("%d %s", PointCount(groupKey), HasCustomPath(groupKey) and "pts" or L["pts |cff9d9d9d(auto)|r"])
     end
 
     local function Small(text, onClick, anchorTo, x)
@@ -1647,16 +1648,16 @@ local function MoveMenu(owner, entry)
     end
     if MenuUtil and MenuUtil.CreateContextMenu then
         local ok = pcall(MenuUtil.CreateContextMenu, owner, function(_, root)
-            root:CreateTitle("Move to")
+            root:CreateTitle(L["Move to"])
             for _, key in ipairs(order) do
                 local c = ARM_COLOURS[key] or { 1, 1, 1 }
                 local label = ("|cff%s%s|r%s"):format(Hex(c), GROUP_NAME[key] or key,
-                    key == entry.group and "  |cff9d9d9d(here)|r" or "")
+                    key == entry.group and L["  |cff9d9d9d(here)|r"] or "")
                 root:CreateButton(label, function() MoveTo(key) end)
             end
             if entry.home and entry.group ~= entry.home then
                 root:CreateDivider()
-                root:CreateButton("Back to " .. (GROUP_NAME[entry.home] or entry.home), function() MoveTo(entry.home) end)
+                root:CreateButton(L["Back to "] .. (GROUP_NAME[entry.home] or entry.home), function() MoveTo(entry.home) end)
             end
         end)
         if ok then return end
@@ -1783,16 +1784,16 @@ local function PaintRow(row, item)
     row.name:SetTextColor(hidden and 0.55 or 1, hidden and 0.55 or 1, hidden and 0.55 or 1)
 
     if hidden then
-        row.toggle.text:SetText("|cff9d9d9dHidden|r")
+        row.toggle.text:SetText(L["|cff9d9d9dHidden|r"])
         row.toggle.edge:SetColorTexture(0.6, 0.6, 0.6, 0.5)
     else
-        row.toggle.text:SetText("|cff40ff40Shown|r")
+        row.toggle.text:SetText(L["|cff40ff40Shown|r"])
         row.toggle.edge:SetColorTexture(0.25, 1, 0.25, 0.6)
     end
 
     local c = ARM_COLOURS[entry.group] or { 1, 1, 1 }
     local moved = entry.home and entry.group ~= entry.home
-    row.move.text:SetText(moved and ("|cff%sMoved here|r  v"):format(Hex(c)) or "Move to  v")
+    row.move.text:SetText(moved and (L["|cff%sMoved here|r  v"]):format(Hex(c)) or L["Move to  v"])
     row.move.edge:SetColorTexture(c[1], c[2], c[3], 0.7)
 end
 
@@ -1885,11 +1886,11 @@ local function ShowTeleportList()
 
         w.empty = w:CreateFontString(nil, "OVERLAY", "GameFontDisable")
         w.empty:SetPoint("CENTER", list, "CENTER")
-        w.empty:SetText("Nothing matches")
+        w.empty:SetText(L["Nothing matches"])
 
         local foot = w:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         foot:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 20, 14)
-        foot:SetText("Click a group's name to fold it. Hover a teleport for what it does.")
+        foot:SetText(L["Click a group's name to fold it. Hover a teleport for what it does."])
 
         w.rows = {}
         -- Hooked: the options window has its own OnShow (it places itself).
@@ -1906,8 +1907,8 @@ local function MinimapIcon()
     if minimapIcon or not settings then return minimapIcon end
     local API = OxedHub.ModuleAPI
     minimapIcon = API and API.MinimapButton and API:MinimapButton({
-        key = "teleports", label = "Teleports", icon = "Interface\\Icons\\Spell_Arcane_PortalDalaran", config = settings,
-        hint = "Click: your teleports. Right-click: options.",
+        key = "teleports", label = L["Teleports"], icon = "Interface\\Icons\\Spell_Arcane_PortalDalaran", config = settings,
+        hint = L["Click: your teleports. Right-click: options."],
         onClick = function(mouse)
             if mouse == "RightButton" then
                 local mod = API:GetModule("teleports")
@@ -1929,12 +1930,12 @@ local function ShowOptions()
         local w = optionsWindow
 
         -- Untick a group to hide it; the arrows say which way it comes out.
-        AddDirectionRow(w, "hearth", "Hearthstones")
-        AddDirectionRow(w, "class",  "Class teleports")
-        AddDirectionRow(w, "portal", "Portals for the group")
-        AddDirectionRow(w, "toy",    "Teleport toys")
-        AddDirectionRow(w, "item",   "Items in your bags")
-        AddDirectionRow(w, "equip",  "Worn cloak or ring")
+        AddDirectionRow(w, "hearth", L["Hearthstones"])
+        AddDirectionRow(w, "class",  L["Class teleports"])
+        AddDirectionRow(w, "portal", L["Portals for the group"])
+        AddDirectionRow(w, "toy",    L["Teleport toys"])
+        AddDirectionRow(w, "item",   L["Items in your bags"])
+        AddDirectionRow(w, "equip",  L["Worn cloak or ring"])
 
         w:AddCheckbox(settings, "closeAfterUse", "Fold away after use")
         w:AddCheckbox(settings, "closeOnLeave", "Fold away when the mouse leaves")
@@ -1946,8 +1947,8 @@ local function ShowOptions()
             if icon then icon:Apply(settings.enabled == true) end
         end)
         w:AddChoice(settings, "layout", "Layout", {
-            { value = "rows", text = "A row per group" },
-            { value = "spiral", text = "Spiral around the button" },
+            { value = "rows", text = L["A row per group"] },
+            { value = "spiral", text = L["Spiral around the button"] },
         }, function()
             ShowLayoutControls(w)
             if opened then Render() end
@@ -1964,11 +1965,11 @@ local function ShowOptions()
         end
 
         w.patternButton = w:AddChoice(settings, "spiralPattern", "Spiral pattern", {
-            { value = "rings",    text = "Rings (compact)" },
-            { value = "galaxy",   text = "Galaxy" },
-            { value = "sunburst", text = "Sunburst" },
-            { value = "whirl",    text = "Whirlpool" },
-            { value = "fan",      text = "Fan upward" },
+            { value = "rings",    text = L["Rings (compact)"] },
+            { value = "galaxy",   text = L["Galaxy"] },
+            { value = "sunburst", text = L["Sunburst"] },
+            { value = "whirl",    text = L["Whirlpool"] },
+            { value = "fan",      text = L["Fan upward"] },
         }, function(value)
             if InCombatLockdown() then return end
             if editingArms then SetArmEditing(false) end
@@ -1981,7 +1982,7 @@ local function ShowOptions()
             if opened then Render() end
         end)
         table.insert(w.spiralOnly, w.patternButton)
-        SpiralOnlyCaption("Spiral pattern")
+        SpiralOnlyCaption(L["Spiral pattern"])
 
         w:HookScript("OnShow", function() ShowLayoutControls(w) end)
         w:AddCheckbox(settings, "buttonRound", "Round main button", nil, ApplyButton)
@@ -1992,7 +1993,7 @@ local function ShowOptions()
         local all = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         all:SetSize(308, 22)
         all:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        all:SetText("All teleports: show, hide, move")
+        all:SetText(L["All teleports: show, hide, move"])
         all:SetScript("OnClick", ShowTeleportList)
         w.cursorY = w.cursorY - 30
 
@@ -2000,7 +2001,7 @@ local function ShowOptions()
         local edit = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         edit:SetSize(150, 22)
         edit:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        edit.Refresh = function() edit:SetText(editingArms and "Done editing arms" or "Edit the arms") end
+        edit.Refresh = function() edit:SetText(editingArms and L["Done editing arms"] or L["Edit the arms"]) end
         edit:SetScript("OnClick", function()
             if InCombatLockdown() then return end
             if not opened then OpenAll() end
@@ -2013,7 +2014,7 @@ local function ShowOptions()
         reset:SetSize(150, 22)
         reset:SetPoint("LEFT", edit, "RIGHT", 8, 0)
         table.insert(w.spiralOnly, reset)
-        reset:SetText("Reset the arms")
+        reset:SetText(L["Reset the arms"])
         reset:SetScript("OnClick", function()
             for _, groupKey in ipairs(OxedHub.TeleportsData.GROUP_ORDER) do
                 ResetGroupShape(groupKey)
@@ -2028,12 +2029,12 @@ local function ShowOptions()
         table.insert(w.spiralOnly, w:AddSlider(settings, "perArm", "Icons per arm", 5, 80, 1, "%s: %d", function()
             if opened and not InCombatLockdown() then Render() end
         end))
-        SpiralOnlyCaption("Icons per arm")
+        SpiralOnlyCaption(L["Icons per arm"])
 
-        AddSizeSlider(w, "iconSize", "Icon size", function()
+        AddSizeSlider(w, "iconSize", L["Icon size"], function()
             if opened then Render() end
         end)
-        AddSizeSlider(w, "buttonSize", "Button size", ApplyButton)
+        AddSizeSlider(w, "buttonSize", L["Button size"], ApplyButton)
 
         w:AddNote("Rows: the arrows send each group its own way. Spiral: each group is an arm. Edit the arms, then drag its points; Shift-click a point adds one after it, Ctrl-click removes it, right-click resets the arm. While editing, drag a teleport onto another arm to move it there. Left-click an icon to travel, right-click to put it away. Shift-drag moves a locked button.")
     end

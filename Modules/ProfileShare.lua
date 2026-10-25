@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 -- ---------------------------------------------------------------------------
 -- PROFILE SHARE
@@ -144,17 +145,17 @@ end
 function Share:CreateShare(scope, opts, label)
     local UI = OxedHub.UI
     if not (UI and UI.BuildScopedExportString) then
-        return nil, "Export system unavailable."
+        return nil, L["Export system unavailable."]
     end
 
     local payload, err = UI:BuildScopedExportString(scope, opts)
     if not payload then
-        return nil, err or "Failed to build share data."
+        return nil, err or L["Failed to build share data."]
     end
 
     if #payload > MAX_SHARE_BYTES then
         return nil, string.format(
-            "Too large to share in chat (%.0f KB, limit %.0f KB). Use the export string instead.",
+            L["Too large to share in chat (%.0f KB, limit %.0f KB). Use the export string instead."],
             #payload / 1024, MAX_SHARE_BYTES / 1024)
     end
 
@@ -164,7 +165,7 @@ function Share:CreateShare(scope, opts, label)
     if UI.DecodeExportString then
         local check, decodeErr = UI:DecodeExportString(payload)
         if not check then
-            return nil, "Could not build a readable share: " .. tostring(decodeErr)
+            return nil, L["Could not build a readable share: "] .. tostring(decodeErr)
         end
     end
 
@@ -232,7 +233,7 @@ function Share:PostToChat(scope, opts, label, slashPrefix)
         ChatFrame_OpenChat(text)
     end
 
-    Print("Ready in your chat box - press |cffffd100Enter|r to post it.")
+    Print(L["Ready in your chat box - press |cffffd100Enter|r to post it."])
     return true, shareID
 end
 
@@ -246,6 +247,7 @@ local CHANNEL_BUTTONS = {
     { label = "Instance", prefix = "/instance " },
     { label = "Guild",    prefix = "/guild " },
 }
+OxedHub:RegisterLocalizedTable(CHANNEL_BUTTONS, "label")
 
 function Share:ShowChannelPicker(scope, opts, label)
     local f = self.channelPicker
@@ -261,7 +263,7 @@ function Share:ShowChannelPicker(scope, opts, label)
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
         tinsert(UISpecialFrames, "OxedHubSharePicker")
-        if f.TitleText then f.TitleText:SetText("Share to Chat") end
+        if f.TitleText then f.TitleText:SetText(L["Share to Chat"]) end
 
         f.header = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         f.header:SetPoint("TOPLEFT", 16, -32)
@@ -291,7 +293,7 @@ function Share:ShowChannelPicker(scope, opts, label)
 
         local whisperLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         whisperLabel:SetPoint("TOPLEFT", f.buttons[5], "BOTTOMLEFT", 0, -12)
-        whisperLabel:SetText("Whisper to:")
+        whisperLabel:SetText(L["Whisper to:"])
 
         local whisperBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
         whisperBox:SetPoint("LEFT", whisperLabel, "RIGHT", 10, 0)
@@ -305,8 +307,8 @@ function Share:ShowChannelPicker(scope, opts, label)
         note:SetPoint("RIGHT", f, "RIGHT", -18, 0)
         note:SetJustifyH("LEFT")
         note:SetSpacing(2)
-        note:SetText("|cffffd100Both players must stay online until the transfer finishes.|r\n"
-            .. "|cff888888A large profile can take around 30 seconds.|r")
+        note:SetText(L["|cffffd100Both players must stay online until the transfer finishes.|r\n"]
+            .. L["|cff888888A large profile can take around 30 seconds.|r"])
         whisperBox:SetScript("OnEnterPressed", function(box)
             local target = box:GetText()
             if target and target ~= "" then
@@ -321,7 +323,7 @@ function Share:ShowChannelPicker(scope, opts, label)
     end
 
     f.scope, f.opts, f.label = scope, opts, label
-    f.header:SetText("Sharing |cffffd100" .. tostring(label) .. "|r\nPick where to post the link:")
+    f.header:SetText(L["Sharing |cffffd100"] .. tostring(label) .. L["|r\nPick where to post the link:"])
     f.whisperBox:SetText("")
     f:Show()
 end
@@ -344,7 +346,7 @@ function Share:OnLinkClicked(shareID, owner)
     if owner and myName and owner:lower() == myName:lower() then
         local entry = ShareDB()[shareID]
         if not entry then
-            Print("That share has expired.")
+            Print(L["That share has expired."])
             return
         end
         self:PresentImport(entry.payload, myName, entry.label)
@@ -352,12 +354,12 @@ function Share:OnLinkClicked(shareID, owner)
     end
 
     if not owner or owner == "" then
-        Print("Could not tell who posted that link. Ask them to share it again.")
+        Print(L["Could not tell who posted that link. Ask them to share it again."])
         return
     end
 
     if not AceComm then
-        Print("|cffff4444Sharing unavailable: AceComm did not load.|r")
+        Print(L["|cffff4444Sharing unavailable: AceComm did not load.|r"])
         return
     end
 
@@ -365,12 +367,12 @@ function Share:OnLinkClicked(shareID, owner)
     -- copy of the whole payload, so ignore repeat clicks until it settles.
     local pending = self.pendingRequests[owner:lower()]
     if pending then
-        Print("Already waiting on " .. owner .. " - give it a moment.")
+        Print(L["Already waiting on "] .. owner .. L[" - give it a moment."])
         return
     end
 
     self.pendingRequests[owner:lower()] = { requestedAt = GetTime() }
-    Print("Requesting shared config from " .. owner .. "...")
+    Print(L["Requesting shared config from "] .. owner .. "...")
     Debug("sending REQ for " .. shareID .. " to " .. owner)
     self:SendCommMessage(COMM_PREFIX, "REQ:" .. shareID, "WHISPER", owner)
 
@@ -387,7 +389,7 @@ function Share:OnLinkClicked(shareID, owner)
         end
 
         self.pendingRequests[owner:lower()] = nil
-        Print("|cffff4444No response from " .. owner .. ". They may not have Oxed Hub, or the share expired.|r")
+        Print(L["|cffff4444No response from "] .. owner .. L[". They may not have Oxed Hub, or the share expired.|r"])
     end)
 end
 
@@ -438,7 +440,7 @@ function Share:OnCommReceived(prefix, message, distribution, sender)
         -- and look exactly like "the request was never answered".
         local ok, err = pcall(self.HandleRequest, self, rest, senderKey)
         if not ok then
-            Print("|cffff4444Share error while answering " .. senderKey .. ":|r " .. tostring(err))
+            Print(L["|cffff4444Share error while answering "] .. senderKey .. ":|r " .. tostring(err))
         end
     elseif command == "HDR" then
         self:HandleHeader(rest, senderKey)
@@ -449,7 +451,7 @@ function Share:OnCommReceived(prefix, message, distribution, sender)
     elseif command == "MISS" then
         self.pendingRequests[senderKey:lower()] = nil
         self.inbound[senderKey] = nil
-        Print("|cffff4444" .. senderKey .. " no longer has that share.|r")
+        Print("|cffff4444" .. senderKey .. L[" no longer has that share.|r"])
     end
 end
 
@@ -507,7 +509,7 @@ function Share:StartTransfer(shareID, entry, requester)
         shareID, #chunks, #payload, Checksum(payload), label), "WHISPER", requester)
 
     Debug(("sending %d bytes as %d chunks to %s"):format(#payload, #chunks, requester))
-    Print(("Sending |cffffd100%s|r to %s (%d parts)..."):format(label, requester, #chunks))
+    Print((L["Sending |cffffd100%s|r to %s (%d parts)..."]):format(label, requester, #chunks))
 
     self:PumpTransfer(requester)
 end
@@ -583,8 +585,8 @@ function Share:HandleHeader(body, sender)
     local shareID, totalStr, lenStr, sumStr, label =
         body:match("^([^:]+):(%d+):(%d+):(%d+):(.*)$")
     if not shareID then
-        Print("|cffff4444Received a malformed share from " .. sender
-            .. ". They may be on an older Oxed Hub version.|r")
+        Print(L["|cffff4444Received a malformed share from "] .. sender
+            .. L[". They may be on an older Oxed Hub version.|r"])
         return
     end
 
@@ -648,7 +650,7 @@ function Share:CheckForGaps(sender)
 
     rx.rounds = rx.rounds + 1
     if rx.rounds > MAX_RESEND_ROUNDS then
-        Print(("|cffff4444Transfer from %s kept losing data (%d of %d parts missing). Ask them to share it again.|r")
+        Print((L["|cffff4444Transfer from %s kept losing data (%d of %d parts missing). Ask them to share it again.|r"])
             :format(sender, rx.total - rx.got, rx.total))
         self.inbound[sender] = nil
         self.pendingRequests[sender:lower()] = nil
@@ -656,7 +658,7 @@ function Share:CheckForGaps(sender)
     end
 
     Debug(("asking %s to resend %d chunk(s), round %d"):format(sender, #missing, rx.rounds))
-    Print(("Recovering %d missing part(s) from %s..."):format(#missing, sender))
+    Print((L["Recovering %d missing part(s) from %s..."]):format(#missing, sender))
     self:SendCommMessage(COMM_PREFIX,
         string.format("RSND:%s:%s", rx.shareID, table.concat(missing, ",")),
         "WHISPER", sender)
@@ -685,14 +687,14 @@ function Share:AssembleTransfer(sender)
     self.pendingRequests[sender:lower()] = nil
 
     if #payload ~= rx.length then
-        Print(("|cffff4444Transfer from %s was cut short (%d of %d bytes).|r")
+        Print((L["|cffff4444Transfer from %s was cut short (%d of %d bytes).|r"])
             :format(sender, #payload, rx.length))
         return
     end
 
     local actual = Checksum(payload)
     if actual ~= rx.checksum then
-        Print(("|cffff4444Transfer from %s arrived corrupted (checksum %d, expected %d).|r")
+        Print((L["|cffff4444Transfer from %s arrived corrupted (checksum %d, expected %d).|r"])
             :format(sender, actual, rx.checksum))
         return
     end
@@ -708,13 +710,13 @@ end
 function Share:PresentImport(payload, sender, label)
     local UI = OxedHub.UI
     if not (UI and UI.DecodeExportString and UI.ShowImportConfirm) then
-        Print("|cffff4444Import system unavailable.|r")
+        Print(L["|cffff4444Import system unavailable.|r"])
         return
     end
 
     local data, err = UI:DecodeExportString(payload)
     if not data then
-        Print("|cffff4444Could not read the shared config: " .. tostring(err) .. "|r")
+        Print(L["|cffff4444Could not read the shared config: "] .. tostring(err) .. "|r")
         return
     end
 
@@ -770,7 +772,7 @@ function Share:RegisterChatFilters()
         local owner = FullPlayerName(author) or author
         Share.linkOwners[shareID] = owner
 
-        local rewritten = Share:BuildLink(shareID, owner, label) .. " |cff888888(click to import)|r"
+        local rewritten = Share:BuildLink(shareID, owner, label) .. L[" |cff888888(click to import)|r"]
         return false, rewritten, author, ...
     end
 

@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 local EncounterHandler = {
     CheckCondition = function(trigger, eventData)
@@ -20,24 +21,24 @@ local EncounterHandler = {
             wipeCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
             wipeCheck:SetSize(20, 20)
             wipeCheck:SetChecked(conditions.onWipe or false)
-            wipeCheck.text:SetText("Trigger on Wipe")
+            wipeCheck.text:SetText(L["Trigger on Wipe"])
             
             local winCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
             winCheck:SetPoint("LEFT", wipeCheck.text, "RIGHT", 10, 0)
             winCheck:SetSize(20, 20)
             winCheck:SetChecked(conditions.onWin or false)
-            winCheck.text:SetText("Trigger on Win")
+            winCheck.text:SetText(L["Trigger on Win"])
             
             wipeCheck:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText("Fire this trigger only when the group wipes/fails.")
+                GameTooltip:SetText(L["Fire this trigger only when the group wipes/fails."])
                 GameTooltip:Show()
             end)
             wipeCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
             
             winCheck:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText("Fire this trigger only when the boss is defeated.")
+                GameTooltip:SetText(L["Fire this trigger only when the boss is defeated."])
                 GameTooltip:Show()
             end)
             winCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)

@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local Triggers = OxedHub.Triggers
 local C_Timer = C_Timer
 local GetTime = GetTime
@@ -309,13 +310,13 @@ end
 
 function Triggers:CreateMacroForTrigger(trigger)
     if InCombatLockdown() then
-        print("|cffff0000[OxedHub]|r Cannot create macros in combat.")
+        print(L["|cffff0000[OxedHub]|r Cannot create macros in combat."])
         return
     end
 
     local body = self:BuildTriggerMacroBody(trigger)
     if not body then
-        print("|cffff0000[OxedHub]|r No spell selected for this trigger.")
+        print(L["|cffff0000[OxedHub]|r No spell selected for this trigger."])
         return
     end
 
@@ -325,15 +326,15 @@ function Triggers:CreateMacroForTrigger(trigger)
     local index = GetMacroIndexByName(macroName)
     if index > 0 then
         EditMacro(index, macroName, macroIcon, body)
-        print("|cff00ff00[OxedHub]|r Trigger macro updated. Drag the icon to your bar.")
+        print(L["|cff00ff00[OxedHub]|r Trigger macro updated. Drag the icon to your bar."])
     else
         local numGlobal, numChar = GetNumMacros()
         if numChar >= 18 then
-            print("|cffff0000[OxedHub]|r Your Character Macro slots are full (18/18). Please delete one.")
+            print(L["|cffff0000[OxedHub]|r Your Character Macro slots are full (18/18). Please delete one."])
             return
         end
         CreateMacro(macroName, macroIcon, body, 1)
-        print("|cff00ff00[OxedHub]|r Trigger macro created. Drag the icon to your bar!")
+        print(L["|cff00ff00[OxedHub]|r Trigger macro created. Drag the icon to your bar!"])
     end
     return macroName
 end

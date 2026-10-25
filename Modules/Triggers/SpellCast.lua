@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 OxedHub.Triggers:RegisterEventType("UNIT_SPELLCAST_SUCCEEDED", {
     name = "Spell Cast Success",
@@ -72,7 +73,7 @@ OxedHub.Triggers:RegisterEventType("UNIT_SPELLCAST_SUCCEEDED", {
             local gridLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             local startY = 30 -- Moved up by 15 pixels
             gridLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 445, startY)
-            gridLabel:SetText("|cffffd100Class Spell Suggestions|r  |cff888888(click several — the trigger fires for any of them)|r")
+            gridLabel:SetText(L["|cffffd100Class Spell Suggestions|r  |cff888888(click several — the trigger fires for any of them)|r"])
             local scrollFrame = CreateFrame("ScrollFrame", nil, frame)
             scrollFrame:SetSize(450, 132)
             scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 445, startY - 20)
@@ -168,17 +169,17 @@ OxedHub.Triggers:RegisterEventType("UNIT_SPELLCAST_SUCCEEDED", {
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     if spellInfo then
                         GameTooltip:SetText(spellInfo.name, 1, 0.82, 0)
-                        GameTooltip:AddLine("Spell ID: " .. tostring(spellID), 0.6, 0.6, 0.6)
+                        GameTooltip:AddLine(L["Spell ID: "] .. tostring(spellID), 0.6, 0.6, 0.6)
                     else
-                        GameTooltip:SetText("Spell ID: " .. tostring(spellID), 1, 0.82, 0)
+                        GameTooltip:SetText(L["Spell ID: "] .. tostring(spellID), 1, 0.82, 0)
                     end
                     GameTooltip:AddLine(" ")
                     if isSelected then
-                        GameTooltip:AddLine("This spell is currently selected.", 1, 0.82, 0)
-                        GameTooltip:AddLine("Click again to remove it from the trigger.", 0.8, 0.8, 0.8, true)
+                        GameTooltip:AddLine(L["This spell is currently selected."], 1, 0.82, 0)
+                        GameTooltip:AddLine(L["Click again to remove it from the trigger."], 0.8, 0.8, 0.8, true)
                     else
-                        GameTooltip:AddLine("Click to automatically add this spell to your trigger.", 0.2, 1, 0.2, true)
-                        GameTooltip:AddLine("When you cast this spell, the trigger will activate and play your chosen Actions (Sounds, Animations, etc).", 0.8, 0.8, 0.8, true)
+                        GameTooltip:AddLine(L["Click to automatically add this spell to your trigger."], 0.2, 1, 0.2, true)
+                        GameTooltip:AddLine(L["When you cast this spell, the trigger will activate and play your chosen Actions (Sounds, Animations, etc)."], 0.8, 0.8, 0.8, true)
                     end
                     GameTooltip:Show()
                 end)

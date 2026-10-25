@@ -414,7 +414,7 @@ local function BuildItemPicker(frame, trigger, yOffset, entries, emptyText, belo
         -- The name can be missing until the item is cached; ask for it and let
         -- the row fill itself in rather than leaving a blank tile.
         local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(entry.itemID)
-        name = name or ("Item " .. entry.itemID)
+        name = name or (L["Item "] .. entry.itemID)
         -- Says why it is listed when you cannot see it in your bags or on your
         -- character, rather than looking like a stray entry.
         if entry.missing then
@@ -523,7 +523,7 @@ local function BuildItemPicker(frame, trigger, yOffset, entries, emptyText, belo
                 warn:SetWidth(560)
                 warn:SetJustifyH("LEFT")
                 local itemName = (C_Item and C_Item.GetItemNameByID
-                    and C_Item.GetItemNameByID(entry.itemID)) or ("Item " .. entry.itemID)
+                    and C_Item.GetItemNameByID(entry.itemID)) or (L["Item "] .. entry.itemID)
                 warn:SetText(("|cffff8800%s|r %s"):format(itemName,
                     L["ITEMUSE_PROC_ONLY"]
                     or "has no button to press -- it fires on its own, and the game gives addons no way to see that, so this rule cannot react to it."))
@@ -546,7 +546,7 @@ function Triggers:DumpItemRule()
     local trigger = id and OxedHub.db and OxedHub.db.profile
         and OxedHub.db.profile.triggers and OxedHub.db.profile.triggers[id]
     if not trigger then
-        print("|cffff5555OxedHub:|r open a trigger's page first.")
+        print(L["|cffff5555OxedHub:|r open a trigger's page first."])
         return
     end
 

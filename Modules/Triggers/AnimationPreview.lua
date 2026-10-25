@@ -348,10 +348,10 @@ function AnimationPreview:CreateTile(index)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(entry.trigger.name or entry.triggerId, 1, 0.82, 0)
         if entry.source_desc then
-            GameTooltip:AddLine("|cff888888Fires on:|r " .. entry.source_desc, 0.9, 0.9, 0.9, true)
+            GameTooltip:AddLine(L["|cff888888Fires on:|r "] .. entry.source_desc, 0.9, 0.9, 0.9, true)
         end
-        GameTooltip:AddLine("|cff888888Animation:|r " .. tostring(entry.animId), 0.9, 0.9, 0.9, true)
-        GameTooltip:AddLine(("|cff888888Position:|r %d, %d"):format(
+        GameTooltip:AddLine(L["|cff888888Animation:|r "] .. tostring(entry.animId), 0.9, 0.9, 0.9, true)
+        GameTooltip:AddLine((L["|cff888888Position:|r %d, %d"]):format(
             math.floor(entry.x + 0.5), math.floor(entry.y + 0.5)), 0.9, 0.9, 0.9)
         if entry.source ~= "trigger" then
             -- Say so plainly: dragging this tile is about to give the trigger a

@@ -21,6 +21,7 @@ local GUARDED = {
     CONFIRM_HIGH_COST_ITEM = "This costs a lot of gold.",
     CONFIRM_PURCHASE_ITEM_DELAYED = "This cannot be refunded or sold back.",
 }
+OxedHub:RegisterLocalizedTable(GUARDED)
 
 local settings
 local optionsWindow

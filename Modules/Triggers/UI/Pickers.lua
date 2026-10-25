@@ -161,7 +161,7 @@ function Triggers:ShowAnimationHoverPreview(anchorFrame, animId, animData)
     preview:SetWidth(math.max(215, boxW + 40))
     preview:SetHeight(boxH + 82)
 
-    preview.info:SetText(string.format("%d FPS • %d frames • %s", fps, maxFrames, aspect))
+    preview.info:SetText(string.format(L["%d FPS • %d frames • %s"], fps, maxFrames, aspect))
     preview.animTex:SetTexture(animData.tgaPath)
 
     preview.animData = animData
@@ -267,7 +267,7 @@ function Triggers:CreateSoundPickerRow(parent)
     local playButton = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
     playButton:SetSize(48, 22)
     playButton:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-    playButton:SetText("Play")
+    playButton:SetText(L["Play"])
 
     useButton:SetScript("OnClick", function(self)
         if Triggers.currentTriggerForPicker then
@@ -642,7 +642,7 @@ function Triggers:RefreshPickerList(picker, actionType)
             picker.emptyText = picker.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             picker.emptyText:SetPoint("TOP", picker.scrollChild, "TOP", 0, -10)
         end
-        picker.emptyText:SetText("No items match your search.")
+        picker.emptyText:SetText(L["No items match your search."])
         picker.emptyText:Show()
     elseif picker.emptyText then
         picker.emptyText:Hide()
@@ -682,7 +682,7 @@ function Triggers:CreatePickerRow(picker, actionType)
             else
                 GameTooltip:SetItemByID(self.itemID)
             end
-            GameTooltip:AddLine("|cff00ccffRight-Click: Copy Wowhead URL|r")
+            GameTooltip:AddLine(L["|cff00ccffRight-Click: Copy Wowhead URL|r"])
             GameTooltip:Show()
         elseif self.actionType and (self.actionType:match("Animation$") or self.actionType:match("Anim$") or self.actionType == "animation") and self.optionValue then
             Triggers:ShowAnimationHoverPreview(picker, self.optionValue, self.optionData)
@@ -715,7 +715,7 @@ function Triggers:CreatePickerRow(picker, actionType)
     useButton:SetScript("OnClick", function(self, button)
         if button == "RightButton" and self.itemID then
             local _, toyName = C_ToyBox.GetToyInfo(self.itemID)
-            OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or ("Toy #" .. self.itemID))
+            OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.itemID), toyName or (L["Toy #"] .. self.itemID))
             return
         end
         local parentRow = self:GetParent()

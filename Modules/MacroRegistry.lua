@@ -3,6 +3,7 @@
 -- No 255-char limit, no macro UI clutter.
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local MacroRegistry = {}
 OxedHub.MacroRegistry = MacroRegistry
 
@@ -53,7 +54,7 @@ function MacroRegistry:RunMacro(name)
     local macros = self:GetMacros()
     local macro = macros[name]
     if not macro then
-        print("|cffff0000OxedHub:|r Mix not found: " .. tostring(name))
+        print(L["|cffff0000OxedHub:|r Mix not found: "] .. tostring(name))
         return
     end
 
@@ -82,7 +83,7 @@ function MacroRegistry:ExecuteMix(data)
                             end
                         end)
                         if not ok then
-                            print("|cffff0000OxedHub:|r Cannot use toy from this context. Click the Run button instead.")
+                            print(L["|cffff0000OxedHub:|r Cannot use toy from this context. Click the Run button instead."])
                         end
                     end
                 elseif slot.type == "spell" then
@@ -90,7 +91,7 @@ function MacroRegistry:ExecuteMix(data)
                     if spellInfo and spellInfo.name then
                         local ok, err = pcall(function() CastSpellByName(spellInfo.name) end)
                         if not ok then
-                            print("|cffff0000OxedHub:|r Cannot cast spell from this context. Click the Run button instead.")
+                            print(L["|cffff0000OxedHub:|r Cannot cast spell from this context. Click the Run button instead."])
                         end
                     end
                 end
@@ -167,11 +168,11 @@ end
 function MacroRegistry:ListMacros()
     local names = self:GetMacroNames()
     if #names == 0 then
-        print("|cff00ff00OxedHub:|r No saved mixes yet.")
+        print(L["|cff00ff00OxedHub:|r No saved mixes yet."])
         return
     end
 
-    print("|cff00ff00OxedHub Mixes:|r")
+    print(L["|cff00ff00OxedHub Mixes:|r"])
     for i, name in ipairs(names) do
         print("  " .. i .. ". " .. name)
     end
@@ -194,7 +195,7 @@ function MacroRegistry:SlashHandler(msg)
             end
             self:RunMacro(macroName)
         else
-            print("|cffff0000OxedHub:|r Usage: /oxedhub mix run <name>")
+            print(L["|cffff0000OxedHub:|r Usage: /oxedhub mix run <name>"])
         end
     elseif cmd == "list" then
         self:ListMacros()
@@ -205,22 +206,22 @@ function MacroRegistry:SlashHandler(msg)
                 macroName = table.concat(args, " ", 2)
             end
             if self:DeleteMacro(macroName) then
-                print("|cff00ff00OxedHub:|r Deleted mix: " .. macroName)
+                print(L["|cff00ff00OxedHub:|r Deleted mix: "] .. macroName)
                 -- Refresh UI if open
                 if OxedHub.Toys and OxedHub.Toys.RefreshSavedMixesList then
                     OxedHub.Toys:RefreshSavedMixesList()
                 end
             else
-                print("|cffff0000OxedHub:|r Mix not found: " .. macroName)
+                print(L["|cffff0000OxedHub:|r Mix not found: "] .. macroName)
             end
         else
-            print("|cffff0000OxedHub:|r Usage: /oxedhub mix delete <name>")
+            print(L["|cffff0000OxedHub:|r Usage: /oxedhub mix delete <name>"])
         end
     else
-        print("|cff00ff00OxedHub Mix Commands:|r")
-        print("  |cff00ffff/oxedhub mix list|r - List all mixes")
-        print("  |cff00ffff/oxedhub mix run <name>|r - Run a mix")
-        print("  |cff00ffff/oxedhub mix delete <name>|r - Delete a mix")
+        print(L["|cff00ff00OxedHub Mix Commands:|r"])
+        print(L["  |cff00ffff/oxedhub mix list|r - List all mixes"])
+        print(L["  |cff00ffff/oxedhub mix run <name>|r - Run a mix"])
+        print(L["  |cff00ffff/oxedhub mix delete <name>|r - Delete a mix"])
     end
 end
 

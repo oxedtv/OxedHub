@@ -203,6 +203,7 @@ Toys.SUGGESTED_BOXES = {
 for _, category in ipairs(OxedHub.TOY_CATEGORIES or {}) do
     table.insert(Toys.SUGGESTED_BOXES, category)
 end
+OxedHub:RegisterLocalizedTable(Toys.SUGGESTED_BOXES, "name", "desc")
 
 function Toys:GetSuggestedBoxToys(def)
     local out = {}

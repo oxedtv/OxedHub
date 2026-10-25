@@ -151,6 +151,10 @@ Data.PET = {
       notAura = 196099, check = "felguard", cast = 30146 },
     -- Any pet left on Passive.
     { key = "petPassive", group = "pet", check = "passive", icon = 132311 },
+    -- A demon out that is not one of those chosen for this content (opt-in).
+    -- Demonology is left to wrongDemon, which wants its Felguard regardless.
+    { key = "wrongDemonAny", group = "pet", class = "WARLOCK", notSpecs = { [266] = true }, known = 688,
+      notAura = 196099, check = "demonChoice", optIn = true },
 }
 
 Data.CONSUMABLE = {
@@ -195,6 +199,7 @@ Data.LABELS = {
     symbiotic = "Symbiotic Relationship", soulstone = "Soulstone",
     wrongDemon = "Felguard not out", petPassive = "Pet on Passive",
     delveFood = "Delve food", mageFood = "Ask the mage for food",
+    wrongDemonAny = "Not one of your demons for this content",
 }
 
 -- Shown above each part of the Reminders list in Options.
@@ -281,6 +286,26 @@ Data.EXOTIC_BEASTS = 53270
 Data.DEMON_FLYOUT = 10           -- Summon Demon
 Data.FELGUARD = 30146
 Data.DEMON_NAMES = { [688] = "Imp", [697] = "Voidwalker", [691] = "Felhunter", [366222] = "Sayaad", [30146] = "Felguard" }
+-- The demon out, told from the creature ID in its GUID, to the spell that
+-- summons it. A creature not listed here is never called the wrong one.
+Data.DEMON_NPC = {
+    [416] = 688,        -- Imp
+    [1860] = 697,       -- Voidwalker
+    [417] = 691,        -- Felhunter
+    [1863] = 366222,    -- Succubus
+    [185317] = 366222,  -- Incubus
+    [17252] = 30146,    -- Felguard
+}
+-- Cast before a summon when the player asks for it: the demon comes at once.
+Data.FEL_DOMINATION = 333889
+
+-- A repair reminder clicked summons a mount with a vendor who repairs, or
+-- uses an item that repairs on the spot; the first one owned wins.
+Data.REPAIR_MOUNTS = { 122708, 264058 }   -- Grand Expedition Yak, Mighty Caravan Brutosaur (mount spells)
+Data.REPAIR_ITEMS = { 132514, 49040 }     -- Auto-Hammer, Jeeves
+
+-- The delve food reminder gives up after this long inside a delve.
+Data.DELVE_FOOD_SECONDS = 30
 
 -- Gear below this durability (percent, worst item) gets a repair reminder.
 Data.REPAIR_BELOW = 25

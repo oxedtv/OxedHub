@@ -278,12 +278,12 @@ function Triggers:CreateActionsUI(frame, trigger)
     frame.iconIcon = iconIcon
     local iconLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     iconLabel:SetPoint("LEFT", iconIcon, "RIGHT", 8, 0)
-    iconLabel:SetText("Icon:")
+    iconLabel:SetText(L["Icon:"])
 
     local iconCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
     iconCheck:SetSize(20, 20)
     iconCheck:SetPoint("LEFT", iconLabel, "RIGHT", 10, 0)
-    iconCheck.text:SetText("Show on screen")
+    iconCheck.text:SetText(L["Show on screen"])
     iconCheck:SetChecked(actions.showIcon and true or false)
     frame.iconCheck = iconCheck
 
@@ -334,11 +334,11 @@ function Triggers:CreateActionsUI(frame, trigger)
         end
 
         if texType == "ALLIANCE" then
-            iconTexBtn:SetText("Alliance Flag")
+            iconTexBtn:SetText(L["Alliance Flag"])
         elseif texType == "HORDE" then
-            iconTexBtn:SetText("Horde Flag")
+            iconTexBtn:SetText(L["Horde Flag"])
         else
-            iconTexBtn:SetText("Default Icon")
+            iconTexBtn:SetText(L["Default Icon"])
         end
         
         -- Preview icon
@@ -525,7 +525,7 @@ function Triggers:CreateActionsUI(frame, trigger)
                 local itemID = tonumber(directID)
                 if itemID then
                     local _, toyName = C_ToyBox.GetToyInfo(itemID)
-                    fullName = toyName or ("Toy #" .. itemID)
+                    fullName = toyName or (L["Toy #"] .. itemID)
                 end
             else
                 local mixData = OxedHub.db.profile.toyMixes and OxedHub.db.profile.toyMixes[actions.toy]
@@ -695,13 +695,13 @@ function Triggers:CreateActionsUI(frame, trigger)
     end
 
     local enterSoundLabel, enterSoundButton, UpdateEnterSoundButton, enterSoundIcon =
-        CreateCombatStateRow("COMBAT_ENTER_SOUND", "Enter Sound", "enterSound", false)
+        CreateCombatStateRow("COMBAT_ENTER_SOUND", L["Enter Sound"], "enterSound", false)
     local enterAnimLabel, enterAnimButton, UpdateEnterAnimButton, enterAnimIcon =
-        CreateCombatStateRow("COMBAT_ENTER_ANIMATION", "Enter Animation", "enterAnim", true)
+        CreateCombatStateRow("COMBAT_ENTER_ANIMATION", L["Enter Animation"], "enterAnim", true)
     local exitSoundLabel, exitSoundButton, UpdateExitSoundButton, exitSoundIcon =
-        CreateCombatStateRow("COMBAT_EXIT_SOUND", "Exit Sound", "exitSound", false)
+        CreateCombatStateRow("COMBAT_EXIT_SOUND", L["Exit Sound"], "exitSound", false)
     local exitAnimLabel, exitAnimButton, UpdateExitAnimButton, exitAnimIcon =
-        CreateCombatStateRow("COMBAT_EXIT_ANIMATION", "Exit Animation", "exitAnim", true)
+        CreateCombatStateRow("COMBAT_EXIT_ANIMATION", L["Exit Animation"], "exitAnim", true)
 
     frame.enterSoundLabel, frame.enterSoundButton = enterSoundLabel, enterSoundButton
     frame.enterAnimLabel, frame.enterAnimButton = enterAnimLabel, enterAnimButton
@@ -799,7 +799,7 @@ function Triggers:CreateActionsUI(frame, trigger)
     summonIncomingTestBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText((L["BTN_TEST"] or "Test") .. ": " .. (L["LBL_SUMMON_CHAT"] or "Incoming Summon"), 1, 0.82, 0)
-        GameTooltip:AddLine("Test incoming summon effects and chat message.", 1, 1, 1, true)
+        GameTooltip:AddLine(L["Test incoming summon effects and chat message."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     summonIncomingTestBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -841,7 +841,7 @@ function Triggers:CreateActionsUI(frame, trigger)
     summonAcceptedTestBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText((L["BTN_TEST"] or "Test") .. ": " .. (L["LBL_ACCEPT_CHAT"] or "Accept Summon"), 1, 0.82, 0)
-        GameTooltip:AddLine("Test accept summon effects and chat message.", 1, 1, 1, true)
+        GameTooltip:AddLine(L["Test accept summon effects and chat message."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     summonAcceptedTestBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -883,7 +883,7 @@ function Triggers:CreateActionsUI(frame, trigger)
     summonDeclinedTestBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText((L["BTN_TEST"] or "Test") .. ": " .. (L["LBL_DECLINE_CHAT"] or "Decline Summon"), 1, 0.82, 0)
-        GameTooltip:AddLine("Test decline summon effects and chat message.", 1, 1, 1, true)
+        GameTooltip:AddLine(L["Test decline summon effects and chat message."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     summonDeclinedTestBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1460,7 +1460,7 @@ function Triggers:CreateActionsUI(frame, trigger)
     whisperCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
     whisperCheck:SetSize(20, 20)
     whisperCheck:SetChecked(actions.whisperTarget or false)
-    whisperCheck.text:SetText("Whisper target")
+    whisperCheck.text:SetText(L["Whisper target"])
     whisperCheck.text:ClearAllPoints()
     whisperCheck.text:SetPoint("LEFT", whisperCheck, "RIGHT", 4, 0)
     whisperCheck:SetScript("OnClick", function(self)

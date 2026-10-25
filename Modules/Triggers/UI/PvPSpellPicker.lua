@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 OxedHub.UIComponents = OxedHub.UIComponents or {}
 OxedHub.UIComponents.PvPSpellPicker = {}
@@ -49,7 +50,7 @@ function OxedHub.UIComponents.PvPSpellPicker:Create(frame, trigger, yOffset, spe
     
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOPLEFT", frame, "TOPLEFT", startX, currentY)
-    title:SetText("|cffffd100Spell Tracker|r  |cff888888(click to toggle)|r")
+    title:SetText(L["|cffffd100Spell Tracker|r  |cff888888(click to toggle)|r"])
     currentY = currentY - 20
 
     local classButtons = {}
@@ -92,7 +93,7 @@ function OxedHub.UIComponents.PvPSpellPicker:Create(frame, trigger, yOffset, spe
                     elseif GetSpellInfo then
                         name, _, icon = GetSpellInfo(spellID)
                     end
-                    name = name or ("Unknown " .. spellID)
+                    name = name or (L["Unknown "] .. spellID)
                     
                     if not nameToSpellIDs[name] then
                         nameToSpellIDs[name] = {}

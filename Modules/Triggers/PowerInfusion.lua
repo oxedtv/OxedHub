@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local Triggers = OxedHub.Triggers
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -60,7 +61,7 @@ local function BuildHolder()
     holder.hint:Hide()
     holder.text = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     holder.text:SetPoint("BOTTOM", holder, "TOP", 0, 2)
-    holder.text:SetText("Power Infusion: drag me")
+    holder.text:SetText(L["Power Infusion: drag me"])
     holder.text:Hide()
 end
 
@@ -186,18 +187,18 @@ Triggers:RegisterEventType("POWER_INFUSION", {
         info:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset - 4)
         info:SetWidth(560)
         info:SetJustifyH("LEFT")
-        info:SetText("One icon on screen while a priest's Power Infusion is on you, with its timer.\n"
-            .. "The game draws it, so it also works in a fight. No sound: the game hides your\n"
-            .. "buffs from addons in combat.")
+        info:SetText(L["One icon on screen while a priest's Power Infusion is on you, with its timer.\n"]
+            .. L["The game draws it, so it also works in a fight. No sound: the game hides your\n"]
+            .. L["buffs from addons in combat."])
         yOffset = yOffset - 52
 
         local move = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
         move:SetSize(150, 22)
         move:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
-        move:SetText("Move the icon")
+        move:SetText(L["Move the icon"])
         move:SetScript("OnClick", function(self)
             moving = not moving
-            self:SetText(moving and "Done moving" or "Move the icon")
+            self:SetText(moving and L["Done moving"] or L["Move the icon"])
             Refresh()
         end)
         frame:HookScript("OnHide", function()
@@ -206,7 +207,7 @@ Triggers:RegisterEventType("POWER_INFUSION", {
 
         local sizeLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         sizeLabel:SetPoint("LEFT", move, "RIGHT", 20, 0)
-        local function ShowSize() sizeLabel:SetText(("Size: %d"):format(tonumber(c.piSize) or DEFAULT_SIZE)) end
+        local function ShowSize() sizeLabel:SetText((L["Size: %d"]):format(tonumber(c.piSize) or DEFAULT_SIZE)) end
         ShowSize()
         local function Step(delta)
             c.piSize = math.max(24, math.min(160, (tonumber(c.piSize) or DEFAULT_SIZE) + delta))

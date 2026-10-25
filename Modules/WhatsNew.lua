@@ -26,6 +26,27 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.44",
+        important = true,
+        lines = {
+            { "NEW", "Russian language (testing). Pick it in OxedHub's settings; it follows that choice, not the game client's, and MythicLooter follows it too." },
+            { "NEW", "AddOn Manager module (/oxaddons): a tidier addon list. Plugins sit under the addon they need, DBM- and BigWigs_ parts stay together, there is a search, switching for this character or for all of them, and saved sets to swap between. It says clearly when a reload is needed." },
+            { "NEW", "Frame Mover module (/oxmove): drag any of the game's windows by an empty part and it opens there next time. Ctrl and the mouse wheel over a window make it bigger or smaller. Protected windows are never touched in combat." },
+            { "NEW", "Toy mixes: a key for any saved mix (the Keybinds button by Save, or /oxmixkeys), without putting it on an ActionHub or OxedRing node first. It runs the mix's sound, animation, emote and chat too." },
+            { "NEW", "One switch on the dashboard turns every module off, and on again brings back exactly the ones you had on." },
+            { "NEW", "Inviter Info: a group window of its own when the group finder puts you in a group, in OxedHub's stone frame. The activity, your role, group name, leader, playstyle, item level, voice chat and description, and a teleport button for dungeons (or a plain \"Teleport not learned yet\"). It opens again when the group fills up, also for a group you listed, and a line in chat brings it back. Every row can be switched off, with Test and Reset position." },
+            { "NEW", "Inviter Info: the line under a group invite has font, size, outline, colours, background, ornate frame, above or below, and the gap. Choose what it says (class, class colour, race, realm, friend or guild), a sound on an invite, and \"Show a test invite\" to see it in place." },
+            { "CHANGED", "MythicLooter: its Mythic+ group window is gone; the group window is Inviter Info's now, and MythicLooter's options link there. MythicLooter's windows always keep OxedHub's look, even with EllesmereUI or another skin addon loaded." },
+            { "NEW", "Buff Reminder: \"Choose your buffs\" at the top of its window. Every buff of every class with its icon and its own tick box, by section: talents and gear, group buffs you give, group buffs from others (each one on its own), your own buffs, buffs you put on others, pet, consumables, and your custom buffs." },
+            { "NEW", "Buff Reminder: custom buffs drop down spell suggestions as you type, the same search the triggers use. Click one to add it." },
+            { "NEW", "Buff Reminder: several demons per content for warlocks, and an opt-in \"not one of your demons\". Fel Domination before a summon, a pinned Soulstone target, a healthstone charge threshold, a repair icon that summons your repair mount or uses an Auto-Hammer or Jeeves, and a reminder before a Mythic+ key starts." },
+            { "NEW", "Buff Reminder: hide items from older expansions, delve food only in delves (and gone after 30 seconds), food and flasks without any in your bags only on a ready check, the ask cooldown as a choice, only check yourself for group buffs, a ready-check-only bar, and a minimap button." },
+            { "NEW", "Minimap buttons of their own for WQ Achievements, Chat Filter, Chat Buttons, Item Tooltips, Cursor, Camera and Durability: a click opens the module, a right-click its options." },
+            { "FIXED", "Run Tracker: role marks now reach the healer too. They are set one at a time; in one burst only the tank's arrived." },
+            { "FIXED", "Shattersight: holding Shift over enchanting dust or shards outside your bags (auction house, bank, another addon's window) no longer raises an error." },
+        },
+    },
+    {
         version = "2.4.43",
         important = true,
         lines = {

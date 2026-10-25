@@ -379,7 +379,7 @@ function PreyEngine:ToggleBlizzardWidgetMover()
 
         local text = mover:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         text:SetPoint("CENTER", mover, "CENTER", 0, 0)
-        text:SetText("Blizzard Prey Widget\n|cFF88FF88(Drag to Position)|r")
+        text:SetText(L["Blizzard Prey Widget\n|cFF88FF88(Drag to Position)|r"])
         mover.text = text
 
         if OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.preyBlizzWidgetPosition then
@@ -620,9 +620,9 @@ function PreyEngine:UpdateActiveHunt()
         if questData then
             local diffIdx = questData[1]
             self.state.difficulty = (diffIdx == 3 and "Nightmare") or (diffIdx == 2 and "Hard") or "Normal"
-            self.state.targetName = questData[3] or "Prey Target"
+            self.state.targetName = questData[3] or L["Prey Target"]
         else
-            self.state.targetName = "Prey Target"
+            self.state.targetName = L["Prey Target"]
             self.state.difficulty = "Normal"
         end
 

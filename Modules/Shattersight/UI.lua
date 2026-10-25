@@ -2,6 +2,7 @@
 -- StatsFrame and DebugFrame for OxedHub Shattersight.
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 OxedHub.Shattersight = OxedHub.Shattersight or {}
 local SS = OxedHub.Shattersight
@@ -126,20 +127,20 @@ local function RefreshStats()
             for _, entry in ipairs(expBuckets) do
                 local bucket   = entry.bucket
                 local qColor   = QUALITY_COLORS[bucket.quality] or "|cFFFFFFFF"
-                local qLabel   = QUALITY_LABELS[bucket.quality] or ("Quality " .. bucket.quality)
+                local qLabel   = QUALITY_LABELS[bucket.quality] or (L["Quality "] .. bucket.quality)
                 local attempts = bucket.attempts
 
                 local tierStr = ""
                 if bucket.skillTier ~= nil then
-                    tierStr = string.format(" [Skill %d-%d]",
+                    tierStr = string.format(L[" [Skill %d-%d]"],
                         bucket.skillTier, bucket.skillTier + 24)
                 end
 
                 local progressStr
                 if attempts >= minSamples then
-                    progressStr = string.format("|cFF00FF00%d disenchants|r (active in tooltip)", attempts)
+                    progressStr = string.format(L["|cFF00FF00%d disenchants|r (active in tooltip)"], attempts)
                 else
-                    progressStr = string.format("|cFFFF8C00%d/%d disenchants|r (using estimates)", attempts, minSamples)
+                    progressStr = string.format(L["|cFFFF8C00%d/%d disenchants|r (using estimates)"], attempts, minSamples)
                 end
 
                 y = AddHeaderLine(content,
@@ -165,7 +166,7 @@ local function RefreshStats()
                     local matDef = SS.MATS_BY_ID and SS.MATS_BY_ID[mat.itemID]
                     local name   = (C_Item.GetItemNameByID and C_Item.GetItemNameByID(mat.itemID))
                                 or (matDef and matDef.name)
-                                or ("Item #" .. mat.itemID)
+                                or (L["Item #"] .. mat.itemID)
 
                     local qIcon = matDef and matDef.qualityTier
                         and QUALITY_ICONS[matDef.qualityTier]
@@ -177,10 +178,10 @@ local function RefreshStats()
 
                     local leftText
                     if mat.dropChance then
-                        leftText = string.format("    %s%s  |cFFFFFFFF%.0f%%|r · |cFFFFFFFFavg %.1fx|r",
+                        leftText = string.format(L["    %s%s  |cFFFFFFFF%.0f%%|r · |cFFFFFFFFavg %.1fx|r"],
                             name, qIcon, mat.dropChance * 100, mat.avgQtyWhenReceived)
                     else
-                        leftText = string.format("    %s%s  avg %.2fx", name, qIcon, mat.avgQty)
+                        leftText = string.format(L["    %s%s  avg %.2fx"], name, qIcon, mat.avgQty)
                     end
 
                     local rightText
@@ -192,10 +193,10 @@ local function RefreshStats()
                             or  expectedMatCopper
                         rightText = SS:FormatGold(displayCopper)
                         if stale then
-                            rightText = rightText .. " " .. COLOR_WARN .. "[stale]" .. COLOR_RESET
+                            rightText = rightText .. " " .. COLOR_WARN .. L["[stale]"] .. COLOR_RESET
                         end
                     else
-                        rightText = "|cFFFF4444No price|r"
+                        rightText = L["|cFFFF4444No price|r"]
                     end
 
                     y = AddDoubleLine(content, leftText, rightText, y)
@@ -203,7 +204,7 @@ local function RefreshStats()
 
                 if groupExpectedCopper > 0 then
                     y = AddDoubleLine(content,
-                        "    |cFFFFD700Expected Value|r",
+                        L["    |cFFFFD700Expected Value|r"],
                         SS:FormatGold(groupExpectedCopper),
                         y)
                 end
@@ -214,8 +215,8 @@ local function RefreshStats()
     end
 
     if not hasAnyData then
-        y = AddHeaderLine(content, "|cFF888888No disenchant tracking data recorded yet.|r", y)
-        y = AddHeaderLine(content, "|cFF888888Disenchant some equippable gear to build stats.|r", y)
+        y = AddHeaderLine(content, L["|cFF888888No disenchant tracking data recorded yet.|r"], y)
+        y = AddHeaderLine(content, L["|cFF888888Disenchant some equippable gear to build stats.|r"], y)
         y = y - SECTION_GAP
     end
 
@@ -247,7 +248,7 @@ local function CreateStatsFrame()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     title:SetPoint("TOP", f, "TOP", 0, -14)
-    title:SetText("|cFF00FFFFOxedHub Shattersight|r — Disenchant Stats")
+    title:SetText(L["|cFF00FFFFOxedHub Shattersight|r — Disenchant Stats"])
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
@@ -264,7 +265,7 @@ local function CreateStatsFrame()
     local clearBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     clearBtn:SetSize(110, 22)
     clearBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14, 12)
-    clearBtn:SetText("Clear Stats")
+    clearBtn:SetText(L["Clear Stats"])
     clearBtn:SetScript("OnClick", function()
         SS:ClearTrackingData()
         RefreshStats()
@@ -273,7 +274,7 @@ local function CreateStatsFrame()
     local refreshBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     refreshBtn:SetSize(110, 22)
     refreshBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
-    refreshBtn:SetText("Refresh")
+    refreshBtn:SetText(L["Refresh"])
     refreshBtn:SetScript("OnClick", function()
         RefreshStats()
     end)
@@ -328,7 +329,7 @@ local function CreateDebugFrame()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     title:SetPoint("TOP", f, "TOP", 0, -14)
-    title:SetText("|cFF00FFFFOxedHub Shattersight|r — Diagnostics")
+    title:SetText(L["|cFF00FFFFOxedHub Shattersight|r — Diagnostics"])
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)

@@ -10,6 +10,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer
 
 -- ── Default Settings ────────────────────────────────────────────────────────
@@ -334,15 +335,15 @@ local function ShowOptions()
         optionsWindow:AddSlider(settings, "volumeMultiplier", "Volume boost", 1, 4, 1, "%s: %dx")
 
         optionsWindow:AddChoice(settings, "soundLevel", "Sound volume level", {
-            { value = "normal", text = "Normal (0 dB)" },
-            { value = "lower",  text = "Lower (-5 dB)" },
-            { value = "lowest", text = "Lowest (-10 dB)" },
+            { value = "normal", text = L["Normal (0 dB)"] },
+            { value = "lower",  text = L["Lower (-5 dB)"] },
+            { value = "lowest", text = L["Lowest (-10 dB)"] },
         })
 
         -- Live Test Buttons
         local testLabel = optionsWindow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         testLabel:SetPoint("TOPLEFT", optionsWindow, "TOPLEFT", 20, optionsWindow.cursorY - 6)
-        testLabel:SetText("Test sounds:")
+        testLabel:SetText(L["Test sounds:"])
 
         local function StyleBtn(b)
             if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
@@ -353,7 +354,7 @@ local function ShowOptions()
         local btnTestNormal = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
         btnTestNormal:SetSize(75, 22)
         btnTestNormal:SetPoint("TOPLEFT", optionsWindow, "TOPLEFT", 115, optionsWindow.cursorY - 2)
-        btnTestNormal:SetText("Normal")
+        btnTestNormal:SetText(L["Normal"])
         StyleBtn(btnTestNormal)
         btnTestNormal:SetScript("OnClick", function()
             testModeState = "NORMAL"
@@ -363,7 +364,7 @@ local function ShowOptions()
         local btnTestFast = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
         btnTestFast:SetSize(80, 22)
         btnTestFast:SetPoint("LEFT", btnTestNormal, "RIGHT", 4, 0)
-        btnTestFast:SetText("35% Pulse")
+        btnTestFast:SetText(L["35% Pulse"])
         StyleBtn(btnTestFast)
         btnTestFast:SetScript("OnClick", function()
             testModeState = "FAST"
@@ -373,7 +374,7 @@ local function ShowOptions()
         local btnTestDead = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
         btnTestDead:SetSize(70, 22)
         btnTestDead:SetPoint("LEFT", btnTestFast, "RIGHT", 4, 0)
-        btnTestDead:SetText("Death")
+        btnTestDead:SetText(L["Death"])
         StyleBtn(btnTestDead)
         btnTestDead:SetScript("OnClick", function()
             testModeState = "DEAD"
@@ -383,7 +384,7 @@ local function ShowOptions()
         local btnStopTest = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
         btnStopTest:SetSize(60, 22)
         btnStopTest:SetPoint("LEFT", btnTestDead, "RIGHT", 4, 0)
-        btnStopTest:SetText("Stop")
+        btnStopTest:SetText(L["Stop"])
         StyleBtn(btnStopTest)
         btnStopTest:SetScript("OnClick", function()
             testModeState = nil
@@ -413,25 +414,25 @@ SlashCmdList.OXEDHUBHEARTBEAT = function(msg)
         testModeState = (testModeState == nil) and "FAST" or nil
         if testModeState then
             TransitionTo("FAST", true)
-            print("|cffff4040Heartbeat:|r Test Mode |cff00ff00ON|r (35% Pulse)")
+            print(L["|cffff4040Heartbeat:|r Test Mode |cff00ff00ON|r (35% Pulse)"])
         else
             testModeState = nil
             StopCurrentSounds()
             EvaluateHealthState()
-            print("|cffff4040Heartbeat:|r Test Mode |cffff4040OFF|r")
+            print(L["|cffff4040Heartbeat:|r Test Mode |cffff4040OFF|r"])
         end
     elseif msg == "toggle" or msg == "on" or msg == "off" then
         local on = (msg == "on") or (msg == "toggle" and not (settings and settings.enabled))
         if settings then settings.enabled = on end
         if on then StartModule() else StopModule() end
-        print("|cffff4040Heartbeat:|r " .. (on and "|cff00ff00Enabled|r" or "|cffff4040Disabled|r"))
+        print(L["|cffff4040Heartbeat:|r "] .. (on and L["|cff00ff00Enabled|r"] or L["|cffff4040Disabled|r"]))
     elseif msg == "status" then
-        print("|cffff4040Heartbeat Status:|r")
-        print("  Enabled: " .. tostring(settings and settings.enabled))
-        print("  State: " .. tostring(currentState))
-        print("  Critical: " .. tostring(settings and settings.criticalThreshold) .. "%")
-        print("  Warning: " .. tostring(settings and settings.warningThreshold) .. "%")
-        print("  Player HP: " .. string.format("%.1f%%", GetPlayerHealthPercent()))
+        print(L["|cffff4040Heartbeat Status:|r"])
+        print(L["  Enabled: "] .. tostring(settings and settings.enabled))
+        print(L["  State: "] .. tostring(currentState))
+        print(L["  Critical: "] .. tostring(settings and settings.criticalThreshold) .. "%")
+        print(L["  Warning: "] .. tostring(settings and settings.warningThreshold) .. "%")
+        print(L["  Player HP: "] .. string.format("%.1f%%", GetPlayerHealthPercent()))
     else
         ShowOptions()
     end

@@ -39,7 +39,7 @@ bindingEditBox:SetScript("OnKeyDown", function(self, key)
     
     if key == "ESCAPE" then
         targetButton.isListening = false
-        targetButton:SetText(targetButton.oldBindingText or L["KEYBIND_NOT_BOUND"] or "Not Bound")
+        targetButton:SetText(targetButton.oldBindingText or L["KEYBIND_NOT_BOUND"] or L["Not Bound"])
         if self.onBindCallback then
             self.onBindCallback(nil)
         end
@@ -68,7 +68,7 @@ bindingEditBox:SetScript("OnEditFocusLost", function(self)
     local targetButton = self.targetButton
     if targetButton and targetButton.isListening then
         targetButton.isListening = false
-        targetButton:SetText(targetButton.oldBindingText or L["KEYBIND_NOT_BOUND"] or "Not Bound")
+        targetButton:SetText(targetButton.oldBindingText or L["KEYBIND_NOT_BOUND"] or L["Not Bound"])
     end
     self:Hide()
 end)
@@ -125,6 +125,7 @@ StaticPopupDialogs["OXEDHUB_CLEAR_RING"] = {
     hideOnEscape = true,
     preferredIndex = 3,
 }
+OxedHub:RegisterLocalizedTable({ StaticPopupDialogs["OXEDHUB_CLEAR_RING"] }, "text")
 
 local function GetToyAssignmentMode(slot)
     if slot and slot.type == "toy" and slot.assignmentMode == "direct" then
@@ -186,7 +187,7 @@ local function GetCustomReaction(emoteId)
         
         if defaultEmoteMap[emoteId] then
             reaction.emote = defaultEmoteMap[emoteId]
-            print("OxedHub: Auto-assigned /" .. defaultEmoteMap[emoteId]:lower() .. " to " .. emoteId)
+            print(L["OxedHub: Auto-assigned /"] .. defaultEmoteMap[emoteId]:lower() .. " to " .. emoteId)
         end
     end
     
@@ -510,7 +511,7 @@ local function RefreshPreview()
         local fontPath, _, fontFlags = btn.label:GetFont()
         local fontSize = OxedHub.GetRingDB().oxedRingNodeTitleSize or 11
         btn.label:SetFont(OxedHub:GetFont(fontPath), fontSize, fontFlags or "OUTLINE")
-        btn.label:SetText(data.label or "Node " .. i)
+        btn.label:SetText(data.label or L["Node "] .. i)
         if OxedHub.GetRingDB().oxedRingShowNodeTitles then
             btn.label:Show()
         else
@@ -538,12 +539,12 @@ local function RefreshPreview()
         -- â”€â”€ Tooltip for condition requirements â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         btn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(data.label or ("Node " .. i))
+            GameTooltip:SetText(data.label or (L["Node "] .. i))
             if data.requiresParty then
-                GameTooltip:AddLine("|cffff9900Requires: Party/Raid|r", 1, 1, 1)
+                GameTooltip:AddLine(L["|cffff9900Requires: Party/Raid|r"], 1, 1, 1)
             end
             if data.requiresTarget then
-                GameTooltip:AddLine("|cffff9900Requires: Target|r", 1, 1, 1)
+                GameTooltip:AddLine(L["|cffff9900Requires: Target|r"], 1, 1, 1)
             end
             GameTooltip:Show()
         end)
@@ -563,7 +564,7 @@ function OxedRingEditor:ClearAllRingNodes()
         slot.type = nil
         slot.id = nil
         slot.assignmentMode = nil
-        slot.label = "Node " .. idx
+        slot.label = L["Node "] .. idx
         slot.icon = "Interface\\Icons\\INV_Misc_QuestionMark"
         slot.requiresParty = nil
         slot.requiresTarget = nil
@@ -874,7 +875,7 @@ function OxedRingEditor:RefreshPickerList()
             if PlayerHasToy(toyID) then
                 local cached = toyCache[toyID] or {}
                 local toyName, toyIcon = GetDirectToyDisplay(toyID)
-                local displayName = cached.name or toyName or ("Toy " .. tostring(toyID))
+                local displayName = cached.name or toyName or (L["Toy "] .. tostring(toyID))
                 if displayName then
                     totalToys = totalToys + 1
                     if searchText == "" or displayName:lower():find(searchText, 1, true) then
@@ -891,9 +892,9 @@ function OxedRingEditor:RefreshPickerList()
         end
 
         if self.mountCountLabel then
-            local labelText = "Toys: " .. totalToys
+            local labelText = L["Toys: "] .. totalToys
             if searchText ~= "" then
-                labelText = "Found: " .. #items .. " / " .. totalToys
+                labelText = L["Found: "] .. #items .. " / " .. totalToys
             end
             self.mountCountLabel:SetText(labelText)
             self.mountCountLabel:Show()
@@ -939,7 +940,7 @@ function OxedRingEditor:RefreshPickerList()
                 else
                     GameTooltip:SetItemByID(item.id)
                 end
-                GameTooltip:AddLine("|cff00ccffRight-Click: Copy Wowhead URL|r")
+                GameTooltip:AddLine(L["|cff00ccffRight-Click: Copy Wowhead URL|r"])
                 GameTooltip:Show()
             end)
             btn:SetScript("OnLeave", function(self)
@@ -949,7 +950,7 @@ function OxedRingEditor:RefreshPickerList()
 
             btn:SetScript("OnClick", function(_, button)
                 if button == "RightButton" then
-                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", item.id), item.name or ("Toy #" .. item.id))
+                    OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", item.id), item.name or (L["Toy #"] .. item.id))
                     return
                 end
                 if currentSlot then
@@ -1262,41 +1263,41 @@ function OxedRingEditor:RefreshPickerList()
 
         local categories = {
             {
-                name = "Marks",
+                name = L["Marks"],
                 items = {
-                    { type = "targetmarker", id = 1, name = "Target: Star", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1" },
-                    { type = "targetmarker", id = 2, name = "Target: Circle", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_2" },
-                    { type = "targetmarker", id = 3, name = "Target: Diamond", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_3" },
-                    { type = "targetmarker", id = 4, name = "Target: Triangle", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_4" },
-                    { type = "targetmarker", id = 5, name = "Target: Moon", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_5" },
-                    { type = "targetmarker", id = 6, name = "Target: Square", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_6" },
-                    { type = "targetmarker", id = 7, name = "Target: Cross", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_7" },
-                    { type = "targetmarker", id = 8, name = "Target: Skull", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8" },
-                    { type = "targetmarker", id = 0, name = "Clear Target", icon = "Interface\\Icons\\Spell_ChargeNegative" },
+                    { type = "targetmarker", id = 1, name = L["Target: Star"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1" },
+                    { type = "targetmarker", id = 2, name = L["Target: Circle"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_2" },
+                    { type = "targetmarker", id = 3, name = L["Target: Diamond"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_3" },
+                    { type = "targetmarker", id = 4, name = L["Target: Triangle"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_4" },
+                    { type = "targetmarker", id = 5, name = L["Target: Moon"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_5" },
+                    { type = "targetmarker", id = 6, name = L["Target: Square"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_6" },
+                    { type = "targetmarker", id = 7, name = L["Target: Cross"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_7" },
+                    { type = "targetmarker", id = 8, name = L["Target: Skull"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8" },
+                    { type = "targetmarker", id = 0, name = L["Clear Target"], icon = "Interface\\Icons\\Spell_ChargeNegative" },
                 }
             },
             {
-                name = "Flares",
+                name = L["Flares"],
                 items = {
-                    { type = "marker", id = 1, name = "Flare: Blue", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_6" },
-                    { type = "marker", id = 2, name = "Flare: Green", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_4" },
-                    { type = "marker", id = 3, name = "Flare: Purple", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_3" },
-                    { type = "marker", id = 4, name = "Flare: Red", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_7" },
-                    { type = "marker", id = 5, name = "Flare: Yellow", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1" },
-                    { type = "marker", id = 6, name = "Flare: Orange", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_2" },
-                    { type = "marker", id = 7, name = "Flare: Silver", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_5" },
-                    { type = "marker", id = 8, name = "Flare: White", icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8" },
-                    { type = "marker", id = 0, name = "Clear Flares", icon = "Interface\\Icons\\Spell_ChargeNegative" },
+                    { type = "marker", id = 1, name = L["Flare: Blue"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_6" },
+                    { type = "marker", id = 2, name = L["Flare: Green"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_4" },
+                    { type = "marker", id = 3, name = L["Flare: Purple"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_3" },
+                    { type = "marker", id = 4, name = L["Flare: Red"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_7" },
+                    { type = "marker", id = 5, name = L["Flare: Yellow"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1" },
+                    { type = "marker", id = 6, name = L["Flare: Orange"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_2" },
+                    { type = "marker", id = 7, name = L["Flare: Silver"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_5" },
+                    { type = "marker", id = 8, name = L["Flare: White"], icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8" },
+                    { type = "marker", id = 0, name = L["Clear Flares"], icon = "Interface\\Icons\\Spell_ChargeNegative" },
                 }
             },
             {
-                name = "Pings",
+                name = L["Pings"],
                 items = {
-                    { type = "ping", id = "", name = "Ping", icon = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\Ping-main-icon.png" },
-                    { type = "ping", id = "attack", name = "Ping: Attack", icon = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\Ping-Attack-Icon.png" },
-                    { type = "ping", id = "assist", name = "Ping: Assist", icon = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\Ping-Assist-Icon.png" },
-                    { type = "ping", id = "onmyway", name = "Ping: On My Way", icon = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\Ping-OnMyWay-Icon.png" },
-                    { type = "ping", id = "warning", name = "Ping: Warning", icon = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\Ping-Warning-Icon.png" },
+                    { type = "ping", id = "", name = L["Ping"], icon = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\Ping-main-icon.png" },
+                    { type = "ping", id = "attack", name = L["Ping: Attack"], icon = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\Ping-Attack-Icon.png" },
+                    { type = "ping", id = "assist", name = L["Ping: Assist"], icon = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\Ping-Assist-Icon.png" },
+                    { type = "ping", id = "onmyway", name = L["Ping: On My Way"], icon = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\Ping-OnMyWay-Icon.png" },
+                    { type = "ping", id = "warning", name = L["Ping: Warning"], icon = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Buttons\\Ping-Warning-Icon.png" },
                 }
             }
         }
@@ -1435,7 +1436,7 @@ function OxedRingEditor:RefreshPickerList()
                         table.insert(items, {
                             type = "item",
                             id = itemID,
-                            name = itemName or ("Item #" .. itemID),
+                            name = itemName or (L["Item #"] .. itemID),
                             icon = itemIcon or "Interface\\Icons\\INV_Misc_QuestionMark",
                             category = cat,
                             count = count,
@@ -1463,7 +1464,7 @@ function OxedRingEditor:RefreshPickerList()
         if #items == 0 then
             local noItems = child:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             noItems:SetPoint("TOPLEFT", child, "TOPLEFT", 8, -8)
-            noItems:SetText("|cffff9900No consumable items found in your bags.|r")
+            noItems:SetText(L["|cffff9900No consumable items found in your bags.|r"])
             noItems:SetWidth(240)
             noItems:SetJustifyH("LEFT")
             child:SetHeight(40)
@@ -1575,9 +1576,9 @@ function OxedRingEditor:RefreshPickerList()
         end
 
         if self.mountCountLabel then
-            local labelText = "Mounts: " .. totalMounts
+            local labelText = L["Mounts: "] .. totalMounts
             if filterText ~= "" then
-                labelText = "Found: " .. #items .. " / " .. totalMounts
+                labelText = L["Found: "] .. #items .. " / " .. totalMounts
             end
             self.mountCountLabel:SetText(labelText)
             self.mountCountLabel:Show()
@@ -1614,7 +1615,7 @@ function OxedRingEditor:RefreshPickerList()
                 else
                     GameTooltip:SetText(item.name)
                 end
-                GameTooltip:AddLine("|cff00ff00Click to assign to this slot|r")
+                GameTooltip:AddLine(L["|cff00ff00Click to assign to this slot|r"])
                 GameTooltip:Show()
             end)
             btn:SetScript("OnLeave", function(self)
@@ -1678,8 +1679,8 @@ function OxedRingEditor:RefreshPickerList()
         end
 
         if self.mountCountLabel then
-            local labelText = "Spells: " .. totalSpells
-            if filterText ~= "" then labelText = "Found: " .. #items .. " / " .. totalSpells end
+            local labelText = L["Spells: "] .. totalSpells
+            if filterText ~= "" then labelText = L["Found: "] .. #items .. " / " .. totalSpells end
             self.mountCountLabel:SetText(labelText)
             self.mountCountLabel:Show()
         end
@@ -1711,7 +1712,7 @@ function OxedRingEditor:RefreshPickerList()
                 self:SetBackdropBorderColor(1, 0.82, 0, 0.8)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 if item.id then GameTooltip:SetSpellByID(item.id) else GameTooltip:SetText(item.name) end
-                GameTooltip:AddLine("|cff00ff00Click to assign to this slot|r")
+                GameTooltip:AddLine(L["|cff00ff00Click to assign to this slot|r"])
                 GameTooltip:Show()
             end)
             btn:SetScript("OnLeave", function(self)
@@ -1749,7 +1750,7 @@ function OxedRingEditor:RefreshPickerList()
         self.assignmentScroll:SetPoint("BOTTOMRIGHT", rightPanel, "BOTTOMRIGHT", -55, 36)
         self.assignmentScroll:Show()
         self.assignmentScrollChild:Show()
-        self.assignmentInfo:SetText("Pick a module action")
+        self.assignmentInfo:SetText(L["Pick a module action"])
         for _, c in ipairs({child:GetChildren()}) do c:Hide() end
 
         local AH = OxedHub.ActionHub
@@ -1785,7 +1786,7 @@ function OxedRingEditor:RefreshPickerList()
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(item.name)
                 GameTooltip:AddLine(item.action, 1, 1, 1)
-                GameTooltip:AddLine("|cff00ff00Click to assign to this slot|r")
+                GameTooltip:AddLine(L["|cff00ff00Click to assign to this slot|r"])
                 GameTooltip:Show()
             end)
             btn:SetScript("OnLeave", function(self)
@@ -1853,10 +1854,10 @@ function OxedRingEditor:RefreshPickerList()
 
 
 
-        local ringBindingText = OxedHub.GetRingDB().oxedRingBinding or L["KEYBIND_NOT_BOUND"] or "Not Bound"
+        local ringBindingText = OxedHub.GetRingDB().oxedRingBinding or L["KEYBIND_NOT_BOUND"] or L["Not Bound"]
         dialog.ringBindBtn:SetText(ringBindingText)
         if dialog.moveNodeBtn then
-            dialog.moveNodeBtn:SetText(dialog.moveNodeMode and "Moving" or "Move")
+            dialog.moveNodeBtn:SetText(dialog.moveNodeMode and L["Moving"] or L["Move"])
         end
         
         if dialog.showTitlesCheck then
@@ -1960,12 +1961,12 @@ function OxedRingEditor:CreateTab(contentArea)
     
     local title = tab:CreateFontString(nil, "OVERLAY", "GameFontHighlightLeft")
     title:SetPoint("TOPLEFT", tab, "TOPLEFT", insetLeft, -insetTop + 34)
-    title:SetText("Oxed Ring")
+    title:SetText(L["Oxed Ring"])
     title:Hide()
     
     local desc = tab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -5)
-    desc:SetText("Design your radial OPie-style ring. Click a node to assign it.")
+    desc:SetText(L["Design your radial OPie-style ring. Click a node to assign it."])
     desc:Hide()
     
     -- Main Split
@@ -2028,11 +2029,11 @@ function OxedRingEditor:CreateTab(contentArea)
         
         if restored then
             if restored.label and restored.label:match("^Node %d+$") then
-                restored.label = "Node " .. (#nodes + 1)
+                restored.label = L["Node "] .. (#nodes + 1)
             end
             table.insert(nodes, restored)
         else
-            table.insert(nodes, { label = "Node " .. (#nodes + 1), icon = "Interface\\Icons\\INV_Misc_QuestionMark" })
+            table.insert(nodes, { label = L["Node "] .. (#nodes + 1), icon = "Interface\\Icons\\INV_Misc_QuestionMark" })
         end
         
         RefreshPreview()
@@ -2132,14 +2133,14 @@ function OxedRingEditor:CreateTab(contentArea)
 
     -- Sidebar category buttons (on the dragon tube)
     local sidebarCategories = {
-        { name = "Toys",      type = "toy",      icon = 134508 },
-        { name = "Reactions", type = "emote",    icon = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Emojis\\Kiss.png" },
-        { name = "Markers",   type = "marker",   icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8" },
-        { name = "Items",     type = "item",     icon = 3753262 },
-        { name = "Mounts",    type = "mount",    icon = 2143068 },
-        { name = "Spells",    type = "spell",    icon = "Interface\\Icons\\INV_Misc_Book_09" },
-        { name = "Modules",   type = "module",   icon = "Interface\\Icons\\INV_Gizmo_02" },
-        { name = "Settings",  type = "settings", icon = 4548872 }
+        { name = L["Toys"],      type = "toy",      icon = 134508 },
+        { name = L["Reactions"], type = "emote",    icon = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Emojis\\Kiss.png" },
+        { name = L["Markers"],   type = "marker",   icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8" },
+        { name = L["Items"],     type = "item",     icon = 3753262 },
+        { name = L["Mounts"],    type = "mount",    icon = 2143068 },
+        { name = L["Spells"],    type = "spell",    icon = "Interface\\Icons\\INV_Misc_Book_09" },
+        { name = L["Modules"],   type = "module",   icon = "Interface\\Icons\\INV_Gizmo_02" },
+        { name = L["Settings"],  type = "settings", icon = 4548872 }
     }
 
     rightPanel.sidebarButtons = {}
@@ -2541,7 +2542,7 @@ function OxedRingEditor:CreateTab(contentArea)
     rightPanel.soundPicker.label:SetParent(rightPanel.reactionTabFrame)
     rightPanel.soundPicker.button:SetParent(rightPanel.reactionTabFrame)
 
-    rightPanel.animationPicker = CreateEditorPicker("Animation", 28, -60,
+    rightPanel.animationPicker = CreateEditorPicker(L["Animation"], 28, -60,
         function() local e = OxedRingEditor:GetSelectedEmote() return e and GetCustomReaction(e).animation end,
         function() 
             local e = OxedRingEditor:GetSelectedEmote()
@@ -2561,12 +2562,12 @@ function OxedRingEditor:CreateTab(contentArea)
     rightPanel.animCheck = animCheck
     local animCheckLabel = rightPanel.reactionTabFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     animCheckLabel:SetPoint("LEFT", animCheck, "RIGHT", 4, 0)
-    animCheckLabel:SetText("Custom")
+    animCheckLabel:SetText(L["Custom"])
 
     local setPosBtn = CreateFrame("Button", nil, rightPanel.reactionTabFrame, "UIPanelButtonTemplate")
     setPosBtn:SetSize(70, 20)
     setPosBtn:SetPoint("LEFT", animCheckLabel, "RIGHT", 8, 0)
-    setPosBtn:SetText("Set Pos")
+    setPosBtn:SetText(L["Set Pos"])
     setPosBtn:SetScript("OnClick", function() 
         local e = OxedRingEditor:GetSelectedEmote()
         if not e or e == "None" then return end
@@ -2609,7 +2610,7 @@ function OxedRingEditor:CreateTab(contentArea)
     rightPanel.emotePicker.label:SetParent(rightPanel.reactionTabFrame)
     rightPanel.emotePicker.button:SetParent(rightPanel.reactionTabFrame)
 
-    rightPanel.toyMacroPicker = CreateEditorPicker("Toy Macro", 28, -10,
+    rightPanel.toyMacroPicker = CreateEditorPicker(L["Toy Macro"], 28, -10,
         function() local e = OxedRingEditor:GetSelectedEmote() return e and GetCustomReaction(e).toyMacro end,
         function() 
             -- We just hide this anyway for Emotes in the new UI
@@ -3158,17 +3159,17 @@ function OxedRingEditor:CreateTab(contentArea)
     shareRingBtn:SetScript("OnClick", function()
         local Share = OxedHub.Share
         if not Share then
-            print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+            print(L["|cffff0000Oxed Hub:|r Sharing module unavailable."])
             return
         end
-        local label = (OxedHub.GetActiveProfileName and OxedHub:GetActiveProfileName()) or "Ring"
-        Share:ShowChannelPicker("oxedring", nil, label .. " Ring")
+        local label = (OxedHub.GetActiveProfileName and OxedHub:GetActiveProfileName()) or L["Ring"]
+        Share:ShowChannelPicker("oxedring", nil, label .. L[" Ring"])
     end)
     shareRingBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(L["BTN_SHARE"] or "Share", 1, 0.82, 0)
-        GameTooltip:AddLine("Share only this ring in chat - slices, radius and keybind.", 1, 1, 1, true)
-        GameTooltip:AddLine("Others with Oxed Hub can click to import it.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine(L["Share only this ring in chat - slices, radius and keybind."], 1, 1, 1, true)
+        GameTooltip:AddLine(L["Others with Oxed Hub can click to import it."], 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     shareRingBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)

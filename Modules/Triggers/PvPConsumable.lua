@@ -209,7 +209,7 @@ Triggers:RegisterEventType("PVP_CONSUMABLE", {
 
         local info = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         info:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset - 4)
-        info:SetText("|cff00ff00Native Engine|r")
+        info:SetText(L["|cff00ff00Native Engine|r"])
         info:SetTextColor(1, 0.82, 0, 1)
         yOffset = yOffset - 20
 
@@ -218,9 +218,9 @@ Triggers:RegisterEventType("PVP_CONSUMABLE", {
         desc:SetWidth(450)
         desc:SetJustifyH("LEFT")
         desc:SetText(
-            "Plays a voice alert when your target, focus, or arena enemy uses a potion or consumable.\n\n"
-            .. "Note: Icons and Animations are NOT supported for this trigger "
-            .. "due to Blizzard PvP restrictions. Only Sounds will play."
+            L["Plays a voice alert when your target, focus, or arena enemy uses a potion or consumable.\n\n"]
+            .. L["Note: Icons and Animations are NOT supported for this trigger "]
+            .. L["due to Blizzard PvP restrictions. Only Sounds will play."]
         )
         yOffset = yOffset - 40
         

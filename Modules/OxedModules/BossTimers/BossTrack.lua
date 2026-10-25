@@ -13,6 +13,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -133,7 +134,7 @@ end
 local function Build()
     if track then return end
     track = CreateFrame("Frame", "OxedHubBossTrack", UIParent)
-    Movable(track, "track", "Boss Track: drag me", 0, -160)
+    Movable(track, "track", L["Boss Track: drag me"], 0, -160)
     track.bg = track:CreateTexture(nil, "BACKGROUND")
     track.bg:SetAllPoints()
     track.bg:SetColorTexture(0, 0, 0, 0.45)
@@ -143,7 +144,7 @@ local function Build()
     track.mark:SetColorTexture(1, 0.2, 0.15, 0.8)
 
     iconAnchor = CreateFrame("Frame", "OxedHubBossIcons", UIParent)
-    Movable(iconAnchor, "icons", "Boss Track icons: drag me", 0, 120)
+    Movable(iconAnchor, "icons", L["Boss Track icons: drag me"], 0, 120)
 end
 
 local function TrackIcon(i)
@@ -452,13 +453,13 @@ end
 
 local function ShowTest()
     if not settings.enabled then
-        print("|cff00ccffOxedHub|r Switch Boss Track on first.")
+        print(L["|cff00ccffOxedHub|r Switch Boss Track on first."])
         return
     end
     Engine:AddTestEvents({
-        { name = "Test: Crushing Blow", icon = 136025, duration = 6, kind = "tank" },
-        { name = "Test: Shadow Burst", icon = 136197, duration = 11, kind = "mechanic" },
-        { name = "Test: Fixate", icon = 136219, duration = 16, kind = "targeted" },
+        { name = L["Test: Crushing Blow"], icon = 136025, duration = 6, kind = "tank" },
+        { name = L["Test: Shadow Burst"], icon = 136197, duration = 11, kind = "mechanic" },
+        { name = L["Test: Fixate"], icon = 136219, duration = 16, kind = "targeted" },
     })
 end
 
@@ -475,7 +476,7 @@ local function ShowOptions()
         local test = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         test:SetSize(170, 22)
         test:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        test:SetText("Show a test")
+        test:SetText(L["Show a test"])
         test:SetScript("OnClick", ShowTest)
         w.cursorY = w.cursorY - 32
         w:AddCheckbox(settings, "locked", "Lock", "Unlocked, drag the blue boxes.", Restyle)
@@ -532,7 +533,7 @@ loginFrame:SetScript("OnEvent", function(self)
 
         defaults = DEFAULTS,
         OnOptionsShow = function() ShowOptions() end,
-        quick = { { text = "Test", func = function() ShowTest() end } },
+        quick = { { text = L["Test"], func = function() ShowTest() end } },
         OnEnable = function(_, cfg) settings = cfg; Start() end,
         OnDisable = function() Stop() end,
     })

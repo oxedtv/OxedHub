@@ -17,6 +17,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -300,10 +301,10 @@ SlashCmdList["OXEDCONFIRM"] = function()
     for which in pairs(seen) do names[#names + 1] = which end
     table.sort(names)
     if #names == 0 then
-        print(PREFIX .. "no other confirmation popups have appeared this session.")
+        print(PREFIX .. L["no other confirmation popups have appeared this session."])
         return
     end
-    print(PREFIX .. "popups seen this session that Auto Confirm does not handle:")
+    print(PREFIX .. L["popups seen this session that Auto Confirm does not handle:"])
     for _, which in ipairs(names) do print("   " .. which) end
 end
 

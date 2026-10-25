@@ -8,6 +8,15 @@ local addonName, OxedHub = ...
 OxedHub.L = OxedHub.L or {}
 setmetatable(OxedHub.L, {
     __index = function(t, k)
+        -- Modules draw at PLAYER_LOGIN, a frame before Bootstrap applies the
+        -- language. Asked that early, apply it now from the saved settings
+        -- (they exist from ADDON_LOADED on); Bootstrap applies it again.
+        if not OxedHub.languageApplied and OxedHubDB and OxedHub.ApplyLanguage then
+            local profile = OxedHubDB.profile
+            OxedHub:ApplyLanguage(profile and profile.settings and profile.settings.language)
+            local found = rawget(t, k)
+            if found ~= nil then return found end
+        end
         local v = tostring(k)
         rawset(t, k, v)
         return v
@@ -19,7 +28,32 @@ OxedHub.Locales = {
     enUS = {},
     esES = {},
     arAR = {},
+    ruRU = {},
 }
+
+-- Much of the text is looked up by its English: L["Show on screen"]. A
+-- language file that has no line for it leaves the English, so a missing
+-- translation can never show a raw key.
+--
+-- Tables built while a file loads cannot do that, because L is only filled at
+-- login, after every file has run. Such a file registers its table here, and
+-- ApplyLanguage translates the named fields in place, keeping the English in
+-- "_en_<field>" so switching language again starts from the original. A field
+-- may be a number, for rows like { "HeadSlot", "Head" }. Named with no fields,
+-- the table itself maps keys to text and its values are translated.
+OxedHub.LocalizedTables = {}
+
+function OxedHub:RegisterLocalizedTable(tbl, ...)
+    table.insert(self.LocalizedTables, { tbl = tbl, fields = { ... } })
+end
+
+-- Translates English text held in a variable. Anything that is not a plain
+-- string, a secret included, comes back untouched.
+function OxedHub.T(text)
+    if issecretvalue and issecretvalue(text) then return text end
+    if type(text) ~= "string" or text == "" then return text end
+    return OxedHub.L[text]
+end
 
 local eventFrame = CreateFrame("Frame")
 local registered = false

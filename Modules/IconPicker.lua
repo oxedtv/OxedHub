@@ -631,8 +631,8 @@ function IconPicker:Open(options)
     frame.customRingIconsOnly = not not options.customRingIconsOnly
     frame.pendingValue = options.initialValue
     frame.pendingTexture = self:ResolveTexture(options.initialValue)
-    frame.title:SetText(options.title or L["PICKER_CHOOSE_ICON"] or "Choose an Icon")
-    frame.infoText:SetText(options.infoText or L["PICKER_INFO_TEXT"] or "Uses the same macro icon list as Blizzard, so this picker can be reused across OxedHub.")
+    frame.title:SetText(options.title or L["PICKER_CHOOSE_ICON"] or L["Choose an Icon"])
+    frame.infoText:SetText(options.infoText or L["PICKER_INFO_TEXT"] or L["Uses the same macro icon list as Blizzard, so this picker can be reused across OxedHub."])
     frame.clearButton:SetShown(options.allowClear ~= false)
     frame.previewTexture:SetTexture(frame.pendingTexture or QUESTION_MARK_ICON)
     

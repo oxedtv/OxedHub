@@ -197,8 +197,40 @@ Follow the existing ones (`AutoVendor`, `AutoBanker`, `CopyChat`, `Attributes`):
   built after binding), `AddSoundPicker` (play the choice with `API:PlaySound`),
   `AddModuleLinks` (buttons to related modules) and `AddNote`. Keep a window under
   about 700 high; split into a second window rather than run off the screen.
-- Modules in `OxedModules` are written in plain English, not through the
-  `Locales` tables. The rest of the addon does use `OxedHub.L`.
+- Modules write their text in plain English and translate it with English-text
+  keys (see Translations below), never named keys. The options-window builders
+  (`CreateOptionsWindow`, `AddCheckbox`, `AddSlider`, `AddNote`, `AddChoice` and
+  its choices, `AddSoundPicker`, `AddColour`, `AddModuleLinks`) translate their
+  own text, so pass them plain English. The card shows `OxedHub.T(mod.desc)`:
+  change a `desc` and its translation silently stops matching.
+
+## Translations
+
+Two kinds of key live in `OxedHub.L`:
+
+- **Named keys** (`L["TAB_TRIGGERS"]`), defined in `ENLocalization.lua` and
+  overridden per language.
+- **English-text keys** (`L["Show on screen"]`). Nothing goes in the English
+  file: `L` answers a missing key with the key itself. A language adds
+  `L["Show on screen"] = "Показывать на экране"`. Most of the Russian file's
+  second half is these. New player-facing text should be written this way.
+
+Rules that keep this from breaking things:
+
+- **Never wrap a value that is also compared or stored.** `"None"` is the
+  stored "no sound" value and is compared in dozens of places, tab names go to
+  `ShowTab("Triggers")`, and `CreateGenericPicker`'s first argument becomes a
+  global frame name. Only wrap text that goes straight to the screen.
+- `L` is filled at login, after every file has run. A table built at file scope
+  holds English for good, so register it instead:
+  `OxedHub:RegisterLocalizedTable(tbl, "label", "desc")`, and `ApplyLanguage`
+  translates those fields in place (keeping the English in `_en_<field>`).
+- Translate text held in a variable with `OxedHub.T(text)`: it passes nil,
+  numbers and secrets through untouched. `L[secret]` is an error.
+- The English text is the key, so editing an English string orphans its
+  translations. Grep the language files for the old text when you change one.
+- Format strings must keep their `%s` / `%d` in the same order, and colour codes
+  must stay balanced.
 
 ## The boss modules
 

@@ -284,6 +284,9 @@ AntiAFK.FONT_OUTLINES = {
     { key = "OUTLINE",      label = "Outline" },
     { key = "NONE",         label = "None" },
 }
+OxedHub:RegisterLocalizedTable(AntiAFK.FONTS, "label")
+OxedHub:RegisterLocalizedTable(AntiAFK.TIMER_FORMATS, "label")
+OxedHub:RegisterLocalizedTable(AntiAFK.FONT_OUTLINES, "label")
 
 local function ResolveOutline(value)
     if value == "NONE" then return "" end

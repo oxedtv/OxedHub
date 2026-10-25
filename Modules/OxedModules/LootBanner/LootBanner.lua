@@ -9,6 +9,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 local DEFAULTS = {
     enabled    = false,  -- off until the player switches it on
@@ -57,7 +58,7 @@ local function BuildMarker()
     bg:SetColorTexture(0, 0.6, 1, 0.25)
     local text = marker:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     text:SetPoint("CENTER")
-    text:SetText("Loot Banner: drag me\nYour loot banner shows here")
+    text:SetText(L["Loot Banner: drag me\nYour loot banner shows here"])
     marker:Hide()
 end
 
@@ -115,8 +116,8 @@ local function ShowOptions()
         optionsWindow = w
         w:AddCheckbox(settings, "hideSolo", "None when you are alone")
         w:AddChoice(settings, "minQuality", "Items at least", {
-            { value = 0, text = "Any" }, { value = 2, text = "Uncommon" },
-            { value = 3, text = "Rare" }, { value = 4, text = "Epic" },
+            { value = 0, text = L["Any"] }, { value = 2, text = L["Uncommon"] },
+            { value = 3, text = L["Rare"] }, { value = 4, text = L["Epic"] },
         })
         w:AddCheckbox(settings, "onlyMine", "Only what you loot")
         w:AddCheckbox(settings, "hideKill", "Hide the boss defeated banner too")
@@ -125,7 +126,7 @@ local function ShowOptions()
         local reset = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         reset:SetSize(170, 22)
         reset:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        reset:SetText("Back to the top")
+        reset:SetText(L["Back to the top"])
         reset:SetScript("OnClick", function()
             settings.bannerX, settings.bannerY, settings.moveIt = nil, nil, false
             ShowMarker(true)

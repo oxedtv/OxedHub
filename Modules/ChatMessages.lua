@@ -486,7 +486,7 @@ function ChatMessages:ProcessMacros(text, eventData)
     local result = text
     
     -- Use function replacements to avoid any issues with % characters in the replacement string
-    local casterName = UnitName("player") or "Player"
+    local casterName = UnitName("player") or L["Player"]
     result = result:gsub("%%caster", function() return casterName end)
     
     if eventData then

@@ -24,6 +24,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -899,7 +900,7 @@ local function SetPreview(on)
     previewing = on and true or false
     if previewing then
         StartTicker()
-        print(PREFIX .. "sample bars on. They go off when a fight starts, or type /oxthreat test again.")
+        print(PREFIX .. L["sample bars on. They go off when a fight starts, or type /oxthreat test again."])
     end
     RedrawAll()
 end
@@ -912,14 +913,14 @@ local function ShowOptions()
         optionsWindow = API:CreateOptionsWindow("Threat Bar", 520, 655)
         local w = optionsWindow
 
-        AddChoiceRow(w, "style", "Colours", {
-            { key = "auto",   name = "Auto" },
-            { key = "damage", name = "Damage" },
-            { key = "tank",   name = "Tank" },
+        AddChoiceRow(w, "style", L["Colours"], {
+            { key = "auto",   name = L["Auto"] },
+            { key = "damage", name = L["Damage"] },
+            { key = "tank",   name = L["Tank"] },
         })
-        AddChoiceRow(w, "texture", "Bar texture", {
-            { key = "game", name = "Game" },
-            { key = "flat", name = "Flat" },
+        AddChoiceRow(w, "texture", L["Bar texture"], {
+            { key = "game", name = L["Game"] },
+            { key = "flat", name = L["Flat"] },
         })
         w:AddCheckbox(settings, "smooth", "Fade green to red",
             "Damage colours run smoothly with the percentage. Off, they step from green to yellow to orange to red.", Restyle)
@@ -927,14 +928,14 @@ local function ShowOptions()
         w:AddCheckbox(settings, "showText", "Show the percentage", nil, Restyle)
         w:AddCheckbox(settings, "showName", "Name whoever is holding it",
             "Under the bar, in their class colour.", Restyle)
-        AddSlider(w, "textSize", "Text size", 6, 20, 1, "%s: %d")
+        AddSlider(w, "textSize", L["Text size"], 6, 20, 1, "%s: %d")
 
-        AddSlider(w, "height", "Bar height", 3, 24, 1, "%s: %d")
-        AddSlider(w, "width", "Bar width", 0, 200, 5, "%s: %d")
-        AddSlider(w, "offsetY", "Distance below the plate", -40, 20, 1, "%s: %d")
-        AddSlider(w, "alpha", "Opacity", 0.2, 1, 0.05, "%s: %.2f")
+        AddSlider(w, "height", L["Bar height"], 3, 24, 1, "%s: %d")
+        AddSlider(w, "width", L["Bar width"], 0, 200, 5, "%s: %d")
+        AddSlider(w, "offsetY", L["Distance below the plate"], -40, 20, 1, "%s: %d")
+        AddSlider(w, "alpha", L["Opacity"], 0.2, 1, 0.05, "%s: %.2f")
 
-        AddSlider(w, "warnAt", "Warn from", 30, 100, 5, "%s: %d%%")
+        AddSlider(w, "warnAt", L["Warn from"], 30, 100, 5, "%s: %d%%")
         w:AddCheckbox(settings, "flash", "Flash the bar", nil, Restyle)
         w:AddCheckbox(settings, "glow", "Glow around the nameplate", nil, Restyle)
         w:AddCheckbox(settings, "sound", "Warning sound when you take it",

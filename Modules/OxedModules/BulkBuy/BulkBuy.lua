@@ -12,6 +12,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -140,7 +141,7 @@ local function Refresh()
     local n = Amount()
     window.cost:SetText(CostText(n))
     window.buy:SetEnabled(n > 0 and n <= MaxFor(current) and not buying)
-    window.buy:SetText(window.confirming and "Really?" or (OKAY or "Okay"))
+    window.buy:SetText(window.confirming and L["Really?"] or (OKAY or L["Okay"]))
 end
 
 local function StopBuying()
@@ -233,27 +234,27 @@ local function BuildWindow()
         b:SetScript("OnClick", onClick)
         return b
     end
-    local stack = Button("Stack", "BOTTOMLEFT", 12, 42, function()
+    local stack = Button(L["Stack"], "BOTTOMLEFT", 12, 42, function()
         SetAmount(current.maxStack)
     end)
     stack:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(("One stack: %d"):format(current.maxStack))
+        GameTooltip:SetText((L["One stack: %d"]):format(current.maxStack))
         GameTooltip:Show()
     end)
     stack:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    local max = Button("Max", "BOTTOMRIGHT", -12, 42, function()
+    local max = Button(L["Max"], "BOTTOMRIGHT", -12, 42, function()
         SetAmount(MaxFor(current))
     end)
     max:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(("As many as you can: %d"):format(MaxFor(current)))
-        GameTooltip:AddLine("What you can afford, carry and the vendor has.", 1, 1, 1, true)
+        GameTooltip:SetText((L["As many as you can: %d"]):format(MaxFor(current)))
+        GameTooltip:AddLine(L["What you can afford, carry and the vendor has."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     max:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    w.buy = Button(OKAY or "Okay", "BOTTOMLEFT", 12, 14, function()
+    w.buy = Button(OKAY or L["Okay"], "BOTTOMLEFT", 12, 14, function()
         local n = Amount()
         if n <= 0 then return end
         local gold = (current.price or 0) * math.ceil(n / current.bundle) / 10000
@@ -267,7 +268,7 @@ local function BuildWindow()
         Purchase(n)
         Refresh()
     end)
-    Button(CANCEL or "Cancel", "BOTTOMRIGHT", -12, 14, function() w:Hide() end)
+    Button(CANCEL or L["Cancel"], "BOTTOMRIGHT", -12, 14, function() w:Hide() end)
 
     w:SetScript("OnHide", function()
         w.amount:ClearFocus()

@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 local Triggers = OxedHub.Triggers
 
@@ -177,11 +178,11 @@ Triggers:RegisterEventType("SELF_AURA", {
         loopCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
         loopCheck:SetSize(20, 20)
         loopCheck:SetChecked(conditions.loopSound or false)
-        loopCheck.text:SetText("Loop sound until lost")
+        loopCheck.text:SetText(L["Loop sound until lost"])
 
         local loopIntervalLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         loopIntervalLabel:SetPoint("LEFT", loopCheck.text, "RIGHT", 10, 0)
-        loopIntervalLabel:SetText("Interval (s):")
+        loopIntervalLabel:SetText(L["Interval (s):"])
 
         local loopIntervalEdit = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
         loopIntervalEdit:SetPoint("LEFT", loopIntervalLabel, "RIGHT", 5, 0)
@@ -209,13 +210,13 @@ Triggers:RegisterEventType("SELF_AURA", {
         lostCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
         lostCheck:SetSize(20, 20)
         lostCheck:SetChecked(conditions.onLost or false)
-        lostCheck.text:SetText("Trigger on Lost")
+        lostCheck.text:SetText(L["Trigger on Lost"])
 
         local bothCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
         bothCheck:SetPoint("LEFT", lostCheck.text, "RIGHT", 10, 0)
         bothCheck:SetSize(20, 20)
         bothCheck:SetChecked(conditions.onBoth or false)
-        bothCheck.text:SetText("Trigger on Both")
+        bothCheck.text:SetText(L["Trigger on Both"])
 
         lostCheck:SetScript("OnClick", function(self)
             conditions.onLost = self:GetChecked()
@@ -592,8 +593,8 @@ function Triggers:RefreshSelfAuraNativeEffects()
                     local journal = OxedHub.ErrorJournal
                     if journal then
                         journal:SetContext("Triggers",
-                            trigger.name or trigger.id or "unnamed trigger",
-                            ("%s, spell %s"):format(tostring(trigger.event), tostring(sid)))
+                            trigger.name or trigger.id or L["unnamed trigger"],
+                            (L["%s, spell %s"]):format(tostring(trigger.event), tostring(sid)))
                     end
 
                     -- Called directly, not through pcall. pcall puts a C

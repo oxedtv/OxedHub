@@ -13,6 +13,7 @@ local Data = ItemTooltips.Data
 -- and a table would be shared by every character. Colours and the inventory
 -- tables are made in BindSettings.
 Data.DEFAULTS = {
+    minimapButton = true,   -- its own icon on the minimap while switched on
     enabled               = false, -- off until the player switches it on (see ModuleAPI:Register)
     hideInCombat          = true,  -- no extra lines in a fight
 

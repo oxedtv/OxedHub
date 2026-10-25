@@ -27,6 +27,7 @@ ModuleAPI.CATEGORIES = {
     { key = "character", label = "Character & UI" },
     { key = "chat",      label = "Chat" },
 }
+OxedHub:RegisterLocalizedTable(ModuleAPI.CATEGORIES, "label")
 
 -- The categories before they were merged into fewer tabs. A module written
 -- against an old key, or a saved tab, still lands in the right place.
@@ -169,9 +170,9 @@ function ModuleAPI:NoteTurnedOff(name)
     turnedOff[#turnedOff + 1] = name
     if #turnedOff > 1 then return end
     C_Timer.After(6, function()
-        print("|cff00ff00OxedHub:|r modules are now |cffffd100off until you switch them on|r. "
-            .. "Turned off: " .. table.concat(turnedOff, ", ")
-            .. ". Open |cffffd100/ohub|r > Modules to turn back on the ones you use.")
+        print(L["|cff00ff00OxedHub:|r modules are now |cffffd100off until you switch them on|r. "]
+            .. L["Turned off: "] .. table.concat(turnedOff, ", ")
+            .. L[". Open |cffffd100/ohub|r > Modules to turn back on the ones you use."])
     end)
 end
 
@@ -216,7 +217,48 @@ function ModuleAPI:SetModuleEnabled(id, on)
         end
     end
 
+    if not self.switchingAll then self:RefreshModulesTab() end
+end
+
+-- Whether any registered module is switched on. The dashboard's one switch
+-- for all of them reads this.
+function ModuleAPI:AnyModuleEnabled()
+    for id in pairs(self.modules) do
+        if self:IsModuleEnabled(id) then return true end
+    end
+    return false
+end
+
+-- One switch for every module. Off remembers which were on, account-wide like
+-- the module settings themselves, and on brings back exactly those: a player
+-- who picked eight modules gets their eight back, not all fifty.
+-- Refused in combat: some modules show or hide secure buttons, which the game
+-- does not allow then. Returns false when it did nothing.
+function ModuleAPI:SetAllModulesEnabled(on)
+    if InCombatLockdown() then return false end
+    OxedHubDB.modules = OxedHubDB.modules or {}
+    self.switchingAll = true
+    if on then
+        local saved = OxedHubDB.modulesSwitchedOff
+        if type(saved) == "table" then
+            for _, id in ipairs(saved) do
+                if self.modules[id] then self:SetModuleEnabled(id, true) end
+            end
+        end
+        OxedHubDB.modulesSwitchedOff = nil
+    else
+        local saved = {}
+        for id in pairs(self.modules) do
+            if self:IsModuleEnabled(id) then
+                saved[#saved + 1] = id
+                self:SetModuleEnabled(id, false)
+            end
+        end
+        if #saved > 0 then OxedHubDB.modulesSwitchedOff = saved end
+    end
+    self.switchingAll = nil
     self:RefreshModulesTab()
+    return true
 end
 
 -- A module's own minimap icon, through LibDBIcon (shipped in Lib\).
@@ -241,7 +283,7 @@ function ModuleAPI:MinimapButton(opts)
         OnTooltipShow = function(tt)
             tt:AddLine("Oxed " .. opts.label)
             if opts.hint then tt:AddLine(opts.hint, 1, 1, 1) end
-            tt:AddLine("Drag to move it round the minimap.", 0.6, 0.6, 0.6)
+            tt:AddLine(L["Drag to move it round the minimap."], 0.6, 0.6, 0.6)
         end,
     })
     if not DBIcon:IsRegistered(name) then
@@ -334,7 +376,7 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
         titleText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         titleText:SetPoint("CENTER", f.TitleBg or f, f.TitleBg and "CENTER" or "TOP", 0, f.TitleBg and 0 or -12)
     end
-    titleText:SetText(title or "Settings")
+    titleText:SetText(OxedHub.T(title) or L["Settings"])
 
     -- Close plainly ourselves: the template's handler goes through the panel
     -- manager, which a player could not get past in combat.
@@ -349,6 +391,7 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
     -- the window opens rather than once, so a change made elsewhere -- a slash
     -- command, another window -- is what the box shows.
     function f:AddCheckbox(config, key, label, tooltip, onChange)
+        label, tooltip = OxedHub.T(label), OxedHub.T(tooltip)
         local box = CreateFrame("CheckButton", nil, self, "UICheckButtonTemplate")
         box:SetSize(24, 24)
         box:SetPoint("TOPLEFT", self, "TOPLEFT", 16, self.cursorY)
@@ -378,6 +421,7 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
 
     -- A line of explanation under the boxes, wrapped to the window.
     function f:AddNote(text)
+        text = OxedHub.T(text)
         local note = self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         note:SetPoint("TOPLEFT", self, "TOPLEFT", 20, self.cursorY - 6)
         note:SetWidth(self:GetWidth() - 40)
@@ -392,6 +436,7 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
     -- it while the window is laid out, so nothing is saved until it has been
     -- told the real value. format gets the caption and the value: "%s: %d s".
     function f:AddSlider(config, key, caption, minValue, maxValue, step, format, onChange)
+        caption, format = OxedHub.T(caption), OxedHub.T(format)
         local label = self:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         label:SetPoint("TOPLEFT", self, "TOPLEFT", 20, self.cursorY - 4)
 
@@ -411,7 +456,7 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
         slider:SetMinMaxValues(minValue, maxValue)
         slider:SetValueStep(step)
         slider:SetObeyStepOnDrag(true)
-        for _, part in ipairs({ "Low", "High", "Text" }) do
+        for _, part in ipairs({ L["Low"], L["High"], L["Text"] }) do
             local region = slider[part] or (slider:GetName() and _G[slider:GetName() .. part])
             if region then region:SetText("") end
         end
@@ -446,6 +491,7 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
     -- OxedHub sound id; empty means "none chosen", and the module decides
     -- what that plays. Play it with ModuleAPI:PlaySound.
     function f:AddSoundPicker(config, key, caption, emptyText)
+        caption, emptyText = OxedHub.T(caption), OxedHub.T(emptyText)
         local label = self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         label:SetPoint("TOPLEFT", self, "TOPLEFT", 20, self.cursorY - 6)
         label:SetTextColor(0.8, 0.8, 0.8)
@@ -457,7 +503,7 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
         local button = CreateFrame("Button", nil, self, "UIPanelButtonTemplate")
         button:SetSize(140, 22)
         button:SetPoint("TOPLEFT", self, "TOPLEFT", self:GetWidth() - 180, self.cursorY - 2)
-        button:SetText("Choose a sound")
+        button:SetText(L["Choose a sound"])
         button:SetScript("OnClick", function()
             local Triggers = OxedHub.Triggers
             if not (Triggers and Triggers.ShowSoundPicker) then return end
@@ -481,6 +527,7 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
     -- One of a few choices, as a button that steps to the next on a click
     -- (right-click steps back). choices = { { value = "left", text = "Left" }, ... }
     function f:AddChoice(config, key, caption, choices, onChange)
+        caption = OxedHub.T(caption)
         local label = self:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         label:SetPoint("TOPLEFT", self, "TOPLEFT", 20, self.cursorY - 6)
         label:SetText(caption)
@@ -498,7 +545,7 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
         end
         button.Refresh = function()
             local choice = choices[Index()]
-            button:SetText(choice and choice.text or "")
+            button:SetText(choice and OxedHub.T(choice.text) or "")
         end
         local function Pick(value)
             config[key] = value
@@ -512,7 +559,7 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
                 MenuUtil.CreateContextMenu(self, function(_, root)
                     for _, choice in ipairs(choices) do
                         local value = choice.value
-                        root:CreateRadio(choice.text,
+                        root:CreateRadio(OxedHub.T(choice.text),
                             function() return config[key] == value end,
                             function() Pick(value) end)
                     end
@@ -538,6 +585,7 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
     -- A colour swatch for config[key] = { r, g, b }. The table must exist
     -- before the window is built (never in DEFAULTS: it would be shared).
     function f:AddColour(config, key, caption, onChange)
+        caption = OxedHub.T(caption)
         local label = self:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         label:SetPoint("TOPLEFT", self, "TOPLEFT", 20, self.cursorY - 6)
         label:SetText(caption)
@@ -579,6 +627,7 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
     -- Buttons to modules that work together with this one: each opens that
     -- module's options, and says when the module is switched off.
     function f:AddModuleLinks(caption, ids)
+        caption = OxedHub.T(caption)
         local label = self:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         label:SetPoint("TOPLEFT", self, "TOPLEFT", 20, self.cursorY - 4)
         label:SetText(caption)
@@ -596,7 +645,7 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
                 button:SetPoint("TOPLEFT", self, "TOPLEFT", 20 + col * 140, self.cursorY)
                 button.Refresh = function()
                     local on = ModuleAPI:IsModuleEnabled(id)
-                    button:SetText(on and mod.name or (mod.name .. " (off)"))
+                    button:SetText(on and mod.name or (mod.name .. L[" (off)"]))
                 end
                 button:SetScript("OnClick", function()
                     -- The linked module's window takes this one's place.
@@ -608,9 +657,9 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
                 button:SetScript("OnEnter", function(b)
                     GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
                     GameTooltip:SetText(mod.name)
-                    if mod.desc then GameTooltip:AddLine(mod.desc, 1, 1, 1, true) end
+                    if mod.desc then GameTooltip:AddLine(OxedHub.T(mod.desc), 1, 1, 1, true) end
                     if not ModuleAPI:IsModuleEnabled(id) then
-                        GameTooltip:AddLine("Switched off: switch it on on the Modules page.", 1, 0.5, 0.3, true)
+                        GameTooltip:AddLine(L["Switched off: switch it on on the Modules page."], 1, 0.5, 0.3, true)
                     end
                     GameTooltip:Show()
                 end)
@@ -762,8 +811,8 @@ function ModuleAPI:Confirm(text, onAccept, onCancel)
     if not StaticPopupDialogs[CONFIRM_POPUP] then
         StaticPopupDialogs[CONFIRM_POPUP] = {
             text = "%s",
-            button1 = YES or "Yes",
-            button2 = NO or "No",
+            button1 = YES or L["Yes"],
+            button2 = NO or L["No"],
             -- The callbacks ride in the popup's data, so two questions in a row
             -- each run their own answer rather than whichever was set last.
             OnAccept = function(self, data)
@@ -823,7 +872,7 @@ function ModuleAPI:FormatItemList(list, limit, formatValue)
     local lines = {}
     for index, entry in ipairs(list) do
         if index > limit then
-            lines[#lines + 1] = ("|cff9d9d9d...and %d more|r"):format(#list - limit)
+            lines[#lines + 1] = (L["|cff9d9d9d...and %d more|r"]):format(#list - limit)
             break
         end
         -- The link without its clickable wrapper: a popup cannot open it, and
@@ -857,7 +906,7 @@ local function AutoDiscoverModules()
                     id = name,
                 name = getAddOnMetadata(i, "Title") or name,
                 version = getAddOnMetadata(i, "Version") or "1.0",
-                author = getAddOnMetadata(i, "Author") or "Unknown",
+                author = getAddOnMetadata(i, "Author") or L["Unknown"],
                 desc = getAddOnMetadata(i, "Notes") or "",
                 icon = getAddOnMetadata(i, "IconTexture") or "Interface\\Icons\\inv_misc_questionmark",
                 category = NormalizeCategory(getAddOnMetadata(i, "X-OxedHub-Category"), name),
@@ -991,6 +1040,7 @@ ModuleAPI.SORTS = {
     { key = "newest",    label = "Newest first" },
     { key = "enabled",   label = "Switched on first" },
 }
+OxedHub:RegisterLocalizedTable(ModuleAPI.SORTS, "label")
 
 function ModuleAPI:GetSort()
     local saved = OxedHubDB and OxedHubDB.globalSettings and OxedHubDB.globalSettings.moduleSort
@@ -1043,7 +1093,9 @@ local function CategoryLabel(key)
 end
 
 local function Haystack(mod)
-    local parts = { mod.name or "", mod.desc or "", CategoryLabel(mod.category) }
+    -- Both the English and the translated description, so a search in
+    -- either language finds the module.
+    local parts = { mod.name or "", mod.desc or "", OxedHub.T(mod.desc) or "", CategoryLabel(mod.category) }
     local keywords = mod.keywords
     if type(keywords) == "table" then
         for _, word in ipairs(keywords) do parts[#parts + 1] = tostring(word) end
@@ -1158,7 +1210,7 @@ function ModuleAPI:RefreshModulesTab()
     end
     local noneFound = words and next(shownModules) == nil
     if noneFound then
-        tab.noMatches:SetText(("No module matches \"%s\"."):format(self.searchQuery or ""))
+        tab.noMatches:SetText((L["No module matches \"%s\"."]):format(self.searchQuery or ""))
     end
     tab.noMatches:SetShown(noneFound and true or false)
 
@@ -1244,7 +1296,7 @@ function ModuleAPI:RefreshModulesTab()
             star:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
                 GameTooltip:SetText(card.mod and ModuleAPI:IsFavorite(card.mod)
-                    and "Remove from favourites" or "Add to favourites")
+                    and L["Remove from favourites"] or L["Add to favourites"])
                 GameTooltip:Show()
             end)
             star:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1270,7 +1322,7 @@ function ModuleAPI:RefreshModulesTab()
             local optionsBtn = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
             optionsBtn:SetSize(80, 22)
             optionsBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -10)
-            optionsBtn:SetText("Options")
+            optionsBtn:SetText(L["Options"])
             optionsBtn:SetScript("OnClick", function()
                 if card.mod and card.mod.OnOptionsShow then
                     card.mod.OnOptionsShow(card.mod)
@@ -1287,7 +1339,7 @@ function ModuleAPI:RefreshModulesTab()
             enableCheck.text:ClearAllPoints()
             enableCheck.text:SetPoint("RIGHT", enableCheck, "LEFT", -2, 1)
             enableCheck.text:SetFontObject("GameFontHighlightSmall")
-            enableCheck.text:SetText(L and rawget(L, "MODULES_ENABLED") or "Enabled")
+            enableCheck.text:SetText(L and rawget(L, "MODULES_ENABLED") or L["Enabled"])
             enableCheck:SetScript("OnClick", function(self)
                 local current = card.mod
                 if not current or not current._registered then return end
@@ -1324,11 +1376,11 @@ function ModuleAPI:RefreshModulesTab()
         end
 
         if active then
-            card.status:SetText("|cff00ff00Active|r - v" .. (mod.version or "1.0"))
+            card.status:SetText(L["|cff00ff00Active|r - v"] .. (mod.version or "1.0"))
             card:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
             card.icon:SetDesaturated(false)
         else
-            card.status:SetText("|cffff0000Disabled|r - v" .. (mod.version or "1.0"))
+            card.status:SetText(L["|cffff0000Disabled|r - v"] .. (mod.version or "1.0"))
             card:SetBackdropBorderColor(0.3, 0.1, 0.1, 1)
             card.icon:SetDesaturated(true)
         end
@@ -1337,7 +1389,7 @@ function ModuleAPI:RefreshModulesTab()
         -- desc is cut off mid-word with no sign that anything is missing. Keep
         -- desc in ModuleAPI:Register to roughly 100 characters; anything longer
         -- belongs in the module's options window, via AddNote.
-        card.desc:SetText(mod.desc or "")
+        card.desc:SetText(OxedHub.T(mod.desc) or "")
         
         if mod.OnOptionsShow then
             card.optionsBtn:Show()

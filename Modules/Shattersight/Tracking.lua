@@ -2,6 +2,7 @@
 -- Records actual disenchant outcomes by monitoring bag changes in Shattersight.
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 OxedHub.Shattersight = OxedHub.Shattersight or {}
@@ -495,7 +496,7 @@ end
 
 function SS:PrintTrackingStats()
     if not SS.charDb or not SS.charDb.tracking then
-        print("|cFF00FFFF[OxedHub Shattersight]:|r No tracking data yet.")
+        print(L["|cFF00FFFF[OxedHub Shattersight]:|r No tracking data yet."])
         return
     end
 
@@ -505,21 +506,21 @@ function SS:PrintTrackingStats()
 
     for _, bucket in pairs(SS.charDb.tracking) do
         found = true
-        local qName   = qualityNames[bucket.quality]   or ("Quality "   .. tostring(bucket.quality))
-        local expName = expansionNames[bucket.expansionID] or ("Expansion " .. tostring(bucket.expansionID))
-        print(string.format("|cFF00FFFF[%s — %s]|r %d disenchant(s)",
+        local qName   = qualityNames[bucket.quality]   or (L["Quality "]   .. tostring(bucket.quality))
+        local expName = expansionNames[bucket.expansionID] or (L["Expansion "] .. tostring(bucket.expansionID))
+        print(string.format(L["|cFF00FFFF[%s — %s]|r %d disenchant(s)"],
             expName, qName, bucket.attempts))
         for itemID, total in pairs(bucket.matTotals) do
             local getItemInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
             local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID))
                       or (getItemInfo and getItemInfo(itemID))
-                      or ("Item #" .. itemID)
-            print(string.format("  %s: avg %.2f per disenchant", name, total / bucket.attempts))
+                      or (L["Item #"] .. itemID)
+            print(string.format(L["  %s: avg %.2f per disenchant"], name, total / bucket.attempts))
         end
     end
 
     if not found then
-        print("|cFF00FFFF[OxedHub Shattersight]:|r No tracking data yet. Disenchant some items!")
+        print(L["|cFF00FFFF[OxedHub Shattersight]:|r No tracking data yet. Disenchant some items!"])
     end
 end
 
@@ -543,7 +544,7 @@ function SS:PrintLoginSummary()
             skillStr = skillStr .. " (" .. table.concat(parts, " ") .. ")"
         end
     else
-        skillStr = "|cFFFF8C00none cached — open Enchanting to populate|r"
+        skillStr = L["|cFFFF8C00none cached — open Enchanting to populate|r"]
     end
 
     local tracking = SS.charDb.tracking
@@ -557,13 +558,13 @@ function SS:PrintLoginSummary()
     end
     local trackStr
     if totalDisenchants > 0 then
-        trackStr = string.format("|cFFFFFFFF%d|r disenchant(s) across |cFFFFFFFF%d|r bucket(s)",
+        trackStr = string.format(L["|cFFFFFFFF%d|r disenchant(s) across |cFFFFFFFF%d|r bucket(s)"],
             totalDisenchants, bucketCount)
     else
-        trackStr = "|cFF888888no data yet|r"
+        trackStr = L["|cFF888888no data yet|r"]
     end
 
-    print(string.format("%s[OxedHub Shattersight]:|r  Skill: %s  |cFF888888·|r  Tracked: %s",
+    print(string.format(L["%s[OxedHub Shattersight]:|r  Skill: %s  |cFF888888·|r  Tracked: %s"],
         "|cFF00FFFF", skillStr, trackStr))
 end
 
@@ -571,7 +572,7 @@ function SS:ClearTrackingData()
     if SS.charDb then
         SS.charDb.tracking = {}
     end
-    print("|cFF00FFFF[OxedHub Shattersight]:|r All personal tracking data cleared.")
+    print(L["|cFF00FFFF[OxedHub Shattersight]:|r All personal tracking data cleared."])
     if SS.RefreshStatsFrame then SS:RefreshStatsFrame() end
 end
 

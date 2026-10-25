@@ -15,6 +15,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -183,12 +184,12 @@ local function Refresh()
 
     if settings.honour then
         local level, into, needed = Honour()
-        Row("Honour", nil, true)
-        Row(("Level %d"):format(level), needed > 0
+        Row(L["Honour"], nil, true)
+        Row((L["Level %d"]):format(level), needed > 0
             and ("%s / %s"):format(Comma(into), Comma(needed)) or Comma(into))
         local honour = Currency(HONOUR_CURRENCY)
         if honour then
-            Row("Honour held", honour.cap > 0
+            Row(L["Honour held"], honour.cap > 0
                 and ("%s / %s"):format(Comma(honour.amount), Comma(honour.cap))
                 or Comma(honour.amount))
         end
@@ -197,13 +198,13 @@ local function Refresh()
     if settings.conquest then
         local conquest = Currency(CONQUEST_CURRENCY)
         if conquest then
-            Row("Conquest", nil, true)
+            Row(L["Conquest"], nil, true)
             if conquest.cap > 0 then
                 local left = math.max(0, conquest.cap - conquest.earned)
-                Row("This week", ("%s / %s"):format(Comma(conquest.earned), Comma(conquest.cap)))
-                Row("Still to earn", Comma(left))
+                Row(L["This week"], ("%s / %s"):format(Comma(conquest.earned), Comma(conquest.cap)))
+                Row(L["Still to earn"], Comma(left))
             else
-                Row("Held", Comma(conquest.amount))
+                Row(L["Held"], Comma(conquest.amount))
             end
         end
     end
@@ -211,11 +212,11 @@ local function Refresh()
     if settings.vault then
         local rows = Vault()
         if rows and #rows > 0 then
-            Row("Great Vault", nil, true)
+            Row(L["Great Vault"], nil, true)
             for _, slot in ipairs(rows) do
                 local done = slot.progress >= slot.threshold
-                local text = ("%d / %d wins"):format(math.min(slot.progress, slot.threshold), slot.threshold)
-                Row(done and "|cff40ff40Slot earned|r" or "Slot",
+                local text = (L["%d / %d wins"]):format(math.min(slot.progress, slot.threshold), slot.threshold)
+                Row(done and L["|cff40ff40Slot earned|r"] or L["Slot"],
                     done and ("|cff40ff40%s|r"):format(text) or text)
             end
         end
@@ -227,13 +228,13 @@ local function Refresh()
             local data = Bracket(entry)
             if data then
                 if not any then
-                    Row("Rating", nil, true)
+                    Row(L["Rating"], nil, true)
                     any = true
                 end
                 local record = data.weekPlayed > 0
-                    and ("%d  |cff9d9d9d%d-%d this week|r"):format(data.rating, data.weekWon,
+                    and (L["%d  |cff9d9d9d%d-%d this week|r"]):format(data.rating, data.weekWon,
                         data.weekPlayed - data.weekWon)
-                    or ("%d  |cff9d9d9d%d-%d season|r"):format(data.rating, data.won,
+                    or (L["%d  |cff9d9d9d%d-%d season|r"]):format(data.rating, data.won,
                         data.played - data.won)
                 Row(data.name, record)
             end
@@ -241,10 +242,10 @@ local function Refresh()
     end
 
     if settings.session then
-        Row("This session", nil, true)
-        Row("Honour", Comma(session.honour))
-        Row("Conquest", Comma(session.conquest))
-        Row("Rated", ("%d won, %d lost"):format(session.wins, session.losses))
+        Row(L["This session"], nil, true)
+        Row(L["Honour"], Comma(session.honour))
+        Row(L["Conquest"], Comma(session.conquest))
+        Row(L["Rated"], (L["%d won, %d lost"]):format(session.wins, session.losses))
     end
 
     for index = shown + 1, #panel.lines do panel.lines[index]:Hide() end
@@ -271,7 +272,7 @@ local function BuildPanel()
         self:StopMovingOrSizing()
         SavePosition()
     end)
-    if panel.TitleText then panel.TitleText:SetText("PvP Progress") end
+    if panel.TitleText then panel.TitleText:SetText(L["PvP Progress"]) end
     if panel.CloseButton then
         panel.CloseButton:SetScript("OnClick", function()
             settings.open = false
@@ -344,8 +345,8 @@ watcher:SetScript("OnEvent", function(_, event, ...)
             end
             if won then session.wins = session.wins + 1 else session.losses = session.losses + 1 end
             if settings.say then
-                print(PREFIX .. (won and "won." or "lost.")
-                    .. (" This session: %d won, %d lost."):format(session.wins, session.losses))
+                print(PREFIX .. (won and L["won."] or L["lost."])
+                    .. (L[" This session: %d won, %d lost."]):format(session.wins, session.losses))
             end
             Refresh()
         end)
@@ -458,23 +459,23 @@ local function ShowOptions()
         w:AddCheckbox(settings, "say", "Say won or lost in chat after a match")
         w:AddCheckbox(settings, "locked", "Lock the panel",
             "Unlocked, drag it with the left button.")
-        AddSlider(w, "scale", "Panel scale", 0.6, 2, 0.05, "%s: %.2f")
+        AddSlider(w, "scale", L["Panel scale"], 0.6, 2, 0.05, "%s: %.2f")
 
         local open = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         open:SetSize(140, 22)
         open:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        open:SetText("Show the panel")
+        open:SetText(L["Show the panel"])
         open:SetScript("OnClick", function() TogglePanel(true) end)
 
         local reset = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         reset:SetSize(140, 22)
         reset:SetPoint("LEFT", open, "RIGHT", 8, 0)
-        reset:SetText("Reset the session")
+        reset:SetText(L["Reset the session"])
         reset:SetScript("OnClick", function()
             session.honour, session.conquest, session.wins, session.losses = 0, 0, 0, 0
             session.startedAt = time()
             Refresh()
-            print(PREFIX .. "session reset.")
+            print(PREFIX .. L["session reset."])
         end)
         w.cursorY = w.cursorY - 30
 
@@ -494,7 +495,7 @@ SlashCmdList.OXEDHUBPVP = function(msg)
         session.honour, session.conquest, session.wins, session.losses = 0, 0, 0, 0
         session.startedAt = time()
         Refresh()
-        print(PREFIX .. "session reset.")
+        print(PREFIX .. L["session reset."])
         return
     end
     if msg == "options" then
@@ -534,7 +535,7 @@ loginFrame:SetScript("OnEvent", function(self)
         OnOptionsShow = function() ShowOptions() end,
         -- On the minimap button's right-click menu.
         quick = {
-            { text = "Show or hide", func = function() TogglePanel() end },
+            { text = L["Show or hide"], func = function() TogglePanel() end },
         },
 
         OnEnable = function(_, config)

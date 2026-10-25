@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local Triggers = OxedHub.Triggers
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -96,7 +97,7 @@ Triggers:RegisterEventType("SPELL_PROC", {
             local gridLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             local startY = 15 -- Moved up by 15 pixels
             gridLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 445, startY)
-            gridLabel:SetText("|cffffd100Class Glow Suggestions|r")
+            gridLabel:SetText(L["|cffffd100Class Glow Suggestions|r"])
             local scrollFrame = CreateFrame("ScrollFrame", nil, frame)
             scrollFrame:SetSize(450, 132)
             scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 445, startY - 20)
@@ -182,17 +183,17 @@ Triggers:RegisterEventType("SPELL_PROC", {
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     if spellInfo then
                         GameTooltip:SetText(spellInfo.name, 1, 0.82, 0)
-                        GameTooltip:AddLine("Spell ID: " .. tostring(spellID), 0.6, 0.6, 0.6)
+                        GameTooltip:AddLine(L["Spell ID: "] .. tostring(spellID), 0.6, 0.6, 0.6)
                     else
-                        GameTooltip:SetText("Spell ID: " .. tostring(spellID), 1, 0.82, 0)
+                        GameTooltip:SetText(L["Spell ID: "] .. tostring(spellID), 1, 0.82, 0)
                     end
                     GameTooltip:AddLine(" ")
                     if isSelected then
-                        GameTooltip:AddLine("This spell is currently selected.", 1, 0.82, 0)
-                        GameTooltip:AddLine("Click again to remove it from the trigger.", 0.8, 0.8, 0.8, true)
+                        GameTooltip:AddLine(L["This spell is currently selected."], 1, 0.82, 0)
+                        GameTooltip:AddLine(L["Click again to remove it from the trigger."], 0.8, 0.8, 0.8, true)
                     else
-                        GameTooltip:AddLine("Click to automatically add this spell to your trigger.", 0.2, 1, 0.2, true)
-                        GameTooltip:AddLine("When this proc glows on your action bars, the trigger will activate and play your chosen Actions (Sounds, Animations, etc).", 0.8, 0.8, 0.8, true)
+                        GameTooltip:AddLine(L["Click to automatically add this spell to your trigger."], 0.2, 1, 0.2, true)
+                        GameTooltip:AddLine(L["When this proc glows on your action bars, the trigger will activate and play your chosen Actions (Sounds, Animations, etc)."], 0.8, 0.8, 0.8, true)
                     end
                     GameTooltip:Show()
                 end)
@@ -255,11 +256,11 @@ Triggers:RegisterEventType("SPELL_PROC", {
         loopCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
         loopCheck:SetSize(20, 20)
         loopCheck:SetChecked(conditions.loopSound or false)
-        loopCheck.text:SetText("Loop sound while glowing")
+        loopCheck.text:SetText(L["Loop sound while glowing"])
 
         local loopIntervalLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         loopIntervalLabel:SetPoint("LEFT", loopCheck.text, "RIGHT", 10, 0)
-        loopIntervalLabel:SetText("Interval (s):")
+        loopIntervalLabel:SetText(L["Interval (s):"])
 
         local loopIntervalEdit = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
         loopIntervalEdit:SetPoint("LEFT", loopIntervalLabel, "RIGHT", 5, 0)
@@ -286,13 +287,13 @@ Triggers:RegisterEventType("SPELL_PROC", {
         lostCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
         lostCheck:SetSize(20, 20)
         lostCheck:SetChecked(conditions.onLost or false)
-        lostCheck.text:SetText("Trigger when glow ends")
+        lostCheck.text:SetText(L["Trigger when glow ends"])
 
         local bothCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
         bothCheck:SetPoint("LEFT", lostCheck.text, "RIGHT", 10, 0)
         bothCheck:SetSize(20, 20)
         bothCheck:SetChecked(conditions.onBoth or false)
-        bothCheck.text:SetText("Trigger on Both")
+        bothCheck.text:SetText(L["Trigger on Both"])
 
         lostCheck:SetScript("OnClick", function(self)
             conditions.onLost = self:GetChecked()
@@ -314,14 +315,14 @@ Triggers:RegisterEventType("SPELL_PROC", {
         infoIcon:SetNormalTexture("Interface\\FriendsFrame\\InformationIcon")
         local infoText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         infoText:SetPoint("LEFT", infoIcon, "RIGHT", 5, 0)
-        infoText:SetText("Proc / glow spells only (e.g. Sudden Doom) — not normal buffs.")
+        infoText:SetText(L["Proc / glow spells only (e.g. Sudden Doom) — not normal buffs."])
         infoText:SetTextColor(1, 0.82, 0)
         local function ShowProcInfo(owner)
             GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Spell Proc Glow", 1, 0.82, 0)
-            GameTooltip:AddLine("Fires when a spell lights up (procs) on your action bar — e.g. Sudden Doom, Hot Streak, Sudden Death.", 1, 1, 1, true)
+            GameTooltip:SetText(L["Spell Proc Glow"], 1, 0.82, 0)
+            GameTooltip:AddLine(L["Fires when a spell lights up (procs) on your action bar — e.g. Sudden Doom, Hot Streak, Sudden Death."], 1, 1, 1, true)
             GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("It does NOT detect normal buffs (like Power Infusion). Buffs need aura detection, which WoW blocks in combat — so there is no reliable in-combat trigger for them yet.", 0.9, 0.8, 0.4, true)
+            GameTooltip:AddLine(L["It does NOT detect normal buffs (like Power Infusion). Buffs need aura detection, which WoW blocks in combat — so there is no reliable in-combat trigger for them yet."], 0.9, 0.8, 0.4, true)
             GameTooltip:Show()
         end
         infoIcon:SetScript("OnEnter", function(self) ShowProcInfo(self) end)

@@ -6,6 +6,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -34,13 +35,13 @@ local function QuestForCursorItem()
 end
 
 local function Describe(questID, isActive)
-    local title = C_QuestLog.GetTitleForQuestID(questID) or ("Quest " .. questID)
+    local title = C_QuestLog.GetTitleForQuestID(questID) or (L["Quest "] .. questID)
     if C_QuestLog.IsQuestFlaggedCompleted(questID) then
-        return ("Starts \"%s\". You have already done it."):format(title), 0.4, 1, 0.4
+        return (L["Starts \"%s\". You have already done it."]):format(title), 0.4, 1, 0.4
     elseif isActive or C_QuestLog.GetLogIndexForQuestID(questID) then
-        return ("Starts \"%s\". You are on it now."):format(title), 1, 0.82, 0
+        return (L["Starts \"%s\". You are on it now."]):format(title), 1, 0.82, 0
     end
-    return ("Starts \"%s\". You have not done it yet!"):format(title), 1, 0.3, 0.3
+    return (L["Starts \"%s\". You have not done it yet!"]):format(title), 1, 0.3, 0.3
 end
 
 frame:SetScript("OnEvent", function(_, _, _, _, _, questWarn)

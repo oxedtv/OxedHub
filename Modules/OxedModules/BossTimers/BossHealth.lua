@@ -12,6 +12,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -61,7 +62,7 @@ local function CreateAnchor()
     anchor.hint:SetColorTexture(0, 0.6, 1, 0.25)
     anchor.text = anchor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     anchor.text:SetPoint("BOTTOM", anchor, "TOP", 0, 2)
-    anchor.text:SetText("Boss Health: drag me")
+    anchor.text:SetText(L["Boss Health: drag me"])
 end
 
 local function Bar(i)

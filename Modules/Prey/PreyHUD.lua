@@ -177,14 +177,14 @@ function PreyHUD:Update(state)
     if stage > 4 then stage = 4 end
 
     local pct = state.percent or Prey.STAGE_PERCENTS[stage] or 0
-    local targetName = state.targetName or "Prey Hunt"
+    local targetName = state.targetName or L["Prey Hunt"]
     local difficulty = state.difficulty or "Normal"
 
     -- Update HUD Bar
     bar.targetText:SetText(string.format("%s (%s)", targetName, difficulty))
     
     if state.tormentPct and state.tormentPct > 0 then
-        bar.tormentFrame.text:SetText(string.format("Torment +%d%%%s", state.tormentPct, state.isNightmare and " (NM)" or ""))
+        bar.tormentFrame.text:SetText(string.format(L["Torment +%d%%%s"], state.tormentPct, state.isNightmare and L[" (NM)"] or ""))
         bar.tormentFrame:Show()
     else
         bar.tormentFrame:Hide()
@@ -222,18 +222,18 @@ function PreyHUD:Update(state)
     local now = GetTime and GetTime() or 0
     local isKillCelebration = now < (state.killStageUntil or 0)
 
-    local stageName = Prey.STAGE_LABELS[stage] or "Hunting"
+    local stageName = Prey.STAGE_LABELS[stage] or L["Hunting"]
     if isKillCelebration then
-        stageName = "|cFF00FF00PREY SLAIN! (COMPLETED)|r"
+        stageName = L["|cFF00FF00PREY SLAIN! (COMPLETED)|r"]
     elseif state.isAmbush then
-        stageName = "|cFFFF3333AMBUSH IN PROGRESS!|r"
+        stageName = L["|cFFFF3333AMBUSH IN PROGRESS!|r"]
     elseif state.isBloodyCommand then
-        stageName = "|cFFFF6600BLOODY COMMAND: DRAIN ANGUISH!|r"
+        stageName = L["|cFFFF6600BLOODY COMMAND: DRAIN ANGUISH!|r"]
     elseif stage == 4 then
-        stageName = "|cFFFF8822STAGE 4: BOSS SPAWNED! (CLICK TO TRACK)|r"
+        stageName = L["|cFFFF8822STAGE 4: BOSS SPAWNED! (CLICK TO TRACK)|r"]
     end
 
-    bar.stageText:SetText(string.format("Stage %d: %s", stage, stageName))
+    bar.stageText:SetText(string.format(L["Stage %d: %s"], stage, stageName))
     bar.pctText:SetText(string.format("%d%%", pct))
 
     bar.fill:SetWidth(math.max(1, maxWidth * (pct / 100)))

@@ -140,12 +140,12 @@ function ActionHub:CreateTab(contentArea)
     local moreBtn = CreateFrame("Button", nil, tab, "UIPanelButtonTemplate")
     moreBtn:SetSize(130, 22)
     moreBtn:SetPoint("LEFT", hubRow, "RIGHT", 10, 0)
-    moreBtn:SetText("More options")
+    moreBtn:SetText(L["More options"])
     moreBtn:SetScript("OnClick", function() ActionHub:ShowHubOptions() end)
     moreBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("More options")
-        GameTooltip:AddLine("When the hub shows, mana and cooldown colours, item counts, icon zoom.", 1, 1, 1, true)
+        GameTooltip:SetText(L["More options"])
+        GameTooltip:AddLine(L["When the hub shows, mana and cooldown colours, item counts, icon zoom."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     moreBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -233,7 +233,7 @@ function ActionHub:CreateTab(contentArea)
 
     local gcdLabel = controls:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     gcdLabel:SetPoint("LEFT", gcdCheck, "RIGHT", 4, 0)
-    gcdLabel:SetText("Show Global Cooldown")
+    gcdLabel:SetText(L["Show Global Cooldown"])
     gcdLabel:SetTextColor(0.9, 0.9, 0.9)
 
     gcdCheck:SetScript("OnClick", function(self)
@@ -242,9 +242,9 @@ function ActionHub:CreateTab(contentArea)
     end)
     gcdCheck:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Show Global Cooldown", 1, 0.82, 0)
-        GameTooltip:AddLine("Off: nodes only sweep for their own cooldown.", 1, 1, 1, true)
-        GameTooltip:AddLine("On: they also sweep for the 1.5s global cooldown.", 0.8, 0.8, 0.8, true)
+        GameTooltip:SetText(L["Show Global Cooldown"], 1, 0.82, 0)
+        GameTooltip:AddLine(L["Off: nodes only sweep for their own cooldown."], 1, 1, 1, true)
+        GameTooltip:AddLine(L["On: they also sweep for the 1.5s global cooldown."], 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     gcdCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -270,7 +270,7 @@ function ActionHub:CreateTab(contentArea)
     rangeCheck:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(L["AH_RANGE_CHECK"] or "Range Check", 1, 0.82, 0)
-        GameTooltip:AddLine("Tints ability and item icons red when your target is out of range.", 1, 1, 1, true)
+        GameTooltip:AddLine(L["Tints ability and item icons red when your target is out of range."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     rangeCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -502,7 +502,7 @@ function ActionHub:CreateTab(contentArea)
     -- V first (closer to the panel), then H to its right — matching the drawing.
     tab.vSpacingSlider = MakePreviewSpacingSlider("V", "snapStepY", 24, 120, 30)
     tab.hSpacingSlider = MakePreviewSpacingSlider("H", "snapStepX", 24, 120, 60)
-    tab.magneticGapSlider = MakePreviewSpacingSlider("Gap", "magneticGap", -10, 10, 45)
+    tab.magneticGapSlider = MakePreviewSpacingSlider(L["Gap"], "magneticGap", -10, 10, 45)
 
 
     tab.SyncSpacingSliders = function()
@@ -643,19 +643,19 @@ function ActionHub:CreateTab(contentArea)
     shareHubBtn:SetScript("OnClick", function()
         local Share = OxedHub.Share
         if not Share then
-            print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+            print(L["|cffff0000Oxed Hub:|r Sharing module unavailable."])
             return
         end
         local idx = ActionHub:GetActiveHubIndex()
         local hub = ActionHub:GetActiveHubDB()
-        local label = (type(hub) == "table" and hub.name) or ("Hub " .. tostring(idx))
+        local label = (type(hub) == "table" and hub.name) or (L["Hub "] .. tostring(idx))
         Share:ShowChannelPicker("hubs", { hubIndex = idx }, label)
     end)
     shareHubBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(L["BTN_SHARE"] or "Share", 1, 0.82, 0)
-        GameTooltip:AddLine("Share only the hub you are editing.", 1, 1, 1, true)
-        GameTooltip:AddLine("Others with Oxed Hub can click to import it.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine(L["Share only the hub you are editing."], 1, 1, 1, true)
+        GameTooltip:AddLine(L["Others with Oxed Hub can click to import it."], 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     shareHubBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -913,7 +913,7 @@ function ActionHub:CreateTab(contentArea)
     UpdateGridText()
     
     gridMenuBtn:SetupMenu(function(dropdown, rootDescription)
-        local titleText = L["AH_GRID_LABEL"] and string.gsub(L["AH_GRID_LABEL"], ":? ?%%s", "") or "Grid"
+        local titleText = L["AH_GRID_LABEL"] and string.gsub(L["AH_GRID_LABEL"], ":? ?%%s", "") or L["Grid"]
         rootDescription:CreateTitle(titleText)
         
         local function SelectGrid(gridType)
@@ -932,7 +932,7 @@ function ActionHub:CreateTab(contentArea)
         rootDescription:CreateRadio(L["GRID_MAGNETIC"] or "Magnetic", function() return (ActionHub.moveGridType or "off") == "magnetic" end, function() SelectGrid("magnetic") end)
         rootDescription:CreateDivider()
         
-        local snapTitle = L["AH_SNAP_LABEL"] and string.gsub(L["AH_SNAP_LABEL"], ":? ?%%s", "") or "Snap"
+        local snapTitle = L["AH_SNAP_LABEL"] and string.gsub(L["AH_SNAP_LABEL"], ":? ?%%s", "") or L["Snap"]
         rootDescription:CreateCheckbox(snapTitle, function() return ActionHub.moveSnap end, function() ActionHub.moveSnap = not ActionHub.moveSnap end)
     end)
     tab.gridMenuBtn = gridMenuBtn
@@ -950,12 +950,12 @@ function ActionHub:ShowRenameHubDialog(hubIndex)
     local hub = hubs and hubs[hubIndex]
     if not hub then return end
     local current = hub.name
-    if not current or current:match("^Hub %d+$") then current = "Hub " .. hubIndex end
+    if not current or current:match("^Hub %d+$") then current = L["Hub "] .. hubIndex end
 
     StaticPopupDialogs["OXEDHUB_RENAME_HUB"] = {
-        text = "Rename this hub to:",
-        button1 = ACCEPT or "Accept",
-        button2 = CANCEL or "Cancel",
+        text = L["Rename this hub to:"],
+        button1 = ACCEPT or L["Accept"],
+        button2 = CANCEL or L["Cancel"],
         hasEditBox = true,
         maxLetters = 24,
         timeout = 0,
@@ -1008,7 +1008,7 @@ function ActionHub:RefreshTab()
             hb:SetPoint("LEFT", hubRow, "LEFT", xOffset, 0)
             local hubName = hubs[i].name
             if not hubName or string.match(hubName, "^Hub %d+$") then
-                hubName = "Hub " .. i
+                hubName = L["Hub "] .. i
             end
             hb:SetText(hubName)
             hb:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -1016,7 +1016,7 @@ function ActionHub:RefreshTab()
             local function ShowHubTooltip(owner)
                 GameTooltip:SetOwner(owner, "ANCHOR_TOP")
                 GameTooltip:SetText(hubName, 1, 0.82, 0)
-                GameTooltip:AddLine("|cff00ff00Left-click:|r switch  |cff00ff00Right-click:|r rename", 1, 1, 1)
+                GameTooltip:AddLine(L["|cff00ff00Left-click:|r switch  |cff00ff00Right-click:|r rename"], 1, 1, 1)
                 GameTooltip:Show()
             end
 
@@ -1129,7 +1129,7 @@ function ActionHub:RefreshTab()
         vertical = L["LAYOUT_VERTICAL"] or "Vertical"
     }
     if tab.dualLayoutBtn then
-        tab.dualLayoutBtn:OverrideText(dualLayoutNames[db.dualSideLayout or "horizontal"] or "Horizontal")
+        tab.dualLayoutBtn:OverrideText(dualLayoutNames[db.dualSideLayout or "horizontal"] or L["Horizontal"])
         tab.dualLayoutBtn:SetShown(db.dualSideEnabled)
     end
     if tab.dualLayoutLabel then
@@ -1142,7 +1142,7 @@ function ActionHub:RefreshTab()
         ["top-right"] = L["QUAD_TOP_RIGHT"] or "Top Right",
         ["top-left"] = L["QUAD_TOP_LEFT"] or "Top Left"
     }
-    if tab.quadBtn then tab.quadBtn:OverrideText(quadNames[quadrant] or "Bottom Right") end
+    if tab.quadBtn then tab.quadBtn:OverrideText(quadNames[quadrant] or L["Bottom Right"]) end
 
     -- Disable Side dropdown if any custom node positions exist
     local hasCustomPositions = false
@@ -1176,7 +1176,7 @@ function ActionHub:RefreshTab()
         square = L["STYLE_SQUARES"] or "Squares",
         ring = L["STYLE_RINGS"] or "Rings"
     }
-    if tab.styleBtn then tab.styleBtn:OverrideText(styleNames[db.style or "square"] or "Squares") end
+    if tab.styleBtn then tab.styleBtn:OverrideText(styleNames[db.style or "square"] or L["Squares"]) end
 
     -- Update limit nodes checkbox and Add Slot button state
     if tab.limitCheck then
@@ -1282,7 +1282,7 @@ function ActionHub:RefreshTab()
                     GameTooltip:SetText(string.format(L["TOOLTIP_ITEM_FORMAT"] or "Item: %s", tostring(s.label or s.id)))
                 elseif s.type == "module" then
                     local name, action = ActionHub:DescribeModuleNode(s.id)
-                    GameTooltip:SetText(("Module: %s"):format(name or tostring(s.id)))
+                    GameTooltip:SetText((L["Module: %s"]):format(name or tostring(s.id)))
                     if action then GameTooltip:AddLine(action, 1, 1, 1) end
                 end
                 GameTooltip:Show()
@@ -1440,11 +1440,11 @@ function ActionHub:RefreshTab()
                 local dialog = ActionHub.pickerDialog
                 if dialog and dialog.groupSelection and dialog.groupSelection[self.slotSide .. "_" .. self.slotIndex] then
                     MenuUtil.CreateContextMenu(self, function(ownerRegion, rootDescription)
-                        rootDescription:CreateTitle("Align Group")
-                        rootDescription:CreateButton("Align Vertically", function()
+                        rootDescription:CreateTitle(L["Align Group"])
+                        rootDescription:CreateButton(L["Align Vertically"], function()
                             ActionHub:AlignGroup(self.slotSide, self.slotIndex, "vertical")
                         end)
-                        rootDescription:CreateButton("Align Horizontally", function()
+                        rootDescription:CreateButton(L["Align Horizontally"], function()
                             ActionHub:AlignGroup(self.slotSide, self.slotIndex, "horizontal")
                         end)
                     end)
@@ -1859,14 +1859,14 @@ function ActionHub:ShowSlotPicker(slotIndex, slotSide)
         -- Sidebar category buttons
         local sidebarCategories = {
             { name = "ToyMix",    type = "toy",      icon = 134508 },
-            { name = "Reactions", type = "emote",    icon = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Emojis\\Kiss.png" },
-            { name = "Triggers",  type = "trigger",  icon = 236248 },
-            { name = "Markers",   type = "marker",   icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8" },
-            { name = "Mounts",    type = "mount",    icon = "Interface\\Icons\\MountJournalPortrait" },
-            { name = "Items",     type = "item",     icon = 3753262 },
-            { name = "Spells",    type = "spell",    icon = "Interface\\Icons\\INV_Misc_Book_09" },
-            { name = "Modules",   type = "module",   icon = "Interface\\Icons\\INV_Gizmo_02" },
-            { name = "Settings",  type = "settings", icon = 4548872 }
+            { name = L["Reactions"], type = "emote",    icon = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Emojis\\Kiss.png" },
+            { name = L["Triggers"],  type = "trigger",  icon = 236248 },
+            { name = L["Markers"],   type = "marker",   icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8" },
+            { name = L["Mounts"],    type = "mount",    icon = "Interface\\Icons\\MountJournalPortrait" },
+            { name = L["Items"],     type = "item",     icon = 3753262 },
+            { name = L["Spells"],    type = "spell",    icon = "Interface\\Icons\\INV_Misc_Book_09" },
+            { name = L["Modules"],   type = "module",   icon = "Interface\\Icons\\INV_Gizmo_02" },
+            { name = L["Settings"],  type = "settings", icon = 4548872 }
         }
 
         dialog.sidebarButtons = {}
@@ -2329,7 +2329,7 @@ function ActionHub:ShowSlotPicker(slotIndex, slotSide)
         dialog.soundPicker.label:SetParent(dialog.reactionTabFrame)
         dialog.soundPicker.button:SetParent(dialog.reactionTabFrame)
 
-        dialog.animationPicker = CreateEditorPicker("Animation", 26, -60,
+        dialog.animationPicker = CreateEditorPicker(L["Animation"], 26, -60,
             function()
                 local emote = ActionHub:GetSelectedEmote()
                 local r = emote and GetReaction(emote) or {}
@@ -2420,7 +2420,7 @@ function ActionHub:ShowSlotPicker(slotIndex, slotSide)
         dialog.chatPicker.label:SetParent(dialog.reactionTabFrame)
         dialog.chatPicker.button:SetParent(dialog.reactionTabFrame)
 
-        dialog.toyMacroPicker = CreateEditorPicker("Toy Macro", 26, -10,
+        dialog.toyMacroPicker = CreateEditorPicker(L["Toy Macro"], 26, -10,
             function()
                 local emote = ActionHub:GetSelectedEmote()
                 local r = emote and GetReaction(emote) or {}
@@ -3327,7 +3327,7 @@ function ActionHub:ShowSlotPicker(slotIndex, slotSide)
             { key = "mount",    label = L["TAB_MOUNTS"] or "Mounts" },
             { key = "item",     label = L["TAB_ITEMS"] or "Items" },
             { key = "spell",    label = L["TAB_SPELLS"] or "Spellbook" },
-            { key = "module",   label = "Modules" },
+            { key = "module",   label = L["Modules"] },
         }
 
         local prevAnchor = tabsHeader
@@ -3551,34 +3551,34 @@ function ActionHub:ShowHubOptions()
     local db = self:GetActiveHubDB()
     local w = hubOptionWindows[index]
     if not w then
-        w = API:CreateOptionsWindow((db.name or ("Hub " .. index)) .. ": more options", 460, 520)
+        w = API:CreateOptionsWindow((db.name or (L["Hub "] .. index)) .. L[": more options"], 460, 520)
         hubOptionWindows[index] = w
 
         -- The visibility choice keeps the older "Hide In Combat" box in step.
         db.visibility = self:GetVisibilityMode(db)
-        w:AddChoice(db, "visibility", "Show the hub", {
-            { value = "always", text = "Always" },
-            { value = "hideCombat", text = "Hidden in combat" },
-            { value = "onlyCombat", text = "Only in combat" },
-            { value = "mouseover", text = "On mouseover" },
+        w:AddChoice(db, "visibility", L["Show the hub"], {
+            { value = "always", text = L["Always"] },
+            { value = "hideCombat", text = L["Hidden in combat"] },
+            { value = "onlyCombat", text = L["Only in combat"] },
+            { value = "mouseover", text = L["On mouseover"] },
         }, function(value)
             db.hideInCombat = (value == "hideCombat")
             local tab = ActionHub.tab
             if tab and tab.hideCombatToggle then tab.hideCombatToggle:SetChecked(db.hideInCombat) end
             RefreshHubLook()
         end)
-        w:AddCheckbox(db, "hideMounted", "Hide while mounted", nil, RefreshHubLook)
-        w:AddSlider(db, "fadedAlpha", "When hidden, opacity", 0, 1, 0.05, "%s: %.2f", RefreshHubLook)
-        w:AddNote("A hidden hub comes back while the mouse is over it.")
+        w:AddCheckbox(db, "hideMounted", L["Hide while mounted"], nil, RefreshHubLook)
+        w:AddSlider(db, "fadedAlpha", L["When hidden, opacity"], 0, 1, 0.05, "%s: %.2f", RefreshHubLook)
+        w:AddNote(L["A hidden hub comes back while the mouse is over it."])
 
-        w:AddCheckbox(db, "manaTint", "Blue when short of mana or energy", nil, RefreshHubLook)
-        w:AddCheckbox(db, "desatOnCooldown", "Grey icons while on cooldown", nil, RefreshHubLook)
-        w:AddSlider(db, "cooldownAlpha", "Icon opacity on cooldown", 0.2, 1, 0.05, "%s: %.2f", RefreshHubLook)
-        w:AddCheckbox(db, "showItemCount", "How many of an item you carry", nil, RefreshHubLook)
-        w:AddCheckbox(db, "showKeybind", "Show the key on each node", nil, RefreshHubLook)
-        w:AddSlider(db, "iconZoom", "Icon zoom", 0, 20, 1, "%s: %d", RefreshHubLook)
-        w:AddCheckbox(db, "tooltipInCombat", "Tooltips in combat",
-            "Off, hovering a node in a fight shows no tooltip.")
+        w:AddCheckbox(db, "manaTint", L["Blue when short of mana or energy"], nil, RefreshHubLook)
+        w:AddCheckbox(db, "desatOnCooldown", L["Grey icons while on cooldown"], nil, RefreshHubLook)
+        w:AddSlider(db, "cooldownAlpha", L["Icon opacity on cooldown"], 0.2, 1, 0.05, "%s: %.2f", RefreshHubLook)
+        w:AddCheckbox(db, "showItemCount", L["How many of an item you carry"], nil, RefreshHubLook)
+        w:AddCheckbox(db, "showKeybind", L["Show the key on each node"], nil, RefreshHubLook)
+        w:AddSlider(db, "iconZoom", L["Icon zoom"], 0, 20, 1, "%s: %d", RefreshHubLook)
+        w:AddCheckbox(db, "tooltipInCombat", L["Tooltips in combat"],
+            L["Off, hovering a node in a fight shows no tooltip."])
     end
     w:Show()
 end

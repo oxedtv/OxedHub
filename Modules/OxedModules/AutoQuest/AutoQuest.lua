@@ -14,6 +14,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 local DEFAULTS = {
     enabled      = false,  -- off until the player switches it on (see ModuleAPI:Register)
@@ -185,7 +186,7 @@ local function HandleComplete()
 
     if choices <= 1 then
         GetQuestReward(choices)
-        Report("handed in", title)
+        Report(L["handed in"], title)
         return
     end
 
@@ -194,7 +195,7 @@ local function HandleComplete()
         local pick = MostValuableChoice(choices)
         if pick then
             GetQuestReward(pick)
-            Report("handed in", title)
+            Report(L["handed in"], title)
         end
     end
 end
@@ -326,9 +327,9 @@ local function MarkRewards(attempt)
                 mark.coin:SetShown(index == gold)
                 mark.arrow:SetShown(upgrade ~= nil)
                 if upgrade then
-                    mark.text:SetText(("|cff40ff40+%d ilvl|r"):format(upgrade))
+                    mark.text:SetText((L["|cff40ff40+%d ilvl|r"]):format(upgrade))
                 elseif index == gold then
-                    mark.text:SetText("|cffffd100Most gold|r")
+                    mark.text:SetText(L["|cffffd100Most gold|r"])
                 end
                 mark:Show()
             end

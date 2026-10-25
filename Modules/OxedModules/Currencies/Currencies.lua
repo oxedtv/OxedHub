@@ -18,6 +18,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -183,7 +184,7 @@ local function Discover()
                     for d = depth - 1, 0, -1 do
                         if headers[d] then group = headers[d] break end
                     end
-                    known.n, known.g, known.o = name, group or known.g or "Other", order
+                    known.n, known.g, known.o = name, group or known.g or L["Other"], order
                     known.i = Num(info.iconFileID) or known.i
                     has[id] = true
                 end
@@ -320,14 +321,14 @@ local function FlowLines(tooltip, id)
     tooltip:AddLine(" ")
     if g > 0 or sp > 0 then
         local hours = sessionStart and math.max(1 / 60, (GetTime() - sessionStart) / 3600) or 1
-        tooltip:AddDoubleLine("This session", ("|cff40ff40+%s|r  |cffff6040-%s|r"):format(fmt(g), fmt(sp)),
+        tooltip:AddDoubleLine(L["This session"], ("|cff40ff40+%s|r  |cffff6040-%s|r"):format(fmt(g), fmt(sp)),
             0.8, 0.8, 0.8, 1, 1, 1)
         if g > 0 then
-            tooltip:AddDoubleLine("Per hour", "|cff40ff40+" .. fmt(math.floor(g / hours)) .. "|r", 0.8, 0.8, 0.8, 1, 1, 1)
+            tooltip:AddDoubleLine(L["Per hour"], "|cff40ff40+" .. fmt(math.floor(g / hours)) .. "|r", 0.8, 0.8, 0.8, 1, 1, 1)
         end
     end
     if dg > 0 or ds > 0 then
-        tooltip:AddDoubleLine("Today", ("|cff40ff40+%s|r  |cffff6040-%s|r"):format(fmt(dg), fmt(ds)),
+        tooltip:AddDoubleLine(L["Today"], ("|cff40ff40+%s|r  |cffff6040-%s|r"):format(fmt(dg), fmt(ds)),
             0.8, 0.8, 0.8, 1, 1, 1)
     end
 end
@@ -376,7 +377,7 @@ end
 local function HistoryLines(tooltip, id, now)
     local me = settings and settings.chars[CharKey()]
     local shown = false
-    for _, span in ipairs({ { 7, "A week ago" }, { 30, "A month ago" } }) do
+    for _, span in ipairs({ { 7, L["A week ago"] }, { 30, L["A month ago"] } }) do
         local was = AmountAgo(me, id, span[1])
         if was then
             if not shown then tooltip:AddLine(" ") shown = true end
@@ -406,7 +407,7 @@ local function ScanOne(id, known, me)
         end
         local goal = settings.goals[id]
         if goal and primed and before and before < goal and (e.q or 0) >= goal then
-            print(PREFIX .. ("goal reached: |cff40ff40%s %s|r"):format(Big(goal), known.n or "?"))
+            print(PREFIX .. (L["goal reached: |cff40ff40%s %s|r"]):format(Big(goal), known.n or "?"))
             local API = OxedHub.ModuleAPI
             if settings.goalSound and settings.goalSound ~= "" and API and API.PlaySound then
                 API:PlaySound(settings.goalSound)
@@ -435,7 +436,7 @@ local Scan = Named("Currencies: read every currency", function(only)
     end
     if settings.capAlert and #cappedNames > 0 then
         table.sort(cappedNames)
-        print(PREFIX .. "at its cap: |cffffd100" .. table.concat(cappedNames, ", ") .. "|r")
+        print(PREFIX .. L["at its cap: |cffffd100"] .. table.concat(cappedNames, ", ") .. "|r")
     end
     -- Gold too: the summary line shows this character's and the account's.
     local money = GetMoney and GetMoney()
@@ -619,9 +620,9 @@ local function AskGoal(id)
     if not known then return end
     if not StaticPopupDialogs["OXEDHUB_CURRENCY_GOAL"] then
         StaticPopupDialogs["OXEDHUB_CURRENCY_GOAL"] = {
-            text = "How many %s are you collecting?\n(0 or empty clears the goal)",
-            button1 = ACCEPT or "Accept",
-            button2 = CANCEL or "Cancel",
+            text = L["How many %s are you collecting?\n(0 or empty clears the goal)"],
+            button1 = ACCEPT or L["Accept"],
+            button2 = CANCEL or L["Cancel"],
             hasEditBox = true,
             OnShow = function(self, data)
                 local eb = self.EditBox or self.editBox
@@ -696,9 +697,9 @@ end
 local function Ago(seen)
     if not seen then return "never" end
     local s = math.max(0, time() - seen)
-    if s < 3600 then return "just now" end
-    if s < 86400 then return ("%d h ago"):format(math.floor(s / 3600)) end
-    return ("%d days ago"):format(math.floor(s / 86400))
+    if s < 3600 then return L["just now"] end
+    if s < 86400 then return (L["%d h ago"]):format(math.floor(s / 3600)) end
+    return (L["%d days ago"]):format(math.floor(s / 86400))
 end
 
 local function Gather()
@@ -767,7 +768,7 @@ local function RowTooltip(row)
     end
     GameTooltip:AddLine(" ")
     if known.a then
-        GameTooltip:AddLine("Shared by the warband", 0.4, 0.8, 1)
+        GameTooltip:AddLine(L["Shared by the warband"], 0.4, 0.8, 1)
     else
         local list = Holders(entry.id)
         for i, item in ipairs(list) do
@@ -776,26 +777,26 @@ local function RowTooltip(row)
                 AmountText(item.rec), 1, 1, 1, 1, 1, 1)
         end
         if #list > 1 then
-            GameTooltip:AddDoubleLine("All characters", Big(entry.sum), 1, 0.82, 0, 1, 0.82, 0)
+            GameTooltip:AddDoubleLine(L["All characters"], Big(entry.sum), 1, 0.82, 0, 1, 0.82, 0)
         end
         if known.x then
-            GameTooltip:AddLine("Can be transferred between your characters.", 0.4, 0.8, 1)
+            GameTooltip:AddLine(L["Can be transferred between your characters."], 0.4, 0.8, 1)
         end
     end
     FlowLines(GameTooltip, entry.id)
     if not viewKey then HistoryLines(GameTooltip, entry.id, type(e) == "table" and e.q or 0) end
     if type(e) == "table" and e.wm then
-        GameTooltip:AddDoubleLine("This week", ("%s / %s"):format(Big(e.w), Big(e.wm)), 0.8, 0.8, 0.8, 1, 1, 1)
+        GameTooltip:AddDoubleLine(L["This week"], ("%s / %s"):format(Big(e.w), Big(e.wm)), 0.8, 0.8, 0.8, 1, 1, 1)
     end
     GameTooltip:AddLine(" ")
     if not known.a then
-        GameTooltip:AddLine("Click: every character's amount.", 0.5, 0.8, 1)
+        GameTooltip:AddLine(L["Click: every character's amount."], 0.5, 0.8, 1)
     end
     if settings.goals[entry.id] then
-        GameTooltip:AddDoubleLine("Goal", Big(settings.goals[entry.id]), 0.8, 0.8, 0.8, 1, 0.7, 0.25)
+        GameTooltip:AddDoubleLine(L["Goal"], Big(settings.goals[entry.id]), 0.8, 0.8, 0.8, 1, 0.7, 0.25)
     end
-    GameTooltip:AddLine("Right-click: set a goal.", 0.5, 0.8, 1)
-    GameTooltip:AddLine(settings.tracked[entry.id] and "Shift-click: take it off the bar on screen." or "Shift-click: show it on the bar on screen.", 0.5, 0.8, 1)
+    GameTooltip:AddLine(L["Right-click: set a goal."], 0.5, 0.8, 1)
+    GameTooltip:AddLine(settings.tracked[entry.id] and L["Shift-click: take it off the bar on screen."] or L["Shift-click: show it on the bar on screen."], 0.5, 0.8, 1)
     GameTooltip:Show()
 end
 
@@ -863,8 +864,8 @@ local function AltRow(p, i)
     row:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(self.key or "?")
-        GameTooltip:AddLine("Saved " .. Ago(self.seen), 0.8, 0.8, 0.8)
-        GameTooltip:AddLine("Click to see this character's whole list.", 0.5, 0.8, 1)
+        GameTooltip:AddLine(L["Saved "] .. Ago(self.seen), 0.8, 0.8, 0.8)
+        GameTooltip:AddLine(L["Click to see this character's whole list."], 0.5, 0.8, 1)
         GameTooltip:Show()
     end)
     row:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -887,7 +888,7 @@ local function ShowAlts(id)
     local sum = TotalOf(id)
 
     p.head:SetText(known.n or "?")
-    p.sub:SetFormattedText("%d characters hold |cffffd100%s|r in all", #list, Big(sum))
+    p.sub:SetFormattedText(L["%d characters hold |cffffd100%s|r in all"], #list, Big(sum))
 
     local shown = math.min(#list, ALT_MAX)
     for i = 1, shown do
@@ -1003,7 +1004,7 @@ local function PaintRow(row, entry)
         elseif (entry.sum or 0) > 0 then
             local mine = type(e) == "table" and (e.q or 0) or 0
             if entry.sum > mine then
-                otherText = ("|cff9d9d9dall chars|r |cffffd100%s|r"):format(Big(entry.sum))
+                otherText = (L["|cff9d9d9dall chars|r |cffffd100%s|r"]):format(Big(entry.sum))
             end
         end
     end
@@ -1015,8 +1016,8 @@ Draw = function()
     local total, held, near = Gather()
     local viewed = ViewRecord()
 
-    window.summary:SetFormattedText("%d currencies   |cffffd100%d|r held%s   gold %s  |cff9d9d9d(all %s)|r%s",
-        total, held, near > 0 and ("   |cffffb040%d near cap|r"):format(near) or "", Coins(viewed.money), Coins(GoldTotal()),
+    window.summary:SetFormattedText(L["%d currencies   |cffffd100%d|r held%s   gold %s  |cff9d9d9d(all %s)|r%s"],
+        total, held, near > 0 and (L["   |cffffb040%d near cap|r"]):format(near) or "", Coins(viewed.money), Coins(GoldTotal()),
         viewKey and ("   |cffff9933saved %s|r"):format(Ago(viewed.seen)) or "")
     if window.fold then window.fold.Refresh() end
     if window.picker then
@@ -1077,7 +1078,7 @@ local function BuildWindow()
 
     local Panel = OxedHub.UIComponents and OxedHub.UIComponents.Panel
     if Panel and Panel.ApplyOrnateFrame then
-        Panel.ApplyOrnateFrame(w, "Currencies", 0.96)
+        Panel.ApplyOrnateFrame(w, L["Currencies"], 0.96)
     elseif w.SetBackdrop then
         w:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16,
@@ -1111,7 +1112,7 @@ local function BuildWindow()
     hide:SetSize(24, 24)
     hide:SetPoint("LEFT", search, "RIGHT", 14, 0)
     hide.text:SetFontObject("GameFontHighlightSmall")
-    hide.text:SetText("Hide empty")
+    hide.text:SetText(L["Hide empty"])
     hide:SetScript("OnClick", function(self)
         settings.hideEmpty = self:GetChecked() and true or false
         offset = 0
@@ -1123,7 +1124,7 @@ local function BuildWindow()
     others:SetSize(24, 24)
     others:SetPoint("LEFT", hide.text, "RIGHT", 14, 0)
     others.text:SetFontObject("GameFontHighlightSmall")
-    others.text:SetText("Other characters")
+    others.text:SetText(L["Other characters"])
     others:SetScript("OnClick", function(self)
         settings.showOthers = self:GetChecked() and true or false
         Draw()
@@ -1133,7 +1134,7 @@ local function BuildWindow()
     local options = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
     options:SetSize(80, 22)
     options:SetPoint("TOPRIGHT", w, "TOPRIGHT", -34, -29)
-    options:SetText(OPTIONS or "Options")
+    options:SetText(OPTIONS or L["Options"])
     options:SetScript("OnClick", function()
         local API = OxedHub.ModuleAPI
         local mod = API and API.GetModule and API:GetModule("currencies")
@@ -1154,7 +1155,7 @@ local function BuildWindow()
         local list = CharacterList()
         local shown = MenuUtil and MenuUtil.CreateContextMenu and pcall(MenuUtil.CreateContextMenu, self,
             function(_, root)
-                root:CreateTitle("Show the currencies of")
+                root:CreateTitle(L["Show the currencies of"])
                 for _, key in ipairs(list) do
                     local char = settings.chars[key]
                     local label = ("|c%s%s|r  |cff9d9d9d%s|r"):format(ClassHex(char.class),
@@ -1175,8 +1176,8 @@ local function BuildWindow()
     end)
     picker:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Whose currencies")
-        GameTooltip:AddLine("Click to pick any of your characters. Right-click: back to this one.", 1, 1, 1, true)
+        GameTooltip:SetText(L["Whose currencies"])
+        GameTooltip:AddLine(L["Click to pick any of your characters. Right-click: back to this one."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     picker:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1191,7 +1192,7 @@ local function BuildWindow()
     local fold = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
     fold:SetSize(84, 20)
     fold:SetPoint("RIGHT", picker, "LEFT", -6, 0)
-    fold.Refresh = function() fold:SetText(AllFolded() and "Expand all" or "Collapse all") end
+    fold.Refresh = function() fold:SetText(AllFolded() and L["Expand all"] or L["Collapse all"]) end
     fold:SetScript("OnClick", function()
         local open = AllFolded()
         for _, known in pairs(settings.known) do
@@ -1214,7 +1215,7 @@ local function BuildWindow()
     goldHover:EnableMouse(true)
     goldHover:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("Gold")
+        GameTooltip:SetText(L["Gold"])
         local list = {}
         for _, char in pairs(settings.chars) do
             if type(char) == "table" and (char.money or 0) > 0 then list[#list + 1] = char end
@@ -1227,16 +1228,16 @@ local function BuildWindow()
         end
         local bank = WarbandGold()
         if bank > 0 then
-            GameTooltip:AddDoubleLine("|cff66ccffWarband bank|r", CoinText(bank), 1, 1, 1, 1, 1, 1)
+            GameTooltip:AddDoubleLine(L["|cff66ccffWarband bank|r"], CoinText(bank), 1, 1, 1, 1, 1, 1)
         end
-        GameTooltip:AddDoubleLine("All", CoinText(GoldTotal()), 1, 0.82, 0, 1, 0.82, 0)
+        GameTooltip:AddDoubleLine(L["All"], CoinText(GoldTotal()), 1, 0.82, 0, 1, 0.82, 0)
         FlowLines(GameTooltip, 0)
         HistoryLines(GameTooltip, 0, GetMoney())
         if C_WowTokenPublic and C_WowTokenPublic.GetCurrentMarketPrice then
             local price = Num(C_WowTokenPublic.GetCurrentMarketPrice())
             if price and price > 0 then
                 GameTooltip:AddLine(" ")
-                GameTooltip:AddDoubleLine("WoW Token", CoinText(price), 0.8, 0.8, 0.8, 1, 1, 1)
+                GameTooltip:AddDoubleLine(L["WoW Token"], CoinText(price), 0.8, 0.8, 0.8, 1, 1, 1)
             end
         end
         GameTooltip:Show()
@@ -1324,7 +1325,7 @@ local function BuildWindow()
 
     w.empty = w:CreateFontString(nil, "OVERLAY", "GameFontDisable")
     w.empty:SetPoint("CENTER", list, "CENTER")
-    w.empty:SetText("Nothing to show")
+    w.empty:SetText(L["Nothing to show"])
 
     w:SetScript("OnShow", function(self)
         self.hideBox:SetChecked(settings.hideEmpty == true)
@@ -1346,7 +1347,7 @@ end
 local function ToggleWindow()
     if not settings then return end
     if not running then
-        print(PREFIX .. "switch the module on first (/ohub > Modules).")
+        print(PREFIX .. L["switch the module on first (/ohub > Modules)."])
         return
     end
     local w = BuildWindow()
@@ -1435,8 +1436,8 @@ local function BarIcon(i)
         end
         FlowLines(GameTooltip, self.id)
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(settings.trackLocked and "Click: the list. Right-click: take it off the bar."
-            or "Drag: move the bar. Click: the list. Right-click: take it off.", 0.5, 0.8, 1)
+        GameTooltip:AddLine(settings.trackLocked and L["Click: the list. Right-click: take it off the bar."]
+            or L["Drag: move the bar. Click: the list. Right-click: take it off."], 0.5, 0.8, 1)
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1613,8 +1614,8 @@ local function MinimapIcon()
     if minimapIcon or not settings then return minimapIcon end
     local API = OxedHub.ModuleAPI
     minimapIcon = API and API.MinimapButton and API:MinimapButton({
-        key = "currencies", label = "Currencies", icon = "Interface\\Icons\\INV_Misc_Coin_17", config = settings,
-        hint = "Click: the list. Right-click: options.",
+        key = "currencies", label = L["Currencies"], icon = "Interface\\Icons\\INV_Misc_Coin_17", config = settings,
+        hint = L["Click: the list. Right-click: options."],
         onClick = function(mouse)
             if mouse == "RightButton" then
                 local mod = API:GetModule("currencies")
@@ -1651,15 +1652,15 @@ local function ShowOptions()
         local open = CreateFrame("Button", nil, o, "UIPanelButtonTemplate")
         open:SetSize(150, 22)
         open:SetPoint("TOPLEFT", o, "TOPLEFT", 20, o.cursorY - 4)
-        open:SetText("Open the list")
+        open:SetText(L["Open the list"])
         open:SetScript("OnClick", ToggleWindow)
 
         local forget = CreateFrame("Button", nil, o, "UIPanelButtonTemplate")
         forget:SetSize(190, 22)
         forget:SetPoint("LEFT", open, "RIGHT", 8, 0)
-        forget:SetText("Forget other characters")
+        forget:SetText(L["Forget other characters"])
         forget:SetScript("OnClick", function()
-            API:Confirm("Forget the currencies saved for every other character?", ForgetOthers)
+            API:Confirm(L["Forget the currencies saved for every other character?"], ForgetOthers)
         end)
         o.cursorY = o.cursorY - 34
 
@@ -1692,7 +1693,7 @@ local function AddAltLines(tooltip, data)
             AmountText(item.rec), 1, 1, 1, 1, 1, 1)
     end
     if #list > 1 then
-        tooltip:AddDoubleLine("All characters", Big(TotalOf(id)), 1, 0.82, 0, 1, 0.82, 0)
+        tooltip:AddDoubleLine(L["All characters"], Big(TotalOf(id)), 1, 0.82, 0, 1, 0.82, 0)
     end
 end
 
@@ -1738,7 +1739,7 @@ loginFrame:SetScript("OnEvent", function(self)
 
         OnOptionsShow = function() ShowOptions() end,
         quick = {
-            { text = "Currencies", func = function() ToggleWindow() end },
+            { text = L["Currencies"], func = function() ToggleWindow() end },
         },
 
         OnEnable = function(_, config)

@@ -22,6 +22,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer
 local issecretvalue = _G.issecretvalue
 local issecret = _G.issecret
@@ -837,7 +838,7 @@ local function OnUpdate()
             kickFrame.icon:SetVertexColor(1, 1, 1, 1)
             kickFrame.iconDesat:SetAlpha(0)
             kickFrame.label:SetTextColor(0.1, 1, 0.1, 1)
-            kickFrame.label:SetText(isImportantCast and "PRIO!" or "KICK!")
+            kickFrame.label:SetText(isImportantCast and L["PRIO!"] or L["KICK!"])
             kickFrame.cooldown:Hide()
 
             -- Proc Glow
@@ -1034,7 +1035,7 @@ local function ShowOptions()
         local btnReset = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
         btnReset:SetSize(200, 24)
         btnReset:SetPoint("LEFT", btnTest, "RIGHT", 10, 0)
-        btnReset:SetText("Reset HUD Center")
+        btnReset:SetText(L["Reset HUD Center"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnReset) end
 
         optionsWindow.cursorY = optionsWindow.cursorY - 34
@@ -1042,9 +1043,9 @@ local function ShowOptions()
         local function RefreshActionButtons()
             local curDb = KickBarDB or DEFAULTS
             local isFloating = (curDb.displayMode == "FLOATING")
-            btnMode:SetText(isFloating and "Mode: Floating HUD" or "Mode: Nameplate")
-            btnLock:SetText(curDb.locked and "Locked (Click to Drag)" or "Unlocked (Click to Lock)")
-            btnTest:SetText(debugTestMode and "Test Mode: ON" or "Test Mode: OFF")
+            btnMode:SetText(isFloating and L["Mode: Floating HUD"] or L["Mode: Nameplate"])
+            btnLock:SetText(curDb.locked and L["Locked (Click to Drag)"] or L["Unlocked (Click to Lock)"])
+            btnTest:SetText(debugTestMode and L["Test Mode: ON"] or L["Test Mode: OFF"])
         end
 
         btnMode:SetScript("OnClick", function()
@@ -1084,9 +1085,9 @@ local function ShowOptions()
 
         -- Nameplate Anchor Choice
         optionsWindow:AddChoice(db, "anchor", "Nameplate anchor", {
-            { value = "LEFT",  text = "Left" },
-            { value = "RIGHT", text = "Right" },
-            { value = "TOP",   text = "Top" },
+            { value = "LEFT",  text = L["Left"] },
+            { value = "RIGHT", text = L["Right"] },
+            { value = "TOP",   text = L["Top"] },
         }, function()
             PositionFrame()
             OnUpdate()
@@ -1103,13 +1104,13 @@ local function ShowOptions()
         local function RefreshAnim()
             local curDb = KickBarDB or DEFAULTS
             local aVal = (curDb.animation and curDb.animation ~= "") and curDb.animation or "None"
-            animLabel:SetText("Animation alert: " .. aVal)
+            animLabel:SetText(L["Animation alert: "] .. aVal)
         end
 
         local animButton = CreateFrame("Button", nil, optionsWindow, "UIPanelButtonTemplate")
         animButton:SetSize(140, 22)
         animButton:SetPoint("TOPLEFT", optionsWindow, "TOPLEFT", optionsWindow:GetWidth() - 180, optionsWindow.cursorY - 2)
-        animButton:SetText("Choose animation")
+        animButton:SetText(L["Choose animation"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(animButton) end
 
         animButton:SetScript("OnClick", function()
@@ -1279,34 +1280,34 @@ SlashCmdList["KICKBAR"] = function(msg)
 
     elseif msg == "on" then
         SetEnabled(true)
-        print("|cff00ff96KickBar|r: Enabled")
+        print(L["|cff00ff96KickBar|r: Enabled"])
 
     elseif msg == "off" then
         SetEnabled(false)
-        print("|cff00ff96KickBar|r: Disabled")
+        print(L["|cff00ff96KickBar|r: Disabled"])
 
     elseif msg == "test" or msg == "debug" then
         debugTestMode = not debugTestMode
-        print("|cff00ff96KickBar|r: Test Preview " .. (debugTestMode and "|cff00ff00ON|r" or "|cffff4040OFF|r"))
+        print(L["|cff00ff96KickBar|r: Test Preview "] .. (debugTestMode and "|cff00ff00ON|r" or "|cffff4040OFF|r"))
         if debugTestMode then StartUpdates() else Wake() end
         if optionsFrame and optionsFrame:IsShown() then optionsFrame:RefreshUI() end
 
     elseif msg == "lock" then
         db.locked = true
         PositionFrame()
-        print("|cff00ff96KickBar|r: Icon Locked")
+        print(L["|cff00ff96KickBar|r: Icon Locked"])
         if optionsFrame and optionsFrame:IsShown() then optionsFrame:RefreshUI() end
 
     elseif msg == "unlock" then
         db.locked = false
         PositionFrame()
-        print("|cff00ff96KickBar|r: Icon Unlocked (Drag with Left Mouse Button)")
+        print(L["|cff00ff96KickBar|r: Icon Unlocked (Drag with Left Mouse Button)"])
         if optionsFrame and optionsFrame:IsShown() then optionsFrame:RefreshUI() end
 
     elseif msg == "floating" or msg == "mode" then
         db.displayMode = (db.displayMode == "FLOATING") and "NAMEPLATE" or "FLOATING"
         PositionFrame()
-        print("|cff00ff96KickBar|r: Mode set to |cffffffff" .. db.displayMode .. "|r")
+        print(L["|cff00ff96KickBar|r: Mode set to |cffffffff"] .. db.displayMode .. "|r")
         if optionsFrame and optionsFrame:IsShown() then optionsFrame:RefreshUI() end
 
     elseif msg:match("^scale") then
@@ -1314,23 +1315,23 @@ SlashCmdList["KICKBAR"] = function(msg)
         if val and val >= 0.5 and val <= 3.0 then
             db.scale = val
             if kickFrame then kickFrame:SetScale(val) end
-            print("|cff00ff96KickBar|r: Scale set to " .. val)
+            print(L["|cff00ff96KickBar|r: Scale set to "] .. val)
             if optionsFrame and optionsFrame:IsShown() then optionsFrame:RefreshUI() end
         else
-            print("|cff00ff96KickBar|r: Usage: /kickbar scale 0.5-3.0 (current: " .. (db.scale or 1.4) .. ")")
+            print(L["|cff00ff96KickBar|r: Usage: /kickbar scale 0.5-3.0 (current: "] .. (db.scale or 1.4) .. ")")
         end
 
     elseif msg == "status" then
-        print("|cff00ff96KickBar|r Status:")
-        print("  Enabled: " .. tostring(IsOn()))
-        print("  Mode: " .. (db.displayMode or "NAMEPLATE"))
-        print("  Locked: " .. tostring(db.locked))
-        print("  Scale: " .. (db.scale or 1.4))
+        print(L["|cff00ff96KickBar|r Status:"])
+        print(L["  Enabled: "] .. tostring(IsOn()))
+        print(L["  Mode: "] .. (db.displayMode or "NAMEPLATE"))
+        print(L["  Locked: "] .. tostring(db.locked))
+        print(L["  Scale: "] .. (db.scale or 1.4))
         if interruptSpellID then
             local name = GetSpellInfoCompat(interruptSpellID)
-            print("  Interrupt: " .. (name or "?") .. " (ID: " .. interruptSpellID .. ")")
+            print(L["  Interrupt: "] .. (name or "?") .. " (ID: " .. interruptSpellID .. ")")
         else
-            print("  Interrupt: None found for your class/spec")
+            print(L["  Interrupt: None found for your class/spec"])
         end
 
     else

@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 local BlizzardSettings = {}
 OxedHub.BlizzardSettings = BlizzardSettings
@@ -27,7 +28,7 @@ end
 function BlizzardSettings:Refresh()
     if self.versionText then
         local version = OxedHub.CONFIG and OxedHub.CONFIG.VERSION or "2.2.70"
-        self.versionText:SetText("Version: " .. version)
+        self.versionText:SetText(L["Version: "] .. version)
     end
 end
 
@@ -54,13 +55,13 @@ function BlizzardSettings:CreatePanel()
 
     self.versionText = CreateCenteredText(panel, "Version: 2.2.70", "GameFontHighlight", -20)
 
-    local commandText = CreateCenteredText(panel, "Access options with /oxedhub or /ohub", "GameFontHighlightLarge", -50)
+    local commandText = CreateCenteredText(panel, L["Access options with /oxedhub or /ohub"], "GameFontHighlightLarge", -50)
     commandText:SetTextColor(1, 1, 1, 1)
 
     local openButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     openButton:SetSize(420, 42)
     openButton:SetPoint("TOP", commandText, "BOTTOM", 0, -28)
-    openButton:SetText("Open Options")
+    openButton:SetText(L["Open Options"])
     openButton:SetScript("OnClick", OpenOxedHubOptions)
 
     local buttonText = openButton:GetFontString()

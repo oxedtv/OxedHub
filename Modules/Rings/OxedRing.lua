@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local OxedRing = {}
 OxedHub.OxedRing = OxedRing
 
@@ -646,22 +647,22 @@ function OxedRing:RebuildSlices()
                 -- Tooltip for unavailable nodes
                 if self.isUnavailable and self.data then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText(self.data.label or "Node")
+                    GameTooltip:SetText(self.data.label or L["Node"])
                     if self.data.type == "mount" then
                         if UnitAffectingCombat("player") then
-                            GameTooltip:AddLine("|cffff0000Cannot summon in combat|r")
+                            GameTooltip:AddLine(L["|cffff0000Cannot summon in combat|r"])
                         elseif self.data.id and C_MountJournal and C_MountJournal.GetMountInfoByID then
                             local name, spellID, icon, isActive, isUsable = C_MountJournal.GetMountInfoByID(self.data.id)
                             if not isUsable then
-                                GameTooltip:AddLine("|cffff0000Not available for your class|r")
+                                GameTooltip:AddLine(L["|cffff0000Not available for your class|r"])
                             end
                         end
                     end
                     if self.data.requiresParty and not (IsInGroup() or IsInRaid()) then
-                        GameTooltip:AddLine("|cffff0000Requires Party/Raid|r")
+                        GameTooltip:AddLine(L["|cffff0000Requires Party/Raid|r"])
                     end
                     if self.data.requiresTarget and not UnitExists("target") then
-                        GameTooltip:AddLine("|cffff0000Requires Target|r")
+                        GameTooltip:AddLine(L["|cffff0000Requires Target|r"])
                     end
                     GameTooltip:Show()
                 end
@@ -983,12 +984,12 @@ function OxedRing:ActivateSlice(index, isSecureRelease)
     if not IsNodeAvailable(data) then
         local reason = ""
         if data.requiresParty and not (IsInGroup() or IsInRaid()) then
-            reason = "Requires party"
+            reason = L["Requires party"]
         elseif data.requiresTarget and not UnitExists("target") then
-            reason = "Requires a target"
+            reason = L["Requires a target"]
         end
         if reason ~= "" then
-            print("|cffff0000[OxedHub]|r " .. (data.label or "Node") .. ": " .. reason)
+            print("|cffff0000[OxedHub]|r " .. (data.label or L["Node"]) .. ": " .. reason)
         end
         return
     end
@@ -1039,7 +1040,7 @@ function OxedRing:ActivateSlice(index, isSecureRelease)
             -- If it's a secure release, the secure handler already fired the /emote macro!
             if not isSecureRelease then
                 if InCombatLockdown() then
-                    print("|cffff0000[OxedHub]|r Cannot perform emotes via mouse-click during combat! Use the radial hotkey release instead.")
+                    print(L["|cffff0000[OxedHub]|r Cannot perform emotes via mouse-click during combat! Use the radial hotkey release instead."])
                 else
                     OxedHub.Emotes:DoEmote(mapping.emote)
                 end
@@ -1058,7 +1059,7 @@ function OxedRing:ActivateSlice(index, isSecureRelease)
         -- the /wm or /cwm macro — skip the insecure call entirely.
         if not isSecureRelease then
             if InCombatLockdown() then
-                print("|cffff0000[OxedHub]|r Cannot place markers via mouse-click during combat! Use the radial hotkey release instead.")
+                print(L["|cffff0000[OxedHub]|r Cannot place markers via mouse-click during combat! Use the radial hotkey release instead."])
             else
                 if data.id == 0 then
                     SecureCmdOptionParse("/cwm all")
@@ -1072,7 +1073,7 @@ function OxedRing:ActivateSlice(index, isSecureRelease)
         -- the /tm macro — skip the insecure call entirely.
         if not isSecureRelease then
             if InCombatLockdown() then
-                print("|cffff0000[OxedHub]|r Cannot place target markers during combat! Use the radial hotkey release instead.")
+                print(L["|cffff0000[OxedHub]|r Cannot place target markers during combat! Use the radial hotkey release instead."])
             else
                 if data.id == 0 then
                     SecureCmdOptionParse("/tm 0")
@@ -1088,7 +1089,7 @@ function OxedRing:ActivateSlice(index, isSecureRelease)
         -- addons, so we cannot ping the ring's spawn point from a slice.
         if not isSecureRelease then
             if InCombatLockdown() then
-                print("|cffff0000[OxedHub]|r Cannot ping via mouse-click during combat! Use the radial hotkey release instead.")
+                print(L["|cffff0000[OxedHub]|r Cannot ping via mouse-click during combat! Use the radial hotkey release instead."])
             elseif data.id == "" then
                 SecureCmdOptionParse("/ping")
             else
@@ -1380,8 +1381,8 @@ function OxedRing:ApplyRingBinding(newKey)
     
     -- Debug feedback so user knows it worked
     if newKey and newKey ~= "" then
-        print("|cff00ff00OxedRing:|r Keybind set to |cffffff00" .. newKey .. "|r")
+        print(L["|cff00ff00OxedRing:|r Keybind set to |cffffff00"] .. newKey .. "|r")
     else
-        print("|cff00ff00OxedRing:|r Keybind cleared")
+        print(L["|cff00ff00OxedRing:|r Keybind cleared"])
     end
 end

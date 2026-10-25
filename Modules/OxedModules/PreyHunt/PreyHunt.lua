@@ -12,6 +12,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 local Prey = OxedHub.Prey or {}
 OxedHub.Prey = Prey
@@ -106,8 +107,8 @@ local function MigrateFromTrigger(config)
             config.defaultOffSeen = true
             trigger.enabled = false
             C_Timer.After(8, function()
-                print(PREFIX .. "Prey Hunt is now a module: |cffffd100/ohub|r > Modules > Prey Hunt. "
-                    .. "Your settings and sounds came along, and the old trigger is switched off.")
+                print(PREFIX .. L["Prey Hunt is now a module: |cffffd100/ohub|r > Modules > Prey Hunt. "]
+                    .. L["Your settings and sounds came along, and the old trigger is switched off."])
             end)
             return
         end
@@ -138,15 +139,15 @@ local function ShowOptions()
         local row1 = CreateFrame("Frame", nil, o)
         row1:SetSize(420, 24)
         row1:SetPoint("TOPLEFT", o, "TOPLEFT", 20, o.cursorY - 2)
-        local test = Button(row1, "Preview Bar", 130)
+        local test = Button(row1, L["Preview Bar"], 130)
         test:SetPoint("LEFT", row1, "LEFT", 0, 0)
         test:SetScript("OnClick", function(self)
             if Prey.HUD and Prey.HUD.ToggleTestMode then
                 local on = Prey.HUD:ToggleTestMode()
-                self:SetText(on and "Hide Preview" or "Preview Bar")
+                self:SetText(on and L["Hide Preview"] or L["Preview Bar"])
             end
         end)
-        local resetBar = Button(row1, "Reset Bar", 110)
+        local resetBar = Button(row1, L["Reset Bar"], 110)
         resetBar:SetPoint("LEFT", test, "RIGHT", 8, 0)
         resetBar:SetScript("OnClick", function()
             if Prey.HUD and Prey.HUD.ResetPosition then Prey.HUD:ResetPosition() end
@@ -159,16 +160,16 @@ local function ShowOptions()
         local row2 = CreateFrame("Frame", nil, o)
         row2:SetSize(420, 24)
         row2:SetPoint("TOPLEFT", o, "TOPLEFT", 20, o.cursorY - 2)
-        local move = Button(row2, "Move Widget", 130)
+        local move = Button(row2, L["Move Widget"], 130)
         move:SetPoint("LEFT", row2, "LEFT", 0, 0)
         move:SetScript("OnClick", function(self)
             local Engine = Prey.Engine
             if Engine and Engine.ToggleBlizzardWidgetMover then
                 local on = Engine:ToggleBlizzardWidgetMover()
-                self:SetText(on and "Hide Mover" or "Move Widget")
+                self:SetText(on and L["Hide Mover"] or L["Move Widget"])
             end
         end)
-        local resetWidget = Button(row2, "Reset Widget", 110)
+        local resetWidget = Button(row2, L["Reset Widget"], 110)
         resetWidget:SetPoint("LEFT", move, "RIGHT", 8, 0)
         resetWidget:SetScript("OnClick", function()
             if OxedHub.db and OxedHub.db.profile then OxedHub.db.profile.preyBlizzWidgetPosition = nil end

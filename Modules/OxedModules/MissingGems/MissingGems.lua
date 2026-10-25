@@ -15,6 +15,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -203,8 +204,8 @@ local function Remind(context)
     end
 
     local summary = {}
-    if sockets > 0 then summary[#summary + 1] = ("%d empty socket(s)"):format(sockets) end
-    if enchants > 0 then summary[#summary + 1] = ("%d missing enchant(s)"):format(enchants) end
+    if sockets > 0 then summary[#summary + 1] = (L["%d empty socket(s)"]):format(sockets) end
+    if enchants > 0 then summary[#summary + 1] = (L["%d missing enchant(s)"]):format(enchants) end
 
     print(PREFIX .. ("|cffff5555%s|r%s: %s"):format(
         table.concat(summary, " and "), context and (" " .. context) or "", table.concat(names, ", ")))
@@ -226,14 +227,14 @@ watcher:SetScript("OnEvent", function(_, event)
                 lastInstance = instanceID
                 -- Gear links are not all loaded the moment the world appears;
                 -- a short wait reads them whole instead of as unknown.
-                C_Timer.After(3, function() Remind("before this run") end)
+                C_Timer.After(3, function() Remind(L["before this run"]) end)
             end
         else
             lastInstance = nil
         end
         RefreshSlots()
     elseif event == "READY_CHECK" then
-        if settings.remindReady then Remind("on ready check") end
+        if settings.remindReady then Remind(L["on ready check"]) end
     else
         RefreshSlots()
     end
@@ -310,7 +311,7 @@ SlashCmdList["OXEDGEMS"] = function()
     if not settings then return end
     local gaps = Survey()
     if #gaps == 0 then
-        print(PREFIX .. "every socket is filled" .. (settings.enchants and " and every enchant is on." or "."))
+        print(PREFIX .. L["every socket is filled"] .. (settings.enchants and L[" and every enchant is on."] or "."))
     else
         Remind()
     end

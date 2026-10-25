@@ -45,8 +45,9 @@ replace() {
 replace OxedHub.toc                 "s/^## Version:.*/## Version: $VERSION/"
 replace Core/Config.lua             "s/VERSION = \"[0-9]+\.[0-9]+\.[0-9]+\"/VERSION = \"$VERSION\"/"
 replace Locales/ENLocalization.lua  "s/L\[\"RELEASE_TITLE\"\] = \"Release [0-9]+\.[0-9]+\.[0-9]+\"/L[\"RELEASE_TITLE\"] = \"Release $VERSION\"/"
+replace Locales/RULocalization.lua  "s/L\[\"RELEASE_TITLE\"\] = \"Релиз [0-9]+\.[0-9]+\.[0-9]+\"/L[\"RELEASE_TITLE\"] = \"Релиз $VERSION\"/"
 replace UI/UI.lua                   "s/RELEASE NOTES \(RELEASE [0-9]+\.[0-9]+\.[0-9]+\)/RELEASE NOTES (RELEASE $VERSION)/"
 replace UI/UI.lua                   "s/or \"Release [0-9]+\.[0-9]+\.[0-9]+\"/or \"Release $VERSION\"/"
 
 echo "Version set to $VERSION:"
-grep -rn "$VERSION" OxedHub.toc Core/Config.lua Locales/ENLocalization.lua UI/UI.lua
+grep -rn "$VERSION" OxedHub.toc Core/Config.lua Locales/ENLocalization.lua Locales/RULocalization.lua UI/UI.lua

@@ -29,6 +29,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local ItemTooltips = OxedHub.ItemTooltips or {}
@@ -36,6 +37,7 @@ OxedHub.ItemTooltips = ItemTooltips
 local Data = ItemTooltips.Data or {}
 
 local settings
+local minimapIcon, MinimapIcon   -- MinimapIcon is defined above the login code
 local optionsWindow
 local subWindows = {}
 local PREFIX = "|cff00ff00OxedHub:|r "
@@ -109,7 +111,7 @@ end
 
 local function Collected(tooltip, label, has, extra)
     if has == nil then return end
-    tooltip:AddDoubleLine(label, (has and "|cff40ff40Collected|r" or "|cffff5555Not collected|r") .. (extra or ""),
+    tooltip:AddDoubleLine(label, (has and L["|cff40ff40Collected|r"] or L["|cffff5555Not collected|r"]) .. (extra or ""),
         0.8, 0.8, 0.8, 1, 1, 1)
 end
 
@@ -342,26 +344,26 @@ local function ItemDetails(tooltip, itemId, link, info)
     local c = Colours()
     if settings.showItemLevel and link and C_Item.GetDetailedItemLevelInfo then
         local level = C_Item.GetDetailedItemLevelInfo(link)
-        if level and level > 1 then AddInfo(tooltip, "Item level", tostring(level)) end
+        if level and level > 1 then AddInfo(tooltip, L["Item level"], tostring(level)) end
     end
     if settings.showExpansionName and info.expansion and Data.EXPANSIONS[info.expansion] then
-        AddInfo(tooltip, "Expansion", Data.EXPANSIONS[info.expansion])
+        AddInfo(tooltip, L["Expansion"], Data.EXPANSIONS[info.expansion])
     end
     if settings.showItemType and info.itemType and info.itemType ~= "" then
         local text = (info.subType and info.subType ~= "" and info.subType ~= info.itemType)
             and (info.itemType .. ", " .. info.subType) or info.itemType
-        AddInfo(tooltip, "Type", text)
+        AddInfo(tooltip, L["Type"], text)
     end
     -- Only a real slot: items that are not worn come back with a slot type
     -- whose name is an empty string (INVTYPE_NON_EQUIP_IGNORE).
     local slotName = settings.showEquipSlot and info.equipLoc and info.equipLoc ~= "" and _G[info.equipLoc]
     if type(slotName) == "string" and slotName ~= "" then
-        AddInfo(tooltip, "Slot", slotName)
+        AddInfo(tooltip, L["Slot"], slotName)
     end
     if settings.showStackCount and info.maxStack and info.maxStack > 1 then
         local stackPrice = settings.showStackPrice and info.sellPrice and info.sellPrice > 0
             and Coins(info.sellPrice * info.maxStack)
-        AddInfo(tooltip, "Max stack", tostring(info.maxStack) .. (stackPrice and ("  (" .. stackPrice .. ")") or ""))
+        AddInfo(tooltip, L["Max stack"], tostring(info.maxStack) .. (stackPrice and ("  (" .. stackPrice .. ")") or ""))
     end
     -- Keystone: dungeon, level and affixes from the keystone link.
     if settings.showKeystoneDetails and link and Data.KEYSTONE_ITEMS[itemId] then
@@ -372,78 +374,78 @@ local function ItemDetails(tooltip, itemId, link, info)
             local mapId, level = parts[1], parts[2]
             local mapName = mapId and C_ChallengeMode and C_ChallengeMode.GetMapUIInfo and C_ChallengeMode.GetMapUIInfo(mapId)
             if mapName and level then
-                tooltip:AddDoubleLine("Keystone", ("+%d %s"):format(level, mapName), 1, 0.82, 0, 1, 1, 1)
+                tooltip:AddDoubleLine(L["Keystone"], ("+%d %s"):format(level, mapName), 1, 0.82, 0, 1, 1, 1)
             end
             local affixes = {}
             for i = 3, #parts do
                 local name = C_ChallengeMode and C_ChallengeMode.GetAffixInfo and C_ChallengeMode.GetAffixInfo(parts[i])
                 if name then affixes[#affixes + 1] = name end
             end
-            if #affixes > 0 then AddInfo(tooltip, "Affixes", table_concat(affixes, ", "), 0.9, 0.9, 0.9) end
+            if #affixes > 0 then AddInfo(tooltip, L["Affixes"], table_concat(affixes, ", "), 0.9, 0.9, 0.9) end
         end
     end
 end
 
 local function ItemIds(tooltip, itemId, link, info)
-    if settings.showItemId then AddId(tooltip, "Item ID", itemId) end
+    if settings.showItemId then AddId(tooltip, L["Item ID"], itemId) end
     if settings.showMountId and C_MountJournal and C_MountJournal.GetMountFromItem then
         local mountId = C_MountJournal.GetMountFromItem(itemId)
-        if mountId then AddId(tooltip, "Mount ID", mountId) end
+        if mountId then AddId(tooltip, L["Mount ID"], mountId) end
     end
     if settings.showToyId and C_ToyBox and C_ToyBox.GetToyInfo and C_ToyBox.GetToyInfo(itemId) then
-        AddId(tooltip, "Toy ID", itemId)
+        AddId(tooltip, L["Toy ID"], itemId)
     end
     if settings.showPetId and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
         local species = select(13, C_PetJournal.GetPetInfoByItemID(itemId))
-        if species then AddId(tooltip, "Pet species", species) end
+        if species then AddId(tooltip, L["Pet species"], species) end
     end
     if settings.showTransmogId and link and C_TransmogCollection and C_TransmogCollection.GetItemInfo then
         local appearance, source = C_TransmogCollection.GetItemInfo(link)
-        if appearance then AddId(tooltip, "Appearance ID", appearance, source and ("source " .. source) or nil) end
+        if appearance then AddId(tooltip, L["Appearance ID"], appearance, source and ("source " .. source) or nil) end
     end
     if link and (settings.showEnchantId or settings.showGemIds) then
         local enchant, g1, g2, g3, g4 = link:match("item:%d+:(%d*):(%d*):(%d*):(%d*):(%d*)")
         enchant = tonumber(enchant)
-        if settings.showEnchantId and enchant and enchant > 0 then AddId(tooltip, "Enchant ID", enchant) end
+        if settings.showEnchantId and enchant and enchant > 0 then AddId(tooltip, L["Enchant ID"], enchant) end
         if settings.showGemIds then
             for i, gem in ipairs({ tonumber(g1), tonumber(g2), tonumber(g3), tonumber(g4) }) do
-                if gem and gem > 0 then AddId(tooltip, "Gem " .. i .. " ID", gem) end
+                if gem and gem > 0 then AddId(tooltip, L["Gem "] .. i .. " ID", gem) end
             end
         end
     end
-    if settings.showIconId and info.texture then AddId(tooltip, "Icon ID", info.texture) end
+    if settings.showIconId and info.texture then AddId(tooltip, L["Icon ID"], info.texture) end
 end
 
 local function ItemCollection(tooltip, itemId, link)
     if settings.showMountCollected and C_MountJournal and C_MountJournal.GetMountFromItem then
         local mountId = C_MountJournal.GetMountFromItem(itemId)
         if mountId then
-            Collected(tooltip, "Mount", (select(11, C_MountJournal.GetMountInfoByID(mountId))) == true)
+            Collected(tooltip, L["Mount"], (select(11, C_MountJournal.GetMountInfoByID(mountId))) == true)
         end
     end
     if settings.showToyCollected and C_ToyBox and C_ToyBox.GetToyInfo and C_ToyBox.GetToyInfo(itemId) and PlayerHasToy then
-        Collected(tooltip, "Toy", PlayerHasToy(itemId) == true)
+        Collected(tooltip, L["Toy"], PlayerHasToy(itemId) == true)
     end
     if settings.showPetCollected and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
         local species = select(13, C_PetJournal.GetPetInfoByItemID(itemId))
         if species and C_PetJournal.GetNumCollectedInfo then
             local have, limit = C_PetJournal.GetNumCollectedInfo(species)
-            if have then Collected(tooltip, "Battle pet", have > 0, ("  %d/%d"):format(have, limit or 3)) end
+            if have then Collected(tooltip, L["Battle pet"], have > 0, ("  %d/%d"):format(have, limit or 3)) end
         end
     end
     if settings.showTransmogCollected and link and C_TransmogCollection
         and C_TransmogCollection.GetItemInfo and C_TransmogCollection.PlayerHasTransmogByItemInfo
         and C_TransmogCollection.GetItemInfo(link) then
-        Collected(tooltip, "Appearance", C_TransmogCollection.PlayerHasTransmogByItemInfo(link) == true)
+        Collected(tooltip, L["Appearance"], C_TransmogCollection.PlayerHasTransmogByItemInfo(link) == true)
     end
 end
 
 local function LocationsText(bags, gear, bank, mail)
     local parts = {}
-    if bags > 0 then parts[#parts + 1] = "Bags " .. bags end
-    if gear > 0 then parts[#parts + 1] = "Worn " .. gear end
-    if bank > 0 then parts[#parts + 1] = "Bank " .. bank end
-    if mail > 0 then parts[#parts + 1] = "Mail " .. mail end
+    if bags > 0 then parts[#parts + 1] = L["Bags "] .. bags end
+    if gear > 0 then parts[#parts + 1] = L["Worn "] .. gear end
+    if bank > 0 then parts[#parts + 1] = L["Bank "] .. bank end
+    if mail > 0 then parts[#parts + 1] = L["Mail "] .. mail end
     return table_concat(parts, ", ")
 end
 
@@ -461,7 +463,7 @@ local function ItemInventory(tooltip, itemId)
         local sum = bags + gear + bank + mail
         if sum > 0 then
             local me = settings.characters[key]
-            tooltip:AddDoubleLine(("|c%s%s|r"):format(ClassHex(me and me.class), (me and me.name) or "You"),
+            tooltip:AddDoubleLine(("|c%s%s|r"):format(ClassHex(me and me.class), (me and me.name) or L["You"]),
                 LocationsText(bags, gear, bank, mail), 1, 1, 1, altColour[1], altColour[2], altColour[3])
             total, lines = total + sum, lines + 1
         end
@@ -470,7 +472,7 @@ local function ItemInventory(tooltip, itemId)
     if settings.trackWarbandBank then
         local warband = CountIn(settings.warband, itemId)
         if warband > 0 then
-            tooltip:AddDoubleLine("|cff66ccffWarband bank|r", tostring(warband), 1, 1, 1, altColour[1], altColour[2], altColour[3])
+            tooltip:AddDoubleLine(L["|cff66ccffWarband bank|r"], tostring(warband), 1, 1, 1, altColour[1], altColour[2], altColour[3])
             total, lines = total + warband, lines + 1
         end
     end
@@ -509,7 +511,7 @@ local function ItemInventory(tooltip, itemId)
         local maxShow = tonumber(settings.maxAltsToShow) or 8
         for i, alt in ipairs(alts) do
             if i > maxShow then
-                tooltip:AddLine(("  and %d more"):format(#alts - maxShow), 0.6, 0.6, 0.6)
+                tooltip:AddLine((L["  and %d more"]):format(#alts - maxShow), 0.6, 0.6, 0.6)
                 break
             end
             local name = alt.who.name or alt.key:match("^([^-]+)") or alt.key
@@ -530,10 +532,10 @@ local function ItemInventory(tooltip, itemId)
 
     if settings.showTotalCount and lines > 1 then
         if settings.totalHighlight then
-            tooltip:AddDoubleLine("Total", tostring(total), totalColour[1], totalColour[2], totalColour[3],
+            tooltip:AddDoubleLine(L["Total"], tostring(total), totalColour[1], totalColour[2], totalColour[3],
                 totalColour[1], totalColour[2], totalColour[3])
         else
-            tooltip:AddDoubleLine("Total", tostring(total), 1, 1, 1, 1, 1, 1)
+            tooltip:AddDoubleLine(L["Total"], tostring(total), 1, 1, 1, 1, 1, 1)
         end
     end
 end
@@ -580,10 +582,10 @@ local function ProcessSpell(tooltip, data)
     local spellId = data and Clean(data.id)
     if type(spellId) ~= "number" then return end
     if settings.showIds and CheckModifier(settings.mod_ids) then
-        if settings.showSpellId then AddId(tooltip, "Spell ID", spellId) end
+        if settings.showSpellId then AddId(tooltip, L["Spell ID"], spellId) end
         if settings.showMountId and C_MountJournal and C_MountJournal.GetMountFromSpell then
             local mountId = C_MountJournal.GetMountFromSpell(spellId)
-            if mountId then AddId(tooltip, "Mount ID", mountId) end
+            if mountId then AddId(tooltip, L["Mount ID"], mountId) end
         end
     end
 end
@@ -607,7 +609,7 @@ local function ProcessAura(tooltip, data)
     if not Active() then return end
     local spellId = data and Clean(data.id)
     if settings.showIds and settings.showAuraSpellId and type(spellId) == "number" and CheckModifier(settings.mod_ids) then
-        AddId(tooltip, "Spell ID", spellId)
+        AddId(tooltip, L["Spell ID"], spellId)
     end
     if not (settings.showAuraInfo and CheckModifier(settings.mod_auras)) then return end
     local ok, aura = pcall(AuraOf, tooltip)
@@ -632,7 +634,7 @@ local function ProcessAura(tooltip, data)
                         colour = reaction >= 5 and "ff33ff33" or reaction == 4 and "ffffff33" or "ffff3333"
                     end
                 end
-                AddInfo(tooltip, "Cast by", ("|c%s%s|r"):format(colour, name))
+                AddInfo(tooltip, L["Cast by"], ("|c%s%s|r"):format(colour, name))
             end
         end
     end
@@ -640,18 +642,18 @@ local function ProcessAura(tooltip, data)
         local dispel = Clean(aura.dispelName)
         if type(dispel) == "string" and dispel ~= "" then
             local hex = settings.colorByDispel and Data.DISPEL_COLORS[dispel]
-            AddInfo(tooltip, "Dispel type", hex and ("|cff" .. hex .. dispel .. "|r") or dispel)
+            AddInfo(tooltip, L["Dispel type"], hex and ("|cff" .. hex .. dispel .. "|r") or dispel)
         end
     end
     if settings.showAuraDuration then
         local dur, exp = Clean(aura.duration), Clean(aura.expirationTime)
         if type(dur) == "number" and type(exp) == "number" and dur > 0 and exp > 0 then
-            AddInfo(tooltip, "Time left", ("%.1fs of %ds"):format(math.max(0, exp - GetTime()), dur))
+            AddInfo(tooltip, L["Time left"], (L["%.1fs of %ds"]):format(math.max(0, exp - GetTime()), dur))
         end
     end
     if settings.showAuraStacks then
         local stacks = Clean(aura.applications)
-        if type(stacks) == "number" and stacks > 1 then AddInfo(tooltip, "Stacks", tostring(stacks)) end
+        if type(stacks) == "number" and stacks > 1 then AddInfo(tooltip, L["Stacks"], tostring(stacks)) end
     end
 end
 
@@ -666,7 +668,7 @@ local function ProcessUnit(tooltip)
     guid = okGuid and Clean(guid)
     if type(guid) ~= "string" then return end
     local kind, _, _, _, _, npcId = strsplit("-", guid)
-    if (kind == "Creature" or kind == "Vehicle") and npcId then AddId(tooltip, "NPC ID", npcId) end
+    if (kind == "Creature" or kind == "Vehicle") and npcId then AddId(tooltip, L["NPC ID"], npcId) end
 end
 
 local function SimpleId(label, option)
@@ -706,9 +708,9 @@ local function InstallHooks()
         { T.Spell, ProcessSpell },
         { T.UnitAura, ProcessAura },
         { T.Unit, ProcessUnit },
-        { T.Currency, SimpleId("Currency ID", "showCurrencyId") },
-        { T.Quest, SimpleId("Quest ID", "showQuestId") },
-        { T.Achievement, SimpleId("Achievement ID", "showAchievementId") },
+        { T.Currency, SimpleId(L["Currency ID"], "showCurrencyId") },
+        { T.Quest, SimpleId(L["Quest ID"], "showQuestId") },
+        { T.Achievement, SimpleId(L["Achievement ID"], "showAchievementId") },
     }
     for _, h in ipairs(hooks) do
         if h[1] then TooltipDataProcessor.AddTooltipPostCall(h[1], Safe(h[2])) end
@@ -721,7 +723,7 @@ local function InstallHooks()
             if not (settings and settings.enabled and settings.copyOnClick) then return end
             if not (IsShiftKeyDown() and IsControlKeyDown()) or type(link) ~= "string" or Secret(link) then return end
             local id = link:match("item:(%d+)")
-            if id then print(PREFIX .. ("%s  Item ID: |cffffd100%s|r"):format(link, id)) end
+            if id then print(PREFIX .. (L["%s  Item ID: |cffffd100%s|r"]):format(link, id)) end
         end)
     end
 end
@@ -852,7 +854,7 @@ end
 
 local function BuildIdsWindow(API)
     local w = API:CreateOptionsWindow("Item Tooltips: ID Numbers", 440, 600)
-    Heading(w, "Which IDs")
+    Heading(w, L["Which IDs"])
     w:AddCheckbox(settings, "showItemId", "Item ID")
     w:AddCheckbox(settings, "showSpellId", "Spell ID")
     w:AddCheckbox(settings, "showAuraSpellId", "Spell ID on buffs and debuffs")
@@ -867,7 +869,7 @@ local function BuildIdsWindow(API)
     w:AddCheckbox(settings, "showEnchantId", "Enchant ID")
     w:AddCheckbox(settings, "showGemIds", "Socketed gem IDs")
     w:AddCheckbox(settings, "showIconId", "Icon (file) ID")
-    Heading(w, "Format")
+    Heading(w, L["Format"])
     w:AddChoice(settings, "idPrefix", "Written as", Data.ID_FORMAT_CHOICES)
     w:AddChoice(settings, "mod_ids", "Show IDs", Data.MODIFIER_CHOICES)
     w:AddCheckbox(settings, "copyOnClick", "Ctrl+Shift-click an item prints its ID in chat")
@@ -877,7 +879,7 @@ end
 
 local function BuildAurasWindow(API)
     local w = API:CreateOptionsWindow("Item Tooltips: Buffs and Debuffs", 440, 400)
-    Heading(w, "On a buff or debuff")
+    Heading(w, L["On a buff or debuff"])
     w:AddCheckbox(settings, "showAuraCaster", "Who cast it")
     w:AddCheckbox(settings, "colorCasterByClass", "Players in their class colour")
     w:AddCheckbox(settings, "colorCasterByReaction", "NPCs green, yellow or red by reaction")
@@ -893,7 +895,7 @@ end
 
 local function BuildDetailsWindow(API)
     local w = API:CreateOptionsWindow("Item Tooltips: Item Details", 440, 560)
-    Heading(w, "About the item")
+    Heading(w, L["About the item"])
     w:AddCheckbox(settings, "showExpansionName", "Expansion it comes from")
     w:AddCheckbox(settings, "showItemType", "Type (Armor, Plate)")
     w:AddCheckbox(settings, "showEquipSlot", "Slot")
@@ -902,7 +904,7 @@ local function BuildDetailsWindow(API)
     w:AddCheckbox(settings, "showStackPrice", "Vendor price of a full stack, beside it")
     w:AddCheckbox(settings, "showKeystoneDetails", "Keystone dungeon, level and affixes")
     w:AddChoice(settings, "mod_details", "Show details", Data.MODIFIER_CHOICES)
-    Heading(w, "Collected or not")
+    Heading(w, L["Collected or not"])
     w:AddCheckbox(settings, "showCollection", "Show collection status")
     w:AddCheckbox(settings, "showMountCollected", "Mounts")
     w:AddCheckbox(settings, "showToyCollected", "Toys")
@@ -914,12 +916,12 @@ end
 
 local function BuildInventoryWindow(API)
     local w = API:CreateOptionsWindow("Item Tooltips: Inventory and Alts", 460, 640)
-    Heading(w, "This character")
+    Heading(w, L["This character"])
     w:AddCheckbox(settings, "trackCurrentBags", "Bags")
     w:AddCheckbox(settings, "trackCurrentEquipped", "Worn")
     w:AddCheckbox(settings, "trackCurrentBank", "Bank", "Read when you open the bank.")
     w:AddCheckbox(settings, "trackCurrentMail", "Mail", "Read when you open the mailbox.")
-    Heading(w, "Account")
+    Heading(w, L["Account"])
     w:AddCheckbox(settings, "trackWarbandBank", "Warband bank", "Read when you open the bank.")
     w:AddCheckbox(settings, "trackAlts", "Other characters")
     w:AddCheckbox(settings, "colorAltsByClass", "Names in class colour")
@@ -927,7 +929,7 @@ local function BuildInventoryWindow(API)
     w:AddCheckbox(settings, "showAltFaction", "[A] / [H] for the other faction")
     w:AddCheckbox(settings, "showTotalCount", "Total line")
     w:AddCheckbox(settings, "totalHighlight", "Total in gold")
-    Heading(w, "Which alts")
+    Heading(w, L["Which alts"])
     w:AddSlider(settings, "maxAltsToShow", "Up to", 1, 20, 1, "%s %d characters")
     w:AddChoice(settings, "sortAltsBy", "Order", Data.SORT_ALTS_CHOICES)
     w:AddCheckbox(settings, "onlySameRealm", "This realm only")
@@ -939,7 +941,7 @@ end
 
 local function BuildIconWindow(API)
     local w = API:CreateOptionsWindow("Item Tooltips: Icon and Border", 440, 480)
-    Heading(w, "Icon beside the tooltip")
+    Heading(w, L["Icon beside the tooltip"])
     w:AddCheckbox(settings, "showIcon", "Show the item's icon")
     w:AddSlider(settings, "iconSize", "Size", 20, 64, 2, "%s: %d px")
     w:AddChoice(settings, "iconAnchor", "Position", Data.ICON_ANCHORS)
@@ -947,7 +949,7 @@ local function BuildIconWindow(API)
     w:AddSlider(settings, "iconOffsetY", "Offset Y", -30, 30, 1, "%s: %d px")
     w:AddCheckbox(settings, "iconQualityBorder", "Icon border in quality colour")
     w:AddCheckbox(settings, "iconStackBadge", "Max stack on the icon")
-    Heading(w, "Tooltip border")
+    Heading(w, L["Tooltip border"])
     w:AddCheckbox(settings, "qualityBorder", "Tooltip border in the item's quality colour")
     FitHeight(w)
     return w
@@ -973,18 +975,18 @@ local function BuildDataWindow(API)
     local function Refresh()
         local chars = 0
         for _ in pairs(settings.characters) do chars = chars + 1 end
-        status:SetText(("%d characters saved."):format(chars))
+        status:SetText((L["%d characters saved."]):format(chars))
     end
     w:HookScript("OnShow", Refresh)
     w.cursorY = w.cursorY - 30
-    local rescan = Button(w, "Read this character again", 200, function()
+    local rescan = Button(w, L["Read this character again"], 200, function()
         ScanEquipped()
         MarkAll(PLAYER_BAGS)
-        print(PREFIX .. "bags and gear read again. The bank and mail are read when you open them.")
+        print(PREFIX .. L["bags and gear read again. The bank and mail are read when you open them."])
     end)
     rescan:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 4)
     w.cursorY = w.cursorY - 30
-    local forget = Button(w, "Forget this character", 200, function()
+    local forget = Button(w, L["Forget this character"], 200, function()
         local key = PlayerKey()
         if key then
             settings.characters[key], settings.inventory[key] = nil, nil
@@ -994,8 +996,8 @@ local function BuildDataWindow(API)
     end)
     forget:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 4)
     w.cursorY = w.cursorY - 30
-    local forgetAll = Button(w, "Forget every other character", 200, function()
-        API:Confirm("Forget every other character's items? Each is saved again when you log in on it.", function()
+    local forgetAll = Button(w, L["Forget every other character"], 200, function()
+        API:Confirm(L["Forget every other character's items? Each is saved again when you log in on it."], function()
             local key = PlayerKey()
             local me, mine = settings.characters[key], settings.inventory[key]
             wipe(settings.characters)
@@ -1018,7 +1020,7 @@ local function ShowOptions()
     if not optionsWindow then
         optionsWindow = API:CreateOptionsWindow("Item Tooltips", 460, 560)
         local w = optionsWindow
-        Heading(w, "On every tooltip")
+        Heading(w, L["On every tooltip"])
         w:AddCheckbox(settings, "showIds", "ID numbers", "Item, spell, NPC, quest, currency, achievement, mount, toy, pet and more.")
         w:AddCheckbox(settings, "showAuraInfo", "Buff and debuff details", "Who cast it, dispel type, time left, stacks.")
         w:AddCheckbox(settings, "showItemDetails", "Item details", "Expansion, type, max stack and stack price, keystone affixes.")
@@ -1027,7 +1029,7 @@ local function ShowOptions()
         w:AddCheckbox(settings, "showIcon", "Icon beside the tooltip")
         w:AddCheckbox(settings, "qualityBorder", "Border in the item's quality colour")
         w:AddCheckbox(settings, "hideInCombat", "Nothing extra in combat")
-        Heading(w, "Settings for each part")
+        Heading(w, L["Settings for each part"])
         ButtonGrid(w, {
             { "ID Numbers", function() ToggleSub("ids", function() return BuildIdsWindow(API) end) end },
             { "Buffs and Debuffs", function() ToggleSub("auras", function() return BuildAurasWindow(API) end) end },
@@ -1037,6 +1039,10 @@ local function ShowOptions()
             { "Colours", function() ToggleSub("colours", function() return BuildColoursWindow(API) end) end },
             { "Saved Characters", function() ToggleSub("data", function() return BuildDataWindow(API) end) end },
         })
+        w:AddCheckbox(settings, "minimapButton", "Show minimap button", nil, function()
+            local icon = MinimapIcon()
+            if icon then icon:Apply(settings.enabled == true) end
+        end)
         w:AddNote("/itt opens this window. Hold the key you picked for a part to see it.")
         FitHeight(w)
         w:HookScript("OnHide", function()
@@ -1084,10 +1090,25 @@ SlashCmdList["OXEDHUB_ITEMTOOLTIPS"] = function(msg)
     if msg == "scan" then
         ScanEquipped()
         MarkAll(PLAYER_BAGS)
-        print(PREFIX .. "bags and gear read again.")
+        print(PREFIX .. L["bags and gear read again."])
     else
         ShowOptions()
     end
+end
+
+-- Its own icon on the minimap, like the other modules with a window: a click
+-- opens the options, a right-click the options.
+MinimapIcon = function()
+    if minimapIcon or not settings then return minimapIcon end
+    local API = OxedHub.ModuleAPI
+    minimapIcon = API and API.MinimapButton and API:MinimapButton({
+        key = "itemtooltips", label = L["Item Tooltips"], icon = "Interface\\Icons\\INV_Misc_Book_09", config = settings,
+        hint = L["Click: options."],
+        onClick = function(mouse)
+            if mouse == "RightButton" then ShowOptions() else ShowOptions() end
+        end,
+    })
+    return minimapIcon
 end
 
 local loginFrame = CreateFrame("Frame")
@@ -1104,8 +1125,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "itemtooltips",
         name     = "Item Tooltips",
-        version  = "1.0.0",
-        updated  = 20261022.1,
+        version  = "1.1.0",
+        updated  = 20261025.4,  -- its own minimap button
         author   = "Oxed",
         category = "items",
         keywords = { "tooltip", "item", "id", "aura", "spell", "inventory", "count", "alts", "expansion",
@@ -1119,11 +1140,14 @@ loginFrame:SetScript("OnEvent", function(self)
 
         OnEnable = function(_, config)
             settings = config
+            local icon = MinimapIcon()
+            if icon then icon:Apply(true) end
             EnsureTables(settings)
             Start()
         end,
 
         OnDisable = function()
+            if minimapIcon then minimapIcon:Apply(false) end
             Stop()
         end,
     })

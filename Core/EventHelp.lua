@@ -104,6 +104,8 @@ OxedHub.EVENT_HELP = {
     },
 }
 
+OxedHub:RegisterLocalizedTable(OxedHub.EVENT_HELP, "fires", "needs", "limits", "example")
+
 function OxedHub:GetEventHelp(eventType)
     return self.EVENT_HELP and self.EVENT_HELP[eventType] or nil
 end

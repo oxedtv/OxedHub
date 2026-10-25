@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local Triggers = OxedHub.Triggers
 
 local playerContainer
@@ -164,7 +165,7 @@ local function MakeDraggable(container, trigger, posXKey, posYKey, widthKey, hei
         container.dragFrame:ClearAllPoints()
         container.dragFrame:SetPoint("CENTER", UIParent, "CENTER", trigger.actions[posXKey] or 0, trigger.actions[posYKey] or 0)
         container.dragFrame:SetSize(boxWidth, boxHeight)
-        container.dragFrame.label:SetText(posXKey == "playerPosX" and "Player Buffs" or "Target Debuffs")
+        container.dragFrame.label:SetText(posXKey == "playerPosX" and L["Player Buffs"] or L["Target Debuffs"])
         container.dragFrame:SetMovable(true)
         container.dragFrame:Show()
     else
@@ -446,7 +447,7 @@ Triggers:RegisterEventType("BASIC_AURA_TRACKER", {
 
         local trackTarget = CreateFrame("CheckButton", nil, frame, "ChatConfigCheckButtonTemplate")
         trackTarget:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, yOffset)
-        trackTarget.Text:SetText("Track Target Debuffs")
+        trackTarget.Text:SetText(L["Track Target Debuffs"])
         trackTarget:SetChecked(trigger.actions.trackTargetDebuffs == nil and true or trigger.actions.trackTargetDebuffs)
         trackTarget:SetScript("OnClick", function(cb)
             if not trigger.actions then trigger.actions = {} end
@@ -458,7 +459,7 @@ Triggers:RegisterEventType("BASIC_AURA_TRACKER", {
 
         local onlyMineCheck = CreateFrame("CheckButton", nil, frame, "ChatConfigCheckButtonTemplate")
         onlyMineCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, yOffset)
-        onlyMineCheck.Text:SetText("Only My Debuffs")
+        onlyMineCheck.Text:SetText(L["Only My Debuffs"])
         onlyMineCheck:SetChecked(trigger.actions.onlyMyDebuffs == nil and true or trigger.actions.onlyMyDebuffs)
         onlyMineCheck:SetScript("OnClick", function(cb)
             if not trigger.actions then trigger.actions = {} end
@@ -493,7 +494,7 @@ Triggers:RegisterEventType("BASIC_AURA_TRACKER", {
 
         local durCheck = CreateFrame("CheckButton", nil, frame, "ChatConfigCheckButtonTemplate")
         durCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, yOffset)
-        durCheck.Text:SetText("Show Duration Text")
+        durCheck.Text:SetText(L["Show Duration Text"])
         durCheck:SetChecked(trigger.actions.iconShowDuration == nil and true or trigger.actions.iconShowDuration)
         durCheck:SetScript("OnClick", function(cb)
             if not trigger.actions then trigger.actions = {} end
@@ -510,13 +511,13 @@ Triggers:RegisterEventType("BASIC_AURA_TRACKER", {
         sizeSlider:SetValueStep(1)
         sizeSlider:SetObeyStepOnDrag(true)
         sizeSlider:SetValue(trigger.actions.iconSize or 40)
-        _G[sizeSlider:GetName() .. "Text"]:SetText("Icon Size: " .. (trigger.actions.iconSize or 40))
+        _G[sizeSlider:GetName() .. "Text"]:SetText(L["Icon Size: "] .. (trigger.actions.iconSize or 40))
         _G[sizeSlider:GetName() .. "Low"]:SetText("16")
         _G[sizeSlider:GetName() .. "High"]:SetText("128")
         sizeSlider:SetScript("OnValueChanged", function(self, value)
             if not trigger.actions then trigger.actions = {} end
             trigger.actions.iconSize = value
-            _G[self:GetName() .. "Text"]:SetText("Icon Size: " .. value)
+            _G[self:GetName() .. "Text"]:SetText(L["Icon Size: "] .. value)
             EvaluateBasicAuraTracker()
             if Triggers.ShowAutoSaved then Triggers.ShowAutoSaved(frame:GetParent()) end
         end)
@@ -554,7 +555,7 @@ Triggers:RegisterEventType("BASIC_AURA_TRACKER", {
 
         local previewCheck = CreateFrame("CheckButton", nil, frame, "ChatConfigCheckButtonTemplate")
         previewCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, yOffset)
-        previewCheck.Text:SetText("Preview Layout (Simulate Buffs) & Enable Moving")
+        previewCheck.Text:SetText(L["Preview Layout (Simulate Buffs) & Enable Moving"])
         previewCheck:SetChecked(OxedHubBasicAuraPreviewEnabled and true or false)
         previewCheck:SetScript("OnClick", function(cb)
             OxedHubBasicAuraPreviewEnabled = cb:GetChecked()

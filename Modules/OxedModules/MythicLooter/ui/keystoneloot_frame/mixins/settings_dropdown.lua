@@ -327,11 +327,12 @@ function OxMythicLooterSettingsDropdownMixin:Init()
         local shareFavoritesCheckbox = CreateSettingCheckbox(lootReminderMenu, L["Share favorites with group"], "settings.lootReminder.share");
         SetTooltip(shareFavoritesCheckbox, L["Shares your favorites with your group members so they can choose their loot spec in a way that lets your favorites drop for them."]);
 
-        local mythicPlusNotificationMenu = notificationMenu:CreateButton(L["Teleport notification (Mythic+)"]);
-        SetTooltip(mythicPlusNotificationMenu, L["Shows the dungeon and your role with a teleport button when you join a Mythic+ group or the group becomes full."]);
-
-        CreateSettingCheckbox(mythicPlusNotificationMenu, L["When joining a group"], "settings.mythicPlusNotification.joined");
-        CreateSettingCheckbox(mythicPlusNotificationMenu, L["When the group is full"], "settings.mythicPlusNotification.full");
+        -- The window on joining a group is Inviter Info's; this opens its options.
+        notificationMenu:CreateButton(L["Group window (Inviter Info)"], function()
+            local mods = OxedHub.ModuleAPI and OxedHub.ModuleAPI.modules;
+            local mod = mods and mods.inviterinfo;
+            if (mod and mod.OnOptionsShow) then mod:OnOptionsShow(); end
+        end);
 
         local dropAlertCheckbox = CreateSettingCheckbox(notificationMenu, L["Drop notification (favorites)"], "settings.lootReminder.dropAlert");
         SetTooltip(dropAlertCheckbox, L["Shows a notification when another player loots an item you have marked as a favorite."]);

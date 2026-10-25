@@ -16,6 +16,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -228,7 +229,7 @@ toastFrame.sub:SetTextColor(0.8, 0.8, 0.8)
 local toastTimer = nil
 local function ShowMemeToast(title, subtitle, icon)
     if not settings or not settings.showMemeToast then return end
-    toastFrame.title:SetText(title or "Meme Alert")
+    toastFrame.title:SetText(title or L["Meme Alert"])
     toastFrame.sub:SetText(subtitle or "")
     if icon then toastFrame.icon:SetTexture(icon) end
     toastFrame:SetAlpha(1)
@@ -304,7 +305,7 @@ local function TriggerAlert(matchedWord, categoryName, kwConfig)
     -- Execute sound, physical effect and Meme Toast!
     PlayAlertSound(soundID, SOUNDKIT and SOUNDKIT.RAID_WARNING)
     RunAlertEffect(effectName, intensity)
-    ShowMemeToast(('"%s"'):format(tostring(matchedWord)), ("Source: %s"):format(categoryName or "Chat"), "Interface\\Icons\\Achievement_Halloween_Ghost_01")
+    ShowMemeToast(('"%s"'):format(tostring(matchedWord)), (L["Source: %s"]):format(categoryName or "Chat"), "Interface\\Icons\\Achievement_Halloween_Ghost_01")
 
     if settings.showMatchMessage then
         print(PREFIX .. ('Matched |cffffd100"%s"|r (|cffaaaaaa%s|r) -> Effect: |cff00ff00%s|r'):format(tostring(matchedWord), categoryName or "chat", effectName))
@@ -383,7 +384,7 @@ local function TriggerSpellAlert(spellName, cfg, casterUnit, force)
 
     PlayAlertSound(soundID, SOUNDKIT and SOUNDKIT.READY_CHECK)
     RunAlertEffect(effectName, settings.intensity)
-    ShowMemeToast(spellName, ("Spell Cast by %s"):format(UnitName(casterUnit) or "unit"), "Interface\\Icons\\Spell_Holy_AshesToAshes")
+    ShowMemeToast(spellName, (L["Spell Cast by %s"]):format(UnitName(casterUnit) or "unit"), "Interface\\Icons\\Spell_Holy_AshesToAshes")
 
     if settings.showMatchMessage then
         print(PREFIX .. ('Spell Trigger: |cffffd100%s|r (|cffaaaaaa%s|r)'):format(spellName, UnitName(casterUnit) or "unit"))
@@ -494,9 +495,9 @@ local function CheckUnitDeath(unit)
         if not lastDead[key] or (now - lastDead[key]) > 5 then
             lastDead[key] = now
             PlayAlertSound(settings.deathBellSound, 12867)
-            ShowMemeToast("Enemy Down!", displayName or key, "Interface\\Icons\\Ability_DualWield")
+            ShowMemeToast(L["Enemy Down!"], displayName or key, "Interface\\Icons\\Ability_DualWield")
             if settings.showMatchMessage then
-                print(PREFIX .. ("|cffff2020Enemy down:|r %s"):format(displayName or key))
+                print(PREFIX .. (L["|cffff2020Enemy down:|r %s"]):format(displayName or key))
             end
         end
     end
@@ -605,7 +606,7 @@ local function ShowOptions()
         end
 
         local tabButtons = {}
-        local tabNames = { "Keywords", "Spells", "Settings & PvP" }
+        local tabNames = { L["Keywords"], L["Spells"], L["Settings & PvP"] }
 
         local function SelectTab(index)
             activeTab = index
@@ -668,7 +669,7 @@ local function ShowOptions()
                     row.testBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
                     row.testBtn:SetSize(48, 22)
                     row.testBtn:SetPoint("LEFT", row.soundBtn, "RIGHT", 6, 0)
-                    row.testBtn:SetText("Test")
+                    row.testBtn:SetText(L["Test"])
 
                     -- Delete button
                     row.delBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
@@ -719,13 +720,13 @@ local function ShowOptions()
                     row.effectBtn:SetText(cfg.effect)
                 end)
 
-                row.soundBtn:SetText(cfg.sound ~= "" and API:SoundName(cfg.sound, "Sound") or "Pick Sound")
+                row.soundBtn:SetText(cfg.sound ~= "" and API:SoundName(cfg.sound, "Sound") or L["Pick Sound"])
                 row.soundBtn:SetScript("OnClick", function()
                     local Triggers = OxedHub.Triggers
                     if Triggers and Triggers.ShowSoundPicker then
                         Triggers:ShowSoundPicker({ actions = { sound = cfg.sound or "" } }, "sound", function(id)
                             cfg.sound = (id and id ~= "None" and id ~= "none") and id or ""
-                            row.soundBtn:SetText(cfg.sound ~= "" and API:SoundName(cfg.sound, "Sound") or "Pick Sound")
+                            row.soundBtn:SetText(cfg.sound ~= "" and API:SoundName(cfg.sound, "Sound") or L["Pick Sound"])
                         end)
                     end
                 end)
@@ -755,7 +756,7 @@ local function ShowOptions()
         local addBtn = CreateFrame("Button", nil, pageKeywords, "UIPanelButtonTemplate")
         addBtn:SetSize(110, 24)
         addBtn:SetPoint("LEFT", addBox, "RIGHT", 10, 0)
-        addBtn:SetText("Add Keyword")
+        addBtn:SetText(L["Add Keyword"])
         addBtn:SetScript("OnClick", function()
             local text = addBox:GetText():trim()
             if text ~= "" then
@@ -769,7 +770,7 @@ local function ShowOptions()
         local resetKwBtn = CreateFrame("Button", nil, pageKeywords, "UIPanelButtonTemplate")
         resetKwBtn:SetSize(130, 24)
         resetKwBtn:SetPoint("LEFT", addBtn, "RIGHT", 10, 0)
-        resetKwBtn:SetText("Reset Presets")
+        resetKwBtn:SetText(L["Reset Presets"])
         resetKwBtn:SetScript("OnClick", function()
             wipe(settings.keywords)
             for _, kw in ipairs(PRESET_KEYWORDS) do table.insert(settings.keywords, kw) end
@@ -806,7 +807,7 @@ local function ShowOptions()
                     row.onlyMe = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
                     row.onlyMe:SetSize(20, 20)
                     row.onlyMe:SetPoint("LEFT", row.text, "RIGHT", 4, 0)
-                    row.onlyMe.text:SetText("Self")
+                    row.onlyMe.text:SetText(L["Self"])
 
                     row.effectBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
                     row.effectBtn:SetSize(85, 22)
@@ -819,7 +820,7 @@ local function ShowOptions()
                     row.testBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
                     row.testBtn:SetSize(44, 22)
                     row.testBtn:SetPoint("LEFT", row.soundBtn, "RIGHT", 6, 0)
-                    row.testBtn:SetText("Test")
+                    row.testBtn:SetText(L["Test"])
 
                     row.delBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
                     row.delBtn:SetSize(28, 22)
@@ -874,13 +875,13 @@ local function ShowOptions()
                     row.effectBtn:SetText(cfg.effect)
                 end)
 
-                row.soundBtn:SetText(cfg.sound ~= "" and API:SoundName(cfg.sound, "Sound") or "Pick Sound")
+                row.soundBtn:SetText(cfg.sound ~= "" and API:SoundName(cfg.sound, "Sound") or L["Pick Sound"])
                 row.soundBtn:SetScript("OnClick", function()
                     local Triggers = OxedHub.Triggers
                     if Triggers and Triggers.ShowSoundPicker then
                         Triggers:ShowSoundPicker({ actions = { sound = cfg.sound or "" } }, "sound", function(id)
                             cfg.sound = (id and id ~= "None" and id ~= "none") and id or ""
-                            row.soundBtn:SetText(cfg.sound ~= "" and API:SoundName(cfg.sound, "Sound") or "Pick Sound")
+                            row.soundBtn:SetText(cfg.sound ~= "" and API:SoundName(cfg.sound, "Sound") or L["Pick Sound"])
                         end)
                     end
                 end)
@@ -909,7 +910,7 @@ local function ShowOptions()
         local addSpBtn = CreateFrame("Button", nil, pageSpells, "UIPanelButtonTemplate")
         addSpBtn:SetSize(110, 24)
         addSpBtn:SetPoint("LEFT", addSpBox, "RIGHT", 10, 0)
-        addSpBtn:SetText("Add Spell")
+        addSpBtn:SetText(L["Add Spell"])
         -- What was typed is looked up first: a name, a spell id or a
         -- shift-clicked link all become the game's own spelling of the name,
         -- which is what a cast is matched against. A name the game does not
@@ -936,7 +937,7 @@ local function ShowOptions()
             local low = name:lower()
             for _, existing in ipairs(settings.spellTriggers) do
                 if existing:lower() == low then
-                    print(PREFIX .. ("|cffffd100%s|r is already in the list."):format(name))
+                    print(PREFIX .. (L["|cffffd100%s|r is already in the list."]):format(name))
                     addSpBox:SetText("")
                     return
                 end
@@ -944,7 +945,7 @@ local function ShowOptions()
             table.insert(settings.spellTriggers, name)
             settings.spellConfig[low] = settings.spellConfig[low] or { sound = "", effect = "Tilt", onlyOnMe = false }
             if not known then
-                print(PREFIX .. ("|cffffd100%s|r is not a spell this character knows by name. It is added, but it must match the spell's exact name; a spell id also works."):format(name))
+                print(PREFIX .. (L["|cffffd100%s|r is not a spell this character knows by name. It is added, but it must match the spell's exact name; a spell id also works."]):format(name))
             end
             addSpBox:SetText("")
             addSpBox:ClearFocus()
@@ -1050,44 +1051,44 @@ local function ShowOptions()
         end
 
         local y = -10
-        AddCheck(pageGeneral, settings, "showMatchMessage", "Show match line in chat", y); y = y - 26
-        AddCheck(pageGeneral, settings, "showMemeToast", "|cffffd100Show Meme Toast floating HUD banner|r (OxedHub Original)", y); y = y - 26
-        AddCheck(pageGeneral, settings, "triggerOnce", "Trigger each keyword once per session", y); y = y - 26
-        AddCheck(pageGeneral, settings, "effectsEnabled", "Enable physical UI & screen effects", y); y = y - 30
+        AddCheck(pageGeneral, settings, "showMatchMessage", L["Show match line in chat"], y); y = y - 26
+        AddCheck(pageGeneral, settings, "showMemeToast", L["|cffffd100Show Meme Toast floating HUD banner|r (OxedHub Original)"], y); y = y - 26
+        AddCheck(pageGeneral, settings, "triggerOnce", L["Trigger each keyword once per session"], y); y = y - 26
+        AddCheck(pageGeneral, settings, "effectsEnabled", L["Enable physical UI & screen effects"], y); y = y - 30
 
         local chkLabel = pageGeneral:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         chkLabel:SetPoint("TOPLEFT", pageGeneral, "TOPLEFT", 10, y)
-        chkLabel:SetText("Chat Channels Monitored:")
+        chkLabel:SetText(L["Chat Channels Monitored:"])
         y = y - 22
 
-        AddCheck(pageGeneral, settings, "keywordChat", "Say, Yell & Public Channels", y); y = y - 24
-        AddCheck(pageGeneral, settings, "keywordWhisper", "Whispers (direct & Battle.net)", y); y = y - 24
-        AddCheck(pageGeneral, settings, "keywordParty", "Party & Raid Chat", y); y = y - 24
-        AddCheck(pageGeneral, settings, "keywordNpc", "NPC Dialogue & Boss Emotes", y); y = y - 24
-        AddCheck(pageGeneral, settings, "keywordSystem", "System & Game Alert Messages", y); y = y - 24
-        AddCheck(pageGeneral, settings, "keywordLoot", "Loot & Crafting Messages", y); y = y - 32
+        AddCheck(pageGeneral, settings, "keywordChat", L["Say, Yell & Public Channels"], y); y = y - 24
+        AddCheck(pageGeneral, settings, "keywordWhisper", L["Whispers (direct & Battle.net)"], y); y = y - 24
+        AddCheck(pageGeneral, settings, "keywordParty", L["Party & Raid Chat"], y); y = y - 24
+        AddCheck(pageGeneral, settings, "keywordNpc", L["NPC Dialogue & Boss Emotes"], y); y = y - 24
+        AddCheck(pageGeneral, settings, "keywordSystem", L["System & Game Alert Messages"], y); y = y - 24
+        AddCheck(pageGeneral, settings, "keywordLoot", L["Loot & Crafting Messages"], y); y = y - 32
 
         local dbLabel = pageGeneral:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         dbLabel:SetPoint("TOPLEFT", pageGeneral, "TOPLEFT", 10, y)
-        dbLabel:SetText("Death Bell (PvP Kill Alerts):")
+        dbLabel:SetText(L["Death Bell (PvP Kill Alerts):"])
         y = y - 22
 
-        AddCheck(pageGeneral, settings, "deathBell", "|cffff4040Enable Death Bell (ring sound on enemy death)|r", y); y = y - 24
-        AddCheck(pageGeneral, settings, "deathBellArena", "Ring in Arenas", y); y = y - 24
-        AddCheck(pageGeneral, settings, "deathBellBG", "Ring in Battlegrounds", y); y = y - 24
-        AddCheck(pageGeneral, settings, "deathBellWorld", "Ring in World PvP", y); y = y - 24
-        AddCheck(pageGeneral, settings, "deathBellNPC", "Ring for Hostile NPCs too", y); y = y - 32
+        AddCheck(pageGeneral, settings, "deathBell", L["|cffff4040Enable Death Bell (ring sound on enemy death)|r"], y); y = y - 24
+        AddCheck(pageGeneral, settings, "deathBellArena", L["Ring in Arenas"], y); y = y - 24
+        AddCheck(pageGeneral, settings, "deathBellBG", L["Ring in Battlegrounds"], y); y = y - 24
+        AddCheck(pageGeneral, settings, "deathBellWorld", L["Ring in World PvP"], y); y = y - 24
+        AddCheck(pageGeneral, settings, "deathBellNPC", L["Ring for Hostile NPCs too"], y); y = y - 32
 
         local dbSoundBtn = CreateFrame("Button", nil, pageGeneral, "UIPanelButtonTemplate")
         dbSoundBtn:SetSize(160, 24)
         dbSoundBtn:SetPoint("TOPLEFT", pageGeneral, "TOPLEFT", 10, y)
-        dbSoundBtn:SetText(settings.deathBellSound ~= "" and API:SoundName(settings.deathBellSound, "Bell Sound") or "Death Bell Sound")
+        dbSoundBtn:SetText(settings.deathBellSound ~= "" and API:SoundName(settings.deathBellSound, "Bell Sound") or L["Death Bell Sound"])
         dbSoundBtn:SetScript("OnClick", function()
             local Triggers = OxedHub.Triggers
             if Triggers and Triggers.ShowSoundPicker then
                 Triggers:ShowSoundPicker({ actions = { sound = settings.deathBellSound or "" } }, "sound", function(id)
                     settings.deathBellSound = (id and id ~= "None" and id ~= "none") and id or ""
-                    dbSoundBtn:SetText(settings.deathBellSound ~= "" and API:SoundName(settings.deathBellSound, "Bell Sound") or "Death Bell Sound")
+                    dbSoundBtn:SetText(settings.deathBellSound ~= "" and API:SoundName(settings.deathBellSound, "Bell Sound") or L["Death Bell Sound"])
                 end)
             end
         end)
@@ -1119,14 +1120,14 @@ SlashCmdList.OXEDHUBMEMEDON = function(msg)
     elseif cmd == "clear" then
         EnsureData()
         wipe(settings.keywords)
-        print(PREFIX .. "All keywords cleared.")
+        print(PREFIX .. L["All keywords cleared."])
     elseif cmd == "reset" then
         wipe(firedThisSession)
         wipe(lastDead)
-        print(PREFIX .. "Session trigger limits reset.")
+        print(PREFIX .. L["Session trigger limits reset."])
     elseif cmd == "list" then
         EnsureData()
-        print(PREFIX .. ("Keywords (%d): %s"):format(#settings.keywords, table.concat(settings.keywords, ", ")))
+        print(PREFIX .. (L["Keywords (%d): %s"]):format(#settings.keywords, table.concat(settings.keywords, ", ")))
     else
         ShowOptions()
     end

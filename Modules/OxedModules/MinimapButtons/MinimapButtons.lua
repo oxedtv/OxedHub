@@ -25,6 +25,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -248,12 +249,12 @@ local function BuildMain()
     end)
     main:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Minimap Buttons")
-        GameTooltip:AddLine(("%d button(s) gathered"):format(#order), 1, 1, 1)
-        GameTooltip:AddLine("|cffffd100Click|r open or close", 0.8, 0.8, 0.8)
-        GameTooltip:AddLine("|cffffd100Right-click|r options", 0.8, 0.8, 0.8)
+        GameTooltip:SetText(L["Minimap Buttons"])
+        GameTooltip:AddLine((L["%d button(s) gathered"]):format(#order), 1, 1, 1)
+        GameTooltip:AddLine(L["|cffffd100Click|r open or close"], 0.8, 0.8, 0.8)
+        GameTooltip:AddLine(L["|cffffd100Right-click|r options"], 0.8, 0.8, 0.8)
         if not settings.locked then
-            GameTooltip:AddLine("|cffffd100Alt + drag|r or |cffffd100middle button|r move", 0.8, 0.8, 0.8)
+            GameTooltip:AddLine(L["|cffffd100Alt + drag|r or |cffffd100middle button|r move"], 0.8, 0.8, 0.8)
         end
         GameTooltip:Show()
     end)
@@ -650,14 +651,14 @@ end
 -- ── Slash command ───────────────────────────────────────────────────────────
 
 local function PrintList()
-    print(PREFIX .. ("%d button(s) gathered:"):format(#order))
-    for _, button in ipairs(order) do print("   " .. (Name(button) or "(no name)")) end
+    print(PREFIX .. (L["%d button(s) gathered:"]):format(#order))
+    for _, button in ipairs(order) do print("   " .. (Name(button) or L["(no name)"])) end
     if next(settings.include) then
-        print(PREFIX .. "added by hand:")
+        print(PREFIX .. L["added by hand:"])
         for path in pairs(settings.include) do print("   " .. path) end
     end
     if next(settings.ignore) then
-        print(PREFIX .. "left on the minimap:")
+        print(PREFIX .. L["left on the minimap:"])
         for name in pairs(settings.ignore) do print("   " .. name) end
     end
 end
@@ -668,9 +669,9 @@ local function OneFrame(text)
     local found = FindFrames(text)
     if #found == 1 then return found[1] end
     if #found == 0 then
-        print(PREFIX .. ("no frame named like %s. /fstack shows the name of the one under the mouse."):format(text))
+        print(PREFIX .. (L["no frame named like %s. /fstack shows the name of the one under the mouse."]):format(text))
     else
-        print(PREFIX .. ("more than one frame has %s in its name:"):format(text))
+        print(PREFIX .. (L["more than one frame has %s in its name:"]):format(text))
         for _, name in ipairs(found) do print("   " .. name) end
     end
     return nil
@@ -693,7 +694,7 @@ SlashCmdList.OXEDMINIMAPBUTTONS = function(msg)
     local cmd, arg = (msg or ""):match("^%s*(%S*)%s*(.-)%s*$")
     cmd = (cmd or ""):lower()
     if not settings.enabled and cmd ~= "" then
-        print(PREFIX .. "switched off. Switch it on in OxedHub's Modules page first.")
+        print(PREFIX .. L["switched off. Switch it on in OxedHub's Modules page first."])
         return
     end
     if cmd == "list" then
@@ -701,7 +702,7 @@ SlashCmdList.OXEDMINIMAPBUTTONS = function(msg)
     elseif cmd == "reset" then
         wipe(settings.position)
         if main then PlaceMain() end
-        print(PREFIX .. "the button is back beside the minimap.")
+        print(PREFIX .. L["the button is back beside the minimap."])
     elseif cmd == "ignore" and arg ~= "" then
         local name = OneFrame(arg) or InList(settings.include, arg)
         if not name then return end
@@ -709,15 +710,15 @@ SlashCmdList.OXEDMINIMAPBUTTONS = function(msg)
         if key then settings.include[key] = nil end
         settings.ignore[name] = true
         Release(FrameByPath(name))
-        print(PREFIX .. ("%s stays on the minimap."):format(name))
+        print(PREFIX .. (L["%s stays on the minimap."]):format(name))
     elseif cmd == "unignore" and arg ~= "" then
         local key = InList(settings.ignore, arg)
         if key then
             settings.ignore[key] = nil
             Scan()
-            print(PREFIX .. ("%s is gathered again."):format(key))
+            print(PREFIX .. (L["%s is gathered again."]):format(key))
         else
-            print(PREFIX .. ("%s was not being left out."):format(arg))
+            print(PREFIX .. (L["%s was not being left out."]):format(arg))
         end
     elseif cmd == "add" and arg ~= "" then
         local name = OneFrame(arg)
@@ -726,28 +727,28 @@ SlashCmdList.OXEDMINIMAPBUTTONS = function(msg)
         if key then settings.ignore[key] = nil end
         settings.include[name] = true
         Scan()
-        print(PREFIX .. ("%s is gathered."):format(name))
+        print(PREFIX .. (L["%s is gathered."]):format(name))
     elseif cmd == "remove" and arg ~= "" then
         local key = InList(settings.include, arg)
         if not key then
-            print(PREFIX .. ("%s was not added by hand."):format(arg))
+            print(PREFIX .. (L["%s was not added by hand."]):format(arg))
             return
         end
         settings.include[key] = nil
         Release(FrameByPath(key))
-        print(PREFIX .. ("%s is no longer gathered by hand."):format(key))
+        print(PREFIX .. (L["%s is no longer gathered by hand."]):format(key))
     elseif cmd == "clearignore" then
         wipe(settings.ignore)
         Scan()
-        print(PREFIX .. "nothing is left out any more.")
+        print(PREFIX .. L["nothing is left out any more."])
     elseif cmd == "clearadd" then
         for path in pairs(settings.include) do Release(FrameByPath(path)) end
         wipe(settings.include)
         Scan()   -- a button that also looks like one by its name comes back
-        print(PREFIX .. "nothing is gathered by hand any more.")
+        print(PREFIX .. L["nothing is gathered by hand any more."])
     elseif cmd == "help" then
-        print(PREFIX .. "/oxmb list, reset, ignore <name>, unignore <name>, add <name>, remove <name>, "
-            .. "clearignore, clearadd. A part of a name is enough. /oxmb alone opens the options.")
+        print(PREFIX .. L["/oxmb list, reset, ignore <name>, unignore <name>, add <name>, remove <name>, "]
+            .. L["clearignore, clearadd. A part of a name is enough. /oxmb alone opens the options."])
     else
         ShowOptions()
     end

@@ -17,6 +17,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 -- ⚠ No tables here: ModuleAPI copies defaults by reference, so a list default
@@ -273,20 +274,20 @@ local function DescribeVisit()
     end
     if count > 0 then
         local header = value > 0
-            and ("Sell %d item(s) for %s:"):format(count, Money(value))
-            or ("Sell %d item(s):"):format(count)
+            and (L["Sell %d item(s) for %s:"]):format(count, Money(value))
+            or (L["Sell %d item(s):"]):format(count)
         parts[#parts + 1] = header .. "\n" .. API:FormatItemList(items, 10, Money)
     end
 
     if settings.repair and CanMerchantRepair and CanMerchantRepair() then
         local cost, canRepair = GetRepairAllCost()
         if canRepair and cost and cost > 0 then
-            parts[#parts + 1] = ("Repair for %s"):format(Money(cost))
+            parts[#parts + 1] = (L["Repair for %s"]):format(Money(cost))
         end
     end
 
     if #parts == 0 then return nil end
-    return table.concat(parts, "\n\n") .. "\n\nGo ahead?"
+    return table.concat(parts, "\n\n") .. L["\n\nGo ahead?"]
 end
 
 local RunVisit   -- defined below; OnMerchantShow either asks first or runs it
@@ -320,22 +321,22 @@ function RunVisit()
         local parts = {}
         if soldCount > 0 then
             if soldValue > 0 then
-                parts[#parts + 1] = ("sold %d item(s) for %s"):format(soldCount, Money(soldValue))
+                parts[#parts + 1] = (L["sold %d item(s) for %s"]):format(soldCount, Money(soldValue))
             else
-                parts[#parts + 1] = ("sold %d item(s)"):format(soldCount)
+                parts[#parts + 1] = (L["sold %d item(s)"]):format(soldCount)
             end
         end
         if payer == "guild" then
-            parts[#parts + 1] = ("repaired for %s from guild funds"):format(Money(repairCost))
+            parts[#parts + 1] = (L["repaired for %s from guild funds"]):format(Money(repairCost))
         elseif payer == "own" then
             if extra and extra > 0 then
-                parts[#parts + 1] = ("repaired for %s (%s from the guild, the rest yours)"):format(
+                parts[#parts + 1] = (L["repaired for %s (%s from the guild, the rest yours)"]):format(
                     Money(repairCost + extra), Money(extra))
             else
-                parts[#parts + 1] = ("repaired for %s"):format(Money(repairCost))
+                parts[#parts + 1] = (L["repaired for %s"]):format(Money(repairCost))
             end
         elseif payer == "short" then
-            parts[#parts + 1] = ("|cffff5555not enough gold to repair|r (%s needed)"):format(Money(extra))
+            parts[#parts + 1] = (L["|cffff5555not enough gold to repair|r (%s needed)"]):format(Money(extra))
         end
         if #parts > 0 then print(PREFIX .. table.concat(parts, ", ") .. ".") end
     end
@@ -400,7 +401,7 @@ local function AddItem(itemID, link)
     if not itemID or itemID <= 0 then return end
     local name, _, quality, _, _, _, _, _, _, _, price = GetInfo(link or itemID)
     if price == 0 then
-        print(PREFIX .. ("%s cannot be sold to a vendor."):format(name or ("item " .. itemID)))
+        print(PREFIX .. (L["%s cannot be sold to a vendor."]):format(name or ("item " .. itemID)))
         return
     end
     -- Adding a better copy of an item already listed raises the cap; a worse
@@ -409,7 +410,7 @@ local function AddItem(itemID, link)
     local current = settings.items[itemID]
     if type(current) == "number" and current > cap then cap = current end
     settings.items[itemID] = cap
-    print(PREFIX .. ("%s will be sold at vendors, up to %s quality."):format(name or ("item " .. itemID), QualityText(cap)))
+    print(PREFIX .. (L["%s will be sold at vendors, up to %s quality."]):format(name or ("item " .. itemID), QualityText(cap)))
     RefreshList()
 end
 
@@ -430,7 +431,7 @@ BINDING_NAME_OXEDHUB_VENDOR_TOGGLE_HOVERED = "Auto Vendor: add or remove the ite
 function OxedHub_AutoVendorToggleHovered()
     if not settings then return end
     if settings.enabled ~= true then
-        print(PREFIX .. "Auto Vendor is switched off (Modules, Inventory).")
+        print(PREFIX .. L["Auto Vendor is switched off (Modules, Inventory)."])
         return
     end
     local link
@@ -440,14 +441,14 @@ function OxedHub_AutoVendorToggleHovered()
     end
     local itemID = ParseItemID(link)
     if not itemID then
-        print(PREFIX .. "point at an item first, then press the key.")
+        print(PREFIX .. L["point at an item first, then press the key."])
         return
     end
     local _, _, quality = GetInfo(link)
     local current = settings.items[itemID]
     if current and quality and quality <= QualityCap(current) then
         settings.items[itemID] = nil
-        print(PREFIX .. ("%s is off the sell list."):format(link))
+        print(PREFIX .. (L["%s is off the sell list."]):format(link))
         RefreshList()
         return
     end
@@ -473,14 +474,14 @@ local function GetIcon(index, parent)
         if GameTooltip.SetItemByID then
             GameTooltip:SetItemByID(self.itemID)
         else
-            GameTooltip:SetText("Item " .. tostring(self.itemID))
+            GameTooltip:SetText(L["Item "] .. tostring(self.itemID))
         end
         GameTooltip:AddLine(" ")
         local cap = settings.items[self.itemID] and QualityCap(settings.items[self.itemID])
         if cap then
-            GameTooltip:AddLine(("Sold up to %s quality; better copies are kept."):format(QualityText(cap)), 1, 1, 1, true)
+            GameTooltip:AddLine((L["Sold up to %s quality; better copies are kept."]):format(QualityText(cap)), 1, 1, 1, true)
         end
-        GameTooltip:AddLine("Click to take it off the sell list.", 1, 0.4, 0.4)
+        GameTooltip:AddLine(L["Click to take it off the sell list."], 1, 0.4, 0.4)
         GameTooltip:Show()
     end)
     icon:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -536,7 +537,7 @@ function RefreshList()
     for index = #ids + 1, #listIcons do listIcons[index]:Hide() end
 
     window.listEmpty:SetShown(#ids == 0)
-    window.listCount:SetText(("%d item(s) on the list"):format(#ids))
+    window.listCount:SetText((L["%d item(s) on the list"]):format(#ids))
 end
 
 -- Refills the icons once item data the list asked for has arrived.
@@ -672,34 +673,34 @@ local function ShowShare(mode)
 
     if mode == "export" then
         local text = ExportString()
-        f.title:SetText("Export sell list")
-        f.hint:SetText("Press Ctrl+C to copy, then paste it to a friend or into Import on another character.")
+        f.title:SetText(L["Export sell list"])
+        f.hint:SetText(L["Press Ctrl+C to copy, then paste it to a friend or into Import on another character."])
         f.box:SetText(text)
         -- The text stays what was exported: typing into it puts it back.
         f.box:SetScript("OnTextChanged", function(self, userInput)
             if userInput then self:SetText(text) self:HighlightText() end
         end)
         f.box:SetScript("OnMouseUp", function(self) self:SetFocus() self:HighlightText() end)
-        f.action:SetText("Select all")
+        f.action:SetText(L["Select all"])
         f.action:SetScript("OnClick", function() f.box:SetFocus() f.box:HighlightText() end)
         f:Show()
         f.box:SetFocus()
         f.box:HighlightText()
         local count = 0
         for _ in pairs(settings.items) do count = count + 1 end
-        f.status:SetText(("%d item(s)"):format(count))
+        f.status:SetText((L["%d item(s)"]):format(count))
     else
-        f.title:SetText("Import sell list")
-        f.hint:SetText("Paste an exported list (Ctrl+V), or item IDs / item links. Items are added; nothing is removed.")
+        f.title:SetText(L["Import sell list"])
+        f.hint:SetText(L["Paste an exported list (Ctrl+V), or item IDs / item links. Items are added; nothing is removed."])
         f.box:SetText("")
-        f.action:SetText("Import")
+        f.action:SetText(L["Import"])
         f.action:SetScript("OnClick", function()
             local added, raised = ImportString(f.box:GetText())
             if added + raised == 0 then
-                f.status:SetText("|cffff6060Nothing new found in that text.|r")
+                f.status:SetText(L["|cffff6060Nothing new found in that text.|r"])
                 return
             end
-            print(PREFIX .. ("sell list import: %d added, %d with a higher quality limit."):format(added, raised))
+            print(PREFIX .. (L["sell list import: %d added, %d with a higher quality limit."]):format(added, raised))
             RefreshList()
             f:Hide()
         end)
@@ -729,15 +730,15 @@ local function BuildListSection(window)
     drop:SetScript("OnClick", TakeCursorItem)
     drop:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Add to the sell list")
-        GameTooltip:AddLine("Drag an item from your bags onto this box.", 1, 1, 1, true)
+        GameTooltip:SetText(L["Add to the sell list"])
+        GameTooltip:AddLine(L["Drag an item from your bags onto this box."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     drop:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     local dropLabel = window:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     dropLabel:SetPoint("TOPLEFT", drop, "TOPRIGHT", 10, -2)
-    dropLabel:SetText("Drop an item here, or type an item ID or paste a link:")
+    dropLabel:SetText(L["Drop an item here, or type an item ID or paste a link:"])
 
     local input = CreateFrame("EditBox", nil, window, "InputBoxTemplate")
     input:SetSize(150, 22)
@@ -750,7 +751,7 @@ local function BuildListSection(window)
             AddItem(itemID, text:find("|Hitem:", 1, true) and text or nil)
             input:SetText("")
         else
-            print(PREFIX .. "that is not an item ID or item link.")
+            print(PREFIX .. L["that is not an item ID or item link."])
         end
         input:ClearFocus()
     end
@@ -760,7 +761,7 @@ local function BuildListSection(window)
     local add = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
     add:SetSize(60, 22)
     add:SetPoint("LEFT", input, "RIGHT", 6, 0)
-    add:SetText("Add")
+    add:SetText(L["Add"])
     add:SetScript("OnClick", AddFromInput)
 
     -- Shift-clicking an item while the box has focus puts its link in, the
@@ -786,19 +787,19 @@ local function BuildListSection(window)
 
     window.listEmpty = area:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     window.listEmpty:SetPoint("TOPLEFT", area, "TOPLEFT", 2, -4)
-    window.listEmpty:SetText("Nothing on the list yet.")
+    window.listEmpty:SetText(L["Nothing on the list yet."])
 
     -- Export / Import sit above the grid's right edge.
     local import = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
     import:SetSize(70, 20)
     import:SetPoint("BOTTOMRIGHT", area, "TOPRIGHT", 0, 3)
-    import:SetText("Import")
+    import:SetText(L["Import"])
     import:SetScript("OnClick", function() ShowShare("import") end)
 
     local export = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
     export:SetSize(70, 20)
     export:SetPoint("RIGHT", import, "LEFT", -4, 0)
-    export:SetText("Export")
+    export:SetText(L["Export"])
     export:SetScript("OnClick", function() ShowShare("export") end)
 
     window:HookScript("OnShow", RefreshList)

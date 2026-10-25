@@ -596,7 +596,7 @@ function Triggers:CreateAdvancedMacroUI(frame, trigger)
     -- one function rather than looking for a global.
     function UpdateCursorIndicator()
         local line, column = GetCursorLineAndColumn(previewBox:GetText(), previewBox:GetCursorPosition())
-        cursorText:SetFormattedText("Line %d, Col %d", line, column)
+        cursorText:SetFormattedText(L["Line %d, Col %d"], line, column)
         gutterText:SetText(BuildMacroLineNumberText(previewBox:GetText(), line))
         UpdateFakeCaret()
     end
@@ -886,7 +886,7 @@ Triggers.GetCursorPositionFromLineAndX = GetCursorPositionFromLineAndX
 function Triggers:DumpMacroPreview()
     local frame = Triggers._macroDebugFrame
     if not frame then
-        print("|cff00d9d9OxedHub:|r open a trigger's Advanced Macros tab first.")
+        print(L["|cff00d9d9OxedHub:|r open a trigger's Advanced Macros tab first."])
         return
     end
 

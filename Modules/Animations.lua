@@ -429,13 +429,13 @@ function Animations:ShowPositionFrameForTrigger(trigger, animKey)
     local actions = trigger.actions or {}
     local animId = actions[animKey]
     if not animId or animId == "" or animId == "None" then
-        print("|cffff0000Oxed Hub:|r Pick an animation for this trigger first.")
+        print(L["|cffff0000Oxed Hub:|r Pick an animation for this trigger first."])
         return
     end
 
     local anim = OxedHub.db.profile.animations[animId]
     if not anim then
-        print("|cffff0000Oxed Hub:|r That animation is no longer available.")
+        print(L["|cffff0000Oxed Hub:|r That animation is no longer available."])
         return
     end
 
@@ -1138,14 +1138,14 @@ function Animations:ShowAdvancedUI(parent)
     aspectInfoIcon:SetHighlightTexture("Interface\\Common\\help-i", "ADD")
     aspectInfoIcon:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Aspect Ratio")
-        GameTooltip:AddLine("Choose the aspect ratio that matches your sprite sheet frames.", 1, 1, 1, true)
+        GameTooltip:SetText(L["Aspect Ratio"])
+        GameTooltip:AddLine(L["Choose the aspect ratio that matches your sprite sheet frames."], 1, 1, 1, true)
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("• 1:1 — Square frames (most common)", 1, 1, 1, true)
-        GameTooltip:AddLine("• 16:9 — Widescreen frames", 1, 1, 1, true)
-        GameTooltip:AddLine("• 9:16 — Tall / portrait frames", 1, 1, 1, true)
+        GameTooltip:AddLine(L["• 1:1 — Square frames (most common)"], 1, 1, 1, true)
+        GameTooltip:AddLine(L["• 16:9 — Widescreen frames"], 1, 1, 1, true)
+        GameTooltip:AddLine(L["• 9:16 — Tall / portrait frames"], 1, 1, 1, true)
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("You can change the size of your animation when you\nposition it on the screen using Move / Scale.", 0.5, 1, 0.5, true)
+        GameTooltip:AddLine(L["You can change the size of your animation when you\nposition it on the screen using Move / Scale."], 0.5, 1, 0.5, true)
         GameTooltip:Show()
     end)
     aspectInfoIcon:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1190,9 +1190,9 @@ function Animations:ShowAdvancedUI(parent)
     nmLabel:SetPoint("RIGHT", nameEdit, "LEFT", -6, 0)
     saveBtn:SetScript("OnClick", function()
         local seq = GetSortedSelection()
-        if #seq == 0 then print("OxedHub: Select at least one frame!") return end
+        if #seq == 0 then print(L["OxedHub: Select at least one frame!"]) return end
         local nm = nameEdit:GetText()
-        if nm == "" then print("OxedHub: Enter a name!") return end
+        if nm == "" then print(L["OxedHub: Enter a name!"]) return end
         
         local path = fileEdit:GetText()
         if not path:lower():find("%.tga$") and not path:lower():find("%.png$") then path = path .. ".png" end
@@ -1213,7 +1213,7 @@ function Animations:ShowAdvancedUI(parent)
         }
         Animations:AddAnimation(data)
         Animations.saveTargetId = nil
-        print("OxedHub: Saved advanced animation: " .. nm)
+        print(L["OxedHub: Saved advanced animation: "] .. nm)
         nameEdit:SetText("")
         for _, btn in ipairs(cellButtons) do
             btn.selBorder:Hide()
@@ -1479,8 +1479,8 @@ function Animations:ShowAdvancedUI(parent)
         c = math.max(1, math.min(c, MAX_GRID_SIDE))
         r = math.max(1, math.min(r, MAX_GRID_SIDE))
         if c * r > MAX_GRID_CELLS then
-            print(("|cffff0000OxedHub:|r Sprite sheet grid too large (%dx%d = %d frames). "
-                .. "Maximum is %d frames — split the sheet into smaller parts.")
+            print((L["|cffff0000OxedHub:|r Sprite sheet grid too large (%dx%d = %d frames). "]
+                .. L["Maximum is %d frames — split the sheet into smaller parts."])
                 :format(c, r, c * r, MAX_GRID_CELLS))
             return
         end
@@ -1493,14 +1493,14 @@ function Animations:ShowAdvancedUI(parent)
             local maxFrameW = math.floor(4096 / c)
             local maxFrameH = math.floor(4096 / r)
             StaticPopupDialogs["OXEDHUB_SPRITE_SIZE_WARNING"] = {
-                text = ("|cffff8800Check your sprite sheet size first.|r\n\n"
-                    .. "WoW cannot load images larger than 4096x4096 — it will crash the game, "
-                    .. "and the addon has no way to detect the size beforehand.\n\n"
-                    .. "For a %dx%d grid each frame must be at most |cffffffff%dx%d|r pixels "
-                    .. "(whole sheet under 4096x4096).\n\nLoad this sheet?")
+                text = (L["|cffff8800Check your sprite sheet size first.|r\n\n"]
+                    .. L["WoW cannot load images larger than 4096x4096 — it will crash the game, "]
+                    .. L["and the addon has no way to detect the size beforehand.\n\n"]
+                    .. L["For a %dx%d grid each frame must be at most |cffffffff%dx%d|r pixels "]
+                    .. L["(whole sheet under 4096x4096).\n\nLoad this sheet?"])
                     :format(c, r, maxFrameW, maxFrameH),
                 button1 = L["ANIM_LOAD_GRID"] or "Load Grid",
-                button2 = CANCEL or "Cancel",
+                button2 = CANCEL or L["Cancel"],
                 OnAccept = function()
                     confirmedSheets[confirmKey] = true
                     DrawGrid()
@@ -2091,7 +2091,7 @@ function Animations:CreateAnimationRow(parent, id, anim)
     local infoCols = anim.columns or math.ceil(math.sqrt(anim.frameCount or 1))
     local infoRows = anim.rows or infoCols
     local infoAspect = anim.aspectRatio or "1:1"
-    infoText:SetText(string.format("%dx%d, %d frames (%dx%d), %s, %d FPS, Loop: %s",
+    infoText:SetText(string.format(L["%dx%d, %d frames (%dx%d), %s, %d FPS, Loop: %s"],
         anim.width or 64, anim.height or 64, anim.frameCount or 1, infoCols, infoRows, infoAspect, anim.fps or 24, loopText))
     infoText:SetTextColor(0.7, 0.7, 0.7, 1)
 
@@ -2159,7 +2159,7 @@ function Animations:CreateAnimationRow(parent, id, anim)
             local updCols = anim.columns or math.ceil(math.sqrt(anim.frameCount or 1))
             local updRows = anim.rows or updCols
             local updAspect = anim.aspectRatio or "1:1"
-            infoText:SetText(string.format("%dx%d, %d frames (%dx%d), %s, %d FPS, Loop: %s",
+            infoText:SetText(string.format(L["%dx%d, %d frames (%dx%d), %s, %d FPS, Loop: %s"],
                 anim.width or 64, anim.height or 64, anim.frameCount or 1, updCols, updRows, updAspect, anim.fps or 24, newLoopText))
         end
     end)
@@ -2354,8 +2354,8 @@ function Animations:ShowPreviewOverlay(animId)
     if frame.resizeGrip then frame.resizeGrip:Hide() end
 
     -- Update title and subtitle for preview mode
-    if frame.titleText then frame.titleText:SetText("Preview") end
-    if frame.instrText then frame.instrText:SetText("This is a preview of your animation and position") end
+    if frame.titleText then frame.titleText:SetText(L["Preview"]) end
+    if frame.instrText then frame.instrText:SetText(L["This is a preview of your animation and position"]) end
 
     -- Hide Reset button, only show Done
     if frame.resetBtn then frame.resetBtn:Hide() end

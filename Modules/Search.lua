@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 -- Search Module - Global search across all categories
 local Search = {}
@@ -50,7 +51,7 @@ function Search:CreateSearchDropdown()
     -- Title
     local title = searchDropdown:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     title:SetPoint("TOPLEFT", searchDropdown, "TOPLEFT", 10, -10)
-    title:SetText("Search Results")
+    title:SetText(L["Search Results"])
     
     -- Scroll frame for results
     local scrollFrame = CreateFrame("ScrollFrame", nil, searchDropdown, "UIPanelScrollFrameTemplate")
@@ -232,7 +233,7 @@ function Search:DisplayResults(results)
     if #results == 0 then
         local empty = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         empty:SetPoint("CENTER", scrollChild, "CENTER", 0, 0)
-        empty:SetText("No results found")
+        empty:SetText(L["No results found"])
         scrollChild:SetHeight(50)
     else
         local yOffset = -5

@@ -31,6 +31,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -92,8 +93,20 @@ local DEFAULTS = {
     repairBelow   = 25,     -- durability percent that asks for a repair
     withoutItems  = true,   -- food / flask / oil show even when you carry none
     askMessage    = "",     -- own wording for a request; {buff} is the buff ("" = the default)
-    -- Lists (customBuffs, lastTargets, lastUsed, loadouts, gearSets) are made
-    -- in BindSettings, never here.
+    askCooldown   = true,   -- the same request at most once every 30 seconds
+    raidSelfOnly  = false,  -- group buffs: only whether you have it, not the group
+    readyCheckOnly = false, -- the bar shows only during a ready check
+    preKeyMinutes = 15,     -- Mythic dungeon before a key starts: "running out" reaches this far (0 = off)
+    healthstoneLow = 0,     -- healthstone reminder at or below this many charges
+    hideLegacyItems = false,-- no icons for food, flasks or oil from older expansions
+    delveFoodOnly = true,   -- in a delve, delve food instead of the usual food
+    delveFoodTimer = true,  -- the delve food reminder gives up after 30 seconds
+    withoutItemsReadyCheck = false, -- items you do not carry are shown only on a ready check
+    felDomination = false,  -- warlock: a demon click casts Fel Domination first
+    soulstoneTarget = "",   -- warlock: Soulstone always goes on this player ("" = whoever had it)
+    minimapButton = true,   -- its own icon on the minimap while switched on
+    -- Lists (customBuffs, lastTargets, lastUsed, loadouts, gearSets, demons_*)
+    -- are made in BindSettings, never here.
 }
 
 local READY_CHECK_SECONDS = 30
@@ -103,18 +116,33 @@ local MAX_BUTTONS = 30
 
 local Data = OxedHub.BuffReminderData
 local settings
+local minimapIcon, MinimapIcon   -- MinimapIcon is defined above the login code
 local optionsWindow
+
+-- A Mythic dungeon before its key starts: the last chance to refresh
+-- anything without the timer running, so "running out" reaches further.
+local function BeforeKey()
+    if (tonumber(settings and settings.preKeyMinutes) or 0) <= 0 then return false end
+    local _, instanceType, difficultyID = GetInstanceInfo()
+    if instanceType ~= "party" or difficultyID ~= 23 then return false end
+    local active = C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive
+        and C_ChallengeMode.IsChallengeModeActive()
+    return not active
+end
 
 -- Below `local settings`: above it, `settings` would be a global and the
 -- "running out" slider would never be read.
 local function ExpiringSeconds()
-    return (tonumber(settings and settings.expiringMinutes) or 5) * 60
+    local minutes = tonumber(settings and settings.expiringMinutes) or 5
+    if BeforeKey() then minutes = math.max(minutes, tonumber(settings.preKeyMinutes) or 0) end
+    return minutes * 60
 end
 local watcher = CreateFrame("Frame")
 
 local bar, buttons = nil, {}
 local pending, ticker = false, nil
 local readyCheckUntil = 0
+local delveFoodSince         -- GetTime() the delve food reminder first showed in this delve
 local snoozed = {}            -- entry key -> GetTime() until which it stays hidden
 local askedAt = {}            -- entry key -> GetTime() of the last request sent in chat
 local petPauseUntil = 0       -- pet reminders wait until then after a dismount
@@ -444,6 +472,30 @@ local function ItemIcon(itemID)
     return GetItemIcon and GetItemIcon(itemID)
 end
 
+-- Charges, not stacks: a healthstone is one item with several uses.
+local function ItemCharges(itemID)
+    if C_Item and C_Item.GetItemCount then return C_Item.GetItemCount(itemID, false, true) or 0 end
+    return ItemCount(itemID)
+end
+
+-- An item from an older expansion, when the player asked not to be offered
+-- those. An item the game has not loaded yet counts as current.
+local currentExpansion
+local function IsLegacyItem(itemID)
+    if not settings.hideLegacyItems or not (C_Item and C_Item.GetItemInfo) then return false end
+    currentExpansion = currentExpansion
+        or (GetServerExpansionLevel and GetServerExpansionLevel())
+        or (GetExpansionLevel and GetExpansionLevel())
+    local expansion = select(15, C_Item.GetItemInfo(itemID))
+    return type(currentExpansion) == "number" and type(expansion) == "number" and expansion < currentExpansion
+end
+
+-- Whether a consumable you carry none of still gets an icon.
+local function ShowWithoutItems()
+    if not settings.withoutItems then return false end
+    return not settings.withoutItemsReadyCheck or GetTime() < readyCheckUntil
+end
+
 -- One record per item of this kind in the bags, best first, at most
 -- ITEMS_PER_KIND of them.
 -- The item of this kind you used last on this spec (see RememberItem).
@@ -465,7 +517,7 @@ local function CarriedItems(kind)
             texture = ItemIcon(info.id), kind = kind,
         }
     end
-    if preferred then
+    if preferred and not IsLegacyItem(preferred) then
         for _, info in ipairs(Data.ITEMS[kind] or {}) do
             if info.id == preferred then
                 local count = ItemCount(info.id)
@@ -478,7 +530,7 @@ local function CarriedItems(kind)
     local limit = settings.oneConsumable and 1 or Data.ITEMS_PER_KIND
     for _, info in ipairs(Data.ITEMS[kind] or {}) do
         if #found >= limit then break end
-        if not (preferredTaken and info.id == preferred) then
+        if not (preferredTaken and info.id == preferred) and not IsLegacyItem(info.id) then
             local count = ItemCount(info.id)
             if count > 0 then Take(info, count) end
         end
@@ -539,6 +591,7 @@ local function AskText(buffName)
 end
 
 local function AskedRecently(key)
+    if not settings.askCooldown then return false end
     local at = askedAt[key]
     return at ~= nil and GetTime() - at < Data.ASK_COOLDOWN
 end
@@ -596,9 +649,12 @@ local function Needed(found, left)
     return found and settings.expiring and left and left < ExpiringSeconds() or false
 end
 
+local SELF_ONLY = { "player" }
+
 local function EvaluateRaid(entry, out)
     local missing, total, names, soonest = 0, 0, nil, nil
     local units, count = GroupUnits()
+    if settings.raidSelfOnly then units, count = SELF_ONLY, 1 end
     for i = 1, count do
         local unit = units[i]
         if Countable(unit) and Benefits(entry, unit) then
@@ -623,6 +679,69 @@ end
 
 local function SpellRecord(spellID, name)
     return { texture = SpellTexture(spellID), spell = spellID, name = name }
+end
+
+-- ── Warlock demons ──────────────────────────────────────────────────────────
+
+-- The demon choices are kept per content row; dungeons stand for scenarios.
+local function DemonRow()
+    local content = ContentType()
+    if content == "dungeon" or content == "scenario" then return "dungeon" end
+    if content == "raid" or content == "pvp" then return content end
+    return "openWorld"
+end
+
+-- The demons wanted here, as a set of summon spells; nil when none is chosen.
+-- Demonology always wants its Felguard.
+local FELGUARD_ONLY = { [30146] = true }
+local function AllowedDemons(specID)
+    if specID == 266 then return FELGUARD_ONLY end
+    local set = settings["demons_" .. DemonRow()]
+    if type(set) ~= "table" or next(set) == nil then return nil end
+    return set
+end
+
+-- The summon spell of the demon out now, from the creature ID in its GUID.
+-- nil when there is no demon, the GUID is hidden, or the creature is unknown.
+local function PetSummonSpell()
+    local ok, guid = pcall(UnitGUID, "pet")
+    if not ok or IsSecret(guid) or type(guid) ~= "string" then return nil end
+    local npc = tonumber(guid:match("^%a+%-%d+%-%d+%-%d+%-%d+%-(%d+)"))
+    return npc and Data.DEMON_NPC[npc] or nil
+end
+
+-- One summon icon. With Fel Domination asked for and known, the click casts
+-- it first so the demon arrives at once.
+local function DemonRecord(spellID)
+    local record = SpellRecord(spellID, Data.DEMON_NAMES[spellID])
+    if settings.felDomination and Known(Data.FEL_DOMINATION) and C_Spell and C_Spell.GetSpellName then
+        local fel, summon = C_Spell.GetSpellName(Data.FEL_DOMINATION), C_Spell.GetSpellName(spellID)
+        if type(fel) == "string" and type(summon) == "string" then
+            record.macro = ("/cast %s\n/cast %s"):format(fel, summon)
+        end
+    end
+    return record
+end
+
+-- A demon is out, but not one of those chosen for this content: an icon for
+-- each wanted demon you know.
+local function EvaluateDemonChoice(entry, specID, out)
+    if not UnitExists("pet") or UnitIsDead("pet") then return end
+    local allowed = AllowedDemons(specID)
+    if not allowed then return end
+    local current = PetSummonSpell()
+    if not current or allowed[current] then return end
+    local wanted = {}
+    for _, id in ipairs(Data.DEMON_CHOICES) do
+        if allowed[id] then wanted[#wanted + 1] = Data.DEMON_NAMES[id] end
+    end
+    for _, id in ipairs(Data.DEMON_CHOICES) do
+        if allowed[id] and Known(id) then
+            local record = DemonRecord(id)
+            record.wrong = table.concat(wanted, ", ")
+            Add(out, entry, record)
+        end
+    end
 end
 
 -- Missing pet: one icon per pet you can call, so the right one is one click.
@@ -661,21 +780,22 @@ local function EvaluatePet(entry, specID, out)
             for i = 1, slots do
                 local okSlot, spellID, _, slotKnown = pcall(GetFlyoutSlotInfo, Data.DEMON_FLYOUT, i)
                 if okSlot and spellID and slotKnown then
-                    Add(out, entry, SpellRecord(spellID, Data.DEMON_NAMES[spellID]))
+                    Add(out, entry, DemonRecord(spellID))
                 end
             end
             if #out > before then
-                -- The demon chosen for this content first; Demonology's Felguard
-                -- before anything.
-                local content = ContentType()
-                local row = (content == "dungeon" or content == "scenario") and "dungeon"
-                    or (content == "raid" or content == "pvp") and content or "openWorld"
-                local want = specID == 266 and Data.FELGUARD or tonumber(settings["demon_" .. row])
-                for i = before + 1, #out do
-                    if out[i].spell == want then
-                        if i > before + 1 then table.insert(out, before + 1, table.remove(out, i)) end
-                        break
+                -- The demons chosen for this content come first, in the order
+                -- they were offered; Demonology's Felguard before anything.
+                local allowed = AllowedDemons(specID)
+                if allowed then
+                    local first, rest = {}, {}
+                    for i = before + 1, #out do
+                        local record = out[i]
+                        if allowed[record.spell] then first[#first + 1] = record else rest[#rest + 1] = record end
                     end
+                    local i = before
+                    for _, record in ipairs(first) do i = i + 1 out[i] = record end
+                    for _, record in ipairs(rest) do i = i + 1 out[i] = record end
                 end
                 return
             end
@@ -689,6 +809,8 @@ end
 -- Food, flask, rune: the aura is checked, and when it is missing every
 -- matching item carried gets its own icon.
 local function EvaluateBuffItem(entry, out)
+    -- A delve has its own food; the usual Well Fed is not what it asks for.
+    if entry.check == "food" and settings.delveFoodOnly and InDelve() then return end
     local found, left
     if entry.check == "food" then
         found, left = FindFood()
@@ -701,7 +823,7 @@ local function EvaluateBuffItem(entry, out)
     local items = CarriedItems(entry.check)
     if #items == 0 then
         -- A rune you do not carry is not worth a reminder.
-        if entry.check == "rune" or not settings.withoutItems then return end
+        if entry.check == "rune" or not ShowWithoutItems() then return end
         local texture = entry.icon or SpellTexture(entry.auras and entry.auras[#entry.auras])
         Add(out, entry, { texture = texture, timeLeft = timeLeft })
         return
@@ -729,7 +851,7 @@ local function EvaluateOil(entry, out)
             local timeLeft = hand.has and left or nil
             items = items or CarriedItems("weaponOil")
             if #items == 0 then
-                if settings.withoutItems then Add(out, entry, { texture = GetInventoryItemTexture("player", hand.slot), label = hand.tag, timeLeft = timeLeft }) end
+                if ShowWithoutItems() then Add(out, entry, { texture = GetInventoryItemTexture("player", hand.slot), label = hand.tag, timeLeft = timeLeft }) end
             else
                 for _, info in ipairs(items) do
                     Add(out, entry, {
@@ -747,9 +869,9 @@ local function EvaluateHealthstone(out, entry)
     local _, class = UnitClass("player")
     if class ~= "WARLOCK" and not GroupHasClass("WARLOCK") then return end
     local total = 0
-    for _, id in ipairs(Data.HEALTHSTONES) do total = total + ItemCount(id) end
-    if total > 0 then return end
-    local record = { texture = ItemIcon(Data.HEALTHSTONES[1]), stack = 0 }
+    for _, id in ipairs(Data.HEALTHSTONES) do total = total + ItemCharges(id) end
+    if total > (tonumber(settings.healthstoneLow) or 0) then return end
+    local record = { texture = ItemIcon(Data.HEALTHSTONES[1]), stack = total }
     if class == "WARLOCK" then
         if IsInGroup() and Known(Data.CREATE_SOULWELL) then
             record.spell = Data.CREATE_SOULWELL
@@ -764,6 +886,25 @@ local function EvaluateHealthstone(out, entry)
 end
 
 local REPAIR_ICON = "Interface\\Icons\\Trade_BlackSmithing"
+
+-- What a click on the repair icon uses: a mount you own whose vendor repairs,
+-- else an item that repairs on the spot. nil when you have neither.
+local function RepairSource()
+    if C_MountJournal and C_MountJournal.GetMountFromSpell and C_MountJournal.GetMountInfoByID then
+        for _, spellID in ipairs(Data.REPAIR_MOUNTS) do
+            local mountID = C_MountJournal.GetMountFromSpell(spellID)
+            if mountID then
+                local _, _, _, _, isUsable, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+                if isCollected and isUsable then return { spell = spellID } end
+            end
+        end
+    end
+    for _, itemID in ipairs(Data.REPAIR_ITEMS) do
+        if ItemCount(itemID) > 0 then return { item = itemID } end
+    end
+    return nil
+end
+
 local function EvaluateRepair(out, entry)
     if not GetInventoryItemDurability then return end
     local worst
@@ -775,7 +916,10 @@ local function EvaluateRepair(out, entry)
         end
     end
     if worst and worst < (tonumber(settings.repairBelow) or Data.REPAIR_BELOW) then
-        Add(out, entry, { texture = REPAIR_ICON, label = ("%d%%"):format(worst) })
+        local record = { texture = REPAIR_ICON, label = ("%d%%"):format(worst) }
+        local how = RepairSource()
+        if how then record.spell, record.item = how.spell, how.item end
+        Add(out, entry, record)
     end
 end
 
@@ -845,6 +989,10 @@ local function TargetMacro(entry, spellID)
     local name = SpellName(spellID)
     if not name then return nil end
     local target = settings.lastTargets and settings.lastTargets[entry.key]
+    -- A Soulstone the player has given a home to always goes there first.
+    if entry.key == "soulstone" and type(settings.soulstoneTarget) == "string" and settings.soulstoneTarget ~= "" then
+        target = settings.soulstoneTarget
+    end
     if not target and entry.role then
         local units, count = GroupUnits()
         for i = 1, count do
@@ -1155,6 +1303,7 @@ local function Evaluate(entry, specID, inInstance, forced, out)
     if entry.group == "raid" then return EvaluateRaid(entry, out) end
     if entry.group == "targeted" then return EvaluateTargeted(entry, out) end
     if entry.check == "pet" then return EvaluatePet(entry, specID, out) end
+    if entry.check == "demonChoice" then return EvaluateDemonChoice(entry, specID, out) end
     if entry.check == "felguard" then return EvaluateFelguard(entry, out) end
     if entry.check == "passive" then return EvaluatePassive(entry, out) end
     if entry.check == "poison" then return EvaluatePoison(entry, out) end
@@ -1162,7 +1311,12 @@ local function Evaluate(entry, specID, inInstance, forced, out)
     if entry.check == "druidForm" then return EvaluateDruidForm(entry, specID, out) end
     if entry.check == "stance" then return EvaluateStance(entry, specID, out) end
     if entry.check == "delveFood" then
-        if not InDelve() then return end
+        if not InDelve() then delveFoodSince = nil return end
+        -- Asked for once on the way in, then left alone.
+        if settings.delveFoodTimer then
+            delveFoodSince = delveFoodSince or GetTime()
+            if GetTime() - delveFoodSince > Data.DELVE_FOOD_SECONDS then return end
+        end
         local found, left = FindAuraCached("player", entry.auras)
         if Needed(found, left) then Add(out, entry, { texture = entry.icon, timeLeft = found and left or nil }) end
         return
@@ -1236,6 +1390,7 @@ local function Collect()
     inInstance = inInstance and instanceType ~= "pvp" and instanceType ~= "arena"
 
     if not forced then
+        if settings.readyCheckOnly then return list end
         if settings.hideResting and IsResting() then return list end
         if settings.hideMounted and (IsMounted() or UnitInVehicle("player")) then return list end
         if UnitIsDeadOrGhost("player") then return list end
@@ -1274,7 +1429,9 @@ local function Collect()
     if settings.askBuffs and groupAllowed then
         for _, entry in ipairs(Data.RAID) do
             if #list >= MAX_BUTTONS then break end
-            if entry.class ~= class and not ((snoozed[entry.key] or 0) > GetTime()) then
+            -- ask_<key>: each one can be unticked in the Reminders window.
+            if entry.class ~= class and settings["ask_" .. entry.key] ~= false
+                and not ((snoozed[entry.key] or 0) > GetTime()) then
                 EvaluateAsk(entry, list)
             end
         end
@@ -1304,8 +1461,8 @@ local function FormatLeft(seconds)
 end
 
 local function LabelOf(entry)
-    if entry.custom then return SpellName(entry.cast) or ("Spell " .. entry.cast) end
-    return Data.LABELS[entry.key] or entry.key
+    if entry.custom then return SpellName(entry.cast) or (L["Spell "] .. entry.cast) end
+    return OxedHub.T(Data.LABELS[entry.key]) or entry.key
 end
 
 local function ShowTooltip(button)
@@ -1313,7 +1470,7 @@ local function ShowTooltip(button)
     GameTooltip:SetOwner(button, "ANCHOR_BOTTOM")
     if not record then
         GameTooltip:SetText("Buff Reminder")
-        GameTooltip:AddLine("Nothing is missing right now. Reminders appear here. Shift+drag to move it.", 1, 1, 1, true)
+        GameTooltip:AddLine(L["Nothing is missing right now. Reminders appear here. Shift+drag to move it."], 1, 1, 1, true)
         GameTooltip:Show()
         return
     end
@@ -1328,40 +1485,41 @@ local function ShowTooltip(button)
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine("Buff Reminder: " .. label, 0.6, 0.8, 1)
     if record.count then
-        GameTooltip:AddLine(("%d nearby missing it"):format(record.count), 1, 0.4, 0.4)
+        GameTooltip:AddLine((L["%d nearby missing it"]):format(record.count), 1, 0.4, 0.4)
         if record.names then
             GameTooltip:AddLine(table.concat(record.names, ", "), 1, 1, 1, true)
         end
     elseif record.timeLeft then
-        GameTooltip:AddLine(("Runs out in %s"):format(FormatLeft(record.timeLeft)), 1, 0.82, 0)
+        GameTooltip:AddLine((L["Runs out in %s"]):format(FormatLeft(record.timeLeft)), 1, 0.82, 0)
     elseif record.stack == 0 then
-        GameTooltip:AddLine("None in your bags", 1, 0.4, 0.4)
+        GameTooltip:AddLine(L["None in your bags"], 1, 0.4, 0.4)
     end
     if record.wrong then
-        GameTooltip:AddLine("Wanted: " .. record.wrong, 1, 0.4, 0.4)
+        GameTooltip:AddLine(L["Wanted: "] .. record.wrong, 1, 0.4, 0.4)
     end
     if record.slot then
-        GameTooltip:AddLine(record.slot == 16 and "For your main hand" or "For your off hand", 1, 1, 1)
+        GameTooltip:AddLine(record.slot == 16 and L["For your main hand"] or L["For your off hand"], 1, 1, 1)
     end
     if record.entry.group == "targeted" then
         local last = settings.lastTargets[record.entry.key]
-        if last then GameTooltip:AddLine("Casts on " .. last .. " (it was on them last)", 1, 1, 1) end
+        if record.entry.key == "soulstone" and settings.soulstoneTarget ~= "" then last = settings.soulstoneTarget end
+        if last then GameTooltip:AddLine(L["Casts on "] .. last .. L[" (it was on them last)"], 1, 1, 1) end
     end
     if record.ask and not record.stack then
-        GameTooltip:AddLine("You are missing it; somebody in the group can give it", 1, 0.4, 0.4, true)
+        GameTooltip:AddLine(L["You are missing it; somebody in the group can give it"], 1, 0.4, 0.4, true)
     end
     if settings.clickCast and record.ask and record.macro then
-        GameTooltip:AddLine("Click to ask for it in group chat", 0.5, 1, 0.5)
+        GameTooltip:AddLine(L["Click to ask for it in group chat"], 0.5, 1, 0.5)
     elseif settings.clickCast and record.apply then
-        GameTooltip:AddLine("Click to switch to it", 0.5, 1, 0.5)
+        GameTooltip:AddLine(L["Click to switch to it"], 0.5, 1, 0.5)
     elseif settings.clickCast and (record.spell or record.item or record.macro) and not record.entry.noClick then
-        GameTooltip:AddLine("Click to " .. ((record.item or (record.macro and not record.spell)) and "use it" or "cast it"), 0.5, 1, 0.5)
+        GameTooltip:AddLine(L["Click to "] .. ((record.item or (record.macro and not record.spell)) and L["use it"] or L["cast it"]), 0.5, 1, 0.5)
     end
     if record.kind and settings.consumableMemory then
-        GameTooltip:AddLine("The one you click is offered first next time on this spec", 0.7, 0.7, 0.7, true)
+        GameTooltip:AddLine(L["The one you click is offered first next time on this spec"], 0.7, 0.7, 0.7, true)
     end
     if settings.rightSnooze then
-        GameTooltip:AddLine(("Right-click: hide it for %d minutes"):format(settings.snoozeMinutes or 10), 0.7, 0.7, 0.7)
+        GameTooltip:AddLine((L["Right-click: hide it for %d minutes"]):format(settings.snoozeMinutes or 10), 0.7, 0.7, 0.7)
     end
     GameTooltip:Show()
 end
@@ -1817,7 +1975,7 @@ watcher:SetScript("OnEvent", function(_, event, unit)
             C_Timer.After(Data.DISMOUNT_PET_PAUSE + 0.2, MarkDirty)
         end
     elseif event == "READY_CHECK" then
-        if settings.readyCheck then
+        if settings.readyCheck or settings.readyCheckOnly then
             readyCheckUntil = GetTime() + READY_CHECK_SECONDS
             C_Timer.After(READY_CHECK_SECONDS + 0.5, MarkDirty)
         end
@@ -1884,6 +2042,15 @@ local function BindSettings()
     if type(config.lastUsed) ~= "table" then config.lastUsed = {} end   -- spec -> kind -> itemID
     if type(config.loadouts) ~= "table" then config.loadouts = {} end   -- spec -> content -> loadout name
     if type(config.gearSets) ~= "table" then config.gearSets = {} end   -- spec -> content -> set name
+    -- Warlock demons per content: a set of summon spells, so a content can
+    -- want more than one. Older settings held a single demon; it carries over.
+    for _, content in ipairs(Data.DEMON_CONTENT) do
+        local key = "demons_" .. content.key
+        if type(config[key]) ~= "table" then
+            local old = tonumber(config["demon_" .. content.key])
+            config[key] = old and { [old] = true } or {}
+        end
+    end
     -- The old "large icons" box becomes a size the slider can show.
     if (tonumber(config.iconSize) or 0) <= 0 then config.iconSize = config.largeIcons and 44 or 34 end
     settings = config
@@ -1911,7 +2078,7 @@ end
 local function Heading(w, text)
     local h = w:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     h:SetPoint("TOPLEFT", w, "TOPLEFT", 18, w.cursorY - 6)
-    h:SetText(text)
+    h:SetText(OxedHub.T(text))
     w.cursorY = w.cursorY - 24
 end
 
@@ -1947,13 +2114,34 @@ local function FitHeight(w)
     w:SetHeight(math.max(120, -w.cursorY + 16))
 end
 
--- Every reminder that can apply to your class, each with its own box.
+-- How many custom buffs the list holds (the Custom buffs window adds them).
+local MAX_CUSTOM = 12
+
+-- Every reminder there is, for every class, each with its icon and its own
+-- box, by section; your class first, the others under their class's name.
+-- Scrolls, since all of them together are taller than the screen.
+local CLASS_ORDER = {
+    "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "DEATHKNIGHT", "SHAMAN",
+    "MAGE", "WARLOCK", "MONK", "DRUID", "DEMONHUNTER", "EVOKER",
+}
+
+local function ClassName(classFile)
+    return (LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[classFile]) or classFile
+end
+
+local function ClassLabel(classFile)
+    local colour = C_ClassColor and C_ClassColor.GetClassColor(classFile)
+    local name = ClassName(classFile)
+    return colour and colour:WrapTextInColorCode(name) or name
+end
+
 local function BuildReminders(API)
-    local w = API:CreateOptionsWindow("Buff Reminder: Reminders", 380, 400)
-    local _, class = UnitClass("player")
+    local w = API:CreateOptionsWindow("Buff Reminder: Reminders", 620, 640)
+    local _, myClass = UnitClass("player")
+
     -- A tick means "remind me"; stored as hide_<key>, opt-in ones off until ticked.
     local byKey = {}
-    local proxy = setmetatable({}, {
+    local remindProxy = setmetatable({}, {
         __index = function(_, key)
             local entry = byKey[key]
             if entry and entry.optIn then return settings["hide_" .. key] == false end
@@ -1964,26 +2152,199 @@ local function BuildReminders(API)
             MarkDirty()
         end,
     })
-    local parts = {
-        { "loadout", Data.LOADOUT },
-        { "raid", Data.RAID }, { "self", Data.SELF }, { "targeted", Data.TARGETED },
-        { "pet", Data.PET }, { "consumable", Data.CONSUMABLE },
-    }
-    for _, part in ipairs(parts) do
-        local any = false
-        for _, entry in ipairs(part[2]) do
-            if not entry.class or entry.class == class then
-                if not any then
-                    Heading(w, Data.GROUP_TITLES[part[1]])
-                    any = true
+    -- Group buffs other classes give, asked for with a click: ask_<key>,
+    -- on until unticked.
+    local askProxy = setmetatable({}, {
+        __index = function(_, key) return settings["ask_" .. key] ~= false end,
+        __newindex = function(_, key, value)
+            settings["ask_" .. key] = value and true or false
+            MarkDirty()
+        end,
+    })
+
+    local scroll = CreateFrame("ScrollFrame", nil, w, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", w, "TOPLEFT", 12, -32)
+    scroll:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -32, 12)
+    local CONTENT_W = 570
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetSize(CONTENT_W, 10)
+    scroll:SetScrollChild(content)
+
+    local COL_W, ROW_H = CONTENT_W / 2, 26
+    local y = -4
+    local col = 0
+    local rows = {}
+
+    local function EndLine()
+        if col ~= 0 then
+            y = y - ROW_H
+            col = 0
+        end
+    end
+
+    -- A section title with a gold rule under it, or (small) a class's name.
+    local function Head(text, small)
+        EndLine()
+        local h = content:CreateFontString(nil, "OVERLAY", small and "GameFontHighlight" or "GameFontNormalLarge")
+        h:SetPoint("TOPLEFT", content, "TOPLEFT", small and 10 or 4, y - (small and 4 or 10))
+        h:SetText(small and text or OxedHub.T(text))
+        y = y - (small and 22 or 34)
+        if not small then
+            local line = content:CreateTexture(nil, "ARTWORK")
+            line:SetColorTexture(0.6, 0.5, 0.2, 0.5)
+            line:SetHeight(1)
+            line:SetPoint("TOPLEFT", content, "TOPLEFT", 4, y + 4)
+            line:SetPoint("TOPRIGHT", content, "TOPRIGHT", -4, y + 4)
+        end
+    end
+
+    -- One tick box with the buff's icon and name, two to a line.
+    local function Row(config, key, label, texture, tooltip)
+        local box = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+        box:SetSize(24, 24)
+        box:SetPoint("TOPLEFT", content, "TOPLEFT", 8 + col * COL_W, y)
+        box.icon = box:CreateTexture(nil, "ARTWORK")
+        box.icon:SetSize(20, 20)
+        box.icon:SetPoint("LEFT", box, "RIGHT", 2, 0)
+        box.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        box.icon:SetTexture(texture or 134400)
+        box.text:ClearAllPoints()
+        box.text:SetPoint("LEFT", box.icon, "RIGHT", 6, 0)
+        box.text:SetWidth(COL_W - 64)
+        box.text:SetJustifyH("LEFT")
+        box.text:SetWordWrap(false)
+        box.text:SetFontObject("GameFontHighlight")
+        box.text:SetText(OxedHub.T(label))
+        box:SetScript("OnClick", function(self) config[key] = self:GetChecked() and true or false end)
+        box.Refresh = function() box:SetChecked(config[key] == true) end
+        if tooltip then
+            box:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(self.text:GetText())
+                GameTooltip:AddLine(tooltip, 1, 1, 1, true)
+                GameTooltip:Show()
+            end)
+            box:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        end
+        rows[#rows + 1] = box
+        col = col + 1
+        if col == 2 then
+            col = 0
+            y = y - ROW_H
+        end
+        return box
+    end
+
+    local function EntryRow(config, entry)
+        byKey[entry.key] = entry
+        return Row(config, entry.key, Data.LABELS[entry.key] or entry.key, EntryTexture(entry),
+            entry.optIn and OxedHub.T("Off until you tick it.") or nil)
+    end
+
+    -- A section of class buffs: those with no class and your class's first,
+    -- then each other class under its coloured name.
+    local function ClassSection(title, entries)
+        Head(title)
+        local mine = {}
+        for _, entry in ipairs(entries) do
+            if not entry.class or entry.class == myClass then mine[#mine + 1] = entry end
+        end
+        if #mine > 0 then
+            Head(ClassLabel(myClass), true)
+            for _, entry in ipairs(mine) do EntryRow(remindProxy, entry) end
+        end
+        for _, classFile in ipairs(CLASS_ORDER) do
+            if classFile ~= myClass then
+                local any = false
+                for _, entry in ipairs(entries) do
+                    if entry.class == classFile then
+                        if not any then
+                            Head(ClassLabel(classFile), true)
+                            any = true
+                        end
+                        EntryRow(remindProxy, entry)
+                    end
                 end
-                byKey[entry.key] = entry
-                w:AddCheckbox(proxy, entry.key, Data.LABELS[entry.key] or entry.key,
-                    entry.optIn and "Off until you tick it." or nil)
             end
         end
     end
-    FitHeight(w)
+
+    Head(Data.GROUP_TITLES.loadout)
+    for _, entry in ipairs(Data.LOADOUT) do
+        byKey[entry.key] = entry
+        Row(remindProxy, entry.key, Data.LABELS[entry.key] or entry.key,
+            entry.key == "gearSet" and Data.GEAR_ICON or Data.LOADOUT_ICON)
+    end
+
+    Head("Group buffs you give")
+    for _, entry in ipairs(Data.RAID) do
+        byKey[entry.key] = entry
+        Row(remindProxy, entry.key, Data.LABELS[entry.key] or entry.key, EntryTexture(entry),
+            OxedHub.T("When you play this class: shows how many nearby players lack it, and a click casts it.")
+            .. " (" .. ClassLabel(entry.class) .. ")")
+    end
+
+    Head("Group buffs from others")
+    for _, entry in ipairs(Data.RAID) do
+        Row(askProxy, entry.key, Data.LABELS[entry.key] or entry.key, EntryTexture(entry),
+            OxedHub.T("Shown when it is missing on you and that class is in your group. A click asks for it. Needs \"Ask for buffs you lack\" in Smarter choices.")
+            .. " (" .. ClassLabel(entry.class) .. ")")
+    end
+
+    ClassSection(Data.GROUP_TITLES.self, Data.SELF)
+    ClassSection(Data.GROUP_TITLES.targeted, Data.TARGETED)
+    ClassSection(Data.GROUP_TITLES.pet, Data.PET)
+
+    Head(Data.GROUP_TITLES.consumable)
+    for _, entry in ipairs(Data.CONSUMABLE) do
+        if not entry.class then EntryRow(remindProxy, entry) end
+    end
+    for _, entry in ipairs(Data.CONSUMABLE) do
+        if entry.class then EntryRow(remindProxy, entry) end
+    end
+
+    -- Your custom buffs: a row per possible one, filled each time the window
+    -- opens, since the list changes in the Custom buffs window.
+    Head("Custom buffs")
+    local customProxy = setmetatable({}, {
+        __index = function(_, slot)
+            local id = settings.customBuffs[tonumber(slot:match("%d+"))]
+            return id and settings["hide_custom" .. id] ~= true or false
+        end,
+        __newindex = function(_, slot, value)
+            local id = settings.customBuffs[tonumber(slot:match("%d+"))]
+            if id then
+                settings["hide_custom" .. id] = not value
+                MarkDirty()
+            end
+        end,
+    })
+    local customTop = y
+    local customRows = {}
+    for i = 1, MAX_CUSTOM do customRows[i] = Row(customProxy, "slot" .. i, "", nil) end
+    local none = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    none:SetPoint("TOPLEFT", content, "TOPLEFT", 12, customTop - 6)
+    none:SetText(L["None yet. Add them in Custom buffs."])
+
+    local function Refresh()
+        local list = settings.customBuffs
+        for i, box in ipairs(customRows) do
+            local id = list[i]
+            if id then
+                box.icon:SetTexture(SpellTexture(id) or 134400)
+                box.text:SetText(SpellName(id) or (L["Spell "] .. id))
+                box:Show()
+            else
+                box:Hide()
+            end
+        end
+        none:SetShown(#list == 0)
+        local customH = math.max(1, math.ceil(#list / 2)) * ROW_H
+        content:SetHeight(-customTop + customH + 10)
+        for _, box in ipairs(rows) do box.Refresh() end
+    end
+    w:HookScript("OnShow", Refresh)
+    Refresh()
     return w
 end
 
@@ -2017,14 +2378,14 @@ end
 
 local function BuildWhere(API)
     local w = API:CreateOptionsWindow("Buff Reminder: Where it shows", 380, 400)
-    Heading(w, "Show the bar in")
+    Heading(w, L["Show the bar in"])
     w:AddCheckbox(settings, "where_openWorld", "The open world", nil, MarkDirty)
     w:AddCheckbox(settings, "where_dungeon", "Dungeons", nil, MarkDirty)
     w:AddCheckbox(settings, "where_raid", "Raids", nil, MarkDirty)
     w:AddCheckbox(settings, "where_delve", "Delves", nil, MarkDirty)
     w:AddCheckbox(settings, "where_scenario", "Other scenarios", nil, MarkDirty)
     w:AddCheckbox(settings, "where_pvp", "Battlegrounds and arenas", nil, MarkDirty)
-    Heading(w, "And hide it")
+    Heading(w, L["And hide it"])
     w:AddCheckbox(settings, "onlyInstances", "Group and own buffs only inside instances", nil, MarkDirty)
     w:AddCheckbox(settings, "onlyInGroup", "When you are not in a group", nil, MarkDirty)
     w:AddCheckbox(settings, "hideLeveling", "While you are levelling", nil, MarkDirty)
@@ -2038,7 +2399,7 @@ end
 local function SpellChoices(ids, firstText)
     local choices = { { value = 0, text = firstText } }
     for _, id in ipairs(ids) do
-        choices[#choices + 1] = { value = id, text = SpellName(id) or ("Spell " .. id) }
+        choices[#choices + 1] = { value = id, text = SpellName(id) or (L["Spell "] .. id) }
     end
     return choices
 end
@@ -2046,13 +2407,13 @@ end
 local function BuildClass(API, class)
     local w = API:CreateOptionsWindow("Buff Reminder: Class choices", 440, 300)
     if class == "ROGUE" then
-        Heading(w, "Poisons a click applies")
-        w:AddChoice(settings, "prefLethal", "Lethal", SpellChoices(Data.LETHAL_POISONS, "Best you know"), MarkDirty)
-        w:AddChoice(settings, "prefNonLethal", "Non-lethal", SpellChoices(Data.NONLETHAL_POISONS, "Best you know"), MarkDirty)
+        Heading(w, L["Poisons a click applies"])
+        w:AddChoice(settings, "prefLethal", "Lethal", SpellChoices(Data.LETHAL_POISONS, L["Best you know"]), MarkDirty)
+        w:AddChoice(settings, "prefNonLethal", "Non-lethal", SpellChoices(Data.NONLETHAL_POISONS, L["Best you know"]), MarkDirty)
         w:AddNote("With Dragon-Tempered Blades two of each kind are needed; the icon shows how many are on.")
     elseif class == "DEATHKNIGHT" then
-        Heading(w, "Rune each spec should have")
-        local choices = { { value = 0, text = "Any rune" } }
+        Heading(w, L["Rune each spec should have"])
+        local choices = { { value = 0, text = L["Any rune"] } }
         for _, rune in ipairs(Data.RUNES) do choices[#choices + 1] = { value = rune.enchant, text = rune.name } end
         for _, spec in ipairs(Data.DK_SPECS) do
             w:AddChoice(settings, "rune_" .. spec.id, spec.name, choices, MarkDirty)
@@ -2064,15 +2425,61 @@ local function BuildClass(API, class)
     elseif class == "WARRIOR" then
         w:AddNote("Turn on \"Wrong warrior stance\" in Reminders: Arms wants Battle Stance, Fury Battle or Berserker, Protection Defensive.")
     elseif class == "WARLOCK" then
-        Heading(w, "Demon offered first when yours is missing")
-        local choices = {}
-        for _, id in ipairs(Data.DEMON_CHOICES) do
-            choices[#choices + 1] = { value = id, text = Data.DEMON_NAMES[id] or SpellName(id) or ("Spell " .. id) }
-        end
+        Heading(w, L["Demons wanted, per content"])
+        -- A row of boxes per content: any number of demons can be wanted.
+        local boxes = {}
         for _, content in ipairs(Data.DEMON_CONTENT) do
-            w:AddChoice(settings, "demon_" .. content.key, content.text, choices, MarkDirty)
+            local label = w:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            label:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 4)
+            label:SetText(OxedHub.T(content.text))
+            w.cursorY = w.cursorY - 22
+            for i, id in ipairs(Data.DEMON_CHOICES) do
+                local box = CreateFrame("CheckButton", nil, w, "UICheckButtonTemplate")
+                box:SetSize(22, 22)
+                box:SetPoint("TOPLEFT", w, "TOPLEFT", 22 + (i - 1) * 100, w.cursorY)
+                box.text:SetFontObject("GameFontHighlightSmall")
+                box.text:SetText(OxedHub.T(Data.DEMON_NAMES[id]) or SpellName(id) or (L["Spell "] .. id))
+                box.key, box.id = "demons_" .. content.key, id
+                box:SetScript("OnClick", function(self)
+                    settings[self.key][self.id] = self:GetChecked() and true or nil
+                    MarkDirty()
+                end)
+                boxes[#boxes + 1] = box
+            end
+            w.cursorY = w.cursorY - 28
         end
-        w:AddNote("Demonology always gets its Felguard first.")
+        w:HookScript("OnShow", function()
+            for _, box in ipairs(boxes) do box:SetChecked(settings[box.key][box.id] == true) end
+        end)
+        for _, box in ipairs(boxes) do box:SetChecked(settings[box.key][box.id] == true) end
+        w:AddNote("The ticked demons come first when yours is missing. Turn on \"Not one of your demons for this content\" "
+            .. "in Reminders to be told when another one is out. Demonology always wants its Felguard.")
+        w:AddCheckbox(settings, "felDomination", "Fel Domination before a summon",
+            "A click on a demon icon casts Fel Domination first, so the demon arrives at once.", MarkDirty)
+
+        Heading(w, L["Soulstone always goes on"])
+        -- ⚠ SetAutoFocus(false): a new EditBox takes the keyboard at once.
+        local box = CreateFrame("EditBox", nil, w, "InputBoxTemplate")
+        box:SetAutoFocus(false)
+        box:SetSize(220, 22)
+        box:SetPoint("TOPLEFT", w, "TOPLEFT", 26, w.cursorY - 4)
+        box:SetMaxLetters(60)
+        local function Save()
+            settings.soulstoneTarget = strtrim(box:GetText() or "")
+            box:ClearFocus()
+            MarkDirty()
+        end
+        box:SetScript("OnEnterPressed", Save)
+        box:SetScript("OnEditFocusLost", Save)
+        box:SetScript("OnEscapePressed", function(self)
+            self:SetText(settings.soulstoneTarget or "")
+            self:ClearFocus()
+        end)
+        w:HookScript("OnShow", function() box:SetText(settings.soulstoneTarget or "") end)
+        w:HookScript("OnHide", function() box:ClearFocus() end)
+        box:SetText(settings.soulstoneTarget or "")
+        w.cursorY = w.cursorY - 32
+        w:AddNote("A player's name, with the realm when it is not yours. Empty: whoever had it last, else the healer.")
     end
     FitHeight(w)
     return w
@@ -2107,11 +2514,11 @@ local function BuildLoadouts(API)
 
     local talentChoices, gearChoices, choiceButtons = {}, {}, {}
     local talents, gear = Store("loadouts"), Store("gearSets")
-    Heading(w, "Talent loadout")
+    Heading(w, L["Talent loadout"])
     for _, content in ipairs(Data.LOADOUT_CONTENT) do
         choiceButtons[#choiceButtons + 1] = w:AddChoice(talents, content.key, content.text, talentChoices)
     end
-    Heading(w, "Equipment set")
+    Heading(w, L["Equipment set"])
     for _, content in ipairs(Data.LOADOUT_CONTENT) do
         choiceButtons[#choiceButtons + 1] = w:AddChoice(gear, content.key, content.text, gearChoices)
     end
@@ -2120,14 +2527,14 @@ local function BuildLoadouts(API)
     local function Fill()
         local specID = CurrentSpecID()
         local specName = specID and GetSpecializationInfoByID and select(2, GetSpecializationInfoByID(specID))
-        specLine:SetText("For: " .. (specName or "no specialisation yet"))
+        specLine:SetText(L["For: "] .. (specName or L["no specialisation yet"]))
         wipe(talentChoices)
-        talentChoices[1] = { value = "", text = "Don't care" }
+        talentChoices[1] = { value = "", text = L["Don't care"] }
         for _, loadout in ipairs(Loadouts(specID)) do
             talentChoices[#talentChoices + 1] = { value = loadout.name, text = loadout.name }
         end
         wipe(gearChoices)
-        gearChoices[1] = { value = "", text = "Don't care" }
+        gearChoices[1] = { value = "", text = L["Don't care"] }
         if C_EquipmentSet and C_EquipmentSet.GetEquipmentSetIDs then
             for _, id in ipairs(C_EquipmentSet.GetEquipmentSetIDs() or {}) do
                 local name = C_EquipmentSet.GetEquipmentSetInfo(id)
@@ -2144,21 +2551,32 @@ end
 
 local function BuildSmarter(API)
     local w = API:CreateOptionsWindow("Buff Reminder: Smarter choices", 460, 300)
-    Heading(w, "Group buffs")
+    Heading(w, L["Group buffs"])
     w:AddCheckbox(settings, "benefitOnly", "Count only players the buff helps",
         "Arcane Intellect is not missing on a warrior, nor Battle Shout on a priest. Uses each player's spec when the game knows it.", MarkDirty)
     w:AddCheckbox(settings, "askBuffs", "Ask for buffs you lack",
         "A group buff you cannot give yourself, missing on you while its class is in the group, shows an icon; "
         .. "a click asks for it in group chat (once every 30 seconds). Also asks for a Soulwell when you have no Healthstone.", MarkDirty)
-    Heading(w, "Consumables")
+    w:AddCheckbox(settings, "askCooldown", "Wait 30 seconds before asking again",
+        "Untick if a request seems not to arrive and you want to send it again at once.", MarkDirty)
+    w:AddCheckbox(settings, "raidSelfOnly", "Only check yourself",
+        "The group buff icon shows only when you lack it, not when somebody else in the group does.", MarkDirty)
+    Heading(w, L["Consumables"])
     w:AddCheckbox(settings, "consumableMemory", "Offer the one you used last first",
         "Remembered per specialisation: the food, flask, rune or oil you clicked last time comes first.", MarkDirty)
     w:AddCheckbox(settings, "oneConsumable", "Only one icon per kind", "Just the first: the remembered one, else the best you carry.", MarkDirty)
     w:AddSlider(settings, "lowStock", "Count in red at or below", 0, 10, 1, "%s %d", MarkDirty)
     w:AddCheckbox(settings, "withoutItems", "Show food, flask and oil even with none in your bags", nil, MarkDirty)
+    w:AddCheckbox(settings, "withoutItemsReadyCheck", "...but those only on a ready check", nil, MarkDirty)
+    w:AddCheckbox(settings, "hideLegacyItems", "Leave out items from older expansions",
+        "Food, flasks and oil from a past expansion get no icon, even when they are in your bags.", MarkDirty)
+    w:AddCheckbox(settings, "delveFoodOnly", "Only delve food in delves", nil, MarkDirty)
+    w:AddCheckbox(settings, "delveFoodTimer", "Delve food reminder gives up after 30 seconds", nil, MarkDirty)
+    w:AddSlider(settings, "healthstoneLow", "Healthstone reminder at or below", 0, 3, 1, "%s %d charges", MarkDirty)
     w:AddSlider(settings, "repairBelow", "Repair reminder below", 5, 95, 5, "%s %d%% durability", MarkDirty)
+    w:AddNote("A click on the repair icon summons your Grand Expedition Yak or Mighty Caravan Brutosaur, or uses an Auto-Hammer or Jeeves, whichever you have.")
 
-    Heading(w, "Your request in chat")
+    Heading(w, L["Your request in chat"])
     -- ⚠ SetAutoFocus(false): a new EditBox takes the keyboard at once.
     local box = CreateFrame("EditBox", nil, w, "InputBoxTemplate")
     box:SetAutoFocus(false)
@@ -2190,24 +2608,22 @@ end
 
 -- Custom buffs: any spell, by ID or by the name of one you know. Shown when
 -- it is not on you; a click casts it when you know it.
-local MAX_CUSTOM = 12
-
 local function BuildCustom(API)
     local w = API:CreateOptionsWindow("Buff Reminder: Custom buffs", 400, 200)
-    w:AddNote("Type a spell ID, or the name of a spell you know, and press Add. "
+    w:AddNote("Start typing a spell's name and pick it from the list, or type a spell ID and press Add. "
         .. "It shows when that buff is not on you.")
 
+    -- The same search box as the triggers: suggestions drop down as you type.
     -- ⚠ SetAutoFocus(false): a new EditBox takes the keyboard at once.
-    local box = CreateFrame("EditBox", nil, w, "InputBoxTemplate")
+    local box = CreateFrame("EditBox", nil, w, "SearchBoxTemplate")
     box:SetAutoFocus(false)
     box:SetSize(220, 22)
     box:SetPoint("TOPLEFT", w, "TOPLEFT", 26, w.cursorY - 4)
-    box:SetScript("OnEscapePressed", box.ClearFocus)
 
     local add = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
     add:SetSize(80, 22)
     add:SetPoint("LEFT", box, "RIGHT", 10, 0)
-    add:SetText("Add")
+    add:SetText(L["Add"])
 
     local status = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     status:SetPoint("TOPLEFT", box, "BOTTOMLEFT", -4, -4)
@@ -2233,13 +2649,13 @@ local function BuildCustom(API)
                 row.remove = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
                 row.remove:SetSize(70, 20)
                 row.remove:SetPoint("RIGHT")
-                row.remove:SetText("Remove")
+                row.remove:SetText(L["Remove"])
                 rows[i] = row
             end
             if row then
                 if id then
                     row.icon:SetTexture(SpellTexture(id) or 134400)
-                    row.text:SetText(("%s  |cff888888%d|r"):format(SpellName(id) or "Unknown spell", id))
+                    row.text:SetText(("%s  |cff888888%d|r"):format(SpellName(id) or L["Unknown spell"], id))
                     row.remove:SetScript("OnClick", function()
                         table.remove(settings.customBuffs, i)
                         Rebuild()
@@ -2254,36 +2670,122 @@ local function BuildCustom(API)
         w:SetHeight(-top + math.max(1, #list) * 26 + 20)
     end
 
-    local function Add()
-        local text = strtrim(box:GetText() or "")
-        if text == "" then return end
-        local id = tonumber(text)
-        if not id and C_Spell and C_Spell.GetSpellInfo then
-            local info = C_Spell.GetSpellInfo(text)
-            id = info and info.spellID
-        end
+    local results  -- the suggestion list, made below
+
+    local function AddID(id, text)
         if not id or not SpellName(id) then
-            status:SetText("No spell found for \"" .. text .. "\".")
+            status:SetText(L["No spell found for \""] .. tostring(text or id) .. "\".")
             return
         end
         for _, have in ipairs(settings.customBuffs) do
-            if have == id then status:SetText("Already on the list.") return end
+            if have == id then status:SetText(L["Already on the list."]) return end
         end
         if #settings.customBuffs >= MAX_CUSTOM then
-            status:SetText(("At most %d custom buffs."):format(MAX_CUSTOM))
+            status:SetText((L["At most %d custom buffs."]):format(MAX_CUSTOM))
             return
         end
         table.insert(settings.customBuffs, id)
         status:SetText("")
         box:SetText("")
         box:ClearFocus()
+        if results then results:Hide() end
         Rebuild()
         MarkDirty()
     end
+
+    -- Add or Enter: the first suggestion if there is one, else the text as
+    -- an ID or the name of a spell you know.
+    local function Add()
+        local text = strtrim(box:GetText() or "")
+        if text == "" then return end
+        if results and results:IsShown() and results.buttons[1] and results.buttons[1]:IsShown() then
+            AddID(results.buttons[1].spellID, text)
+            return
+        end
+        local id = tonumber(text)
+        if not id and C_Spell and C_Spell.GetSpellInfo then
+            local info = C_Spell.GetSpellInfo(text)
+            id = info and info.spellID
+        end
+        AddID(id, text)
+    end
+
+    -- The suggestions under the box, from the triggers' spell search: your
+    -- spellbook first, then the common buffs other classes give.
+    results = CreateFrame("Frame", nil, w, "BackdropTemplate")
+    results:SetPoint("TOPLEFT", box, "BOTTOMLEFT", -5, -2)
+    results:SetSize(240, 120)
+    results:SetFrameStrata("TOOLTIP")
+    results:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 10 })
+    results:SetBackdropColor(0, 0, 0, 0.95)
+    results:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+    results:Hide()
+    results.buttons = {}
+    local MAX_RESULTS = 6
+
+    local function Suggest(text)
+        local Triggers = OxedHub.Triggers
+        local list = (text ~= "" and Triggers and Triggers.SearchPlayerSpells)
+            and Triggers:SearchPlayerSpells(text, MAX_RESULTS, true) or {}
+        for i = 1, math.max(#list, #results.buttons) do
+            local spell = list[i]
+            local b = results.buttons[i]
+            if spell and not b then
+                b = CreateFrame("Button", nil, results)
+                b:SetSize(230, 22)
+                b:SetPoint("TOPLEFT", results, "TOPLEFT", 5, -5 - (i - 1) * 23)
+                b.icon = b:CreateTexture(nil, "ARTWORK")
+                b.icon:SetSize(16, 16)
+                b.icon:SetPoint("LEFT")
+                b.text = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                b.text:SetPoint("LEFT", b.icon, "RIGHT", 5, 0)
+                b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+                b:SetScript("OnClick", function(self) AddID(self.spellID, self.text:GetText()) end)
+                results.buttons[i] = b
+            end
+            if b then
+                if spell then
+                    b.spellID = tonumber(spell.id)
+                    b.icon:SetTexture(spell.icon or 134400)
+                    b.text:SetText(spell.name)
+                    b:Show()
+                else
+                    b:Hide()
+                end
+            end
+        end
+        if #list == 0 then results:Hide() return end
+        results:SetHeight(#list * 23 + 10)
+        results:Show()
+    end
+
+    local searchTimer, hideTimer
+    box:SetScript("OnTextChanged", function(self, userInput)
+        if SearchBoxTemplate_OnTextChanged then SearchBoxTemplate_OnTextChanged(self) end
+        if not userInput then return end
+        if searchTimer then searchTimer:Cancel() end
+        local text = strtrim(self:GetText() or "")
+        if text == "" then results:Hide() return end
+        searchTimer = C_Timer.NewTimer(0.1, function()
+            if strtrim(self:GetText() or "") == text then Suggest(text) end
+        end)
+    end)
+    box:SetScript("OnEscapePressed", function(self) results:Hide() self:ClearFocus() end)
+    box:SetScript("OnEditFocusGained", function()
+        if hideTimer then hideTimer:Cancel() end
+    end)
+    -- Hidden a moment after the box loses focus, so a click on a suggestion
+    -- still lands.
+    box:SetScript("OnEditFocusLost", function()
+        if searchTimer then searchTimer:Cancel() end
+        hideTimer = C_Timer.NewTimer(0.2, function() results:Hide() end)
+    end)
+
     add:SetScript("OnClick", Add)
     box:SetScript("OnEnterPressed", Add)
     w:HookScript("OnShow", Rebuild)
-    w:HookScript("OnHide", function() box:ClearFocus() end)
+    w:HookScript("OnHide", function() box:ClearFocus() results:Hide() end)
     Rebuild()
     return w
 end
@@ -2295,6 +2797,17 @@ local function ShowOptions()
     if not optionsWindow then
         optionsWindow = API:CreateOptionsWindow("Buff Reminder", 440, 600)
         local w = optionsWindow
+        -- First thing in the window: the list of every buff, by section.
+        -- Behind a "Reminders" button at the bottom it was not found.
+        local choose = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+        choose:SetSize(w:GetWidth() - 40, 28)
+        choose:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
+        choose:SetText(OxedHub.T("Choose your buffs: every buff, by section"))
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(choose) end
+        choose:SetScript("OnClick", function()
+            ToggleSub("reminders", function() return BuildReminders(API) end)
+        end)
+        w.cursorY = w.cursorY - 38
         w:AddCheckbox(settings, "showRaid", "Group buff your class gives",
             "Arcane Intellect, Battle Shout, Mark of the Wild and so on, with how many nearby players lack it.", MarkDirty)
         w:AddCheckbox(settings, "showSelf", "Your own buffs",
@@ -2307,11 +2820,18 @@ local function ShowOptions()
             "In instances, every matching item in your bags gets its own icon with its count. Oil is offered per hand. The rune only shows when you carry one. Also: delve food, low durability anywhere, and Soulwell or Refreshment Table on a ready check.", MarkDirty)
         w:AddCheckbox(settings, "expiring", "Also buffs that are running out", nil, MarkDirty)
         w:AddSlider(settings, "expiringMinutes", "Running out means under", 1, 30, 1, "%s %d min", MarkDirty)
+        w:AddSlider(settings, "preKeyMinutes", "Before a Mythic+ key starts, under", 0, 60, 5, "%s %d min (0 = off)", MarkDirty)
         w:AddCheckbox(settings, "readyCheck", "Show everything for 30 seconds on a ready check")
+        w:AddCheckbox(settings, "readyCheckOnly", "Only on a ready check",
+            "The bar stays hidden the rest of the time and shows for 30 seconds when a ready check starts.", MarkDirty)
         w:AddCheckbox(settings, "clickCast", "Click an icon to cast or use it", nil, MarkDirty)
         w:AddCheckbox(settings, "rightSnooze", "Right-click an icon to hide it for a while", nil, MarkDirty)
         w:AddSlider(settings, "snoozeMinutes", "Hidden for", 1, 60, 1, "%s %d min")
         w:AddSoundPicker(settings, "sound", "Sound when something goes missing", "None")
+        w:AddCheckbox(settings, "minimapButton", "Show minimap button", nil, function()
+            local icon = MinimapIcon()
+            if icon then icon:Apply(settings.enabled == true) end
+        end)
         -- Preview: not saved, and switched off when this window closes.
         local previewToggle = setmetatable({}, {
             __index = function() return previewing end,
@@ -2323,7 +2843,7 @@ local function ShowOptions()
 
         local _, class = UnitClass("player")
         local items = {
-            { "Reminders", function() ToggleSub("reminders", function() return BuildReminders(API) end) end },
+            { OxedHub.T("Choose buffs"), function() ToggleSub("reminders", function() return BuildReminders(API) end) end },
             { "Custom buffs", function() ToggleSub("custom", function() return BuildCustom(API) end) end },
             { "Layout and glow", function() ToggleSub("layout", function() return BuildLayout(API) end) end },
             { "Where it shows", function() ToggleSub("where", function() return BuildWhere(API) end) end },
@@ -2348,6 +2868,19 @@ end
 
 -- ── Registration ────────────────────────────────────────────────────────────
 
+-- Its own icon on the minimap, like the other modules with a window: a click
+-- opens the options.
+MinimapIcon = function()
+    if minimapIcon or not settings then return minimapIcon end
+    local API = OxedHub.ModuleAPI
+    minimapIcon = API and API.MinimapButton and API:MinimapButton({
+        key = "buffreminder", label = L["Buff Reminder"], icon = "Interface\\Icons\\Spell_Holy_MagicalSentry",
+        config = settings, hint = L["Click: options."],
+        onClick = function() ShowOptions() end,
+    })
+    return minimapIcon
+end
+
 local loginFrame = CreateFrame("Frame")
 loginFrame:RegisterEvent("PLAYER_LOGIN")
 loginFrame:SetScript("OnEvent", function(self)
@@ -2362,8 +2895,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "buffreminder",
         name     = "Buff Reminder",
-        version  = "1.5.0",
-        updated  = 20261017.4,  -- preview with sample icons, icon look options, request wording
+        version  = "1.8.0",
+        updated  = 20261025.22,  -- every buff of every class with its icon, by section, scrolling
         author   = "Oxed",
         category = "combat",
         keywords = { "buff", "missing", "food", "flask", "rune", "oil", "pet", "poison", "consumables",
@@ -2384,10 +2917,16 @@ loginFrame:SetScript("OnEvent", function(self)
             if type(settings.lastUsed) ~= "table" then settings.lastUsed = {} end
             if type(settings.loadouts) ~= "table" then settings.loadouts = {} end
             if type(settings.gearSets) ~= "table" then settings.gearSets = {} end
+            for _, content in ipairs(Data.DEMON_CONTENT) do
+                if type(settings["demons_" .. content.key]) ~= "table" then settings["demons_" .. content.key] = {} end
+            end
+            local icon = MinimapIcon()
+            if icon then icon:Apply(true) end
             SafeStart()
         end,
 
         OnDisable = function()
+            if minimapIcon then minimapIcon:Apply(false) end
             Stop()
             -- The bar cannot be hidden in combat; finish when it ends.
             if InCombatLockdown() then lateStart:RegisterEvent("PLAYER_REGEN_ENABLED") end

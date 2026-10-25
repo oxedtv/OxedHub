@@ -20,6 +20,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -138,7 +139,7 @@ local function Discover()
                         known = {}
                         settings.known[id] = known
                     end
-                    known.n, known.g, known.o = name, group or known.g or "Other", order
+                    known.n, known.g, known.o = name, group or known.g or L["Other"], order
                     known.a = data.isAccountWide and true or nil
                     has[id] = true
                 end
@@ -182,7 +183,7 @@ end
 local STANDING_FALLBACK = { "Hated", "Hostile", "Unfriendly", "Neutral", "Friendly", "Honored", "Revered", "Exalted" }
 
 local function StandingLabel(reaction)
-    return _G["FACTION_STANDING_LABEL" .. reaction] or STANDING_FALLBACK[reaction] or ("Rank " .. reaction)
+    return _G["FACTION_STANDING_LABEL" .. reaction] or STANDING_FALLBACK[reaction] or (L["Rank "] .. reaction)
 end
 
 local function IsParagon(id)
@@ -213,7 +214,7 @@ local function Fill(id, e, kindHint)
         local major = C_MajorFactions.GetMajorFactionData(id)
         local level = major and Num(major.renownLevel) or 0
         local maxed = C_MajorFactions.HasMaximumRenown and C_MajorFactions.HasMaximumRenown(id) or false
-        e.k, e.l = "renown", ("Renown %d"):format(level)
+        e.k, e.l = "renown", (L["Renown %d"]):format(level)
         if maxed then
             e.c, e.m, e.done = 1, 1, true
         else
@@ -227,7 +228,7 @@ local function Fill(id, e, kindHint)
         local standing = friend and Num(friend.standing) or 0
         local low = friend and Num(friend.reactionThreshold) or 0
         local nextAt = friend and Num(friend.nextThreshold)
-        e.k, e.l = "friend", (friend and Str(friend.reaction)) or "Friend"
+        e.k, e.l = "friend", (friend and Str(friend.reaction)) or L["Friend"]
         if nextAt and nextAt > low then
             e.c, e.m, e.done = standing - low, nextAt - low, nil
         else
@@ -256,7 +257,7 @@ local function Fill(id, e, kindHint)
             local caches = math.floor(value / threshold)
             if pending == true then caches = math.max(0, caches - 1) end
             e.k, e.done = "paragon", nil
-            e.l = caches > 0 and ("Paragon x%d"):format(caches) or "Paragon"
+            e.l = caches > 0 and (L["Paragon x%d"]):format(caches) or L["Paragon"]
             e.c, e.m = value % threshold, threshold
             if pending == true then e.c = threshold end
             e.p = pending == true or nil
@@ -341,7 +342,7 @@ local Scan = Named("Reputations: read every faction", function()
 
     if settings.paragonAlert and #readyNames > 0 then
         table.sort(readyNames)
-        print(PREFIX .. "a paragon cache is waiting: |cffffd100" .. table.concat(readyNames, ", ") .. "|r")
+        print(PREFIX .. L["a paragon cache is waiting: |cffffd100"] .. table.concat(readyNames, ", ") .. "|r")
         SoundAlert()
     end
 
@@ -394,7 +395,7 @@ end
 
 local function ProgressText(e)
     if e.done then return e.l or "" end
-    if e.p then return (e.l or "") .. "  |cff40ff40cache ready|r" end
+    if e.p then return (e.l or "") .. L["  |cff40ff40cache ready|r"] end
     local short = BreakUpLargeNumbers or tostring
     return ("%s  %s / %s"):format(e.l or "", short(e.c or 0), short(e.m or 0))
 end
@@ -455,9 +456,9 @@ end
 local function Ago(seen)
     if not seen then return "never" end
     local s = math.max(0, time() - seen)
-    if s < 3600 then return "just now" end
-    if s < 86400 then return ("%d h ago"):format(math.floor(s / 3600)) end
-    return ("%d days ago"):format(math.floor(s / 86400))
+    if s < 3600 then return L["just now"] end
+    if s < 86400 then return (L["%d h ago"]):format(math.floor(s / 3600)) end
+    return (L["%d days ago"]):format(math.floor(s / 86400))
 end
 
 local function Gather()
@@ -523,8 +524,8 @@ local function RowTooltip(row)
     if desc then GameTooltip:AddLine(desc, 0.8, 0.8, 0.8, true) end
     GameTooltip:AddLine(" ")
     if known.a then
-        GameTooltip:AddLine("Shared by the warband", 0.4, 0.8, 1)
-        GameTooltip:AddDoubleLine("Standing", ProgressText(e), 1, 1, 1, 1, 1, 1)
+        GameTooltip:AddLine(L["Shared by the warband"], 0.4, 0.8, 1)
+        GameTooltip:AddDoubleLine(L["Standing"], ProgressText(e), 1, 1, 1, 1, 1, 1)
     else
         -- Every character that has been seen with it, furthest first.
         local list = {}
@@ -541,9 +542,9 @@ local function RowTooltip(row)
     end
     GameTooltip:AddLine(" ")
     if not known.a then
-        GameTooltip:AddLine("Click: every character's bar for it.", 0.5, 0.8, 1)
+        GameTooltip:AddLine(L["Click: every character's bar for it."], 0.5, 0.8, 1)
     end
-    GameTooltip:AddLine("Right-click: track it on the experience bar.", 0.5, 0.8, 1)
+    GameTooltip:AddLine(L["Right-click: track it on the experience bar."], 0.5, 0.8, 1)
     GameTooltip:Show()
 end
 
@@ -624,8 +625,8 @@ local function AltRow(p, i)
     row:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(self.key or "?")
-        GameTooltip:AddLine("Saved " .. Ago(self.seen), 0.8, 0.8, 0.8)
-        GameTooltip:AddLine("Click to see this character's whole list.", 0.5, 0.8, 1)
+        GameTooltip:AddLine(L["Saved "] .. Ago(self.seen), 0.8, 0.8, 0.8)
+        GameTooltip:AddLine(L["Click to see this character's whole list."], 0.5, 0.8, 1)
         GameTooltip:Show()
     end)
     row:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -655,7 +656,7 @@ local function ShowAlts(id)
     p.head:SetText(known.n or "?")
     local total = 0
     for _ in pairs(settings.chars) do total = total + 1 end
-    p.sub:SetFormattedText("%d of %d characters have met it", #list, total)
+    p.sub:SetFormattedText(L["%d of %d characters have met it"], #list, total)
 
     local shown = math.min(#list, ALT_MAX)
     for i = 1, shown do
@@ -742,7 +743,7 @@ local function PaintRow(row, entry, myKey)
         row.name:SetFontObject("GameFontNormal")
         row.name:SetText(entry.group or "")
         row.bar:Hide()
-        row.other:SetFormattedText("|cff9d9d9d%d / %d finished|r", entry.doneCount or 0, entry.count or 0)
+        row.other:SetFormattedText(L["|cff9d9d9d%d / %d finished|r"], entry.doneCount or 0, entry.count or 0)
         return
     end
 
@@ -776,8 +777,8 @@ Draw = function()
     local total, finished, ready = Gather()
     local viewed, myKey = ViewRecord()
 
-    window.summary:SetFormattedText("%d reputations   |cffffd100%d|r finished%s%s", total, finished,
-        ready > 0 and ("   |cffb380ff%d paragon %s ready|r"):format(ready, ready == 1 and "cache" or "caches") or "",
+    window.summary:SetFormattedText(L["%d reputations   |cffffd100%d|r finished%s%s"], total, finished,
+        ready > 0 and (L["   |cffb380ff%d paragon %s ready|r"]):format(ready, ready == 1 and "cache" or "caches") or "",
         viewKey and ("   |cffff9933saved %s|r"):format(Ago(viewed.seen)) or "")
     if window.fold then window.fold.Refresh() end
     if window.picker then
@@ -836,7 +837,7 @@ local function BuildWindow()
 
     local Panel = OxedHub.UIComponents and OxedHub.UIComponents.Panel
     if Panel and Panel.ApplyOrnateFrame then
-        Panel.ApplyOrnateFrame(w, "Reputations", 0.96)
+        Panel.ApplyOrnateFrame(w, L["Reputations"], 0.96)
     elseif w.SetBackdrop then
         w:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16,
@@ -870,7 +871,7 @@ local function BuildWindow()
     hide:SetSize(24, 24)
     hide:SetPoint("LEFT", search, "RIGHT", 14, 0)
     hide.text:SetFontObject("GameFontHighlightSmall")
-    hide.text:SetText("Hide finished")
+    hide.text:SetText(L["Hide finished"])
     hide:SetScript("OnClick", function(self)
         settings.hideFinished = self:GetChecked() and true or false
         offset = 0
@@ -882,7 +883,7 @@ local function BuildWindow()
     others:SetSize(24, 24)
     others:SetPoint("LEFT", hide.text, "RIGHT", 14, 0)
     others.text:SetFontObject("GameFontHighlightSmall")
-    others.text:SetText("Other characters")
+    others.text:SetText(L["Other characters"])
     others:SetScript("OnClick", function(self)
         settings.showOthers = self:GetChecked() and true or false
         Draw()
@@ -892,7 +893,7 @@ local function BuildWindow()
     local options = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
     options:SetSize(80, 22)
     options:SetPoint("TOPRIGHT", w, "TOPRIGHT", -34, -29)
-    options:SetText(OPTIONS or "Options")
+    options:SetText(OPTIONS or L["Options"])
     options:SetScript("OnClick", function()
         local API = OxedHub.ModuleAPI
         local mod = API and API.GetModule and API:GetModule("reputations")
@@ -915,7 +916,7 @@ local function BuildWindow()
         local list = CharacterList()
         local shown = MenuUtil and MenuUtil.CreateContextMenu and pcall(MenuUtil.CreateContextMenu, self,
             function(_, root)
-                root:CreateTitle("Show the list of")
+                root:CreateTitle(L["Show the list of"])
                 for _, key in ipairs(list) do
                     local char = settings.chars[key]
                     local label = ("|c%s%s|r  |cff9d9d9d%s|r"):format(ClassHex(char.class),
@@ -936,8 +937,8 @@ local function BuildWindow()
     end)
     picker:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Whose reputations")
-        GameTooltip:AddLine("Click to pick any of your characters. Right-click: back to this one.", 1, 1, 1, true)
+        GameTooltip:SetText(L["Whose reputations"])
+        GameTooltip:AddLine(L["Click to pick any of your characters. Right-click: back to this one."], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     picker:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -953,7 +954,7 @@ local function BuildWindow()
     local fold = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
     fold:SetSize(84, 20)
     fold:SetPoint("RIGHT", picker, "LEFT", -6, 0)
-    fold.Refresh = function() fold:SetText(AllFolded() and "Expand all" or "Collapse all") end
+    fold.Refresh = function() fold:SetText(AllFolded() and L["Expand all"] or L["Collapse all"]) end
     fold:SetScript("OnClick", function()
         local open = AllFolded()
         for _, known in pairs(settings.known) do
@@ -1054,7 +1055,7 @@ local function BuildWindow()
 
     w.empty = w:CreateFontString(nil, "OVERLAY", "GameFontDisable")
     w.empty:SetPoint("CENTER", list, "CENTER")
-    w.empty:SetText("Nothing to show")
+    w.empty:SetText(L["Nothing to show"])
 
     w:SetScript("OnShow", function(self)
         self.hideBox:SetChecked(settings.hideFinished == true)
@@ -1071,7 +1072,7 @@ end
 local function ToggleWindow()
     if not settings then return end
     if not running then
-        print(PREFIX .. "switch the module on first (/ohub > Modules).")
+        print(PREFIX .. L["switch the module on first (/ohub > Modules)."])
         return
     end
     local w = BuildWindow()
@@ -1168,8 +1169,8 @@ local function MinimapIcon()
     if minimapIcon or not settings then return minimapIcon end
     local API = OxedHub.ModuleAPI
     minimapIcon = API and API.MinimapButton and API:MinimapButton({
-        key = "reputations", label = "Reputations", icon = "Interface\\Icons\\Achievement_Reputation_01", config = settings,
-        hint = "Click: the list. Right-click: options.",
+        key = "reputations", label = L["Reputations"], icon = "Interface\\Icons\\Achievement_Reputation_01", config = settings,
+        hint = L["Click: the list. Right-click: options."],
         onClick = function(mouse)
             if mouse == "RightButton" then
                 local mod = API:GetModule("reputations")
@@ -1202,15 +1203,15 @@ local function ShowOptions()
         local open = CreateFrame("Button", nil, o, "UIPanelButtonTemplate")
         open:SetSize(150, 22)
         open:SetPoint("TOPLEFT", o, "TOPLEFT", 20, o.cursorY - 4)
-        open:SetText("Open the list")
+        open:SetText(L["Open the list"])
         open:SetScript("OnClick", ToggleWindow)
 
         local forget = CreateFrame("Button", nil, o, "UIPanelButtonTemplate")
         forget:SetSize(190, 22)
         forget:SetPoint("LEFT", open, "RIGHT", 8, 0)
-        forget:SetText("Forget other characters")
+        forget:SetText(L["Forget other characters"])
         forget:SetScript("OnClick", function()
-            API:Confirm("Forget the reputations saved for every other character?", ForgetOthers)
+            API:Confirm(L["Forget the reputations saved for every other character?"], ForgetOthers)
         end)
         o.cursorY = o.cursorY - 34
 
@@ -1260,7 +1261,7 @@ loginFrame:SetScript("OnEvent", function(self)
         OnOptionsShow = function() ShowOptions() end,
         -- On the minimap button's right-click menu.
         quick = {
-            { text = "Reputations", func = function() ToggleWindow() end },
+            { text = L["Reputations"], func = function() ToggleWindow() end },
         },
 
         OnEnable = function(_, config)

@@ -15,6 +15,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -40,7 +41,7 @@ local function LootSpecText()
     local index = GetSpecialization and GetSpecialization()
     if index then
         local _, name, _, icon = GetSpecializationInfo(index)
-        if name then return ("|T%s:16|t %s (your current spec)"):format(tostring(icon), name) end
+        if name then return (L["|T%s:16|t %s (your current spec)"]):format(tostring(icon), name) end
     end
     return "unknown"
 end
@@ -79,6 +80,7 @@ StaticPopupDialogs[POPUP_PASS] = {
     hideOnEscape = true,
     preferredIndex = 3,
 }
+OxedHub:RegisterLocalizedTable({ StaticPopupDialogs[POPUP_ROLL], StaticPopupDialogs[POPUP_PASS] }, "text", "button1")
 
 local function RollButton()
     return BonusRollFrame and ((BonusRollFrame.PromptFrame and BonusRollFrame.PromptFrame.RollButton)

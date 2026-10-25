@@ -16,6 +16,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local Events = {}
@@ -314,7 +315,7 @@ end
 -- The calendar is a load-on-demand addon, so it may not be in memory yet.
 local function OpenCalendar()
     if InCombatLockdown() then
-        print("|cff00ff00OxedHub:|r the calendar cannot be opened during combat.")
+        print(L["|cff00ff00OxedHub:|r the calendar cannot be opened during combat."])
         return
     end
 
@@ -408,13 +409,13 @@ function Events:Apply()
                 -- size by a quarter and look like a heading.
                 local file, size, flags = caption.text:GetFont()
                 if file and size then
-                    caption.text:SetFont(file, size * 1.1, flags)
+                    caption.text:SetFont(OxedHub:GetFont(file), size * 1.1, flags)
                 end
 
                 caption:SetScript("OnEnter", function(self)
                     self.text:SetTextColor(1, 0.95, 0.6, 1)
                     GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                    GameTooltip:SetText("Open the calendar")
+                    GameTooltip:SetText(L["Open the calendar"])
                     GameTooltip:Show()
                 end)
                 caption:SetScript("OnLeave", function(self)
@@ -435,8 +436,8 @@ function Events:Apply()
 
                 link:SetScript("OnEnter", function(self)
                     GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                    GameTooltip:SetText("Wowhead guide")
-                    GameTooltip:AddLine("Click for the address, ready to copy.", 1, 1, 1)
+                    GameTooltip:SetText(L["Wowhead guide"])
+                    GameTooltip:AddLine(L["Click for the address, ready to copy."], 1, 1, 1)
                     GameTooltip:Show()
                 end)
                 link:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -460,7 +461,7 @@ function Events:Apply()
 
             if caption.link then
                 caption.link.url = event.guide
-                caption.link.title = event.name .. " on Wowhead"
+                caption.link.title = event.name .. L[" on Wowhead"]
                 caption.link:SetShown(event.guide ~= nil)
             end
 
@@ -546,7 +547,7 @@ SlashCmdList["OXEDHUBDECOR"] = function(msg)
     if msg == "off" then
         Events.preview = nil
         Events:SetEnabled(false)
-        print("|cff00ff00OxedHub:|r seasonal decoration off.")
+        print(L["|cff00ff00OxedHub:|r seasonal decoration off."])
         return
     end
 
@@ -559,14 +560,14 @@ SlashCmdList["OXEDHUBDECOR"] = function(msg)
         if todayArgs == "off" or todayArgs == "" then
             OxedHubDB.globalSettings.calendarFakeDate = nil
             Events:Apply()
-            print("|cff00ff00OxedHub:|r back to the game's own date.")
+            print(L["|cff00ff00OxedHub:|r back to the game's own date."])
             return
         end
 
         local month, day = todayArgs:match("^(%d+)%s+(%d+)$")
         month, day = tonumber(month), tonumber(day)
         if not month or not day or month < 1 or month > 12 or day < 1 or day > 31 then
-            print("|cff00ff00OxedHub:|r use /oxdecor today <month> <day>, for example /oxdecor today 10 25.")
+            print(L["|cff00ff00OxedHub:|r use /oxdecor today <month> <day>, for example /oxdecor today 10 25."])
             return
         end
 
@@ -576,7 +577,7 @@ SlashCmdList["OXEDHUBDECOR"] = function(msg)
         local event = Events:GetActive()
         print(("|cff00ff00OxedHub:|r pretending it is %s %d -- %s."):format(
             MONTHS[month] or "?", day,
-            event and event.name or "nothing running that day"))
+            event and event.name or L["nothing running that day"]))
         return
     end
 
@@ -586,15 +587,15 @@ SlashCmdList["OXEDHUBDECOR"] = function(msg)
                 Events.preview = msg
                 if not Events:IsEnabled() then Events:SetEnabled(true) end
                 local hung = Events:Apply()
-                print(("|cff00ff00OxedHub:|r showing %s%s. Type /oxdecor on to go back to the calendar."):format(
-                    event.name, hung and "" or " -- nothing appeared, open the OxedHub window first"))
+                print((L["|cff00ff00OxedHub:|r showing %s%s. Type /oxdecor on to go back to the calendar."]):format(
+                    event.name, hung and "" or L[" -- nothing appeared, open the OxedHub window first"]))
                 return
             end
         end
 
         local names = {}
         for _, event in ipairs(Events.EVENTS) do names[#names + 1] = event.key end
-        print(("|cff00ff00OxedHub:|r no such event. Try: %s"):format(table.concat(names, ", ")))
+        print((L["|cff00ff00OxedHub:|r no such event. Try: %s"]):format(table.concat(names, ", ")))
         return
     end
 
@@ -605,7 +606,7 @@ SlashCmdList["OXEDHUBDECOR"] = function(msg)
         if event then
             print(("|cff00ff00OxedHub:|r seasonal decoration on -- %s."):format(event.name))
         else
-            print("|cff00ff00OxedHub:|r seasonal decoration on. Nothing is running today.")
+            print(L["|cff00ff00OxedHub:|r seasonal decoration on. Nothing is running today."])
         end
         return
     end
@@ -615,12 +616,12 @@ SlashCmdList["OXEDHUBDECOR"] = function(msg)
     -- October.
     local month, day = Today()
     local fakeMonth = FakeDate()
-    print("|cff00ff00OxedHub seasonal decoration|r")
+    print(L["|cff00ff00OxedHub seasonal decoration|r"])
     if fakeMonth then
         print(("  |cffffd100pretending it is %s %d|r -- /oxdecor today off to stop"):format(
             MONTHS[month] or "?", day))
     else
-        print(("  the game's date: %s %d"):format(MONTHS[month] or "?", day))
+        print((L["  the game's date: %s %d"]):format(MONTHS[month] or "?", day))
     end
     print(("  switched %s"):format(Events:IsEnabled() and "on" or "|cffff5555off|r"))
 
@@ -633,14 +634,14 @@ SlashCmdList["OXEDHUBDECOR"] = function(msg)
             event.name,
             MONTHS[event.from.month] or "?", event.from.day,
             MONTHS[event.to.month] or "?", event.to.day,
-            active and "|cff40ff40running today|r" or "|cff808080not today|r"))
+            active and L["|cff40ff40running today|r"] or L["|cff808080not today|r"]))
     end
 
     if Events.preview then
         print(("  |cffffd100showing %s by hand|r -- /oxdecor on goes back to the calendar."):format(Events.preview))
     elseif byDate then
-        print("  the window is dressed for it.")
+        print(L["  the window is dressed for it."])
     else
-        print("  nothing to show today. Try /oxdecor halloween to see it anyway.")
+        print(L["  nothing to show today. Try /oxdecor halloween to see it anyway."])
     end
 end

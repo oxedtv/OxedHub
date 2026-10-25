@@ -553,13 +553,13 @@ function Icons:CreatePositionFrame()
     local cdCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
     cdCheck:SetSize(20, 20)
     cdCheck:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 10, 10)
-    cdCheck.text:SetText("Show CD")
+    cdCheck.text:SetText(L["Show CD"])
     frame.cdCheck = cdCheck
     
     local durCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
     durCheck:SetSize(20, 20)
     durCheck:SetPoint("LEFT", cdCheck.text, "RIGHT", 15, 0)
-    durCheck.text:SetText("Duration")
+    durCheck.text:SetText(L["Duration"])
     frame.durCheck = durCheck
     
     cdCheck:SetScript("OnClick", function(self)
@@ -645,19 +645,19 @@ function Icons:UpdatePreviewStyling()
     end
     
     if style == "ROUNDED" then
-        frame.styleBtn:SetText("Style: Rounded")
+        frame.styleBtn:SetText(L["Style: Rounded"])
     elseif style == "CIRCLE" then
-        frame.styleBtn:SetText("Style: Circle")
+        frame.styleBtn:SetText(L["Style: Circle"])
     else
-        frame.styleBtn:SetText("Style: Square")
+        frame.styleBtn:SetText(L["Style: Square"])
     end
 
     if texType == "ALLIANCE" then
-        frame.texBtn:SetText("Alliance Flag")
+        frame.texBtn:SetText(L["Alliance Flag"])
     elseif texType == "HORDE" then
-        frame.texBtn:SetText("Horde Flag")
+        frame.texBtn:SetText(L["Horde Flag"])
     else
-        frame.texBtn:SetText("Default Icon")
+        frame.texBtn:SetText(L["Default Icon"])
     end
     
     local iconTex = ResolveIconTexture(frame.targetTrigger.conditions and frame.targetTrigger.conditions.spellID, texType)

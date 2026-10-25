@@ -136,10 +136,10 @@ function Toys:GetOrCreateMiniButton()
         local cfg = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxSettings or {}
         if cfg.hideButtonTooltips then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine("|cFFFFD900ToyBox (Minimized)|r")
-        GameTooltip:AddLine("|cFFFFFFFFClick:|r Expand ToyBox window", 1, 1, 1)
-        GameTooltip:AddLine("|cFF88AAFFRight-click:|r Choose open direction", 0.6, 0.8, 1)
-        GameTooltip:AddLine("|cFF88AAFFShift + Drag:|r Move button anywhere", 0.6, 0.8, 1)
+        GameTooltip:AddLine(L["|cFFFFD900ToyBox (Minimized)|r"])
+        GameTooltip:AddLine(L["|cFFFFFFFFClick:|r Expand ToyBox window"], 1, 1, 1)
+        GameTooltip:AddLine(L["|cFF88AAFFRight-click:|r Choose open direction"], 0.6, 0.8, 1)
+        GameTooltip:AddLine(L["|cFF88AAFFShift + Drag:|r Move button anywhere"], 0.6, 0.8, 1)
         GameTooltip:Show()
     end)
     mb:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -158,6 +158,7 @@ Toys.EXPAND_DIRECTIONS = {
     { key = "right",    label = "Right of Button" },
     { key = "remember", label = "Custom (Saved Position)" },
 }
+OxedHub:RegisterLocalizedTable(Toys.EXPAND_DIRECTIONS, "label")
 
 local function PlayExpandAnimation(frame)
     if not frame.expandAnimGroup then
@@ -299,7 +300,7 @@ function Toys:ExpandToyDock(sourceButton)
     -- moment combat ends instead, and says so.
     if InCombatLockdown() then
         if not self.expandWhenSafe then
-            print("|cff00ff00OxedHub:|r ToyBox will open when you leave combat.")
+            print(L["|cff00ff00OxedHub:|r ToyBox will open when you leave combat."])
         end
         self.expandWhenSafe = mini or true
         if not self.expandWatcher then
@@ -478,7 +479,7 @@ function Toys:GetOrCreateToyboxFrame()
 
     -- Header Title (Native BasicFrameTemplate TitleText)
     if f.TitleText then
-        f.TitleText:SetText("ToyBox: All Toys")
+        f.TitleText:SetText(L["ToyBox: All Toys"])
     end
 
     -- Hide native Close Button so we can place the dedicated Minimize button in its spot
@@ -499,7 +500,7 @@ function Toys:GetOrCreateToyboxFrame()
         local cfg = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxSettings or {}
         if cfg.hideButtonTooltips then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine("Minimize to movable button")
+        GameTooltip:AddLine(L["Minimize to movable button"])
         GameTooltip:Show()
     end)
     minBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -518,7 +519,7 @@ function Toys:GetOrCreateToyboxFrame()
     local sideMenuBtn = CreateFrame("Button", "$parent_SideMenuBtn", controlBar, "UIPanelButtonTemplate")
     sideMenuBtn:SetSize(68, 20)
     sideMenuBtn:SetPoint("LEFT", controlBar, "LEFT", 2, 0)
-    sideMenuBtn:SetText("Boxes v")
+    sideMenuBtn:SetText(L["Boxes v"])
     sideMenuBtn:SetNormalFontObject("GameFontNormalSmall")
     sideMenuBtn:SetScript("OnClick", function()
         f:ToggleSideMenuBar()
@@ -579,8 +580,8 @@ function Toys:GetOrCreateToyboxFrame()
         local cfg = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxSettings or {}
         if cfg.hideButtonTooltips then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine("|cFFFFD900ToyBox Settings|r")
-        GameTooltip:AddLine("Open the ToyBoxes tab in Oxed Hub.", 1, 1, 1)
+        GameTooltip:AddLine(L["|cFFFFD900ToyBox Settings|r"])
+        GameTooltip:AddLine(L["Open the ToyBoxes tab in Oxed Hub."], 1, 1, 1)
         GameTooltip:Show()
     end)
     settingsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -589,11 +590,11 @@ function Toys:GetOrCreateToyboxFrame()
     local lockBtn = CreateFrame("Button", "$parent_LockBtn", controlBar, "UIPanelButtonTemplate")
     lockBtn:SetSize(52, 20)
     lockBtn:SetPoint("RIGHT", settingsBtn, "LEFT", -4, 0)
-    lockBtn:SetText(conf.locked and "Unlock" or "Lock")
+    lockBtn:SetText(conf.locked and L["Unlock"] or L["Lock"])
     lockBtn:SetNormalFontObject("GameFontNormalSmall")
     lockBtn:SetScript("OnClick", function(self)
         conf.locked = not conf.locked
-        self:SetText(conf.locked and "Unlock" or "Lock")
+        self:SetText(conf.locked and L["Unlock"] or L["Lock"])
         if f.UpdateUnlockedBanner then f:UpdateUnlockedBanner() end
 
         -- The tiles carry their armed state as attributes now, so they have to
@@ -611,14 +612,14 @@ function Toys:GetOrCreateToyboxFrame()
         if cfg.hideButtonTooltips then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         if conf.locked then
-            GameTooltip:AddLine("|cFF00FF00Click to Unlock|r")
-            GameTooltip:AddLine("Move and resize the dock, and rearrange its tiles.", 1, 1, 1, true)
+            GameTooltip:AddLine(L["|cFF00FF00Click to Unlock|r"])
+            GameTooltip:AddLine(L["Move and resize the dock, and rearrange its tiles."], 1, 1, 1, true)
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine(L["TOYBOX_UNLOCK_WARNING"]
                 or "While unlocked, clicking a tile will not use the toy.", 1, 0.4, 0.3, true)
         else
-            GameTooltip:AddLine("|cFFFF5555Click to Lock|r")
-            GameTooltip:AddLine("Back to using toys.", 1, 1, 1, true)
+            GameTooltip:AddLine(L["|cFFFF5555Click to Lock|r"])
+            GameTooltip:AddLine(L["Back to using toys."], 1, 1, 1, true)
         end
         GameTooltip:Show()
     end)
@@ -631,7 +632,7 @@ function Toys:GetOrCreateToyboxFrame()
     f:HookScript("OnHide", function()
         if conf.locked then return end
         conf.locked = true
-        lockBtn:SetText("Unlock")
+        lockBtn:SetText(L["Unlock"])
         if f.UpdateUnlockedBanner then f:UpdateUnlockedBanner() end
         if f.ResizeButton then f.ResizeButton:Hide() end
         -- Re-arming the tiles writes secure attributes, which is forbidden in
@@ -690,8 +691,8 @@ function Toys:GetOrCreateToyboxFrame()
         local cfg = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxSettings or {}
         if cfg.hideButtonTooltips then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine("|cFFFFD900Random Hearthstone|r")
-        GameTooltip:AddLine("Cast a random usable toy hearthstone.", 1, 1, 1)
+        GameTooltip:AddLine(L["|cFFFFD900Random Hearthstone|r"])
+        GameTooltip:AddLine(L["Cast a random usable toy hearthstone."], 1, 1, 1)
         GameTooltip:Show()
     end)
     randomHsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -723,8 +724,8 @@ function Toys:GetOrCreateToyboxFrame()
         local cfg = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.toyBoxSettings or {}
         if cfg.hideButtonTooltips then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine("|cFFFFD900Random Toy|r")
-        GameTooltip:AddLine("Use a random ready toy from this box.", 1, 1, 1)
+        GameTooltip:AddLine(L["|cFFFFD900Random Toy|r"])
+        GameTooltip:AddLine(L["Use a random ready toy from this box."], 1, 1, 1)
         GameTooltip:Show()
     end)
     randomToyBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -956,11 +957,11 @@ function Toys:GetOrCreateToyboxFrame()
             if self.toyID then
                 GameTooltip:SetToyByItemID(self.toyID)
                 GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("|cFFFF4444Right-Click:|r Remove from Quick Slots", 0.9, 0.4, 0.4)
-                GameTooltip:AddLine("|cFF88AAFFDrag:|r Reorder or replace", 0.6, 0.8, 1)
+                GameTooltip:AddLine(L["|cFFFF4444Right-Click:|r Remove from Quick Slots"], 0.9, 0.4, 0.4)
+                GameTooltip:AddLine(L["|cFF88AAFFDrag:|r Reorder or replace"], 0.6, 0.8, 1)
             else
-                GameTooltip:AddLine("|cFFFFD900Quick Toy Slot #" .. self.slotIndex .. "|r")
-                GameTooltip:AddLine("Drag & drop any toy here for quick access.", 1, 1, 1, true)
+                GameTooltip:AddLine(L["|cFFFFD900Quick Toy Slot #"] .. self.slotIndex .. "|r")
+                GameTooltip:AddLine(L["Drag & drop any toy here for quick access."], 1, 1, 1, true)
             end
             GameTooltip:Show()
         end)
@@ -1176,12 +1177,12 @@ function Toys:GetOrCreateToyboxFrame()
             f.SideMenuBar:Show()
             f.ToyButtonHolderFrame:SetPoint("TOPLEFT", 144, -58)
             f.ToyButtonHolderFrame:SetPoint("BOTTOMRIGHT", -56, 8)
-            sideMenuBtn:SetText("Boxes ^")
+            sideMenuBtn:SetText(L["Boxes ^"])
         else
             f.SideMenuBar:Hide()
             f.ToyButtonHolderFrame:SetPoint("TOPLEFT", 10, -58)
             f.ToyButtonHolderFrame:SetPoint("BOTTOMRIGHT", -56, 8)
-            sideMenuBtn:SetText("Boxes v")
+            sideMenuBtn:SetText(L["Boxes v"])
         end
         f:RefreshSideMenu()
         f:UpdateToyButtons()
@@ -1230,7 +1231,7 @@ function Toys:GetOrCreateToyboxFrame()
                     else
                         selectedToyboxId = self.boxId
                         if f.TitleText then
-                            f.TitleText:SetText("ToyBox: " .. self.boxName)
+                            f.TitleText:SetText(L["ToyBox: "] .. self.boxName)
                         end
                         f:RefreshSideMenu()
                         f:UpdateToyButtons()
@@ -1245,8 +1246,8 @@ function Toys:GetOrCreateToyboxFrame()
                         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                         GameTooltip:AddLine(self.boxName, 1, 0.85, 0.2)
                         if self.boxId ~= "all" then
-                            GameTooltip:AddLine("|cFFFFFFFFLeft-Click:|r Select box", 0.9, 0.9, 0.9)
-                            GameTooltip:AddLine("|cFF00FF00Right-Click:|r Edit box name & icon", 0.4, 1.0, 0.4)
+                            GameTooltip:AddLine(L["|cFFFFFFFFLeft-Click:|r Select box"], 0.9, 0.9, 0.9)
+                            GameTooltip:AddLine(L["|cFF00FF00Right-Click:|r Edit box name & icon"], 0.4, 1.0, 0.4)
                         end
                         GameTooltip:Show()
                     end
@@ -1438,7 +1439,7 @@ function Toys:GetOrCreateToyboxFrame()
             if type(self.id) == "string" then
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
                 GameTooltip:AddLine(self.id, 1, 0.85, 0.2)
-                GameTooltip:AddLine("Toy mix", 0.7, 0.7, 0.7)
+                GameTooltip:AddLine(L["Toy mix"], 0.7, 0.7, 0.7)
                 GameTooltip:Show()
                 return
             end
@@ -1450,8 +1451,8 @@ function Toys:GetOrCreateToyboxFrame()
                 if not cfg.hideButtonTooltips then
                     GameTooltip:AddLine(" ")
                     if selectedToyboxId ~= "all" then
-                        GameTooltip:AddLine("|cFF00FF00Drag onto other toys to change order|r", 0.4, 1.0, 0.4)
-                        GameTooltip:AddLine("|cFFFF5555Right-Click: Remove from box|r", 1, 0.3, 0.3)
+                        GameTooltip:AddLine(L["|cFF00FF00Drag onto other toys to change order|r"], 0.4, 1.0, 0.4)
+                        GameTooltip:AddLine(L["|cFFFF5555Right-Click: Remove from box|r"], 1, 0.3, 0.3)
                     end
                 end
                 GameTooltip:Show()
@@ -1507,7 +1508,7 @@ function Toys:GetOrCreateToyboxFrame()
         end
 
         if f.TitleText then
-            f.TitleText:SetText("ToyBox: " .. (box.name or "All Toys"))
+            f.TitleText:SetText(L["ToyBox: "] .. (box.name or L["All Toys"]))
         end
 
         for _, b in ipairs(f.ToyButtons) do b:Hide() b.id = nil end
@@ -1742,6 +1743,14 @@ BINDING_NAME_OXEDHUB_TOGGLE_TOYBOX = "Toggle ToyBox Panel"
 BINDING_NAME_OXEDHUB_RANDOM_TOY = "Use Random Toy"
 BINDING_NAME_OXEDHUB_RANDOM_HEARTHSTONE = "Use Random Hearthstone"
 
+-- The Key Bindings panel is the game's own, so these follow the client's
+-- language, not the one picked in OxedHub's settings.
+if GetLocale() == "ruRU" then
+    BINDING_NAME_OXEDHUB_TOGGLE_TOYBOX = "Открыть/закрыть коробку игрушек"
+    BINDING_NAME_OXEDHUB_RANDOM_TOY = "Случайная игрушка"
+    BINDING_NAME_OXEDHUB_RANDOM_HEARTHSTONE = "Случайный камень возвращения"
+end
+
 function OxedHub_ToggleToyDock()
     if OxedHub.Toys and OxedHub.Toys.ToggleToyDock then
         OxedHub.Toys:ToggleToyDock()
@@ -1773,7 +1782,7 @@ function Toys:ShowExpandDirectionMenu(anchorFrame)
     local current = cfg.expandDirection or "auto"
 
     local menu = { 
-        { text = "Open direction", isTitle = true, notCheckable = true } 
+        { text = L["Open direction"], isTitle = true, notCheckable = true } 
     }
     for _, def in ipairs(self.EXPAND_DIRECTIONS) do
         table.insert(menu, {
@@ -1790,7 +1799,7 @@ function Toys:ShowExpandDirectionMenu(anchorFrame)
 
     table.insert(menu, { text = " ", isTitle = true, notCheckable = true })
     table.insert(menu, {
-        text = "Clear 5 Quick Slots",
+        text = L["Clear 5 Quick Slots"],
         notCheckable = true,
         func = function()
             if profile then

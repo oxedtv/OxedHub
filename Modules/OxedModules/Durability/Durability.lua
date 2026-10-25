@@ -20,9 +20,11 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
+    minimapButton = true,   -- its own icon on the minimap while switched on
     enabled        = false,  -- off until the player switches it on (see ModuleAPI:Register)
     showDisplay    = true,   -- the readout on screen
     displayAlways  = true,   -- false: only while below remindBelow
@@ -43,6 +45,7 @@ local DEFAULTS = {
 }
 
 local settings
+local minimapIcon, MinimapIcon   -- MinimapIcon is defined above the login code
 local optionsWindow
 local display
 local watcher = CreateFrame("Frame")
@@ -56,6 +59,7 @@ local SLOTS = {
     { 11, "Ring" }, { 12, "Ring" }, { 13, "Trinket" }, { 14, "Trinket" },
     { 16, "Main hand" }, { 17, "Off hand" }, { 18, "Ranged" },
 }
+OxedHub:RegisterLocalizedTable(SLOTS, 2)
 
 local function Active(option)
     return settings and settings.enabled == true and (option == nil or settings[option] ~= false)
@@ -175,29 +179,29 @@ local function ShowTooltip(owner)
     -- be secret there, and the last figures stand.
     if not InCombatLockdown() then ReadGear(true) end
     GameTooltip:SetOwner(owner, "ANCHOR_BOTTOM")
-    GameTooltip:SetText("Durability")
+    GameTooltip:SetText(L["Durability"])
     if not state.read or #state.items == 0 then
-        GameTooltip:AddLine("Nothing equipped wears out.", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine(L["Nothing equipped wears out."], 0.7, 0.7, 0.7)
         GameTooltip:Show()
         return
     end
-    GameTooltip:AddDoubleLine("Lowest", ("|cff%s%d%%|r  %s"):format(Hex(state.lowest), state.lowest, state.lowestName or ""), 1, 0.82, 0, 1, 1, 1)
-    GameTooltip:AddDoubleLine("Average", ("|cff%s%d%%|r"):format(Hex(state.average), state.average or 0), 1, 0.82, 0, 1, 1, 1)
+    GameTooltip:AddDoubleLine(L["Lowest"], ("|cff%s%d%%|r  %s"):format(Hex(state.lowest), state.lowest, state.lowestName or ""), 1, 0.82, 0, 1, 1, 1)
+    GameTooltip:AddDoubleLine(L["Average"], ("|cff%s%d%%|r"):format(Hex(state.average), state.average or 0), 1, 0.82, 0, 1, 1, 1)
     GameTooltip:AddLine(" ")
     for _, item in ipairs(state.items) do
         local icon = item.texture and ("|T%s:14:14:0:0:64:64:5:59:5:59|t "):format(item.texture) or ""
         local left = icon .. (item.link or item.name)
-        local right = item.pct <= 0 and "|cffff2020Broken|r" or ("|cff%s%d%%|r"):format(Hex(item.pct), item.pct)
+        local right = item.pct <= 0 and L["|cffff2020Broken|r"] or ("|cff%s%d%%|r"):format(Hex(item.pct), item.pct)
         GameTooltip:AddDoubleLine(left, right, 1, 1, 1, 1, 1, 1)
     end
     local cost = Coins(state.cost)
     if cost or state.bags > 0 then GameTooltip:AddLine(" ") end
-    if cost then GameTooltip:AddDoubleLine("Repair (equipped)", cost, 1, 0.82, 0, 1, 1, 1) end
+    if cost then GameTooltip:AddDoubleLine(L["Repair (equipped)"], cost, 1, 0.82, 0, 1, 1, 1) end
     if settings.bagItems and state.bags > 0 then
-        GameTooltip:AddDoubleLine(("Worn in bags (%d)"):format(state.bags), Coins(state.bagCost) or "", 1, 0.82, 0, 1, 1, 1)
+        GameTooltip:AddDoubleLine((L["Worn in bags (%d)"]):format(state.bags), Coins(state.bagCost) or "", 1, 0.82, 0, 1, 1, 1)
     end
     GameTooltip:AddLine(" ")
-    GameTooltip:AddLine(settings.locked and "Right-click for options." or "Drag to move. Right-click for options.", 0.6, 0.6, 0.6)
+    GameTooltip:AddLine(settings.locked and L["Right-click for options."] or L["Drag to move. Right-click for options."], 0.6, 0.6, 0.6)
     GameTooltip:Show()
 end
 
@@ -293,7 +297,7 @@ local function Paint()
 
     if value then
         local broken = state.lowest and state.lowest <= 0 and settings.showValue ~= "average"
-        d.text:SetText(broken and "Broken" or ("%d%%"):format(math.floor(value + 0.5)))
+        d.text:SetText(broken and L["Broken"] or ("%d%%"):format(math.floor(value + 0.5)))
         d.text:SetTextColor(Colour(value))
     else
         d.text:SetText(moving and "100%" or "--")
@@ -327,7 +331,7 @@ local function Report(force)
     if not state.read then return end
     local lowest = state.lowest
     if not lowest then
-        if force then print(PREFIX .. "nothing you wear can lose durability.") end
+        if force then print(PREFIX .. L["nothing you wear can lose durability."]) end
         return
     end
     if not force and lowest >= (tonumber(settings.remindBelow) or 50) then return end
@@ -337,12 +341,12 @@ local function Report(force)
     if not InCombatLockdown() then ReadGear(true) end
 
     local cost = Coins(state.cost)
-    print(PREFIX .. ("durability: lowest |cff%s%d%%|r (%s), average |cff%s%d%%|r%s.")
+    print(PREFIX .. (L["durability: lowest |cff%s%d%%|r (%s), average |cff%s%d%%|r%s."])
         :format(Hex(lowest), lowest, state.lowestName or "?", Hex(state.average), state.average or 0,
-            cost and (", repair " .. cost) or ""))
+            cost and (L[", repair "] .. cost) or ""))
     for _, item in ipairs(state.items) do
         if item.pct <= 0 then
-            print("   " .. (item.link or item.name) .. " |cffff2020is broken.|r")
+            print("   " .. (item.link or item.name) .. L[" |cffff2020is broken.|r"])
         elseif force and item.pct < 50 then
             print(("   %s |cff%s%d%%|r"):format(item.link or item.name, Hex(item.pct), item.pct))
         end
@@ -437,14 +441,14 @@ local function ShowOptions()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
     if not optionsWindow then
-        local o = API:CreateOptionsWindow("Durability", 470, 690)
+        local o = API:CreateOptionsWindow("Durability", 470, 718)
         local function Repaint() if Active() then Refresh() end end
         o:AddCheckbox(settings, "showDisplay", "Durability readout on screen", nil, Repaint)
         o:AddCheckbox(settings, "displayAlways", "Show it all the time",
             "Off: only while durability is below the reminder line.", Repaint)
         o:AddChoice(settings, "showValue", "It shows", {
-            { value = "lowest", text = "Lowest item" },
-            { value = "average", text = "Average" },
+            { value = "lowest", text = L["Lowest item"] },
+            { value = "average", text = L["Average"] },
         }, Repaint)
         o:AddCheckbox(settings, "locked", "Lock the readout", "Unlocked, drag it. Right-click it for these options.")
         o:AddSlider(settings, "fontSize", "Text size", 10, 36, 1, "%s: %d", Repaint)
@@ -465,18 +469,18 @@ local function ShowOptions()
         local move = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
         move:SetSize(130, 22)
         move:SetPoint("LEFT", row, "LEFT", 0, 0)
-        move:SetText("Move Readout")
+        move:SetText(L["Move Readout"])
         move:SetScript("OnClick", function(self)
-            self:SetText(ToggleMove() and "Done Moving" or "Move Readout")
+            self:SetText(ToggleMove() and L["Done Moving"] or L["Move Readout"])
         end)
         move:SetScript("OnHide", function(self)
             if moving then ToggleMove() end
-            self:SetText("Move Readout")
+            self:SetText(L["Move Readout"])
         end)
         local check = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
         check:SetSize(130, 22)
         check:SetPoint("LEFT", move, "RIGHT", 8, 0)
-        check:SetText("Check Now")
+        check:SetText(L["Check Now"])
         check:SetScript("OnClick", function() ReadGear() Report(true) end)
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
             OxedHub.UI:ApplyRedButtonStyle(move)
@@ -484,6 +488,10 @@ local function ShowOptions()
         end
         o.cursorY = o.cursorY - 32
 
+        o:AddCheckbox(settings, "minimapButton", "Show minimap button", nil, function()
+            local icon = MinimapIcon()
+            if icon then icon:Apply(settings.enabled == true) end
+        end)
         o:AddModuleLinks("Repairing at vendors:", { "autovendor" })
         o:AddNote("/dura prints your durability, /dura move shows the readout to drag.")
         optionsWindow = o
@@ -499,13 +507,13 @@ SlashCmdList["OXEDDURABILITY"] = function(message)
     if not settings then return end
     message = (message or ""):lower():match("^%s*(.-)%s*$")
     if message == "move" then
-        print(PREFIX .. "durability readout " .. (ToggleMove() and "shown: drag it, /dura move again when done." or "back to normal."))
+        print(PREFIX .. L["durability readout "] .. (ToggleMove() and L["shown: drag it, /dura move again when done."] or L["back to normal."]))
     elseif message == "options" then
         ShowOptions()
     else
         ReadGear()
         Report(true)
-        if not Active() then print(PREFIX .. "the Durability module is off: switch it on in Modules for the readout and reminders.") end
+        if not Active() then print(PREFIX .. L["the Durability module is off: switch it on in Modules for the readout and reminders."]) end
     end
 end
 
@@ -525,6 +533,21 @@ local function BindSettings()
     settings = config
 end
 
+-- Its own icon on the minimap, like the other modules with a window: a click
+-- opens a durability check, a right-click the options.
+MinimapIcon = function()
+    if minimapIcon or not settings then return minimapIcon end
+    local API = OxedHub.ModuleAPI
+    minimapIcon = API and API.MinimapButton and API:MinimapButton({
+        key = "durability", label = L["Durability"], icon = "Interface\\Icons\\Trade_BlackSmithing", config = settings,
+        hint = L["Click: check durability now. Right-click: options."],
+        onClick = function(mouse)
+            if mouse == "RightButton" then ShowOptions() else ReadGear() Report(true) end
+        end,
+    })
+    return minimapIcon
+end
+
 local loginFrame = CreateFrame("Frame")
 loginFrame:RegisterEvent("PLAYER_LOGIN")
 loginFrame:SetScript("OnEvent", function(self)
@@ -539,8 +562,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "durability",
         name     = "Durability",
-        version  = "1.0.1",
-        updated  = 20261021.7,  -- repair cost only when looked at
+        version  = "1.1.0",
+        updated  = 20261025.7,  -- its own minimap button
         author   = "Oxed",
         category = "items",
         keywords = { "durability", "repair", "broken", "armor", "gear", "damage", "cost" },
@@ -553,10 +576,13 @@ loginFrame:SetScript("OnEvent", function(self)
 
         OnEnable = function(_, config)
             settings = config
+            local icon = MinimapIcon()
+            if icon then icon:Apply(true) end
             Start()
         end,
 
         OnDisable = function()
+            if minimapIcon then minimapIcon:Apply(false) end
             Stop()
         end,
     })

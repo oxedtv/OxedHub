@@ -42,7 +42,7 @@ local function FitBoxName(fontString, text)
     end
 
     for _, size in ipairs(BOX_NAME_SIZES) do
-        fontString:SetFont(font, size, flags)
+        fontString:SetFont(OxedHub:GetFont(font), size, flags)
         fontString:SetText(text)
         if fontString:GetStringWidth() <= available then return end
     end
@@ -87,7 +87,7 @@ function Toys:ShowSuggestedBoxMenu(anchorFrame)
                 end
                 selectedBoxId = boxId
                 Toys:RefreshToyBoxesUI()
-                print(("|cff00d9d9Oxed Hub:|r created |cffffd100%s|r with %d toys.")
+                print((L["|cff00d9d9Oxed Hub:|r created |cffffd100%s|r with %d toys."])
                     :format(def.name, tonumber(info) or 0))
             end,
         })
@@ -96,16 +96,16 @@ function Toys:ShowSuggestedBoxMenu(anchorFrame)
     -- Rebuilding is destructive, so it sits at the bottom behind a confirm
     -- rather than next to the harmless "create one box" entries above.
     table.insert(menu, {
-        text = "|cffff8000Rebuild default boxes|r",
+        text = L["|cffff8000Rebuild default boxes|r"],
         notCheckable = true,
         func = function()
             StaticPopupDialogs["OXEDHUB_CONFIRM_REBUILD_BOXES"] = {
-                text = "Rebuild the shipped boxes?\n\n|cff888888They are recreated from the current categories. Any toy you added to or removed from one of them is lost. Your own boxes and your collection are untouched.|r",
+                text = L["Rebuild the shipped boxes?\n\n|cff888888They are recreated from the current categories. Any toy you added to or removed from one of them is lost. Your own boxes and your collection are untouched.|r"],
                 button1 = L["SETTINGS_BTN_YES"] or "Yes",
                 button2 = L["SETTINGS_BTN_CANCEL"] or "Cancel",
                 OnAccept = function()
                     local count = Toys:RebuildDefaultBoxes()
-                    print(("|cff00d9d9Oxed Hub:|r rebuilt %d default box(es)."):format(count))
+                    print((L["|cff00d9d9Oxed Hub:|r rebuilt %d default box(es)."]):format(count))
                 end,
                 timeout = 0,
                 whileDead = true,
@@ -163,7 +163,7 @@ function Toys:ShowBoxEditorDialog(editingBoxId)
         -- Name Input Label & EditBox
         local nameLabel = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         nameLabel:SetPoint("TOPLEFT", dialog, "TOPLEFT", 20, -38)
-        nameLabel:SetText("Box Name:")
+        nameLabel:SetText(L["Box Name:"])
 
         local editBox = CreateFrame("EditBox", nil, dialog, "InputBoxTemplate")
         editBox:SetSize(315, 24)
@@ -177,14 +177,14 @@ function Toys:ShowBoxEditorDialog(editingBoxId)
         -- Error warning text
         local errorText = dialog:CreateFontString(nil, "OVERLAY", "GameFontRedSmall")
         errorText:SetPoint("TOPLEFT", editBox, "BOTTOMLEFT", 0, -2)
-        errorText:SetText("|cFFFF4444Please enter a box name!|r")
+        errorText:SetText(L["|cFFFF4444Please enter a box name!|r"])
         errorText:Hide()
         dialog.errorText = errorText
 
         -- Icon Picker Section
         local iconLabel = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         iconLabel:SetPoint("TOPLEFT", editBox, "BOTTOMLEFT", -4, -18)
-        iconLabel:SetText("Choose Box Icon:")
+        iconLabel:SetText(L["Choose Box Icon:"])
 
         -- Large Interactive Icon Preview Button
         local iconBtn = CreateFrame("Button", nil, dialog, "BackdropTemplate")
@@ -214,7 +214,7 @@ function Toys:ShowBoxEditorDialog(editingBoxId)
         local function OpenSharedIconPicker()
             if OxedHub.IconPicker then
                 OxedHub.IconPicker:Open({
-                    title = "Choose ToyBox Icon",
+                    title = L["Choose ToyBox Icon"],
                     initialValue = dialog.selectedIcon or 135933,
                     onSelect = function(chosenIcon)
                         dialog.selectedIcon = chosenIcon
@@ -228,7 +228,7 @@ function Toys:ShowBoxEditorDialog(editingBoxId)
         iconBtn:SetScript("OnClick", OpenSharedIconPicker)
         iconBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine("Click to open Icon Picker")
+            GameTooltip:AddLine(L["Click to open Icon Picker"])
             GameTooltip:Show()
         end)
         iconBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -237,25 +237,25 @@ function Toys:ShowBoxEditorDialog(editingBoxId)
         local browseBtn = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
         browseBtn:SetSize(130, 24)
         browseBtn:SetPoint("LEFT", iconBtn, "RIGHT", 12, 6)
-        browseBtn:SetText("Browse Icons...")
+        browseBtn:SetText(L["Browse Icons..."])
         browseBtn:SetNormalFontObject("GameFontNormalSmall")
         browseBtn:SetScript("OnClick", OpenSharedIconPicker)
 
         local browseHint = dialog:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         browseHint:SetPoint("TOPLEFT", browseBtn, "BOTTOMLEFT", 0, -2)
-        browseHint:SetText("Search 10,000+ WoW icons")
+        browseHint:SetText(L["Search 10,000+ WoW icons"])
 
         -- Save Button (with name validation!)
         local saveBtn = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
         saveBtn:SetSize(110, 24)
         saveBtn:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -20, 16)
-        saveBtn:SetText("Save Box")
+        saveBtn:SetText(L["Save Box"])
         saveBtn:SetScript("OnClick", function()
             local rawName = dialog.editBox:GetText() or ""
             local name = rawName:match("^%s*(.-)%s*$")
             if not name or name == "" then
                 dialog.errorText:Show()
-                UIErrorsFrame:AddExternalErrorMessage("Please enter a box name!")
+                UIErrorsFrame:AddExternalErrorMessage(L["Please enter a box name!"])
                 dialog.editBox:SetFocus()
                 return
             end
@@ -276,7 +276,7 @@ function Toys:ShowBoxEditorDialog(editingBoxId)
         local cancelBtn = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
         cancelBtn:SetSize(90, 24)
         cancelBtn:SetPoint("RIGHT", saveBtn, "LEFT", -8, 0)
-        cancelBtn:SetText("Cancel")
+        cancelBtn:SetText(L["Cancel"])
         cancelBtn:SetScript("OnClick", function() dialog:Hide() end)
     end
 
@@ -286,13 +286,13 @@ function Toys:ShowBoxEditorDialog(editingBoxId)
     if editingBoxId then
         local box = Toys:GetToyBox(editingBoxId)
         if dialog.TitleText then
-            dialog.TitleText:SetText("Edit ToyBox: " .. (box and box.name or ""))
+            dialog.TitleText:SetText(L["Edit ToyBox: "] .. (box and box.name or ""))
         end
         dialog.editBox:SetText(box and box.name or "")
         dialog.selectedIcon = box and box.icon or 135933
     else
         if dialog.TitleText then
-            dialog.TitleText:SetText("Create New ToyBox")
+            dialog.TitleText:SetText(L["Create New ToyBox"])
         end
         dialog.editBox:SetText("")
         dialog.selectedIcon = 135933
@@ -314,7 +314,7 @@ function Toys:ShowHiddenBoxesMenu(anchor)
     if #hidden == 0 then return end
 
     MenuUtil.CreateContextMenu(anchor, function(owner, root)
-        root:CreateTitle("Hidden boxes")
+        root:CreateTitle(L["Hidden boxes"])
 
         for _, entry in ipairs(hidden) do
             local label = ("%s |cff888888(%d)|r"):format(entry.name, entry.count)
@@ -324,7 +324,7 @@ function Toys:ShowHiddenBoxesMenu(anchor)
         end
 
         root:CreateDivider()
-        root:CreateButton("Show all", function()
+        root:CreateButton(L["Show all"], function()
             for _, entry in ipairs(hidden) do
                 Toys:SetBoxHidden(entry.id, false)
             end
@@ -353,7 +353,7 @@ function Toys:ShowToyBoxesSettingsDialog()
         dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
 
         if dialog.TitleText then
-            dialog.TitleText:SetText("ToyBox Settings")
+            dialog.TitleText:SetText(L["ToyBox Settings"])
         end
 
         local function CancelSettings()
@@ -382,12 +382,12 @@ function Toys:ShowToyBoxesSettingsDialog()
         tabLine:SetColorTexture(1, 0.82, 0, 0.1)
 
         local tabMainBtn = CreateFrame("Button", nil, dialog, "PanelTopTabButtonTemplate")
-        tabMainBtn:SetText("Main Window Grid")
+        tabMainBtn:SetText(L["Main Window Grid"])
         PanelTemplates_TabResize(tabMainBtn, 14, nil, 130)
         tabMainBtn:SetPoint("BOTTOMLEFT", tabLine, "TOPLEFT", 6, -2)
 
         local tabDockBtn = CreateFrame("Button", nil, dialog, "PanelTopTabButtonTemplate")
-        tabDockBtn:SetText("Floating Dock")
+        tabDockBtn:SetText(L["Floating Dock"])
         PanelTemplates_TabResize(tabDockBtn, 14, nil, 130)
         tabDockBtn:SetPoint("LEFT", tabMainBtn, "RIGHT", -12, 0)
 
@@ -426,7 +426,7 @@ function Toys:ShowToyBoxesSettingsDialog()
         -- ====================================================================
         local showNamesCb = CreateFrame("CheckButton", "$parent_ShowNamesCb", mainPanel, "UICheckButtonTemplate")
         showNamesCb:SetPoint("TOPLEFT", mainPanel, "TOPLEFT", 8, -10)
-        showNamesCb.text:SetText("Show toy names under icons in grid")
+        showNamesCb.text:SetText(L["Show toy names under icons in grid"])
         showNamesCb.text:SetFontObject("GameFontHighlightSmall")
         showNamesCb:SetScript("OnClick", function(self)
             local cfg = GetToySettings()
@@ -438,7 +438,7 @@ function Toys:ShowToyBoxesSettingsDialog()
         -- Order by how often each toy is used.
         local sortUsageCb = CreateFrame("CheckButton", "$parent_SortUsageCb", mainPanel, "UICheckButtonTemplate")
         sortUsageCb:SetPoint("TOPLEFT", showNamesCb, "BOTTOMLEFT", 0, -2)
-        sortUsageCb.text:SetText("Sort toys by how often you use them")
+        sortUsageCb.text:SetText(L["Sort toys by how often you use them"])
         sortUsageCb.text:SetFontObject("GameFontHighlightSmall")
         sortUsageCb:SetScript("OnClick", function(self)
             GetToySettings().sortByUsage = self:GetChecked() or nil
@@ -447,9 +447,9 @@ function Toys:ShowToyBoxesSettingsDialog()
         end)
         sortUsageCb:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Sort toys by how often you use them")
-            GameTooltip:AddLine("Counted from the moment you switch this on, across every character. "
-                .. "Toys you have always shown stay at the front.", 1, 1, 1, true)
+            GameTooltip:SetText(L["Sort toys by how often you use them"])
+            GameTooltip:AddLine(L["Counted from the moment you switch this on, across every character. "]
+                .. L["Toys you have always shown stay at the front."], 1, 1, 1, true)
             GameTooltip:Show()
         end)
         sortUsageCb:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -458,7 +458,7 @@ function Toys:ShowToyBoxesSettingsDialog()
         -- The wish list box.
         local wishListCb = CreateFrame("CheckButton", "$parent_WishListCb", mainPanel, "UICheckButtonTemplate")
         wishListCb:SetPoint("TOPLEFT", sortUsageCb, "BOTTOMLEFT", 0, -2)
-        wishListCb.text:SetText("Show a Wish List box of toys you haven't collected")
+        wishListCb.text:SetText(L["Show a Wish List box of toys you haven't collected"])
         wishListCb.text:SetFontObject("GameFontHighlightSmall")
         wishListCb:SetScript("OnClick", function(self)
             GetToySettings().showWishList = self:GetChecked() or nil
@@ -469,9 +469,9 @@ function Toys:ShowToyBoxesSettingsDialog()
         end)
         wishListCb:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Wish List")
-            GameTooltip:AddLine("A box holding every toy you do not own yet, to browse and hunt down. "
-                .. "Its tiles cannot be used, only inspected.", 1, 1, 1, true)
+            GameTooltip:SetText(L["Wish List"])
+            GameTooltip:AddLine(L["A box holding every toy you do not own yet, to browse and hunt down. "]
+                .. L["Its tiles cannot be used, only inspected."], 1, 1, 1, true)
             GameTooltip:Show()
         end)
         wishListCb:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -480,7 +480,7 @@ function Toys:ShowToyBoxesSettingsDialog()
         -- Font Size Slider
         local fontTitle = mainPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         fontTitle:SetPoint("TOPLEFT", wishListCb, "BOTTOMLEFT", 6, -14)
-        fontTitle:SetText("Toy Names Font Size:")
+        fontTitle:SetText(L["Toy Names Font Size:"])
 
         local fontSlider = CreateFrame("Slider", "$parent_FontSlider", mainPanel, "OptionsSliderTemplate")
         fontSlider:SetSize(180, 16)
@@ -511,7 +511,7 @@ function Toys:ShowToyBoxesSettingsDialog()
         -- Grid Icon Size Slider
         local gridIconTitle = mainPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         gridIconTitle:SetPoint("TOPLEFT", fontSlider, "BOTTOMLEFT", 0, -22)
-        gridIconTitle:SetText("Grid Toy Icon Size:")
+        gridIconTitle:SetText(L["Grid Toy Icon Size:"])
 
         local iconSizeSlider = CreateFrame("Slider", "$parent_IconSizeSlider", mainPanel, "OptionsSliderTemplate")
         iconSizeSlider:SetSize(180, 16)
@@ -552,7 +552,7 @@ function Toys:ShowToyBoxesSettingsDialog()
         local gridGapText = gridGapSlider.Text or _G[gridGapSlider:GetName() .. "Text"]
         if gridGapLow  then gridGapLow:SetText("0") end
         if gridGapHigh then gridGapHigh:SetText("20") end
-        if gridGapText then gridGapText:SetText("Spacing Between Toys") end
+        if gridGapText then gridGapText:SetText(L["Spacing Between Toys"]) end
 
         local gridGapVal = mainPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         gridGapVal:SetPoint("LEFT", gridGapSlider, "RIGHT", 14, 0)
@@ -570,7 +570,7 @@ function Toys:ShowToyBoxesSettingsDialog()
         -- ====================================================================
         local showDockCb = CreateFrame("CheckButton", "$parent_ShowDockCb", dockPanel, "UICheckButtonTemplate")
         showDockCb:SetPoint("TOPLEFT", dockPanel, "TOPLEFT", 8, -4)
-        showDockCb.text:SetText("Show Floating ToyBox / Button on screen")
+        showDockCb.text:SetText(L["Show Floating ToyBox / Button on screen"])
         showDockCb.text:SetFontObject("GameFontHighlightSmall")
         showDockCb:SetScript("OnClick", function(self)
             local isChecked = self:GetChecked()
@@ -590,7 +590,7 @@ function Toys:ShowToyBoxesSettingsDialog()
 
         local dockIconTitle = dockPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         dockIconTitle:SetPoint("TOPLEFT", showDockCb, "BOTTOMLEFT", 0, -8)
-        dockIconTitle:SetText("Dock Toy Icon Size:")
+        dockIconTitle:SetText(L["Dock Toy Icon Size:"])
 
         local dockSizeSlider = CreateFrame("Slider", "$parent_DockSizeSlider", dockPanel, "OptionsSliderTemplate")
         dockSizeSlider:SetSize(180, 16)
@@ -631,7 +631,7 @@ function Toys:ShowToyBoxesSettingsDialog()
         local dockGapText = dockGapSlider.Text or _G[dockGapSlider:GetName() .. "Text"]
         if dockGapLow  then dockGapLow:SetText("0") end
         if dockGapHigh then dockGapHigh:SetText("20") end
-        if dockGapText then dockGapText:SetText("Spacing Between Toys") end
+        if dockGapText then dockGapText:SetText(L["Spacing Between Toys"]) end
 
         local dockGapVal = dockPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         dockGapVal:SetPoint("LEFT", dockGapSlider, "RIGHT", 14, 0)
@@ -647,7 +647,7 @@ function Toys:ShowToyBoxesSettingsDialog()
         -- Minimize Icon Picker
         local miniLabel = dockPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         miniLabel:SetPoint("TOPLEFT", dockGapSlider, "BOTTOMLEFT", 0, -22)
-        miniLabel:SetText("Floating Minimize Button Icon:")
+        miniLabel:SetText(L["Floating Minimize Button Icon:"])
 
         local miniIconBtn = CreateFrame("Button", nil, dockPanel, "BackdropTemplate")
         miniIconBtn:SetSize(34, 34)
@@ -670,7 +670,7 @@ function Toys:ShowToyBoxesSettingsDialog()
         local function OpenMiniIconPicker()
             if OxedHub.IconPicker then
                 OxedHub.IconPicker:Open({
-                    title = "Choose Minimized Widget Icon",
+                    title = L["Choose Minimized Widget Icon"],
                     initialValue = dialog.selectedMiniIcon or 135933,
                     onSelect = function(chosenIcon)
                         dialog.selectedMiniIcon = chosenIcon
@@ -690,13 +690,13 @@ function Toys:ShowToyBoxesSettingsDialog()
         local miniBrowseBtn = CreateFrame("Button", nil, dockPanel, "UIPanelButtonTemplate")
         miniBrowseBtn:SetSize(135, 22)
         miniBrowseBtn:SetPoint("LEFT", miniIconBtn, "RIGHT", 10, 6)
-        miniBrowseBtn:SetText("Change Icon...")
+        miniBrowseBtn:SetText(L["Change Icon..."])
         miniBrowseBtn:SetNormalFontObject("GameFontNormalSmall")
         miniBrowseBtn:SetScript("OnClick", OpenMiniIconPicker)
 
         local miniAutoCb = CreateFrame("CheckButton", "$parent_MiniAutoCb", dockPanel, "UICheckButtonTemplate")
         miniAutoCb:SetPoint("TOPLEFT", miniBrowseBtn, "BOTTOMLEFT", -4, -2)
-        miniAutoCb.text:SetText("Auto: Use active box icon")
+        miniAutoCb.text:SetText(L["Auto: Use active box icon"])
         miniAutoCb.text:SetFontObject("GameFontDisableSmall")
         miniAutoCb:SetScript("OnClick", function(self)
             local cfg = GetToySettings()
@@ -708,7 +708,7 @@ function Toys:ShowToyBoxesSettingsDialog()
         -- Checkboxes
         local showHsCb = CreateFrame("CheckButton", "$parent_ShowHsCb", dockPanel, "UICheckButtonTemplate")
         showHsCb:SetPoint("TOPLEFT", miniIconBtn, "BOTTOMLEFT", -4, -6)
-        showHsCb.text:SetText("Show Random Hearthstone in Floating Dock")
+        showHsCb.text:SetText(L["Show Random Hearthstone in Floating Dock"])
         showHsCb.text:SetFontObject("GameFontHighlightSmall")
         showHsCb:SetScript("OnClick", function(self)
             local cfg = GetToySettings()
@@ -719,7 +719,7 @@ function Toys:ShowToyBoxesSettingsDialog()
 
         local showRandomCb = CreateFrame("CheckButton", "$parent_ShowRandomCb", dockPanel, "UICheckButtonTemplate")
         showRandomCb:SetPoint("TOPLEFT", showHsCb, "BOTTOMLEFT", 0, -2)
-        showRandomCb.text:SetText("Show Random Toy (Dice) in Floating Dock")
+        showRandomCb.text:SetText(L["Show Random Toy (Dice) in Floating Dock"])
         showRandomCb.text:SetFontObject("GameFontHighlightSmall")
         showRandomCb:SetScript("OnClick", function(self)
             local cfg = GetToySettings()
@@ -730,7 +730,7 @@ function Toys:ShowToyBoxesSettingsDialog()
 
         local hideTooltipsCb = CreateFrame("CheckButton", "$parent_HideTooltipsCb", dockPanel, "UICheckButtonTemplate")
         hideTooltipsCb:SetPoint("TOPLEFT", showRandomCb, "BOTTOMLEFT", 0, -2)
-        hideTooltipsCb.text:SetText("Hide action tooltips on buttons")
+        hideTooltipsCb.text:SetText(L["Hide action tooltips on buttons"])
         hideTooltipsCb.text:SetFontObject("GameFontHighlightSmall")
         hideTooltipsCb:SetScript("OnClick", function(self)
             local cfg = GetToySettings()
@@ -744,7 +744,7 @@ function Toys:ShowToyBoxesSettingsDialog()
         local saveBtn = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
         saveBtn:SetSize(110, 24)
         saveBtn:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -16, 14)
-        saveBtn:SetText("Save & Close")
+        saveBtn:SetText(L["Save & Close"])
         saveBtn:SetScript("OnClick", function()
             local cfg = GetToySettings()
             cfg.showToyNames = dialog.showNamesCb:GetChecked()
@@ -769,7 +769,7 @@ function Toys:ShowToyBoxesSettingsDialog()
         local cancelBtn = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
         cancelBtn:SetSize(85, 24)
         cancelBtn:SetPoint("RIGHT", saveBtn, "LEFT", -8, 0)
-        cancelBtn:SetText("Cancel")
+        cancelBtn:SetText(L["Cancel"])
         cancelBtn:SetScript("OnClick", CancelSettings)
     end
 
@@ -867,13 +867,13 @@ function Toys:ShowToyBoxesTab(parentPanel)
 
         local sideHeader = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         sideHeader:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 2, -2)
-        sideHeader:SetText("|cFFFFD900My ToyBoxes|r")
+        sideHeader:SetText(L["|cFFFFD900My ToyBoxes|r"])
 
         -- [ + New Box ] Button at bottom of sidebar
         local newBoxBtn = CreateFrame("Button", nil, sidebar, "UIPanelButtonTemplate")
         newBoxBtn:SetSize(116, 22)
         newBoxBtn:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMLEFT", 2, 2)
-        newBoxBtn:SetText("+ New Box")
+        newBoxBtn:SetText(L["+ New Box"])
         newBoxBtn:SetNormalFontObject("GameFontNormalSmall")
         -- Left-click makes an empty box; right-click offers ready-made ones
         -- built from toys the player already owns.
@@ -887,9 +887,9 @@ function Toys:ShowToyBoxesTab(parentPanel)
         end)
         newBoxBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine("|cFFFFD900New Box|r")
-            GameTooltip:AddLine("|cFFFFFFFFClick:|r create an empty box", 1, 1, 1)
-            GameTooltip:AddLine("|cFF88AAFFRight-click:|r suggested boxes", 0.6, 0.8, 1)
+            GameTooltip:AddLine(L["|cFFFFD900New Box|r"])
+            GameTooltip:AddLine(L["|cFFFFFFFFClick:|r create an empty box"], 1, 1, 1)
+            GameTooltip:AddLine(L["|cFF88AAFFRight-click:|r suggested boxes"], 0.6, 0.8, 1)
             GameTooltip:Show()
         end)
         newBoxBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -914,7 +914,7 @@ function Toys:ShowToyBoxesTab(parentPanel)
         -- Content Header (Active Box Name + Controls)
         local boxTitle = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         boxTitle:SetPoint("TOPLEFT", content, "TOPLEFT", 2, -2)
-        boxTitle:SetText("Favorites")
+        boxTitle:SetText(L["Favorites"])
         content.boxTitle = boxTitle
 
         local boxCount = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -926,7 +926,7 @@ function Toys:ShowToyBoxesTab(parentPanel)
         showDockBtn:SetSize(130, 20)
         showDockBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
         content.showDockBtn = showDockBtn
-        showDockBtn:SetText("Open On-Screen Dock")
+        showDockBtn:SetText(L["Open On-Screen Dock"])
         showDockBtn:SetNormalFontObject("GameFontNormalSmall")
         showDockBtn:SetScript("OnClick", function()
             if Toys.ToggleToyDock then
@@ -938,7 +938,7 @@ function Toys:ShowToyBoxesTab(parentPanel)
         local settingsBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
         settingsBtn:SetSize(58, 20)
         settingsBtn:SetPoint("RIGHT", showDockBtn, "LEFT", -4, 0)
-        settingsBtn:SetText("Settings")
+        settingsBtn:SetText(L["Settings"])
         settingsBtn:SetNormalFontObject("GameFontNormalSmall")
         settingsBtn:SetScript("OnClick", function()
             Toys:ShowToyBoxesSettingsDialog()
@@ -962,15 +962,15 @@ function Toys:ShowToyBoxesTab(parentPanel)
             local s = GetToySettings()
             if s.hideButtonTooltips then return end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine("Hidden boxes", 1, 0.85, 0.2)
-            GameTooltip:AddLine("Click to bring one back.", 0.9, 0.9, 0.9)
+            GameTooltip:AddLine(L["Hidden boxes"], 1, 0.85, 0.2)
+            GameTooltip:AddLine(L["Click to bring one back."], 0.9, 0.9, 0.9)
             GameTooltip:Show()
         end)
         hiddenBtn:SetScript("OnLeave", GameTooltip_Hide)
         function hiddenBtn:UpdateHiddenState()
             local hidden = Toys.GetHiddenBoxes and Toys:GetHiddenBoxes() or {}
             if #hidden > 0 then
-                self:SetText(("Hidden (%d)"):format(#hidden))
+                self:SetText((L["Hidden (%d)"]):format(#hidden))
                 self:Show()
             else
                 self:Hide()
@@ -996,9 +996,9 @@ function Toys:ShowToyBoxesTab(parentPanel)
         function lockBtn:UpdateLockState()
             local s = GetToySettings()
             if s.isLocked then
-                self:SetText("Unlock")
+                self:SetText(L["Unlock"])
             else
-                self:SetText("|cFFFF5555Lock|r")
+                self:SetText(L["|cFFFF5555Lock|r"])
             end
             if content.unlockedBanner then
                 content.unlockedBanner:SetShown(not s.isLocked)
@@ -1009,14 +1009,14 @@ function Toys:ShowToyBoxesTab(parentPanel)
             if s.hideButtonTooltips then return end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             if s.isLocked then
-                GameTooltip:AddLine("|cFF00FF00Click to Unlock|r")
-                GameTooltip:AddLine("Rearrange tiles by dragging, and remove them with the [X] badges.", 1, 1, 1, true)
+                GameTooltip:AddLine(L["|cFF00FF00Click to Unlock|r"])
+                GameTooltip:AddLine(L["Rearrange tiles by dragging, and remove them with the [X] badges."], 1, 1, 1, true)
                 GameTooltip:AddLine(" ")
                 GameTooltip:AddLine(L["TOYBOX_UNLOCK_WARNING"]
                     or "While unlocked, clicking a tile will not use the toy.", 1, 0.4, 0.3, true)
             else
-                GameTooltip:AddLine("|cFFFF5555Click to Lock|r")
-                GameTooltip:AddLine("Back to using toys. Delete badges are hidden so nothing goes by accident.", 1, 1, 1, true)
+                GameTooltip:AddLine(L["|cFFFF5555Click to Lock|r"])
+                GameTooltip:AddLine(L["Back to using toys. Delete badges are hidden so nothing goes by accident."], 1, 1, 1, true)
             end
             GameTooltip:Show()
         end)
@@ -1038,7 +1038,7 @@ function Toys:ShowToyBoxesTab(parentPanel)
         local editBoxBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
         editBoxBtn:SetSize(58, 20)
         editBoxBtn:SetPoint("RIGHT", lockBtn, "LEFT", -4, 0)
-        editBoxBtn:SetText("Edit Box")
+        editBoxBtn:SetText(L["Edit Box"])
         editBoxBtn:SetNormalFontObject("GameFontNormalSmall")
         editBoxBtn:SetScript("OnClick", function()
             if selectedBoxId and selectedBoxId ~= "all" then Toys:ShowBoxEditorDialog(selectedBoxId) end
@@ -1049,12 +1049,12 @@ function Toys:ShowToyBoxesTab(parentPanel)
         local delBoxBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
         delBoxBtn:SetSize(66, 20)
         delBoxBtn:SetPoint("RIGHT", editBoxBtn, "LEFT", -4, 0)
-        delBoxBtn:SetText("Delete Box")
+        delBoxBtn:SetText(L["Delete Box"])
         delBoxBtn:SetNormalFontObject("GameFontNormalSmall")
         delBoxBtn:SetScript("OnClick", function()
             if selectedBoxId and selectedBoxId ~= "favorites" and selectedBoxId ~= "all" then
                 local box = Toys:GetToyBox(selectedBoxId)
-                local boxName = (box and box.name) or "this box"
+                local boxName = (box and box.name) or L["this box"]
                 local toyCount = (box and box.toys and #box.toys) or 0
                 Toys:ConfirmDeleteBox(selectedBoxId, boxName, toyCount)
             end
@@ -1080,8 +1080,8 @@ function Toys:ShowToyBoxesTab(parentPanel)
             local s = GetToySettings()
             if s.hideButtonTooltips then return end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine("Hide this box", 1, 0.85, 0.2)
-            GameTooltip:AddLine("Keeps the box and its toys. Bring it back from the Hidden button.", 0.9, 0.9, 0.9, true)
+            GameTooltip:AddLine(L["Hide this box"], 1, 0.85, 0.2)
+            GameTooltip:AddLine(L["Keeps the box and its toys. Bring it back from the Hidden button."], 0.9, 0.9, 0.9, true)
             GameTooltip:Show()
         end)
         hideBoxBtn:SetScript("OnLeave", GameTooltip_Hide)
@@ -1090,7 +1090,7 @@ function Toys:ShowToyBoxesTab(parentPanel)
         -- Drag Target Hint Label
         local hintText = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         hintText:SetPoint("TOPLEFT", boxTitle, "BOTTOMLEFT", 0, -4)
-        hintText:SetText("|cFF88AAFF* Press Unlock first, then drag to reorder or into a box. Right-click: link. Shift+right-click: always show. Shift+click [x]: delete.|r")
+        hintText:SetText(L["|cFF88AAFF* Press Unlock first, then drag to reorder or into a box. Right-click: link. Shift+right-click: always show. Shift+click [x]: delete.|r"])
 
         -- Scrollable Grid for Toys with MinimalScrollBar
         local gridScroll = CreateFrame("ScrollFrame", "$parent_GridScroll", content, "UIPanelScrollFrameTemplate")
@@ -1260,8 +1260,8 @@ function Toys:RefreshToyBoxesUI()
                         GameTooltip:AddLine(self.boxDesc, 0.8, 0.8, 0.8, true)
                     end
                     if self.boxId ~= "all" then
-                        GameTooltip:AddLine("|cFFFFFFFFLeft-Click:|r Select box", 0.9, 0.9, 0.9)
-                        GameTooltip:AddLine("|cFF00FF00Right-Click:|r Edit box name & icon", 0.4, 1.0, 0.4)
+                        GameTooltip:AddLine(L["|cFFFFFFFFLeft-Click:|r Select box"], 0.9, 0.9, 0.9)
+                        GameTooltip:AddLine(L["|cFF00FF00Right-Click:|r Edit box name & icon"], 0.4, 1.0, 0.4)
                     end
                     GameTooltip:Show()
                 end
@@ -1430,7 +1430,7 @@ function Toys:RefreshToyBoxesUI()
     if not currentBox then return end
 
     content.boxTitle:SetText(currentBox.name)
-    content.boxCount:SetText(string.format("(%d toys)", #(currentBox.toys or {})))
+    content.boxCount:SetText(string.format(L["(%d toys)"], #(currentBox.toys or {})))
     content.editBoxBtn:SetShown(currentBox.id ~= "all" and currentBox.id ~= "unsorted" and currentBox.id ~= "mixes")
     content.delBoxBtn:SetShown(currentBox.id ~= "favorites" and currentBox.id ~= "all" and currentBox.id ~= "unsorted" and currentBox.id ~= "mixes")
     content.hideBoxBtn:SetShown(currentBox.id ~= "favorites" and currentBox.id ~= "all" and currentBox.id ~= "unsorted" and currentBox.id ~= "mixes")
@@ -1470,7 +1470,7 @@ function Toys:RefreshToyBoxesUI()
     toysList = Toys:ApplyPinnedToys(toysList, currentBox.id)
 
     if Toys._boxSearch and Toys._boxSearch ~= "" then
-        content.boxCount:SetText(string.format("(%d of %d toys)",
+        content.boxCount:SetText(string.format(L["(%d of %d toys)"],
             #toysList, #(currentBox.toys or {})))
     end
 
@@ -1564,14 +1564,14 @@ function Toys:RefreshToyBoxesUI()
                 -- when clicked.
                 if self.isWishList then
                     UIErrorsFrame:AddExternalErrorMessage(
-                        "You do not own this toy yet, so it cannot be kept on screen.")
+                        L["You do not own this toy yet, so it cannot be kept on screen."])
                     return
                 end
 
                 local result = Toys:TogglePinnedToy(self.toyID)
                 if result == nil then
                     UIErrorsFrame:AddExternalErrorMessage(
-                        ("You can only keep %d toys always shown."):format(Toys.MAX_PINNED_TOYS))
+                        (L["You can only keep %d toys always shown."]):format(Toys.MAX_PINNED_TOYS))
                     return
                 end
                 Toys:RefreshToyBoxesUI()
@@ -1686,8 +1686,8 @@ function Toys:RefreshToyBoxesUI()
                 if self.mixName then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     GameTooltip:AddLine(self.mixName, 1, 0.85, 0.2)
-                    GameTooltip:AddLine("|cFF00FF00Left-click:|r Run this mix", 0.9, 0.9, 0.9)
-                    GameTooltip:AddLine("|cFF88AAFFRight-click:|r Edit in the Mixer", 0.9, 0.9, 0.9)
+                    GameTooltip:AddLine(L["|cFF00FF00Left-click:|r Run this mix"], 0.9, 0.9, 0.9)
+                    GameTooltip:AddLine(L["|cFF88AAFFRight-click:|r Edit in the Mixer"], 0.9, 0.9, 0.9)
                     GameTooltip:Show()
                     return
                 end
@@ -1695,15 +1695,15 @@ function Toys:RefreshToyBoxesUI()
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     GameTooltip:SetToyByItemID(self.toyID)
                     GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine("|cFF88AAFFRight-click: Copy Wowhead URL|r", 0.5, 0.8, 1.0)
-                    GameTooltip:AddLine("|cFF88AAFFShift + right-click: Always show (pin to the front)|r", 0.5, 0.8, 1.0)
+                    GameTooltip:AddLine(L["|cFF88AAFFRight-click: Copy Wowhead URL|r"], 0.5, 0.8, 1.0)
+                    GameTooltip:AddLine(L["|cFF88AAFFShift + right-click: Always show (pin to the front)|r"], 0.5, 0.8, 1.0)
                     if selectedBoxId ~= "all" then
-                        GameTooltip:AddLine("|cFF00FF00Drag onto other toys to change order|r", 0.4, 1.0, 0.4)
+                        GameTooltip:AddLine(L["|cFF00FF00Drag onto other toys to change order|r"], 0.4, 1.0, 0.4)
                         if not cfg.isLocked then
-                            GameTooltip:AddLine("|cFFFF5555Click [X] to remove from this box|r", 1.0, 0.4, 0.4)
+                            GameTooltip:AddLine(L["|cFFFF5555Click [X] to remove from this box|r"], 1.0, 0.4, 0.4)
                         end
                     else
-                        GameTooltip:AddLine("|cFF00FF00Drag to add to any ToyBox in sidebar|r", 0.4, 1.0, 0.4)
+                        GameTooltip:AddLine(L["|cFF00FF00Drag to add to any ToyBox in sidebar|r"], 0.4, 1.0, 0.4)
                     end
                     GameTooltip:Show()
                 end
@@ -1718,7 +1718,7 @@ function Toys:RefreshToyBoxesUI()
                     end
                 elseif button == "RightButton" and self.toyID and not IsShiftKeyDown() then
                     if OxedHub.ShowCopyURLDialog then
-                        OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.toyID), select(2, C_ToyBox.GetToyInfo(self.toyID)) or "Toy")
+                        OxedHub:ShowCopyURLDialog(string.format("https://www.wowhead.com/item=%d/", self.toyID), select(2, C_ToyBox.GetToyInfo(self.toyID)) or L["Toy"])
                     end
                 end
             end)

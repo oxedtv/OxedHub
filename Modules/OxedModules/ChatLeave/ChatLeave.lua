@@ -5,6 +5,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 local DEFAULTS = {
     enabled = false,    -- off until the player switches it on
@@ -31,7 +32,7 @@ local function Hook()
             local target = lastTarget
             if target == nil or (issecretvalue and issecretvalue(target)) then return end
             root:CreateDivider()
-            root:CreateButton("|cffff6060Leave this channel|r", function()
+            root:CreateButton(L["|cffff6060Leave this channel|r"], function()
                 local _, name = GetChannelName(target)
                 LeaveChannelByName(name or target)
                 print(PREFIX .. "left " .. tostring(name or target) .. ".")

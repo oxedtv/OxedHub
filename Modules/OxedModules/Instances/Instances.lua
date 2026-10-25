@@ -15,6 +15,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -122,8 +123,8 @@ local function RefreshBar()
     local colour = left == 0 and "|cffff3333" or (left <= (tonumber(settings.warnAt) or 2) and "|cffff9933" or "|cff40ff40")
     local free = NextFree()
 
-    bar.text:SetFormattedText("%s%d/%d|r this hour%s", colour, count, limit,
-        free and ("   next free in %s"):format(Clock(free)) or "")
+    bar.text:SetFormattedText(L["%s%d/%d|r this hour%s"], colour, count, limit,
+        free and (L["   next free in %s"]):format(Clock(free)) or "")
 
     if run.active then
         local elapsed = Now() - run.startedAt
@@ -193,7 +194,7 @@ end
 local function StartRun(counted)
     local name, kind = InstanceName()
     run.active = true
-    run.name = name or "Instance"
+    run.name = name or L["Instance"]
     run.kind = kind
     run.startedAt = Now()
     run.gold = 0
@@ -206,14 +207,14 @@ local function StartRun(counted)
     if settings.say and counted then
         local count, limit = HourCount(), tonumber(settings.hourly) or 10
         local free = NextFree()
-        print(PREFIX .. ("%s. |cffffd100%d of %d|r this hour%s."):format(
-            run.name, count, limit, free and (", next free in " .. Clock(free)) or ""))
+        print(PREFIX .. (L["%s. |cffffd100%d of %d|r this hour%s."]):format(
+            run.name, count, limit, free and (L[", next free in "] .. Clock(free)) or ""))
 
         local left = limit - count
         if left <= (tonumber(settings.warnAt) or 2) then
             print(PREFIX .. (left <= 0
-                and "|cffff3333that was the last one; the game will refuse the next.|r"
-                or ("|cffff9933only %d left this hour.|r"):format(left)))
+                and L["|cffff3333that was the last one; the game will refuse the next.|r"]
+                or (L["|cffff9933only %d left this hour.|r"]):format(left)))
         end
     end
     RefreshBar()
@@ -258,7 +259,7 @@ local function BuildLog()
     window:RegisterForDrag("LeftButton")
     window:SetScript("OnDragStart", window.StartMoving)
     window:SetScript("OnDragStop", window.StopMovingOrSizing)
-    if window.TitleText then window.TitleText:SetText("Instances") end
+    if window.TitleText then window.TitleText:SetText(L["Instances"]) end
     tinsert(UISpecialFrames, "OxedHubInstanceLog")
 
     window.head = window:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -284,8 +285,8 @@ local function BuildLog()
     local function Refresh()
         local count, limit = HourCount(), tonumber(settings.hourly) or 10
         local free = NextFree()
-        window.head:SetFormattedText("%d of %d this hour%s", count, limit,
-            free and ("   |cff9d9d9dnext free in %s|r"):format(Clock(free)) or "")
+        window.head:SetFormattedText(L["%d of %d this hour%s"], count, limit,
+            free and (L["   |cff9d9d9dnext free in %s|r"]):format(Clock(free)) or "")
 
         local y = 0
         for index, entry in ipairs(settings.runs) do
@@ -306,7 +307,7 @@ local function BuildLog()
             if (entry.xp or 0) > 0 then parts[#parts + 1] = ("%d xp"):format(entry.xp) end
             if (entry.loot or 0) > 0 then parts[#parts + 1] = ("%d items"):format(entry.loot) end
 
-            row.name:SetText(entry.name or "Instance")
+            row.name:SetText(entry.name or L["Instance"])
             row.detail:SetFormattedText("%s   |cff9d9d9d%s|r",
                 table.concat(parts, "   "), date("%d %b %H:%M", entry.at or 0))
             row:ClearAllPoints()
@@ -323,7 +324,7 @@ local function BuildLog()
 
     window.empty = window:CreateFontString(nil, "OVERLAY", "GameFontDisable")
     window.empty:SetPoint("CENTER", scroll, "CENTER")
-    window.empty:SetText("No runs yet")
+    window.empty:SetText(L["No runs yet"])
 
     window:SetScript("OnShow", Refresh)
     window:Hide()
@@ -493,29 +494,29 @@ local function ShowOptions()
         w:AddCheckbox(settings, "onlyInside", "Only while you are in an instance", nil, RefreshBar)
         w:AddCheckbox(settings, "locked", "Lock it in place",
             "Unlocked, drag the counter with the left button. Right-click it for the log.")
-        AddSlider(w, "scale", "Counter scale", 0.5, 2, 0.05, "%s: %.2f")
+        AddSlider(w, "scale", L["Counter scale"], 0.5, 2, 0.05, "%s: %.2f")
 
         w:AddCheckbox(settings, "say", "Say the count when you enter")
         w:AddCheckbox(settings, "summary", "Say what the run was worth when you leave")
-        AddSlider(w, "hourly", "Instances the game allows an hour", 5, 30, 1, "%s: %d")
-        AddSlider(w, "warnAt", "Warn when this many are left", 0, 5, 1, "%s: %d")
-        AddSlider(w, "keep", "Runs remembered", 10, 200, 10, "%s: %d")
+        AddSlider(w, "hourly", L["Instances the game allows an hour"], 5, 30, 1, "%s: %d")
+        AddSlider(w, "warnAt", L["Warn when this many are left"], 0, 5, 1, "%s: %d")
+        AddSlider(w, "keep", L["Runs remembered"], 10, 200, 10, "%s: %d")
 
         local log = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         log:SetSize(140, 22)
         log:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        log:SetText("Open the log")
+        log:SetText(L["Open the log"])
         log:SetScript("OnClick", ShowLog)
 
         local clear = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         clear:SetSize(140, 22)
         clear:SetPoint("LEFT", log, "RIGHT", 8, 0)
-        clear:SetText("Clear the log")
+        clear:SetText(L["Clear the log"])
         clear:SetScript("OnClick", function()
-            API:Confirm("Forget every run in the log?", function()
+            API:Confirm(L["Forget every run in the log?"], function()
                 wipe(settings.runs)
                 if logWindow and logWindow:IsShown() then logWindow.Refresh() end
-                print(PREFIX .. "log cleared.")
+                print(PREFIX .. L["log cleared."])
             end)
         end)
         w.cursorY = w.cursorY - 30
@@ -537,20 +538,20 @@ SlashCmdList.OXEDHUBINSTANCES = function(msg)
     end
     if msg == "clear" then
         wipe(settings.runs)
-        print(PREFIX .. "log cleared.")
+        print(PREFIX .. L["log cleared."])
         return
     end
     if msg == "reset" then
         wipe(settings.entries)
         RefreshBar()
-        print(PREFIX .. "the hour's entries forgotten. The game still counts its own.")
+        print(PREFIX .. L["the hour's entries forgotten. The game still counts its own."])
         return
     end
 
     local count, limit = HourCount(), tonumber(settings.hourly) or 10
     local free = NextFree()
-    print(PREFIX .. ("%d of %d this hour%s. %d runs in the log."):format(
-        count, limit, free and (", next free in " .. Clock(free)) or "", #settings.runs))
+    print(PREFIX .. (L["%d of %d this hour%s. %d runs in the log."]):format(
+        count, limit, free and (L[", next free in "] .. Clock(free)) or "", #settings.runs))
 end
 
 -- ── Registration ────────────────────────────────────────────────────────────
@@ -584,7 +585,7 @@ loginFrame:SetScript("OnEvent", function(self)
         OnOptionsShow = function() ShowOptions() end,
         -- On the minimap button's right-click menu.
         quick = {
-            { text = "Run log", func = function() ShowLog() end },
+            { text = L["Run log"], func = function() ShowLog() end },
         },
 
         OnEnable = function(_, config)

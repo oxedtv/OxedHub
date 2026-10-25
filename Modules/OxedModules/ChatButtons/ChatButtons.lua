@@ -21,9 +21,11 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
+    minimapButton = true,   -- its own icon on the minimap while switched on
     enabled     = false,    -- off until the player switches it on
     showSay     = true,
     showGroup   = true,
@@ -45,6 +47,7 @@ local PREFIX = "|cff00ccffOxedHub Chat Buttons:|r "
 local SIZE = 26
 
 local settings
+local minimapIcon, MinimapIcon   -- MinimapIcon is defined above the login code
 local optionsWindow
 local running = false
 local bar
@@ -149,7 +152,7 @@ local function MakeButton(key, atlas, tip)
     b:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         self.tip(GameTooltip)
-        if not settings.locked then GameTooltip:AddLine("Drag: move the buttons", 0.6, 0.6, 0.6) end
+        if not settings.locked then GameTooltip:AddLine(L["Drag: move the buttons"], 0.6, 0.6, 0.6) end
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -234,14 +237,14 @@ end
 
 local function SayMenu(owner)
     MenuUtil.CreateContextMenu(owner, function(_, root)
-        root:CreateTitle("Say")
-        for _, t in ipairs({ { "SAY", SAY or "Say" }, { "YELL", YELL or "Yell" } }) do
+        root:CreateTitle(L["Say"])
+        for _, t in ipairs({ { "SAY", SAY or L["Say"] }, { "YELL", YELL or L["Yell"] } }) do
             root:CreateRadio(t[2], function() return settings.sayType == t[1] end, function() settings.sayType = t[1] end)
         end
         root:CreateDivider()
-        root:CreateTitle(("Whispers (%d)"):format(#settings.whispers))
+        root:CreateTitle((L["Whispers (%d)"]):format(#settings.whispers))
         if #settings.whispers == 0 then
-            root:CreateButton("|cff9d9d9dNobody yet|r", function() end)
+            root:CreateButton(L["|cff9d9d9dNobody yet|r"], function() end)
         end
         for i, p in ipairs(settings.whispers) do
             if i > 20 then break end
@@ -256,18 +259,18 @@ local function SayMenu(owner)
                 tooltip:SetText(p.name)
                 for _, line in ipairs(p.lines) do
                     tooltip:AddLine(("|cff9d9d9d%s|r %s%s"):format(date("%H:%M", line.at),
-                        line.mine and "|cff80c0ffyou:|r " or "", line.text), 1, 1, 1, true)
+                        line.mine and L["|cff80c0ffyou:|r "] or "", line.text), 1, 1, 1, true)
                 end
-                tooltip:AddLine("Click: whisper back", 0.4, 1, 0.4)
+                tooltip:AddLine(L["Click: whisper back"], 0.4, 1, 0.4)
             end)
         end
         if #settings.whispers > 0 then
             root:CreateDivider()
-            root:CreateButton("Mark all as read", function()
+            root:CreateButton(L["Mark all as read"], function()
                 for _, p in ipairs(settings.whispers) do p.unread = 0 end
                 UpdateSayBadge()
             end)
-            root:CreateButton("Forget all whispers", function()
+            root:CreateButton(L["Forget all whispers"], function()
                 wipe(settings.whispers)
                 UpdateSayBadge()
             end)
@@ -288,7 +291,7 @@ local lastSent = 0
 local function SendQuickLine(up)
     local channel = GroupChannel()
     if not channel then
-        print(PREFIX .. "not in a group.")
+        print(PREFIX .. L["not in a group."])
         return
     end
     if GetTime() - lastSent < 2 then return end
@@ -297,15 +300,15 @@ local function SendQuickLine(up)
     lastSent = GetTime()
     local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
     local ok = pcall(send, text, channel)
-    if not ok then print(PREFIX .. "the game did not let that line be sent here.") end
+    if not ok then print(PREFIX .. L["the game did not let that line be sent here."]) end
 end
 
 local function GroupMenu(owner)
     MenuUtil.CreateContextMenu(owner, function(_, root)
-        root:CreateTitle("Group")
+        root:CreateTitle(L["Group"])
         local count = GetNumGroupMembers() or 0
         if count == 0 then
-            root:CreateButton("|cff9d9d9dNot in a group|r", function() end)
+            root:CreateButton(L["|cff9d9d9dNot in a group|r"], function() end)
         else
             local raid = IsInRaid()
             local me = Plain(UnitName("player"))
@@ -323,14 +326,14 @@ local function GroupMenu(owner)
             end
         end
         root:CreateDivider()
-        root:CreateTitle("Answer ready checks")
+        root:CreateTitle(L["Answer ready checks"])
         for _, s in ipairs({ 0, 1, 3, 5 }) do
-            root:CreateRadio(s == 0 and "Myself" or ("After %d s (Alt stops it)"):format(s),
+            root:CreateRadio(s == 0 and L["Myself"] or (L["After %d s (Alt stops it)"]):format(s),
                 function() return (tonumber(settings.readyDelay) or 0) == s end,
                 function() settings.readyDelay = s end)
         end
         root:CreateDivider()
-        root:CreateButton("Change the wheel lines...", function() ShowOptions() end)
+        root:CreateButton(L["Change the wheel lines..."], function() ShowOptions() end)
     end)
 end
 
@@ -342,11 +345,11 @@ local function OnReadyCheck(initiator, timeLeft)
     local me, who = Plain(UnitName("player")), Plain(initiator)
     if me and who and (who:match("^[^%-]+") == me) then return end
     if readyTimer then readyTimer:Cancel() end
-    print(PREFIX .. ("ready check answered in %d s. Hold Alt to answer yourself."):format(delay))
+    print(PREFIX .. (L["ready check answered in %d s. Hold Alt to answer yourself."]):format(delay))
     readyTimer = C_Timer.NewTimer(delay, function()
         readyTimer = nil
         if not running or IsAltKeyDown() then
-            print(PREFIX .. "ready check left to you.")
+            print(PREFIX .. L["ready check left to you."])
             return
         end
         local ok = pcall(ConfirmReadyCheck, true)
@@ -411,11 +414,11 @@ end
 local function GuildMenu(owner)
     MenuUtil.CreateContextMenu(owner, function(_, root)
         if not IsInGuild() then
-            root:CreateTitle("Not in a guild")
+            root:CreateTitle(L["Not in a guild"])
             return
         end
         local guildName = GetGuildInfo("player")
-        root:CreateTitle(Plain(guildName) or "Guild")
+        root:CreateTitle(Plain(guildName) or L["Guild"])
         local list = {}
         local total = GetNumGuildMembers() or 0
         for i = 1, total do
@@ -431,21 +434,21 @@ local function GuildMenu(owner)
             if not (me and m.name:match("^[^%-]+") == me) then
                 shown = shown + 1
                 if shown > 30 then
-                    root:CreateButton(("|cff9d9d9d...and %d more|r"):format(#list - 30), function() end)
+                    root:CreateButton((L["|cff9d9d9d...and %d more|r"]):format(#list - 30), function() end)
                     break
                 end
                 root:CreateButton(("|c%s%s|r  |cff9d9d9d%s|r"):format(ClassHex(m.class), m.name:match("^[^%-]+") or m.name, m.zone or ""),
                     function() Whisper(m.name) end)
             end
         end
-        if shown == 0 then root:CreateButton("|cff9d9d9dNobody else online|r", function() end) end
+        if shown == 0 then root:CreateButton(L["|cff9d9d9dNobody else online|r"], function() end) end
         root:CreateDivider()
-        if buttons.guild.applicants then root:CreateTitle("|cff40ff40New applicants waiting|r") end
-        if buttons.guild.unread then root:CreateTitle("|cffffd100Unread community messages|r") end
+        if buttons.guild.applicants then root:CreateTitle(L["|cff40ff40New applicants waiting|r"]) end
+        if buttons.guild.unread then root:CreateTitle(L["|cffffd100Unread community messages|r"]) end
         if CanReplaceGuildMaster and CanReplaceGuildMaster() then
-            root:CreateTitle("|cffff8040The guild master is inactive: you can replace them|r")
+            root:CreateTitle(L["|cffff8040The guild master is inactive: you can replace them|r"])
         end
-        root:CreateButton("Open Guild & Communities", function()
+        root:CreateButton(L["Open Guild & Communities"], function()
             if ToggleGuildFrame then ToggleGuildFrame() end
         end)
     end)
@@ -462,10 +465,10 @@ local function Build()
     bar:Hide()
 
     local say = MakeButton("say", "ChatFrameExpandArrow", function(tt)
-        tt:SetText("Say")
-        tt:AddLine(("Click: open %s"):format(settings.sayType == "YELL" and "Yell" or "Say"), 1, 1, 1)
-        tt:AddLine("Right-click: Say or Yell, and your whispers", 1, 1, 1)
-        if unread > 0 then tt:AddLine(("%d whisper(s) not answered"):format(unread), 1, 0.4, 1) end
+        tt:SetText(L["Say"])
+        tt:AddLine((L["Click: open %s"]):format(settings.sayType == "YELL" and L["Yell"] or L["Say"]), 1, 1, 1)
+        tt:AddLine(L["Right-click: Say or Yell, and your whispers"], 1, 1, 1)
+        if unread > 0 then tt:AddLine((L["%d whisper(s) not answered"]):format(unread), 1, 0.4, 1) end
     end)
     pcall(say.icon.SetAtlas, say.icon, "chatframe-button-icon-speaker-on")
     say:SetScript("OnClick", function(self, mouse)
@@ -477,12 +480,12 @@ local function Build()
     end)
 
     local group = MakeButton("group", "UI-HUD-MicroMenu-Groupfinder-Up", function(tt)
-        tt:SetText("Group")
+        tt:SetText(L["Group"])
         local _, slash = GroupChannel()
-        tt:AddLine(slash and ("Click: open %s chat"):format(slash:match("/(%a+)")) or "Not in a group", 1, 1, 1)
-        tt:AddLine("Wheel up: " .. (settings.wheelUp or ""), 1, 1, 1, true)
-        tt:AddLine("Wheel down: " .. (settings.wheelDown or ""), 1, 1, 1, true)
-        tt:AddLine("Right-click: the group, and ready checks", 1, 1, 1)
+        tt:AddLine(slash and (L["Click: open %s chat"]):format(slash:match("/(%a+)")) or L["Not in a group"], 1, 1, 1)
+        tt:AddLine(L["Wheel up: "] .. (settings.wheelUp or ""), 1, 1, 1, true)
+        tt:AddLine(L["Wheel down: "] .. (settings.wheelDown or ""), 1, 1, 1, true)
+        tt:AddLine(L["Right-click: the group, and ready checks"], 1, 1, 1)
     end)
     group:EnableMouseWheel(true)
     group:SetScript("OnMouseWheel", function(_, delta) SendQuickLine(delta > 0) end)
@@ -491,20 +494,20 @@ local function Build()
             GroupMenu(self)
         else
             local _, slash = GroupChannel()
-            if slash then OpenChat(slash) else print(PREFIX .. "not in a group.") end
+            if slash then OpenChat(slash) else print(PREFIX .. L["not in a group."]) end
         end
     end)
 
     local guild = MakeButton("guild", "UI-HUD-MicroMenu-GuildCommunities-Up", function(tt)
-        tt:SetText("Guild")
+        tt:SetText(L["Guild"])
         if not IsInGuild() then
-            tt:AddLine("Not in a guild", 0.6, 0.6, 0.6)
+            tt:AddLine(L["Not in a guild"], 0.6, 0.6, 0.6)
             return
         end
-        tt:AddLine("Click: open guild chat", 1, 1, 1)
-        tt:AddLine("Right-click: who is online", 1, 1, 1)
-        if buttons.guild.applicants then tt:AddLine("New applicants waiting", 0.3, 1, 0.3) end
-        if buttons.guild.unread then tt:AddLine("Unread community messages", 1, 0.82, 0) end
+        tt:AddLine(L["Click: open guild chat"], 1, 1, 1)
+        tt:AddLine(L["Right-click: who is online"], 1, 1, 1)
+        if buttons.guild.applicants then tt:AddLine(L["New applicants waiting"], 0.3, 1, 0.3) end
+        if buttons.guild.unread then tt:AddLine(L["Unread community messages"], 1, 0.82, 0) end
     end)
     guild:SetScript("OnClick", function(self, mouse)
         if mouse == "RightButton" and HasMenu() then
@@ -605,7 +608,7 @@ ShowOptions = function()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
     if not optionsWindow then
-        local w = API:CreateOptionsWindow("Chat Buttons", 460, 560)
+        local w = API:CreateOptionsWindow("Chat Buttons", 460, 588)
         optionsWindow = w
         w:AddCheckbox(settings, "showSay", "Say button: Say or Yell, and your whispers", nil, Layout)
         w:AddCheckbox(settings, "showGroup", "Group button: group chat, quick lines, ready checks", nil, Layout)
@@ -616,9 +619,13 @@ ShowOptions = function()
         w:AddSlider(settings, "keepWhispers", "People kept in the whisper list", 5, 100, 5, "%s: %d")
         w:AddSlider(settings, "readyDelay", "Answer ready checks after", 0, 10, 1, "%s: %d s")
         w:AddNote("0 seconds: never; you answer yourself. Holding Alt when the time runs out leaves it to you.")
-        AddTextBox(w, "wheelUp", "Mouse wheel up over Group sends:")
-        AddTextBox(w, "wheelDown", "Mouse wheel down over Group sends:")
+        AddTextBox(w, "wheelUp", L["Mouse wheel up over Group sends:"])
+        AddTextBox(w, "wheelDown", L["Mouse wheel down over Group sends:"])
         w:AddNote("Raid marks work: {rt1} star ... {rt8} skull. Drag a button to move them; /oxchat reset puts them back.")
+        w:AddCheckbox(settings, "minimapButton", "Show minimap button", nil, function()
+            local icon = MinimapIcon()
+            if icon then icon:Apply(settings.enabled == true) end
+        end)
         if w.AddModuleLinks then w:AddModuleLinks("Works with", { "bubblechat", "chatfilter", "copychat" }) end
     end
     optionsWindow:Show()
@@ -630,13 +637,28 @@ SlashCmdList.OXEDCHATBUTTONS = function(msg)
     if msg == "reset" and settings then
         settings.toUIParent, settings.point, settings.relPoint, settings.x, settings.y = nil, "BOTTOMLEFT", "TOPLEFT", 0, 30
         if bar then PlaceBar() end
-        print(PREFIX .. "the buttons are back above the chat window.")
+        print(PREFIX .. L["the buttons are back above the chat window."])
     else
         ShowOptions()
     end
 end
 
 -- ── Login ───────────────────────────────────────────────────────────────────
+
+-- Its own icon on the minimap, like the other modules with a window: a click
+-- opens the options, a right-click the options.
+MinimapIcon = function()
+    if minimapIcon or not settings then return minimapIcon end
+    local API = OxedHub.ModuleAPI
+    minimapIcon = API and API.MinimapButton and API:MinimapButton({
+        key = "chatbuttons", label = L["Chat Buttons"], icon = "Interface\\Icons\\INV_Letter_15", config = settings,
+        hint = L["Click: options."],
+        onClick = function(mouse)
+            if mouse == "RightButton" then ShowOptions() else ShowOptions() end
+        end,
+    })
+    return minimapIcon
+end
 
 local loginFrame = CreateFrame("Frame")
 loginFrame:RegisterEvent("PLAYER_LOGIN")
@@ -659,8 +681,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "chatbuttons",
         name     = "Chat Buttons",
-        version  = "1.0.0",
-        updated  = 20261024.96,
+        version  = "1.1.0",
+        updated  = 20261025.3,  -- its own minimap button
         author   = "Oxed",
         category = "chat",
         keywords = { "chat", "say", "yell", "whisper", "group", "party", "raid", "guild", "ready check", "applicant" },
@@ -670,10 +692,13 @@ loginFrame:SetScript("OnEvent", function(self)
         OnOptionsShow = function() ShowOptions() end,
         OnEnable = function(_, cfg)
             settings = cfg
+            local icon = MinimapIcon()
+            if icon then icon:Apply(true) end
             if type(settings.whispers) ~= "table" then settings.whispers = {} end
             Start()
         end,
         OnDisable = function()
+            if minimapIcon then minimapIcon:Apply(false) end
             Stop()
         end,
     })

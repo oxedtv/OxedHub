@@ -21,6 +21,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 local Data = OxedHub.WQAData or { data = {}, ZoneIDList = {} }
 
@@ -28,6 +29,7 @@ local PREFIX = "|cffffd100OxedHub WQ Achievements:|r "
 local CURRENT_EXPANSION = 12
 
 local DEFAULTS = {
+    minimapButton = true,   -- its own icon on the minimap while switched on
     enabled        = false,   -- off until the player switches it on
     showAll        = false,   -- false: only what is still missing; true: finished ones too
     expansions     = "current", -- "current" or "all"
@@ -45,6 +47,7 @@ local DEFAULTS = {
 }
 
 local settings
+local minimapIcon, MinimapIcon   -- MinimapIcon is defined above the login code
 local optionsWindow
 local running = false
 local window
@@ -99,7 +102,7 @@ local function QuestTitle(questID)
     if type(title) ~= "string" or title == "" then
         title = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(questID)
     end
-    return Plain(title) or ("Quest " .. questID)
+    return Plain(title) or (L["Quest "] .. questID)
 end
 
 local function MapName(mapID)
@@ -463,8 +466,8 @@ end
 -- A web address to copy, in the game's own popup.
 local function ShowWebLink(kind, id)
     StaticPopupDialogs.OXEDHUB_WQA_LINK = StaticPopupDialogs.OXEDHUB_WQA_LINK or {
-        text = "Copy with Ctrl+C:",
-        button1 = CLOSE or "Close",
+        text = L["Copy with Ctrl+C:"],
+        button1 = CLOSE or L["Close"],
         hasEditBox = true,
         editBoxWidth = 320,
         OnShow = function(self, data)
@@ -544,7 +547,7 @@ Refresh = function()
         if r.exp ~= lastExp then
             lastExp, lastZone = r.exp, nil
             n = n + 1
-            SetRow(n, 0, nil, "|cffffd100" .. (EXP_NAMES[r.exp] or ("Expansion " .. r.exp)) .. "|r")
+            SetRow(n, 0, nil, "|cffffd100" .. (EXP_NAMES[r.exp] or (L["Expansion "] .. r.exp)) .. "|r")
         end
         if r.zone ~= lastZone then
             lastZone = r.zone
@@ -558,7 +561,7 @@ Refresh = function()
             function(tt)
                 tt:SetText(r.title)
                 tt:AddLine(r.zone, 0.8, 0.8, 0.8)
-                tt:AddLine("Click: show it on the map.", 0.4, 1, 0.4)
+                tt:AddLine(L["Click: show it on the map."], 0.4, 1, 0.4)
             end)
         for achievementID, done in pairs(r.achievements) do
             local okI, _, _, _, _, _, _, _, _, _, achIcon = pcall(GetAchievementInfo, achievementID)
@@ -579,7 +582,7 @@ Refresh = function()
                 function(tt)
                     if link then tt:SetHyperlink(link) else tt:SetText(AchievementName(achievementID)) end
                     tt:AddLine(" ")
-                    tt:AddLine("Click: open it. Shift-click: link in chat. Right-click: web link.", 0.4, 1, 0.4, true)
+                    tt:AddLine(L["Click: open it. Shift-click: link in chat. Right-click: web link."], 0.4, 1, 0.4, true)
                 end)
         end
         for itemID, item in pairs(r.items) do
@@ -598,20 +601,20 @@ Refresh = function()
                 function(tt)
                     tt:SetItemByID(itemID)
                     tt:AddLine(" ")
-                    tt:AddLine("Shift-click: link in chat. Right-click: web link.", 0.4, 1, 0.4, true)
+                    tt:AddLine(L["Shift-click: link in chat. Right-click: web link."], 0.4, 1, 0.4, true)
                 end)
         end
     end
     if n == 0 then
         n = 1
-        SetRow(1, 0, nil, scanning and "|cff9d9d9dLooking at the world quests...|r"
-            or "|cff9d9d9dNothing up right now that you still need. Try All expansions, or Show all.|r")
+        SetRow(1, 0, nil, scanning and L["|cff9d9d9dLooking at the world quests...|r"]
+            or L["|cff9d9d9dNothing up right now that you still need. Try All expansions, or Show all.|r"])
     end
     for i = n + 1, #window.rows do window.rows[i]:Hide() end
     window.content:SetHeight(n * ROW_H)
-    window.count:SetText(("%d quest(s)"):format(count))
-    window.modeButton:SetText(settings.showAll and "Showing: all" or "Showing: still needed")
-    window.expButton:SetText(settings.expansions == "all" and "All expansions" or (EXP_NAMES[CURRENT_EXPANSION] or "Current"))
+    window.count:SetText((L["%d quest(s)"]):format(count))
+    window.modeButton:SetText(settings.showAll and L["Showing: all"] or L["Showing: still needed"])
+    window.expButton:SetText(settings.expansions == "all" and L["All expansions"] or (EXP_NAMES[CURRENT_EXPANSION] or L["Current"]))
 end
 
 local ShowOptions   -- defined below
@@ -657,9 +660,9 @@ local function BuildWindow()
         Refresh()
     end)
     f.expButton:SetPoint("LEFT", f.modeButton, "RIGHT", 6, 0)
-    local rescan = Button("Rescan", 70, function() GoScan() Refresh() end)
+    local rescan = Button(L["Rescan"], 70, function() GoScan() Refresh() end)
     rescan:SetPoint("LEFT", f.expButton, "RIGHT", 6, 0)
-    local opt = Button("Options", 70, function() ShowOptions() end)
+    local opt = Button(L["Options"], 70, function() ShowOptions() end)
     opt:SetPoint("LEFT", rescan, "RIGHT", 6, 0)
 
     local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
@@ -857,15 +860,15 @@ ShowOptions = function()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
     if not optionsWindow then
-        local w = API:CreateOptionsWindow("WQ Achievements", 470, 600)
+        local w = API:CreateOptionsWindow("WQ Achievements", 470, 628)
         optionsWindow = w
         w:AddChoice(settings, "showAll", "Achievements shown", {
-            { value = false, text = "Still needed only" },
-            { value = true,  text = "All, finished ticked" },
+            { value = false, text = L["Still needed only"] },
+            { value = true,  text = L["All, finished ticked"] },
         }, Rebuild)
         w:AddChoice(settings, "expansions", "Expansions", {
-            { value = "current", text = EXPANSION_NAME11 or "Current" },
-            { value = "all",     text = "All expansions" },
+            { value = "current", text = EXPANSION_NAME11 or L["Current"] },
+            { value = "all",     text = L["All expansions"] },
         }, Rebuild)
         w:AddNote("|cffffd100Rewards to look for|r")
         w:AddCheckbox(settings, "wantAchieve", "Achievements", nil, Rebuild)
@@ -883,6 +886,10 @@ ShowOptions = function()
             if on then UpdateAllPlates() else HideAllMarks() end
         end)
         w:AddSlider(settings, "plateMarkSize", "Mark size", 12, 40, 2, "%s: %d", function() UpdateAllPlates() end)
+        w:AddCheckbox(settings, "minimapButton", "Show minimap button", nil, function()
+            local icon = MinimapIcon()
+            if icon then icon:Apply(settings.enabled == true) end
+        end)
         w:AddNote("/wqach opens the list. Click a quest to see it on the map; click an achievement to open it, "
             .. "shift-click to link it, right-click for a web link. Objects on the ground have no nameplate; "
             .. "the game's own sparkle marks those.")
@@ -892,7 +899,7 @@ end
 
 local function Toggle()
     if not running then
-        print(PREFIX .. "switched off. Switch it on in OxedHub's Modules page first.")
+        print(PREFIX .. L["switched off. Switch it on in OxedHub's Modules page first."])
         return
     end
     BuildWindow()
@@ -912,13 +919,28 @@ SlashCmdList.OXEDWQACH = function(msg)
         ShowOptions()
     elseif msg == "scan" then
         GoScan()
-        print(PREFIX .. "looking at the world quests again.")
+        print(PREFIX .. L["looking at the world quests again."])
     else
         Toggle()
     end
 end
 
 -- ── Login ───────────────────────────────────────────────────────────────────
+
+-- Its own icon on the minimap, like the other modules with a window: a click
+-- opens the list, a right-click the options.
+MinimapIcon = function()
+    if minimapIcon or not settings then return minimapIcon end
+    local API = OxedHub.ModuleAPI
+    minimapIcon = API and API.MinimapButton and API:MinimapButton({
+        key = "wqachievements", label = L["WQ Achievements"], icon = "Interface\\Icons\\INV_Misc_Map06", config = settings,
+        hint = L["Click: the list. Right-click: options."],
+        onClick = function(mouse)
+            if mouse == "RightButton" then ShowOptions() else Toggle() end
+        end,
+    })
+    return minimapIcon
+end
 
 local loginFrame = CreateFrame("Frame")
 loginFrame:RegisterEvent("PLAYER_LOGIN")
@@ -940,8 +962,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "wqachievements",
         name     = "WQ Achievements",
-        version  = "1.0.0",
-        updated  = 20261024.95,
+        version  = "1.1.0",
+        updated  = 20261025.1,  -- its own minimap button
         author   = "Oxed",
         category = "quests",
         keywords = { "world quest", "wq", "achievement", "mount", "pet", "toy", "screenshot", "nameplate", "quest mark" },
@@ -949,14 +971,17 @@ loginFrame:SetScript("OnEvent", function(self)
         icon     = "Interface\\Icons\\INV_Misc_Map06",
         defaults = DEFAULTS,
         quick = {
-            { text = "Show or hide", func = function() Toggle() end },
+            { text = L["Show or hide"], func = function() Toggle() end },
         },
         OnOptionsShow = function() ShowOptions() end,
         OnEnable = function(_, cfg)
             settings = cfg
+            local icon = MinimapIcon()
+            if icon then icon:Apply(true) end
             Start()
         end,
         OnDisable = function()
+            if minimapIcon then minimapIcon:Apply(false) end
             Stop()
         end,
     })

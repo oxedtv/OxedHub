@@ -4,6 +4,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 
 local DEFAULTS = {
     enabled     = false,
@@ -148,9 +149,9 @@ local function ReportLastTransfer()
     lastReported = key
     usedOurButtonAt = 0
     local link = C_CurrencyInfo.GetCurrencyLink and C_CurrencyInfo.GetCurrencyLink(currencyID, amount)
-    local from = NameFromGUID(last.sourceCharacterGUID) or "another character"
+    local from = NameFromGUID(last.sourceCharacterGUID) or L["another character"]
     local to = NameFromGUID(last.destinationCharacterGUID) or UnitName("player")
-    print(("|cff00ccffOxedHub|r transferred %s x%d from %s to %s."):format(
+    print((L["|cff00ccffOxedHub|r transferred %s x%d from %s to %s."]):format(
         link or ("currency " .. currencyID), amount, from, to))
 end
 
@@ -225,8 +226,8 @@ local function TryInitialize()
     btn:SetAttribute("pressAndHoldAction", true)
     btn:RegisterForClicks("AnyUp", "AnyDown")
     
-    local transferText = TRANSFER or "Transfer"
-    local maxQuantText = CURRENCY_TRANSFER_MAX_QUANTITY_BUTTON or "Max"
+    local transferText = TRANSFER or L["Transfer"]
+    local maxQuantText = CURRENCY_TRANSFER_MAX_QUANTITY_BUTTON or L["Max"]
     btn:SetTextToFit(transferText .. " " .. maxQuantText)
     btn:SetPoint("LEFT", cancel, "RIGHT", 8, 0)
 

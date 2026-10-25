@@ -32,6 +32,7 @@ local ROLE_ORDER = {
     { key = ROLE_MOVEMENT,  label = "Movement",         color = "ffffff55" },
     { key = ROLE_OTHER,     label = "Other Abilities",  color = "ffaaaaaa" },
 }
+OxedHub:RegisterLocalizedTable(ROLE_ORDER, "label")
 
 -- Known role assignments. Spells not listed fall back to a cooldown-length
 -- heuristic, so this table only needs to cover the ones worth naming.
@@ -386,13 +387,13 @@ function QuickSetup:Show()
 
         local step1Intro = f.step1:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
         step1Intro:SetPoint("TOP", 0, -60)
-        step1Intro:SetText("What do you wish to monitor?")
+        step1Intro:SetText(L["What do you wish to monitor?"])
         
         local step1Desc = f.step1:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         step1Desc:SetPoint("TOP", step1Intro, "BOTTOM", 0, -20)
         step1Desc:SetWidth(460)
         step1Desc:SetJustifyH("CENTER")
-        step1Desc:SetText("Triggers act as your personal combat assistants. They allow you to attach custom audio cues, screen flashes, or on-screen icons to specific events in combat. This helps you react faster to important cooldowns, interrupts, or defensive buffs without having to constantly watch your action bars.")
+        step1Desc:SetText(L["Triggers act as your personal combat assistants. They allow you to attach custom audio cues, screen flashes, or on-screen icons to specific events in combat. This helps you react faster to important cooldowns, interrupts, or defensive buffs without having to constantly watch your action bars."])
 
         local function CreateGoalButton(parent, title, desc, iconPath, yOffset)
             local btn = CreateFrame("Button", nil, parent)
@@ -440,14 +441,14 @@ function QuickSetup:Show()
             return btn
         end
 
-        f.auraBtn = CreateGoalButton(f.step1, "Track an Aura / Buff", "Monitor how long a buff or aura is active on you.\n\nE.g. Defensive cooldown durations, burst windows, or procs.", "Interface\\Icons\\spell_holy_powerwordshield", -200)
+        f.auraBtn = CreateGoalButton(f.step1, L["Track an Aura / Buff"], L["Monitor how long a buff or aura is active on you.\n\nE.g. Defensive cooldown durations, burst windows, or procs."], "Interface\\Icons\\spell_holy_powerwordshield", -200)
         f.auraBtn:SetScript("OnClick", function()
             QuickSetup.goal = "AURA"
             f.step1:Hide()
             f.step2:Show()
         end)
 
-        f.castBtn = CreateGoalButton(f.step1, "Track a Spell Cast", "Trigger a specific sound, animation, or icon when you cast an ability (or mix with toys!).\n\nE.g. Audio alert when casting an interrupt or major cooldown.", "Interface\\Icons\\spell_fire_fireball02", -340)
+        f.castBtn = CreateGoalButton(f.step1, L["Track a Spell Cast"], L["Trigger a specific sound, animation, or icon when you cast an ability (or mix with toys!).\n\nE.g. Audio alert when casting an interrupt or major cooldown."], "Interface\\Icons\\spell_fire_fireball02", -340)
         f.castBtn:SetScript("OnClick", function()
             QuickSetup.goal = "CAST"
             f.step1:Hide()
@@ -463,7 +464,7 @@ function QuickSetup:Show()
         intro:SetPoint("TOPLEFT", 16, -32)
         intro:SetPoint("RIGHT", f.step2, "RIGHT", -16, 0)
         intro:SetJustifyH("LEFT")
-        intro:SetText("Tick the spells you want to track, then press Create. Only spells this character actually has are listed.")
+        intro:SetText(L["Tick the spells you want to track, then press Create. Only spells this character actually has are listed."])
 
         f.skipExisting = CreateFrame("CheckButton", nil, f.step2, "UICheckButtonTemplate")
         f.skipExisting:SetPoint("TOPLEFT", intro, "BOTTOMLEFT", -2, -10)
@@ -486,12 +487,12 @@ function QuickSetup:Show()
         f.nextBtn = CreateFrame("Button", nil, f.step2, "UIPanelButtonTemplate")
         f.nextBtn:SetSize(150, 26)
         f.nextBtn:SetPoint("BOTTOMRIGHT", -14, 16)
-        f.nextBtn:SetText("Next")
+        f.nextBtn:SetText(L["Next"])
         
         f.backBtn = CreateFrame("Button", nil, f.step2, "UIPanelButtonTemplate")
         f.backBtn:SetSize(80, 26)
         f.backBtn:SetPoint("BOTTOMLEFT", 14, 16)
-        f.backBtn:SetText("Back")
+        f.backBtn:SetText(L["Back"])
         f.backBtn:SetScript("OnClick", function()
             f.step2:Hide()
             f.step1:Show()
@@ -517,13 +518,13 @@ function QuickSetup:Show()
 
         local step3Intro = f.step3:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
         step3Intro:SetPoint("TOP", 0, -30)
-        step3Intro:SetText("Additional Settings")
+        step3Intro:SetText(L["Additional Settings"])
         
         local step3Desc = f.step3:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         step3Desc:SetPoint("TOP", step3Intro, "BOTTOM", 0, -10)
         step3Desc:SetWidth(460)
         step3Desc:SetJustifyH("CENTER")
-        step3Desc:SetText("These settings can be changed later.\nPick what you wish to be enabled in alert actions (multiple choice).")
+        step3Desc:SetText(L["These settings can be changed later.\nPick what you wish to be enabled in alert actions (multiple choice)."])
 
         -- Helper: create a simple action row (icon + label, clickable toggle)
         local function CreateActionRow(parent, label, iconPath, settingsKey)
@@ -706,29 +707,29 @@ function QuickSetup:Show()
         -- === ALERT ACTIONS ===
         local actLabel = f.step3:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         actLabel:SetPoint("TOPLEFT", 30, -100)
-        actLabel:SetText("Alert Actions")
+        actLabel:SetText(L["Alert Actions"])
 
         local actNote = f.step3:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         actNote:SetPoint("TOPLEFT", actLabel, "BOTTOMLEFT", 0, -4)
-        actNote:SetText("*multiple choice")
+        actNote:SetText(L["*multiple choice"])
 
-        f.rowIcon = CreateActionRow(f.step3, "Icon:", "Interface\\Icons\\INV_Misc_QuestionMark", "showIcon")
+        f.rowIcon = CreateActionRow(f.step3, L["Icon:"], "Interface\\Icons\\INV_Misc_QuestionMark", "showIcon")
         f.rowIcon:SetPoint("TOPLEFT", actNote, "BOTTOMLEFT", 0, -10)
         f.rowSound = CreateActionRow(f.step3, "Sound:", "Interface\\Icons\\INV_Misc_Horn_01", "useSound")
         f.rowSound:SetPoint("TOPLEFT", f.rowIcon, "BOTTOMLEFT", 0, -4)
-        f.rowAnim = CreateActionRow(f.step3, "Animation:", "Interface\\Icons\\Ability_Rogue_Sprint", "useAnim")
+        f.rowAnim = CreateActionRow(f.step3, L["Animation:"], "Interface\\Icons\\Ability_Rogue_Sprint", "useAnim")
         f.rowAnim:SetPoint("TOPLEFT", f.rowSound, "BOTTOMLEFT", 0, -4)
 
         -- === ICON SIZE (centered in frame) ===
         local sizeLabel = f.step3:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         sizeLabel:SetPoint("TOPLEFT", f.rowAnim, "BOTTOMLEFT", 0, -20)
-        sizeLabel:SetText("Icon Size")
+        sizeLabel:SetText(L["Icon Size"])
 
-        f.btnTiny = CreateSizeBtn(f.step3, 16, "Tiny")
-        f.btnSmall = CreateSizeBtn(f.step3, 32, "Small")
-        f.btnMid = CreateSizeBtn(f.step3, 64, "Medium")
-        f.btnLarge = CreateSizeBtn(f.step3, 128, "Large")
-        f.btnHuge = CreateSizeBtn(f.step3, 256, "Huge")
+        f.btnTiny = CreateSizeBtn(f.step3, 16, L["Tiny"])
+        f.btnSmall = CreateSizeBtn(f.step3, 32, L["Small"])
+        f.btnMid = CreateSizeBtn(f.step3, 64, L["Medium"])
+        f.btnLarge = CreateSizeBtn(f.step3, 128, L["Large"])
+        f.btnHuge = CreateSizeBtn(f.step3, 256, L["Huge"])
         f.btnMid:SetPoint("TOP", sizeLabel, "BOTTOM", 200, -8)
         f.btnSmall:SetPoint("RIGHT", f.btnMid, "LEFT", -18, 0)
         f.btnTiny:SetPoint("RIGHT", f.btnSmall, "LEFT", -18, 0)
@@ -738,10 +739,10 @@ function QuickSetup:Show()
         -- === ICON SHAPE (centered in frame) ===
         local shapeLabel = f.step3:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         shapeLabel:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", 0, -90)
-        shapeLabel:SetText("Icon Shape")
+        shapeLabel:SetText(L["Icon Shape"])
 
-        f.btnSquare = CreateShapeBtn(f.step3, "SQUARE", "Square")
-        f.btnCircle = CreateShapeBtn(f.step3, "CIRCLE", "Circle")
+        f.btnSquare = CreateShapeBtn(f.step3, "SQUARE", L["Square"])
+        f.btnCircle = CreateShapeBtn(f.step3, "CIRCLE", L["Circle"])
         f.btnSquare:SetPoint("TOP", shapeLabel, "BOTTOM", 170, -8)
         f.btnCircle:SetPoint("LEFT", f.btnSquare, "RIGHT", 30, 0)
 
@@ -775,7 +776,7 @@ function QuickSetup:Show()
         f.step3BackBtn = CreateFrame("Button", nil, f.step3, "UIPanelButtonTemplate")
         f.step3BackBtn:SetSize(80, 26)
         f.step3BackBtn:SetPoint("BOTTOMLEFT", 14, 16)
-        f.step3BackBtn:SetText("Back")
+        f.step3BackBtn:SetText(L["Back"])
         f.step3BackBtn:SetScript("OnClick", function()
             f.step3:Hide()
             f.step2:Show()
@@ -879,7 +880,7 @@ function QuickSetup:Refresh()
 
             local existingId = self:FindExistingTrigger(spell.id)
             if existingId then
-                row.status:SetText("|cff888888already set up|r")
+                row.status:SetText(L["|cff888888already set up|r"])
             else
                 row.status:SetText("")
             end
@@ -915,7 +916,7 @@ function QuickSetup:Refresh()
             if self.selected[spell.id] then table.insert(chosen, spell) end
         end
         if #chosen == 0 then
-            print("|cffff0000Oxed Hub:|r Tick at least one spell first.")
+            print(L["|cffff0000Oxed Hub:|r Tick at least one spell first."])
             return
         end
 
@@ -940,8 +941,8 @@ function QuickSetup:Refresh()
     f.createBtn:SetScript("OnClick", function()
         local created, skipped, lastCreatedId = self:CreateTriggers(QuickSetup.chosenSpells, f.skipExisting:GetChecked())
 
-        print(("|cff00ff00Oxed Hub:|r Created %d trigger(s)%s."):format(
-            created, skipped > 0 and (", skipped " .. skipped .. " already set up") or ""))
+        print((L["|cff00ff00Oxed Hub:|r Created %d trigger(s)%s."]):format(
+            created, skipped > 0 and (L[", skipped "] .. skipped .. L[" already set up"]) or ""))
 
         wipe(self.selected)
         QuickSetup.chosenSpells = nil

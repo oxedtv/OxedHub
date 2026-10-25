@@ -285,26 +285,57 @@ end
 -- ⚠ Only before the key starts. Once a keystone run is under way the game
 -- forbids raid marks from addons (ADDON_ACTION_FORBIDDEN, even inside pcall:
 -- pcall stops the error, not the report). Marked when the key is slotted.
+-- ⚠ One mark at a time, MARK_STEP apart. Set in one burst, only the first
+-- reached the server: the tank got its mark and the healer never did. A
+-- second round a moment later catches any that were still dropped.
+local MARK_STEP = 0.4
+local MARK_ROUNDS = 2
+
+local function MarksAllowed()
+    if not cfg.markRoles or not IsInGroup() or IsInRaid() or InCombatLockdown() then return false end
+    if C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive() then return false end
+    return SetRaidTarget and UnitGroupRolesAssigned and true or false
+end
+
+-- The mark a unit should get, if it is unmarked and has one of the roles.
+local function WantedMark(unit)
+    local okExists, exists = pcall(UnitExists, unit)
+    if not (okExists and Bool(exists)) then return nil end
+    local okRole, role = pcall(UnitGroupRolesAssigned, unit)
+    role = okRole and Str(role)
+    local want = (role == "TANK" and cfg.tankMark) or (role == "HEALER" and cfg.healerMark) or nil
+    if not want or want <= 0 then return nil end
+    -- ⚠ A mark already on the unit answers as a secret, and SetRaidTarget
+    -- with the mark it has takes it off. Only an unmarked unit is marked.
+    local okMark, current = pcall(GetRaidTargetIndex, unit)
+    if okMark and not IsSecret(current) and current == nil then return want end
+    return nil
+end
+
+local markGeneration = 0
+
 local function MarkRoles()
-    if not cfg.markRoles or not IsInGroup() or IsInRaid() or InCombatLockdown() then return end
-    if C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive() then return end
-    if not (SetRaidTarget and UnitGroupRolesAssigned) then return end
-    local units = { "player", "party1", "party2", "party3", "party4" }
-    for _, unit in ipairs(units) do
-        local okExists, exists = pcall(UnitExists, unit)
-        if okExists and Bool(exists) then
-            local okRole, role = pcall(UnitGroupRolesAssigned, unit)
-            role = okRole and Str(role)
-            local want = (role == "TANK" and cfg.tankMark) or (role == "HEALER" and cfg.healerMark) or nil
-            if want and want > 0 then
-                -- ⚠ A mark already on the unit answers as a secret, and
-                -- SetRaidTarget with the mark it has takes it off. Only an
-                -- unmarked unit is marked.
-                local okMark, current = pcall(GetRaidTargetIndex, unit)
-                if okMark and not IsSecret(current) and current == nil then
-                    pcall(SetRaidTarget, unit, want)
-                end
-            end
+    if not MarksAllowed() then return end
+    markGeneration = markGeneration + 1
+    local generation = markGeneration
+    -- Only the units with a mark to give, so the marks land within a second
+    -- or two rather than after a slot for every empty party place.
+    local units = {}
+    for _, unit in ipairs({ "player", "party1", "party2", "party3", "party4" }) do
+        if WantedMark(unit) then units[#units + 1] = unit end
+    end
+    if #units == 0 then return end
+    local step = 0
+    for round = 1, MARK_ROUNDS do
+        for _, unit in ipairs(units) do
+            -- Every unit gets a slot, asked again when its turn comes: the
+            -- group, the roles and the marks can all change in between.
+            step = step + 1
+            C_Timer.After(step * MARK_STEP, function()
+                if generation ~= markGeneration or not MarksAllowed() then return end
+                local want = WantedMark(unit)
+                if want then pcall(SetRaidTarget, unit, want) end
+            end)
         end
     end
 end

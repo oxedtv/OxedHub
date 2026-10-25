@@ -65,7 +65,7 @@ local function ArbitrateSound(filePath, priority)
         -- Equal priorities keep the incumbent, so a burst of same-ranked rules
         -- still yields one sound rather than the last one to arrive.
         if priority <= (activeSound.priority or 0) then
-            return false, "lower priority"
+            return false, L["lower priority"]
         end
         -- Higher priority wins: silence what is playing and take over.
         if activeSound.handle and StopSound then
@@ -586,7 +586,7 @@ function Sounds:RefreshSoundList(parent)
             self.emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             self.emptyText:SetPoint("CENTER", parent, "CENTER", 0, 0)
         end
-        self.emptyText:SetText("No sounds match your filters.")
+        self.emptyText:SetText(L["No sounds match your filters."])
         self.emptyText:Show()
         parent:SetHeight(50)
         return
@@ -1004,7 +1004,7 @@ function Sounds:Play(soundIdOrPath, soundName, priority)
     end
 
     if not filePath or filePath == "" then
-        print("|cffff0000Oxed Hub:|r No sound file specified")
+        print(L["|cffff0000Oxed Hub:|r No sound file specified"])
         return
     end
     filePath = OxedHub.PackPath(filePath)

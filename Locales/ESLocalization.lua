@@ -165,7 +165,7 @@ L["ABOUT_UPDATES_DESC"] = "• |cffffd100UI Improvements:|r Repositioned control
 L["ABOUT_CARD_COMMUNITY"] = "Comunidad y créditos"
 L["ABOUT_COMMUNITY_DESC"] = "Únete a nuestra comunidad de Discord para compartir perfiles, recibir ayuda y sugerir nuevas funciones."
 L["ABOUT_BTN_DISCORD"] = "Únete a Discord"
-L["ABOUT_THANKS"] = "¡Un agradecimiento especial a |cffa335eeCaritas|r, |cffa335eeRiyadh|r y a |cffa335eeialaaeldin|r por sus sugerencias y por las pruebas realizadas!\nUn agradecimiento especial a |cffa335eeRomanv|r por la localización al español.\n¡Si deseas contribuir a la traducción, contáctanos!"
+L["ABOUT_THANKS"] = "¡Un agradecimiento especial a |cffa335eeCaritas|r, |cffa335eeRiyadh|r y a |cffa335eeialaaeldin|r por sus sugerencias y por las pruebas realizadas!\nUn agradecimiento especial a |cffa335eeRomanv|r por la localización al español.\nUn agradecimiento especial a |cffa335eeZamestoTV|r por la localización al ruso.\n¡Si deseas contribuir a la traducción, contáctanos!"
 L["ABOUT_CREATED_BY"] = "Creado por Oxed y The Lav Forge."
 L["ABOUT_DISCORD_LABEL"] = "|cff00ff00Discord Community:|r  Copia el enlace que aparece a continuación y pégalo en tu navegador"
 

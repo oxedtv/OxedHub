@@ -35,6 +35,52 @@ local DETAIL_LABELS                          = {
     comment   = "Description:",
 };
 
+-- Every option of this window is on until switched off: a key that was
+-- never saved reads as on, so players who had the window before keep it.
+local function Opt(name)
+    return DB:Get("settings.mythicPlusNotification." .. name) ~= false;
+end
+
+-- The options added with the group reminder. Written as true once settings
+-- are ready, so the tick boxes in both menus (which read nil as off) agree
+-- with Opt.
+local OPTIONS = {
+    "leaderFull", "chat", "hideBlizzardInvite", "showRole", "showTeleportHint",
+    "showGroupName", "showLeader", "showPlaystyle", "showDescription",
+};
+
+KeystoneLoot.API:RegisterCallback("READY", function()
+    for _, name in ipairs(OPTIONS) do
+        local key = "settings.mythicPlusNotification." .. name;
+        if (DB:Get(key) == nil) then DB:Set(key, true); end
+    end
+end, "GroupReminderDefaults");
+
+-- Which option shows each detail row.
+local DETAIL_OPTION = {
+    name = "showGroupName", leader = "showLeader", playstyle = "showPlaystyle", comment = "showDescription",
+};
+
+-- A listing name worth showing. A protected one is passed on (only SetText
+-- may touch it); an empty one, or the game's own "Unknown" placeholder, is
+-- dropped so the row hides instead of reading "Unknown".
+local function GroupName(value)
+    if (value == nil) then return nil; end
+    if (issecretvalue and issecretvalue(value)) then return value; end
+    if (type(value) ~= "string" or value == "" or value == UNKNOWN) then return nil; end
+    return value;
+end
+
+-- Our own listing's name, as typed in the group finder's listing form. The
+-- active entry often hands back a placeholder for it.
+local function OwnListingName()
+    local box = LFGListFrame and LFGListFrame.EntryCreation and LFGListFrame.EntryCreation.Name;
+    if (not box or not box.GetText) then return nil; end
+    local ok, text = pcall(box.GetText, box);
+    if (not ok or (issecretvalue and issecretvalue(text))) then return nil; end
+    return GroupName(text);
+end
+
 local function PlaystyleText(info, activityInfo)
     local style = info.generalPlaystyle;
     if (type(style) == "number" and style > 0) then
@@ -50,10 +96,10 @@ local function PlaystyleText(info, activityInfo)
 end
 
 -- What the window shows about a group, read while the listing still exists.
-local function ListingDetails(info, activityInfo, leader)
+local function ListingDetails(info, activityInfo, leader, own)
     if (type(info) ~= "table") then return nil; end
     return {
-        name      = info.name,
+        name      = own and (OwnListingName() or GroupName(info.name)) or GroupName(info.name),
         comment   = info.comment,
         leader    = leader or info.leaderName,
         playstyle = PlaystyleText(info, activityInfo),
@@ -74,7 +120,6 @@ function OxMythicLooterMythicPlusNotificationFrameMixin:CreateDetails()
         local label = self:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall");
         label:SetWidth(DETAIL_LABEL_W);
         label:SetJustifyH("RIGHT");
-        label:SetText(DETAIL_LABELS[key]);
 
         local value = self:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall");
         value:SetJustifyH("LEFT");
@@ -88,18 +133,38 @@ function OxMythicLooterMythicPlusNotificationFrameMixin:CreateDetails()
     end
 end
 
+-- Where the details start: below the card, measured once the window is on
+-- screen. A skin or a larger font can make the card's icon and text taller
+-- than the card itself, and a fixed offset then wrote the details over them.
+function OxMythicLooterMythicPlusNotificationFrameMixin:DetailsTop()
+    local top = self:GetTop();
+    local Card = self.Card;
+    local lowest = Card and Card:GetBottom();
+    if (not top or not lowest) then return DETAILS_TOP; end
+    for _, region in ipairs({ Card.Icon, Card.IconBorder, Card.DungeonName, Card.RoleIcon, Card.RoleText, self.TeleportHint }) do
+        local bottom = region and region:IsShown() and region:GetBottom();
+        if (bottom and bottom < lowest) then lowest = bottom; end
+    end
+    return math.max(DETAILS_TOP, math.ceil(top - lowest + 10));
+end
+
 -- Fills the rows and returns how tall they came out.
 function OxMythicLooterMythicPlusNotificationFrameMixin:ShowDetails(details)
     local y = 0;
+    local detailsTop = self:DetailsTop();
+    self.detailsTop = detailsTop;
     for _, key in ipairs(DETAIL_ROWS) do
         local row = self.detailRows[key];
         local text = details and details[key];
-        if (IsBlank(text)) then
+        if (IsBlank(text) or not Opt(DETAIL_OPTION[key])) then
             row.label:Hide();
             row.value:Hide();
         else
             row.label:ClearAllPoints();
-            row.label:SetPoint("TOPLEFT", self, "TOPLEFT", FRAME_PADDING, -(DETAILS_TOP + y));
+            row.label:SetPoint("TOPLEFT", self, "TOPLEFT", FRAME_PADDING, -(detailsTop + y));
+            -- Set here, not when the frame is made: that happens before the
+            -- language is known.
+            row.label:SetText(L[DETAIL_LABELS[key]]);
             row.value:SetText(text);
             row.label:Show();
             row.value:Show();
@@ -115,9 +180,9 @@ function OxMythicLooterMythicPlusNotificationFrameMixin:ShowDetails(details)
 end
 
 function OxMythicLooterMythicPlusNotificationFrameMixin:OnLoad()
-    self:RegisterEvent("LFG_LIST_APPLICATION_STATUS_UPDATED");
-    self:RegisterEvent("LFG_LIST_ACTIVE_ENTRY_UPDATE");
-    self:RegisterEvent("PLAYER_ENTERING_WORLD");
+    -- ⚠ Switched off: the window on joining a group is Inviter Info's now
+    -- (Modules\OxedModules\InviterInfo). This frame listens for nothing, so
+    -- the two never both open.
     self:RegisterForDrag("LeftButton");
 
     self.Inset:Hide();
@@ -126,6 +191,11 @@ function OxMythicLooterMythicPlusNotificationFrameMixin:OnLoad()
     self.HeadlineBg:SetVertexColor(0.1, 0.1, 0.1, 1);
     self.AddonLabel:SetText(AddonName);
     self:CreateDetails();
+
+    -- Under the dungeon and role: whether a click on the portrait teleports.
+    self.TeleportHint = self:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall");
+    self.TeleportHint:SetJustifyH("CENTER");
+    self.TeleportHint:Hide();
 
     for _, dungeon in ipairs(Query:GetDungeons()) do
         instanceIdToDungeon[dungeon.instanceId] = dungeon;
@@ -232,7 +302,7 @@ function OxMythicLooterMythicPlusNotificationFrameMixin:OnEvent(event, ...)
 end
 
 function OxMythicLooterMythicPlusNotificationFrameMixin:CheckActiveEntry()
-    if (self.groupInfo or not DB:Get("settings.mythicPlusNotification.full")) then
+    if (self.groupInfo or not DB:Get("settings.mythicPlusNotification.full") or not Opt("leaderFull")) then
         return;
     end
 
@@ -252,13 +322,14 @@ function OxMythicLooterMythicPlusNotificationFrameMixin:CheckActiveEntry()
         sawIncomplete = GetNumGroupMembers() < FULL_GROUP_SIZE
     };
     -- Our own listing: we lead it.
-    self.details = ListingDetails(entryData, activityInfo, UnitName("player"));
+    self.details = ListingDetails(entryData, activityInfo, UnitName("player"), true);
 
     self:RegisterEvent("GROUP_ROSTER_UPDATE");
     self:RegisterEvent("GROUP_LEFT");
 end
 
 function OxMythicLooterMythicPlusNotificationFrameMixin:HideJoinDialog()
+    if (not Opt("hideBlizzardInvite")) then return; end
     local Dialog = LFGListInviteDialog;
 
     if (Dialog and Dialog:IsShown() and Dialog.informational and Dialog.resultID == self.suppressResultId) then
@@ -330,27 +401,61 @@ function OxMythicLooterMythicPlusNotificationFrameMixin:Open(instanceId, activit
     end
 
     local atlas = role and ROLE_ATLAS[role];
-    Card.RoleIcon:SetShown(atlas ~= nil);
+    local showRole = Opt("showRole");
+    Card.RoleIcon:SetShown(showRole and atlas ~= nil);
+    Card.RoleText:SetShown(showRole);
     Card.RoleText:SetText(atlas and _G[role] or "");
 
     if (atlas) then
         Card.RoleIcon:SetAtlas(atlas);
     end
 
+    -- The teleport, said in words: the portrait alone does not say it is a
+    -- button, and an unlearned teleport looks the same as a learned one.
+    local hint = self.TeleportHint;
+    -- Read from the dungeon, not the card: the card keeps the last teleport
+    -- it was given when a dungeon has none.
+    local spellId = dungeon and dungeon.teleportSpellId;
+    if (type(spellId) == "function") then spellId = spellId(); end
+    hint:ClearAllPoints();
+    hint:SetPoint("TOP", showRole and Card.RoleText or Card.DungeonName, "BOTTOM", showRole and -9 or 0, -4);
+    if (not Opt("showTeleportHint") or not spellId) then
+        hint:Hide();
+    elseif (IsSpellKnown(spellId)) then
+        hint:SetText(L["Click the portrait to teleport"]);
+        hint:SetTextColor(0.6, 1, 0.6);
+        hint:Show();
+    else
+        hint:SetText(L["Teleport not learned yet"]);
+        hint:SetTextColor(1, 0.45, 0.45);
+        hint:Show();
+    end
+
+    -- What this window shows, kept apart from self.details: a test fills the
+    -- window without touching the real group's details.
+    self.shownDetails = self.details;
+
     local width = FRAME_PADDING * 2 + CARD_TEXT_LEFT + CARD_PADDING + Card.DungeonName:GetStringWidth();
-    local detailsHeight = self:ShowDetails(self.details);
+    local detailsHeight = self:ShowDetails(self.shownDetails);
+    self.hasDetails = detailsHeight > 0;
     if (detailsHeight > 0) then
         width = math.max(width, MIN_WIDTH);
         self:SetWidth(width);
         -- Laid out again now the width is known, so the description wraps right.
-        detailsHeight = self:ShowDetails(self.details);
-        self:SetHeight(DETAILS_TOP + detailsHeight + DETAILS_BOTTOM);
+        detailsHeight = self:ShowDetails(self.shownDetails);
     else
         self:SetWidth(width);
-        self:SetHeight(119);
     end
+    self:FitHeight(detailsHeight);
     self:Show();
-    self:AnnounceInChat(dungeonName, role, atlas, isFull);
+    -- Measured again a frame later, once the card has its real size on screen.
+    C_Timer.After(0, function()
+        if (not self:IsShown()) then return; end
+        self:FitHeight(self:ShowDetails(self.shownDetails));
+    end);
+    if (Opt("chat")) then
+        self:AnnounceInChat(dungeonName, role, atlas, isFull);
+    end
 
     if (isFull) then
         self.groupInfo = nil;
@@ -371,13 +476,66 @@ function OxMythicLooterMythicPlusNotificationFrameMixin:AnnounceInChat(dungeonNa
         parts[#parts + 1] = ("|c%s%s|r"):format(ORANGE, style);
     end
     local line = table.concat(parts, ", ");
-    if (atlas and role and _G[role]) then
+    if (Opt("showRole") and atlas and role and _G[role]) then
         local icon = CreateAtlasMarkup and CreateAtlasMarkup(atlas, 14, 14) or "";
-        line = line .. (", as a |c%s%s|r %s"):format(ORANGE, _G[role], icon);
+        line = line .. L[", as a %s %s"]:format(("|c%s%s|r"):format(ORANGE, _G[role]), icon);
     end
-    local lead = isFull and "Your group is full: " or "You have been invited to ";
-    print(("|cffff4040%s|r - |cffffd100Group Reminder|r: %s%s |cffffd100|H%s|h[Open reminder]|h|r")
-        :format(AddonName, lead, line, REMINDER_LINK));
+    local lead = isFull and L["Your group is full: "] or L["You have been invited to "];
+    print(("|cffff4040%s|r. |cffffd100%s|r: %s%s |cffffd100|H%s|h[%s]|h|r")
+        :format(AddonName, L["Group Reminder"], lead, line, REMINDER_LINK, L["Open reminder"]));
+end
+
+-- The window's height: down to the last detail row, or with none shown,
+-- just below the card and the teleport line.
+function OxMythicLooterMythicPlusNotificationFrameMixin:FitHeight(detailsHeight)
+    if (detailsHeight and detailsHeight > 0) then
+        self:SetHeight(self.detailsTop + detailsHeight + DETAILS_BOTTOM);
+    else
+        self:SetHeight(math.max(119, self:DetailsTop() + 6));
+    end
+end
+
+-- The window as it would look on joining a group, with made-up details, so
+-- the options can be seen without queueing. The real group's state is put
+-- back afterwards.
+function OxMythicLooterMythicPlusNotificationFrameMixin:Test()
+    if (InCombatLockdown()) then return; end
+    local dungeon;
+    for _, entry in pairs(instanceIdToDungeon) do
+        dungeon = entry;
+        if (IsSpellKnown and type(entry.teleportSpellId) == "number" and IsSpellKnown(entry.teleportSpellId)) then
+            break
+        end
+    end
+    if (not dungeon) then return; end
+
+    local groupInfo, details, appliedRole = self.groupInfo, self.details, self.appliedRole;
+    self.groupInfo = nil;
+    self.appliedRole = "DAMAGER";
+    self.details = {
+        name      = L["Test group"],
+        leader    = UnitName("player"),
+        playstyle = GROUP_FINDER_GENERAL_PLAYSTYLE2 or L["Fun"],
+        comment   = L["A sample description, as the group leader would write it. Long ones wrap onto more lines."],
+    };
+    self:Open(dungeon.instanceId, nil, false);
+    self.groupInfo, self.details, self.appliedRole = groupInfo, details, appliedRole;
+end
+
+-- Brings back the last window shown, if there was one this session.
+function OxMythicLooterMythicPlusNotificationFrameMixin:ShowLast()
+    if (self.Card and self.Card.DungeonName:GetText()) then
+        self:Show();
+        return true;
+    end
+    return false;
+end
+
+-- Back to where the window first appears.
+function OxMythicLooterMythicPlusNotificationFrameMixin:ResetPosition()
+    self:SetUserPlaced(false);
+    self:ClearAllPoints();
+    self:SetPoint("CENTER", UIParent, "CENTER", 0, 150);
 end
 
 if (EventRegistry and EventRegistry.RegisterCallback) then
@@ -386,14 +544,7 @@ if (EventRegistry and EventRegistry.RegisterCallback) then
     EventRegistry:RegisterCallback("SetItemRef", function(a, b)
         if (a ~= REMINDER_LINK and b ~= REMINDER_LINK) then return; end
         local frame = OxMythicLooterMythicPlusNotificationFrame;
-        if (frame and frame.Card and frame.Card.DungeonName:GetText()) then
-            frame:Show();
-        end
+        if (frame and frame.ShowLast) then frame:ShowLast(); end
     end);
 end
 
-EventUtil.ContinueOnAddOnLoaded("Blizzard_GroupFinder", function()
-    hooksecurefunc("LFGListInviteDialog_Show", function(Dialog)
-        OxMythicLooterMythicPlusNotificationFrame:HideJoinDialog();
-    end);
-end);

@@ -5,6 +5,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer
 
 -- ── Default Settings ────────────────────────────────────────────────────────
@@ -249,12 +250,12 @@ local function ProcessQueuedUpdate()
         if primary and primary ~= currentTarget then
             currentTarget = primary
             if not suppress then
-                print(string.format("|cff0091edSmartMD:|r Target set to |cFFFFD700%s|r", primary))
+                print(string.format(L["|cff0091edSmartMD:|r Target set to |cFFFFD700%s|r"], primary))
             end
         elseif not primary and currentTarget then
             currentTarget = nil
             if not suppress then
-                print("|cff0091edSmartMD:|r |cffff5555No valid target found|r")
+                print(L["|cff0091edSmartMD:|r |cffff5555No valid target found|r"])
             end
         end
     else
@@ -296,11 +297,11 @@ end
 
 local function CreateOrUpdateMacro()
     if not IsEligibleClass() then
-        print("|cff0091edSmartMD:|r Smart Misdirect macro is only available for Hunters and Rogues.")
+        print(L["|cff0091edSmartMD:|r Smart Misdirect macro is only available for Hunters and Rogues."])
         return nil
     end
     if InCombatLockdown() then
-        print("|cff0091edSmartMD:|r Cannot create or update macros while in combat.")
+        print(L["|cff0091edSmartMD:|r Cannot create or update macros while in combat."])
         return nil
     end
 
@@ -319,7 +320,7 @@ local function CreateOrUpdateMacro()
 
     if existing and existing > 0 then
         EditMacro(existing, macroName, icon, body)
-        print(string.format("|cff0091edSmartMD:|r Updated macro '|cffffd100%s|r'. Drag it onto your action bar!", macroName))
+        print(string.format(L["|cff0091edSmartMD:|r Updated macro '|cffffd100%s|r'. Drag it onto your action bar!"], macroName))
         return existing
     end
 
@@ -332,9 +333,9 @@ local function CreateOrUpdateMacro()
     end
 
     if idx then
-        print(string.format("|cff0091edSmartMD:|r Created macro '|cffffd100%s|r' (per-character). Drag it onto your action bar!", macroName))
+        print(string.format(L["|cff0091edSmartMD:|r Created macro '|cffffd100%s|r' (per-character). Drag it onto your action bar!"], macroName))
     else
-        print("|cff0091edSmartMD:|r |cffff4040Macro slots are full.|r Please delete an unused macro and retry.")
+        print(L["|cff0091edSmartMD:|r |cffff4040Macro slots are full.|r Please delete an unused macro and retry."])
     end
     return idx
 end
@@ -408,7 +409,7 @@ local function ShowOptions()
         local btnMacro = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         btnMacro:SetSize(200, 24)
         btnMacro:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        btnMacro:SetText("Create / Update Macro")
+        btnMacro:SetText(L["Create / Update Macro"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnMacro) end
         btnMacro:SetScript("OnClick", function()
             CreateOrUpdateMacro()
@@ -417,15 +418,15 @@ local function ShowOptions()
         local btnPrint = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         btnPrint:SetSize(200, 24)
         btnPrint:SetPoint("LEFT", btnMacro, "RIGHT", 10, 0)
-        btnPrint:SetText("Print Current Target")
+        btnPrint:SetText(L["Print Current Target"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnPrint) end
         btnPrint:SetScript("OnClick", function()
             local ts = GetTargets()
-            print(string.format("|cff0091edSmartMD:|r Current targets (%d):", #ts))
+            print(string.format(L["|cff0091edSmartMD:|r Current targets (%d):"], #ts))
             for i, t in ipairs(ts) do
                 print(string.format("  %d. |cffffd100%s|r", i, t))
             end
-            if #ts == 0 then print("  |cffff4040None found in group|r") end
+            if #ts == 0 then print(L["  |cffff4040None found in group|r"]) end
         end)
 
         w.cursorY = w.cursorY - 34
@@ -449,10 +450,10 @@ local function ShowOptions()
 
         -- Tank Selection Method Choice
         w:AddChoice(settings, "tankMethod", "Tank selection method", {
-            { value = "byRole",          text = "By Role (TANK)" },
-            { value = "roleAndMainTank", text = "Role + Main Tank" },
-            { value = "mainTankFirst",   text = "Main Tank first" },
-            { value = "mainTankOnly",    text = "Main Tank only" },
+            { value = "byRole",          text = L["By Role (TANK)"] },
+            { value = "roleAndMainTank", text = L["Role + Main Tank"] },
+            { value = "mainTankFirst",   text = L["Main Tank first"] },
+            { value = "mainTankOnly",    text = L["Main Tank only"] },
         }, function()
             QueueUpdate()
         end)
@@ -474,13 +475,13 @@ local function ShowOptions()
         local btnClear = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         btnClear:SetSize(120, 22)
         btnClear:SetPoint("LEFT", editBox, "RIGHT", 10, 0)
-        btnClear:SetText("Clear Override")
+        btnClear:SetText(L["Clear Override"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(btnClear) end
         btnClear:SetScript("OnClick", function()
             settings.manualName = ""
             settings.manualRealm = ""
             editBox:SetText("")
-            print("|cff0091edSmartMD:|r Manual override cleared.")
+            print(L["|cff0091edSmartMD:|r Manual override cleared."])
             QueueUpdate()
         end)
 
@@ -502,20 +503,20 @@ SlashCmdList.OXEDHUBSMARTMISDIRECT = function(msg)
         CreateOrUpdateMacro()
     elseif msg == "clear" then
         if settings then settings.manualName = ""; settings.manualRealm = "" end
-        print("|cff0091edSmartMD:|r Manual override cleared.")
+        print(L["|cff0091edSmartMD:|r Manual override cleared."])
         QueueUpdate()
     elseif msg:match("^set%s+(.+)") then
         local name = msg:match("^set%s+(.+)")
         if settings then settings.manualName = name end
-        print(string.format("|cff0091edSmartMD:|r Manual target set to |cFFFFD700%s|r", name))
+        print(string.format(L["|cff0091edSmartMD:|r Manual target set to |cFFFFD700%s|r"], name))
         QueueUpdate()
     elseif msg == "target" or msg == "targets" then
         local ts = GetTargets()
-        print(string.format("|cff0091edSmartMD:|r Current targets (%d):", #ts))
+        print(string.format(L["|cff0091edSmartMD:|r Current targets (%d):"], #ts))
         for i, t in ipairs(ts) do
             print(string.format("  %d. |cffffd100%s|r", i, t))
         end
-        if #ts == 0 then print("  |cffff4040None found in group|r") end
+        if #ts == 0 then print(L["  |cffff4040None found in group|r"]) end
     else
         ShowOptions()
     end

@@ -13,6 +13,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local DEFAULTS = {
@@ -223,7 +224,7 @@ local function DescribeVisit()
             end
         end
         if stacks > 0 then
-            parts[#parts + 1] = ("Deposit %d reagent stack(s):"):format(stacks)
+            parts[#parts + 1] = (L["Deposit %d reagent stack(s):"]):format(stacks)
                 .. "\n" .. API:FormatItemList(reagents, 10)
         end
     end
@@ -232,12 +233,12 @@ local function DescribeVisit()
     if #picks > 0 then
         local stored = {}
         for _, pick in ipairs(picks) do API:AddItemToList(stored, pick.info) end
-        parts[#parts + 1] = ("Put away %d stack(s) you already store:"):format(#picks)
+        parts[#parts + 1] = (L["Put away %d stack(s) you already store:"]):format(#picks)
             .. "\n" .. API:FormatItemList(stored, 10)
     end
 
     if #parts == 0 then return nil end
-    return table.concat(parts, "\n\n") .. "\n\nGo ahead?"
+    return table.concat(parts, "\n\n") .. L["\n\nGo ahead?"]
 end
 
 local RunVisit   -- defined below; OnBankOpened either asks first or runs it
@@ -266,7 +267,7 @@ function RunVisit()
     local free = FreeBankSlots()
     if free <= 0 then
         if settings.report then
-            print(PREFIX .. "|cffff5555the bank is full|r, nothing was put away.")
+            print(PREFIX .. L["|cffff5555the bank is full|r, nothing was put away."])
         end
         return
     end
@@ -274,7 +275,7 @@ function RunVisit()
     local picks = Collect(StoredItems())
     if #picks == 0 then
         if reagents > 0 and settings.report then
-            print(PREFIX .. ("deposited %d reagent stack(s)."):format(reagents))
+            print(PREFIX .. (L["deposited %d reagent stack(s)."]):format(reagents))
         end
         return
     end
@@ -283,12 +284,12 @@ function RunVisit()
         if not settings.report then return end
 
         local parts = {}
-        if reagents > 0 then parts[#parts + 1] = ("deposited %d reagent stack(s)"):format(reagents) end
+        if reagents > 0 then parts[#parts + 1] = (L["deposited %d reagent stack(s)"]):format(reagents) end
         if moved > 0 then
-            parts[#parts + 1] = ("put away %d stack(s)"):format(moved)
+            parts[#parts + 1] = (L["put away %d stack(s)"]):format(moved)
         end
         if moved < #picks and moved >= free then
-            parts[#parts + 1] = "|cffff5555bank filled up|r"
+            parts[#parts + 1] = L["|cffff5555bank filled up|r"]
         end
         if #parts > 0 then print(PREFIX .. table.concat(parts, ", ") .. ".") end
     end)

@@ -18,12 +18,12 @@ OxedHub.Triggers:RegisterEventType("PREY_HUNT", {
         note:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset - 4)
         note:SetWidth(560)
         note:SetJustifyH("LEFT")
-        note:SetText("|cffffd100Prey Hunt is now a module.|r Its bar, widget, gossip marks and sounds are set in "
-            .. "Modules > Prey Hunt. This trigger no longer does anything and can be deleted.")
+        note:SetText(L["|cffffd100Prey Hunt is now a module.|r Its bar, widget, gossip marks and sounds are set in "]
+            .. L["Modules > Prey Hunt. This trigger no longer does anything and can be deleted."])
         local open = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
         open:SetSize(200, 24)
         open:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -10)
-        open:SetText("Open Prey Hunt options")
+        open:SetText(L["Open Prey Hunt options"])
         if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(open) end
         open:SetScript("OnClick", function()
             local API = OxedHub.ModuleAPI

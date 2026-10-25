@@ -1,5 +1,19 @@
 # Oxed Hub
 
+## [v2.4.44](https://github.com/oxedtv/OxedHub/tree/v2.4.44) (2026-10-25)
+[Full Changelog](https://github.com/oxedtv/OxedHub/compare/v2.4.43...v2.4.44) [Previous Releases](https://github.com/oxedtv/OxedHub/releases)
+
+- Release 2.4.44: Russian localization, AddOn Manager, Frame Mover, Toy Keybinds, Buff Reminder & Inviter Info  
+    Adds Russian language (testing) support selectable in OxedHub's settings.  
+    Adds AddOn Manager module (/oxaddons): organized addon list with plugins grouped, search, character/all toggles, and saved sets.  
+    Adds Frame Mover module (/oxmove): drag game windows to save position, Ctrl+wheel to scale, combat protected.  
+    Adds Toy mix keybinds (/oxmixkeys) for triggering saved mixes with full audio/visual/chat effects directly.  
+    Master toggle on dashboard to disable/restore all modules.  
+    Inviter Info: dedicated group join/fill popup with dungeon teleports, test invites, and customizable invite lines.  
+    Buff Reminder overhaul: "Choose your buffs" picker, spell suggestions, warlock demon tracking, and contextual filters.  
+    Adds standalone minimap buttons for WQ Achievements, Chat Filter, Chat Buttons, Item Tooltips, Cursor, Camera, and Durability.  
+    Fixes Run Tracker healer role marks and Shattersight enchanting material shift-hover error.  
+
 ## [v2.4.43](https://github.com/oxedtv/OxedHub/tree/v2.4.43) (2026-10-24)
 [Full Changelog](https://github.com/oxedtv/OxedHub/compare/v2.4.42...v2.4.43) [Previous Releases](https://github.com/oxedtv/OxedHub/releases)
 

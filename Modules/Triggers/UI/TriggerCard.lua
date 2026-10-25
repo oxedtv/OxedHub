@@ -80,10 +80,10 @@ function Triggers:ShowMultiActionTestMenu(button, trigger)
 
         elseif trig.event == "INTERRUPT_USED" or trig.event == "SPELL_INTERRUPTED" then
             root:CreateTitle(L["EVT_INTERRUPT_USED"] or "Interrupt Test")
-            root:CreateButton("Successful Interrupt", function()
+            root:CreateButton(L["Successful Interrupt"], function()
                 Triggers:TestTrigger(trig, "success")
             end)
-            root:CreateButton("Failed Interrupt", function()
+            root:CreateButton(L["Failed Interrupt"], function()
                 Triggers:TestTrigger(trig, "failed")
             end)
             root:CreateDivider()
@@ -270,7 +270,7 @@ function Triggers:TestTrigger(trigger, subType, anchorButton)
     if chatVal and chatVal ~= "" and chatVal ~= "None" and OxedHub.ChatMessages then
         local chatData = OxedHub.db.profile.chatMessages and OxedHub.db.profile.chatMessages[chatVal]
         local text = chatData and chatData.text or chatVal
-        print(string.format("|cFF00FFFF[OxedHub Test Chat - %s]:|r %s", subType or trig.name or "Trigger", text))
+        print(string.format("|cFF00FFFF[OxedHub Test Chat - %s]:|r %s", subType or trig.name or L["Trigger"], text))
     end
 end
 
@@ -313,7 +313,7 @@ function Triggers:CreateTriggerCard(parent, trigger)
     local titleText = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     titleText:SetPoint("LEFT", titleBar, "LEFT", 10, 0)
     titleText:SetTextColor(1, 0.82, 0, 1)
-    titleText:SetText("Trigger Rule")
+    titleText:SetText(L["Trigger Rule"])
     card.titleText = titleText
 
     -- Title bar gold accent line
@@ -343,7 +343,7 @@ function Triggers:CreateTriggerCard(parent, trigger)
         if isUserInput then trigger.autoNamed = false end
         -- Update title
         if titleText then
-            titleText:SetText(trigger.name ~= "" and trigger.name or "Trigger Rule")
+            titleText:SetText(trigger.name ~= "" and trigger.name or L["Trigger Rule"])
         end
         if isUserInput then Triggers.ShowAutoSaved(card) end
     end)
@@ -541,29 +541,29 @@ function Triggers:CreateTriggerCard(parent, trigger)
         if help then
             if help.fires then
                 GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("|cff88ccffWhen it fires|r", 1, 1, 1)
+                GameTooltip:AddLine(L["|cff88ccffWhen it fires|r"], 1, 1, 1)
                 GameTooltip:AddLine(help.fires, 0.9, 0.9, 0.9, true)
             end
             if help.needs then
                 GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("|cffffd100What it needs|r", 1, 1, 1)
+                GameTooltip:AddLine(L["|cffffd100What it needs|r"], 1, 1, 1)
                 GameTooltip:AddLine(help.needs, 0.9, 0.9, 0.9, true)
             end
             if help.limits then
                 GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("|cffff8800What it will not catch|r", 1, 1, 1)
+                GameTooltip:AddLine(L["|cffff8800What it will not catch|r"], 1, 1, 1)
                 GameTooltip:AddLine(help.limits, 0.9, 0.9, 0.9, true)
             end
             if help.example then
                 GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("|cff55ff55Example|r", 1, 1, 1)
+                GameTooltip:AddLine(L["|cff55ff55Example|r"], 1, 1, 1)
                 GameTooltip:AddLine(help.example, 0.9, 0.9, 0.9, true)
             end
         else
             -- No long entry written for this event yet; the dropdown's own
             -- one-liner is still better than an empty tooltip.
             GameTooltip:AddLine(" ")
-            GameTooltip:AddLine((info and info.desc) or "No description available.", 0.9, 0.9, 0.9, true)
+            GameTooltip:AddLine((info and info.desc) or L["No description available."], 0.9, 0.9, 0.9, true)
         end
 
         GameTooltip:Show()
@@ -676,7 +676,7 @@ function Triggers:CreateTriggerCard(parent, trigger)
     -- Conditions area with section header
     -- Anchored to the category dropdown (the left-hand one) so the box still
     -- starts at the card's left edge.
-    local conditionsBox, conditionsFrame, conditionsLabel, conditionsDescLabel = CreateSectionBox(card, "Conditions", "Define the requirements that must be met for this trigger to execute.", categoryDropdown, -10)
+    local conditionsBox, conditionsFrame, conditionsLabel, conditionsDescLabel = CreateSectionBox(card, L["Conditions"], L["Define the requirements that must be met for this trigger to execute."], categoryDropdown, -10)
     conditionsFrame:SetHeight(60)
     card.conditionsBox = conditionsBox
     card.conditionsFrame = conditionsFrame
@@ -684,7 +684,7 @@ function Triggers:CreateTriggerCard(parent, trigger)
     card.conditionsDescLabel = conditionsDescLabel
     
     -- Actions area with section header
-    local actionsBox, actionsFrame, actionsLabel, actionsDescLabel = CreateSectionBox(card, "Actions", "Choose the sounds, animations, and emotes that will play when triggered.", conditionsBox, -10)
+    local actionsBox, actionsFrame, actionsLabel, actionsDescLabel = CreateSectionBox(card, L["Actions"], L["Choose the sounds, animations, and emotes that will play when triggered."], conditionsBox, -10)
     actionsFrame:SetHeight(150)
     self:CreateActionsUI(actionsFrame, trigger)
     card.actionsBox = actionsBox
@@ -701,7 +701,7 @@ function Triggers:CreateTriggerCard(parent, trigger)
     -- Zone restrictions
     local zoneLabel = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     zoneLabel:SetPoint("TOPLEFT", nameInput, "BOTTOMLEFT", 0, -10)
-    zoneLabel:SetText("Only play in these zones:")
+    zoneLabel:SetText(L["Only play in these zones:"])
     
     local zoneFrame = CreateFrame("Frame", nil, card)
     zoneFrame:SetPoint("TOPLEFT", zoneLabel, "BOTTOMLEFT", 0, -5)
@@ -904,18 +904,18 @@ function Triggers:CreateTriggerCard(parent, trigger)
     shareBtn:SetScript("OnClick", function()
         local Share = OxedHub.Share
         if not Share then
-            print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+            print(L["|cffff0000Oxed Hub:|r Sharing module unavailable."])
             return
         end
         local label = trigger.name
-        if not label or label == "" then label = "Trigger" end
+        if not label or label == "" then label = L["Trigger"] end
         Share:ShowChannelPicker("triggers", { triggerIDs = { trigger.id } }, label)
     end)
     shareBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(L["BTN_SHARE"] or "Share")
-        GameTooltip:AddLine("Put a clickable link for this trigger in your chat box.", 1, 1, 1, true)
-        GameTooltip:AddLine("Anyone with Oxed Hub can click it to import.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine(L["Put a clickable link for this trigger in your chat box."], 1, 1, 1, true)
+        GameTooltip:AddLine(L["Anyone with Oxed Hub can click it to import."], 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     shareBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -939,9 +939,9 @@ function Triggers:CreateTriggerCard(parent, trigger)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText(L["BTN_TEST"] or "Test", 1, 0.82, 0)
         if Triggers:HasMultiActions(trig) then
-            GameTooltip:AddLine("Click to choose which action/state to test (or test all in sequence).", 1, 1, 1, true)
+            GameTooltip:AddLine(L["Click to choose which action/state to test (or test all in sequence)."], 1, 1, 1, true)
         else
-            GameTooltip:AddLine("Click to test trigger sounds, animations, and icons.", 1, 1, 1, true)
+            GameTooltip:AddLine(L["Click to test trigger sounds, animations, and icons."], 1, 1, 1, true)
         end
         GameTooltip:Show()
     end)

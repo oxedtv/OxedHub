@@ -235,7 +235,7 @@ function Triggers:CreateDashboardRow(parent, name, event, actions, zone, isHeade
         delBtn:SetPushedTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Down")
         delBtn:SetScript("OnEnter", function()
             GameTooltip:SetOwner(delBtn, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Delete Trigger", 1, 0, 0)
+            GameTooltip:SetText(L["Delete Trigger"], 1, 0, 0)
             GameTooltip:Show()
         end)
         delBtn:SetScript("OnLeave", function()
@@ -267,8 +267,8 @@ function Triggers:CreateDashboardRow(parent, name, event, actions, zone, isHeade
         shareBtn:SetScript("OnEnter", function()
             GameTooltip:SetOwner(shareBtn, "ANCHOR_RIGHT")
             GameTooltip:SetText(L["BTN_SHARE"] or "Share", 1, 0.82, 0)
-            GameTooltip:AddLine("Share just this trigger in chat.", 1, 1, 1, true)
-            GameTooltip:AddLine("Others with Oxed Hub can click to import it.", 0.8, 0.8, 0.8, true)
+            GameTooltip:AddLine(L["Share just this trigger in chat."], 1, 1, 1, true)
+            GameTooltip:AddLine(L["Others with Oxed Hub can click to import it."], 0.8, 0.8, 0.8, true)
             GameTooltip:Show()
         end)
         shareBtn:SetScript("OnLeave", function()
@@ -277,11 +277,11 @@ function Triggers:CreateDashboardRow(parent, name, event, actions, zone, isHeade
         shareBtn:SetScript("OnClick", function()
             local Share = OxedHub.Share
             if not Share then
-                print("|cffff0000Oxed Hub:|r Sharing module unavailable.")
+                print(L["|cffff0000Oxed Hub:|r Sharing module unavailable."])
                 return
             end
             local label = trigger and trigger.name
-            if not label or label == "" then label = "Trigger" end
+            if not label or label == "" then label = L["Trigger"] end
             Share:ShowChannelPicker("triggers", { triggerIDs = { triggerId } }, label)
         end)
 
@@ -341,7 +341,7 @@ function Triggers:GetEventDisplay(eventType)
     if info and info.label then
         return info.label, info.category or "custom", info.desc or ""
     end
-    return eventType or "Unknown", "custom", ""
+    return eventType or L["Unknown"], "custom", ""
 end
 
 function Triggers:GetActionDetails(trigger)
@@ -369,7 +369,7 @@ function Triggers:GetActionDetails(trigger)
     end
     
     if #lines == 0 then
-        return "|cff888888No actions configured|r"
+        return L["|cff888888No actions configured|r"]
     end
     return table.concat(lines, "\n")
 end
@@ -849,7 +849,7 @@ function Triggers:RefreshTriggersList()
                     row.what and ((filtered and "" or "   ") .. "|cffcccccc" .. row.what .. "|r") or "")
             end
             if trimmed > 0 then
-                lines[#lines + 1] = ("|cff888888... and %d earlier, no longer kept|r"):format(trimmed)
+                lines[#lines + 1] = (L["|cff888888... and %d earlier, no longer kept|r"]):format(trimmed)
             end
             body:SetText(table.concat(lines, "\n"))
         end
@@ -900,7 +900,7 @@ function Triggers:RefreshTriggersList()
             searchBox:GetParent():Hide()
         end
         if tab.title then
-            tab.title:SetText("Trigger Details")
+            tab.title:SetText(L["Trigger Details"])
         end
 
         local backBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
@@ -925,7 +925,7 @@ function Triggers:RefreshTriggersList()
             
             for _, trigger in ipairs(dTriggers) do
                 rootDescription:CreateRadio(
-                    trigger.name or "Unnamed Trigger",
+                    trigger.name or L["Unnamed Trigger"],
                     function() return self.selectedTriggerId == trigger.id end,
                     function()
                         Triggers:OpenTriggerDetails(trigger.id)
@@ -935,9 +935,9 @@ function Triggers:RefreshTriggersList()
         end)
         
         if triggerDropdown.SetDefaultText then
-            triggerDropdown:SetDefaultText(selectedTrigger.name or "Unnamed Trigger")
+            triggerDropdown:SetDefaultText(selectedTrigger.name or L["Unnamed Trigger"])
         elseif triggerDropdown.SetText then
-            triggerDropdown:SetText(selectedTrigger.name or "Unnamed Trigger")
+            triggerDropdown:SetText(selectedTrigger.name or L["Unnamed Trigger"])
         end
 
         local detailLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -1179,7 +1179,7 @@ function Triggers:RefreshTriggersList()
         searchBox:GetParent():Show()
     end
     if tab.title then
-        tab.title:SetText("Trigger Rules")
+        tab.title:SetText(L["Trigger Rules"])
     end
 
     local totalTriggers = 0
@@ -1325,11 +1325,11 @@ function Triggers:RefreshTriggersList()
             end
         end
 
-        tab.listIntro:SetText((L["DASHBOARD_STAT_ACTIVE_TRIGGERS"] or "Active Triggers") .. " (" .. visibleCount .. " visible)")
+        tab.listIntro:SetText((L["DASHBOARD_STAT_ACTIVE_TRIGGERS"] or "Active Triggers") .. " (" .. visibleCount .. L[" visible)"])
         tab.listIntro:Show()
         -- The stats line had spare room, and a right-click menu nobody is told
         -- about is a menu nobody finds.
-        tab.listDesc:SetText(string.format("Total: %d  |  Enabled: %d  |  Disabled: %d   |cff888888%s|r",
+        tab.listDesc:SetText(string.format(L["Total: %d  |  Enabled: %d  |  Disabled: %d   |cff888888%s|r"],
             totalTriggers, totalEnabled, totalTriggers - totalEnabled,
             L["TRIGGERS_LIST_HINT"] or "Right-click a row for more"))
         tab.listDesc:Show()
@@ -1337,7 +1337,7 @@ function Triggers:RefreshTriggersList()
         if visibleCount == 0 then
             dataProvider:Insert({
                 isHeader = false,
-                name = searchText ~= "" and "No triggers match search" or "No triggers match filters",
+                name = searchText ~= "" and L["No triggers match search"] or L["No triggers match filters"],
                 event = "",
                 actions = "",
                 zone = "",
@@ -1381,7 +1381,7 @@ function Triggers:RefreshTriggersList()
     if visibleCount == 0 then
         local emptyTitle = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         emptyTitle:SetPoint("TOP", listDesc, "BOTTOM", 0, -40)
-        emptyTitle:SetText("No Triggers Found")
+        emptyTitle:SetText(L["No Triggers Found"])
         emptyTitle:SetTextColor(0.9, 0.8, 0.3)
 
         local emptyDesc = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -1389,9 +1389,9 @@ function Triggers:RefreshTriggersList()
         emptyDesc:SetJustifyH("CENTER")
         emptyDesc:SetTextColor(0.7, 0.7, 0.7)
         if searchText ~= "" then
-            emptyDesc:SetText("Try another search, or create a new trigger.")
+            emptyDesc:SetText(L["Try another search, or create a new trigger."])
         else
-            emptyDesc:SetText("Create your first trigger to start building reactions.")
+            emptyDesc:SetText(L["Create your first trigger to start building reactions."])
         end
         yOffset = yOffset - 110
     end
