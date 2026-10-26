@@ -1210,6 +1210,7 @@ end
 
 local function BuildQueuePanel()
     queuePanel = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    OxedHub:HideInPetBattle(queuePanel)
     queuePanel:SetFrameStrata("TOOLTIP")
     queuePanel:SetClampedToScreen(true)
     queuePanel:SetWidth(Q_WIDTH)
@@ -1700,8 +1701,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "autoqueue",
         name     = "Auto Queue",
-        version  = "1.3.1",
-        updated  = 20261021.6,  -- leave queues, leader and playstyle on rows
+        version  = "1.3.2",
+        updated  = 20261026.1,  -- hidden during pet battles
         author   = "Oxed",
         category = "groups",
         keywords = { "queue", "lfg", "group finder", "role check", "ready check", "dungeon", "apply", "sign up", "eye", "movable eye" },

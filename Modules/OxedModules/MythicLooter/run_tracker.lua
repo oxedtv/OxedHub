@@ -373,6 +373,7 @@ local function ShowPlate(unit)
     local label = plates[unit] or table.remove(platePool)
     if not label then
         label = CreateFrame("Frame", nil, UIParent)
+        OxedHub:HideInPetBattle(label)
         label:SetSize(1, 1)
         label.text = label:CreateFontString(nil, "OVERLAY")
         label.text:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")

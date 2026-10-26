@@ -135,6 +135,14 @@ row that already has them gives it two opinions about where it sits, and rows
 drift toward the middle of the list. Clear the points and use `TOPLEFT` +
 `TOPRIGHT` with the row's offset.
 
+### Pet battles hide OxedHub's frames
+
+`Core\PetBattleHide.lua` hides, for the length of a pet battle, every shown
+UIParent child named `OxedHub*` / `OxedRing*` / `OxMythicLooter*` / `MemedOn*`
+(except Escape-closable windows in `UISpecialFrames`), and shows them again
+afterwards. An **unnamed** on-screen frame is invisible to it: pass it to
+`OxedHub:HideInPetBattle(frame)` right after `CreateFrame`.
+
 ### Never put a table in a module's DEFAULTS
 
 `ModuleAPI` copies defaults key by key. A table value is copied **by

@@ -28,6 +28,9 @@ local function HasTriggerEffect(actions, soundKey, animKey, iconKey, trigger, ch
     if actions[iconKey] and actions[iconKey] ~= "" and actions[iconKey] ~= "None" then
         return true
     end
+    if actions.memeEffect and actions.memeEffect ~= "None" then
+        return true
+    end
     if not skipChat and trigger and trigger.event ~= "EAT_BUFF" then
         if actions.emote and actions.emote ~= "" and actions.emote ~= "None" then
             return true
@@ -222,6 +225,14 @@ function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
                 OxedHub.Animations:Play(animVal, posData)
             end
         end
+    end
+
+    -- OxMemes screen effect. OxMemes itself decides whether it may play: it
+    -- does nothing while that module is switched off.
+    local memeVal = actions.memeEffect
+    if canRunEffects and memeVal and memeVal ~= "None"
+        and OxedHub.MemedOn and OxedHub.MemedOn.RunTriggerEffect then
+        OxedHub.MemedOn:RunTriggerEffect(memeVal)
     end
 
     -- Kept for loopdebug: says whether execution even reached the repeat, and

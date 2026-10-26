@@ -1,5 +1,14 @@
 # Oxed Hub
 
+## [v2.4.45](https://github.com/oxedtv/OxedHub/tree/v2.4.45) (2026-10-26)
+[Full Changelog](https://github.com/oxedtv/OxedHub/compare/v2.4.44...v2.4.45) [Previous Releases](https://github.com/oxedtv/OxedHub/releases)
+
+- Release 2.4.45: Meme trigger actions, Pet Battle auto-hide, EllesmereUI nameplate anchoring  
+    Adds Meme action to Triggers: trigger shake, tilt, or blow up screen effects via OxMemes.  
+    Auto-hides OxedHub bars and icons during pet battles, restoring them when battle ends.  
+    Buff Reminder: added /oxbuffs why to inspect missing buff display logic.  
+    Fixes KickBar and Threat Bar anchoring on EllesmereUI nameplates.  
+
 ## [v2.4.44](https://github.com/oxedtv/OxedHub/tree/v2.4.44) (2026-10-25)
 [Full Changelog](https://github.com/oxedtv/OxedHub/compare/v2.4.43...v2.4.44) [Previous Releases](https://github.com/oxedtv/OxedHub/releases)
 

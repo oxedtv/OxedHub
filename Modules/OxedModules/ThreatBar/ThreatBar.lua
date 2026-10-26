@@ -180,9 +180,29 @@ end
 -- as "hidden" sent every plate off to look for another addon's bar that
 -- was then skipped too, so the bar only ever showed out of combat. An addon
 -- that takes over (Platynator) moves the UnitFrame to a parent of its own.
+--
+-- EllesmereUI does it the other way round: the UnitFrame stays on the plate
+-- at alpha 0 and its health bar is moved into a hidden holder. So the bar
+-- has to still be the UnitFrame's too.
 local function BlizzardInUse(plate, frame)
     local ok, parent = pcall(frame.GetParent, frame)
-    return ok and parent == plate
+    if not (ok and parent == plate) then return false end
+    local health = frame.healthBar or frame.HealthBar
+    if not health then return true end
+    local okBar, barParent = pcall(health.GetParent, health)
+    return okBar and barParent == frame
+end
+
+-- EllesmereUI's own plate for this nameplate: it keeps a table of them, one
+-- per unit, each parented to the nameplate it draws on.
+local function EllesmereHealth(plate)
+    local ns = _G.EllesmereNameplates_NS
+    if type(ns) ~= "table" or type(ns.plates) ~= "table" then return nil end
+    for _, own in pairs(ns.plates) do
+        local ok, parent = pcall(own.GetParent, own)
+        if ok and parent == plate then return own.health end
+    end
+    return nil
 end
 
 local walkBest, walkBestWidth, walkRootPlate
@@ -225,6 +245,9 @@ WalkFrame = function(frame, depth)
 end
 
 local function FindForeignHealth(plate)
+    local ellesmere = EllesmereHealth(plate)
+    if ellesmere then return ellesmere end
+
     local cached = foreignBar[plate]
     -- Platynator hands its plates from one nameplate to another, so the one
     -- found last time must still be inside this nameplate.
@@ -274,6 +297,7 @@ end
 
 local function NewBar()
     local bar = CreateFrame("StatusBar", nil, UIParent)
+    OxedHub:HideInPetBattle(bar)
     bar._oxThreat = true   -- never mistaken for another addon's health bar
     bar:SetMinMaxValues(0, 100)
     bar:SetValue(0)
@@ -1002,7 +1026,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "threatbar",
         name     = "Threat Bar",
-        version  = "1.1.0",
+        version  = "1.1.2",
+        updated  = 20261026.4,  -- EllesmereUI nameplates; hidden during pet battles
         author   = "Oxed",
         category = "combat",
         keywords = { "threat", "aggro", "nameplate", "tank", "pull", "omen", "glow" },

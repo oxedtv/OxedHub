@@ -553,6 +553,67 @@ function Triggers:CreateActionsUI(frame, trigger)
     toyLabel:Hide(); toyButton:Hide(); toyIcon:Hide()
     yOffset = yOffset - 28
 
+    -- OxMemes effect: shakes or tilts the screen with one of OxMemes' effects.
+    -- A click steps through them; the effect name is the stored value.
+    local memeIcon = CreateActionIcon(frame, "Interface\\Icons\\Achievement_Halloween_Ghost_01")
+    frame.memeIcon = memeIcon
+    local memeLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    memeLabel:SetPoint("LEFT", memeIcon, "RIGHT", 8, 0)
+    memeLabel:SetText(L["Meme"] .. ":")
+    frame.memeLabel = memeLabel
+
+    local memeButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    memeButton:SetPoint("LEFT", memeLabel, "RIGHT", 10, 0)
+    memeButton:SetSize(150, 22)
+    memeButton:SetNormalFontObject("GameFontNormalSmall")
+    memeButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    frame.memeButton = memeButton
+
+    local function UpdateMemeButton()
+        local val = actions.memeEffect
+        if not val or val == "None" then
+            memeButton:SetText(L["NONE"] or "None")
+        else
+            memeButton:SetText(OxedHub.T(val))
+        end
+    end
+    UpdateMemeButton()
+
+    memeButton:SetScript("OnClick", function(self, mouseButton)
+        if IsShiftKeyDown() then
+            if OxedHub.MemedOn and OxedHub.MemedOn.RunTriggerEffect then
+                OxedHub.MemedOn:RunTriggerEffect(actions.memeEffect, true)
+            end
+            return
+        end
+        -- OxMemes' own list, which ends with "None".
+        local list = OxedHub.MEMEDON_EFFECTS_LIST or { "None" }
+        local current = actions.memeEffect or "None"
+        local index = #list
+        for i, name in ipairs(list) do
+            if name == current then index = i; break end
+        end
+        index = index + ((mouseButton == "RightButton") and -1 or 1)
+        if index > #list then index = 1 elseif index < 1 then index = #list end
+        local picked = list[index]
+        actions.memeEffect = (picked ~= "None") and picked or nil
+        UpdateMemeButton()
+        if Triggers.ShowAutoSaved then Triggers.ShowAutoSaved(frame:GetParent()) end
+        if self:IsMouseOver() and self:GetScript("OnEnter") then self:GetScript("OnEnter")(self) end
+    end)
+    memeButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L["OxMemes effect"])
+        GameTooltip:AddLine(L["Click for the next effect, right-click for the previous one."], 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine(L["Shift-click to preview it."], 0.8, 0.8, 0.8, true)
+        if not (OxedHub.MemedOn and OxedHub.MemedOn:IsEnabled()) then
+            GameTooltip:AddLine(L["Plays only while the OxMemes module is switched on."], 1, 0.35, 0.35, true)
+        end
+        GameTooltip:Show()
+    end)
+    memeButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    yOffset = yOffset - 28
+
     -- Success Sound picker (interrupt events only)
     local successSoundLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     successSoundLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
@@ -1129,7 +1190,7 @@ function Triggers:CreateActionsUI(frame, trigger)
     local function RecalculateNaturalHeight()
         local rows = {
             iconLabel,
-            soundLabel, animLabel, emoteLabel, chatLabel, toyLabel,
+            soundLabel, animLabel, emoteLabel, chatLabel, toyLabel, memeLabel,
             successSoundLabel, successAnimLabel, failSoundLabel, failAnimLabel,
             enterSoundLabel, enterAnimLabel, exitSoundLabel, exitAnimLabel,
             startChatLabel, stopChatLabel,
@@ -1160,6 +1221,7 @@ function Triggers:CreateActionsUI(frame, trigger)
             {label = nil, btn = combatWarningLabel},
             {label = chatLabel, btn = chatButton, icon = chatIcon, inlineIcon = emoteIcon, inlineLabel = emoteLabel, inlineBtn = emoteButton},
             {label = toyLabel, btn = toyButton, icon = toyIcon},
+            {label = memeLabel, btn = memeButton, icon = memeIcon},
             {label = successSoundLabel, btn = successSoundButton},
             {label = successAnimLabel, btn = successAnimButton},
             {label = failSoundLabel, btn = failSoundButton},
@@ -1257,6 +1319,9 @@ function Triggers:CreateActionsUI(frame, trigger)
         -- these rules use, and an unverified control is worse than a missing
         -- one. Delete this branch to bring it back once it has been tested.
         local isItemRule = (trigger.event == "ITEM_TRINKET" or trigger.event == "ITEM_POTION")
+
+        -- Every kind of rule can shake the screen.
+        memeLabel:Show(); memeButton:Show()
 
         iconLabel:SetShown(not isItemRule)
         iconCheck:SetShown(not isItemRule)
@@ -1484,5 +1549,6 @@ function Triggers:CreateActionsUI(frame, trigger)
     frame.UpdateSummonAcceptedChatButtonText = UpdateSummonAcceptedChatButtonText
     frame.UpdateSummonDeclinedChatButtonText = UpdateSummonDeclinedChatButtonText
     frame.UpdateToyButton = UpdateToyButton
+    frame.UpdateMemeButton = UpdateMemeButton
 end
 

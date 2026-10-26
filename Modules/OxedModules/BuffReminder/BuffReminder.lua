@@ -2881,6 +2881,59 @@ MinimapIcon = function()
     return minimapIcon
 end
 
+-- /oxbuffs why: for each group buff another class gives, the check that keeps
+-- its "ask" icon away. Written for a player who reported them missing; every
+-- line names one check in the order Collect and EvaluateAsk make them.
+local function ExplainAsk()
+    local say = function(text) print("|cff00ccffOxedHub Buffs|r " .. text) end
+    if not settings then return say("settings not loaded yet.") end
+    local inInstance, instanceType = IsInInstance()
+    inInstance = inInstance and instanceType ~= "pvp" and instanceType ~= "arena"
+    local groupAllowed = not settings.onlyInstances or inInstance
+    say(("module on: %s, ask option: %s, in a group: %s, allowed here: %s, in combat: %s"):format(
+        tostring(settings.enabled), tostring(settings.askBuffs), tostring(IsInGroup()),
+        tostring(groupAllowed), tostring(InCombatLockdown())))
+    -- Class and aura reads can be secret in a fight, and comparing one errors.
+    if InCombatLockdown() then return say("run it again out of combat.") end
+    say(("bar shown: %s, icons now: %d, auras secret now: %s"):format(
+        tostring(bar and bar:IsShown()), #Collect(), tostring(AurasSecretNow())))
+    local _, class = UnitClass("player")
+    for _, entry in ipairs(Data.RAID) do
+        if entry.class ~= class then
+            local reason
+            if settings["ask_" .. entry.key] == false then
+                reason = "unticked in Reminders"
+            elseif (snoozed[entry.key] or 0) > GetTime() then
+                reason = "snoozed"
+            elseif AskedRecently(entry.key) then
+                reason = "asked for recently"
+            elseif not GroupHasClass(entry.class) then
+                reason = "no " .. entry.class .. " in the group"
+            elseif not Benefits(entry, "player") then
+                reason = "does nothing for your spec"
+            else
+                ForgetUnit("player")
+                local found = FindAuraCached("player", entry.auras)
+                if found == nil then
+                    reason = "the game will not say (secret)"
+                elseif found then
+                    reason = "already on you"
+                else
+                    reason = "missing: the icon should show"
+                end
+            end
+            say(("%s (%s): %s"):format(entry.key, entry.class, reason))
+        end
+    end
+end
+
+SLASH_OXEDHUBBUFFS1 = "/oxbuffs"
+SlashCmdList.OXEDHUBBUFFS = function(msg)
+    msg = strtrim(msg or ""):lower()
+    if msg == "why" then return ExplainAsk() end
+    ShowOptions()
+end
+
 local loginFrame = CreateFrame("Frame")
 loginFrame:RegisterEvent("PLAYER_LOGIN")
 loginFrame:SetScript("OnEvent", function(self)
@@ -2895,8 +2948,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "buffreminder",
         name     = "Buff Reminder",
-        version  = "1.8.0",
-        updated  = 20261025.22,  -- every buff of every class with its icon, by section, scrolling
+        version  = "1.8.1",
+        updated  = 20261026.5,  -- /oxbuffs why: says why an ask icon is missing
         author   = "Oxed",
         category = "combat",
         keywords = { "buff", "missing", "food", "flask", "rune", "oil", "pet", "poison", "consumables",

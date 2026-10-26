@@ -407,6 +407,7 @@ local function EnsureStrip(groupKey)
     if strip then return strip end
 
     strip = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    OxedHub:HideInPetBattle(strip)
     strip:SetSize(100, 40)
     strip:SetFrameStrata("DIALOG")
     strip:SetFrameLevel(200)
@@ -2061,8 +2062,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "teleports",
         name     = "Teleports",
-        version  = "1.6.0",
-        updated  = 20261016.99,  -- Minimap button
+        version  = "1.6.1",
+        updated  = 20261026.1,  -- hidden during pet battles
         author   = "Oxed",
         category = "quests",
         keywords = { "teleport", "portal", "hearthstone", "travel", "mage", "wormhole", "toy", "death gate" },

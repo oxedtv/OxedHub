@@ -281,8 +281,8 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "mythiclooter",
         name     = "MythicLooter",
-        version  = "2.22.2",
-        updated  = 20261025.16,  -- group window moved to Inviter Info; this one no longer opens
+        version  = "2.22.3",
+        updated  = 20261026.1,  -- run tracker hidden during pet battles
         author   = "Oxed",
         category = "groups",
         keywords = { "mythiclooter", "keystoneloot", "m+", "loot", "dungeon", "raid", "bis", "vault", "item" },

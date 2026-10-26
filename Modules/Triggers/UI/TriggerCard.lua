@@ -214,6 +214,12 @@ function Triggers:TestTrigger(trigger, subType, anchorButton)
         if OxedHub.Emotes then OxedHub.Emotes:DoEmote(emoteVal, actions.whisperTarget or false) end
     end
 
+    -- OxMemes effect: a test plays it even with OxMemes switched off.
+    local memeVal = actions.memeEffect
+    if memeVal and memeVal ~= "None" and OxedHub.MemedOn and OxedHub.MemedOn.RunTriggerEffect then
+        OxedHub.MemedOn:RunTriggerEffect(memeVal, true)
+    end
+
     -- Show Icon
     local hasIcon = actions.showIcon or (actions[iconKey] and actions[iconKey] ~= "" and actions[iconKey] ~= "None")
     if hasIcon and OxedHub.Icons then
@@ -1298,6 +1304,7 @@ function Triggers:RefreshTriggerCard(triggerId)
     if af.UpdateSummonAcceptedChatButtonText then af.UpdateSummonAcceptedChatButtonText() end
     if af.UpdateSummonDeclinedChatButtonText then af.UpdateSummonDeclinedChatButtonText() end
     if af.UpdateToyButton then af.UpdateToyButton() end
+    if af.UpdateMemeButton then af.UpdateMemeButton() end
     if af.RefreshActionVisibility then af.RefreshActionVisibility() end
     if af.UpdateMacroIconInternal then af.UpdateMacroIconInternal() end
     if af.UpdateAdvancedMacroUI then af.UpdateAdvancedMacroUI() end

@@ -26,6 +26,17 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.45",
+        important = true,
+        lines = {
+            { "NEW", "Triggers: a Meme action. Any trigger can shake, tilt or blow up the screen with one of OxMemes' effects, for example when you die. A click picks the effect, Shift-click shows it. It plays while the OxMemes module is on." },
+            { "CHANGED", "OxedHub's bars and icons hide during pet battles and come back when the battle ends." },
+            { "CHANGED", "OxMemes: \"69\" is no longer one of the preset keywords." },
+            { "NEW", "Buff Reminder: /oxbuffs why says, for every group buff another class gives, why its \"ask\" icon is or is not showing." },
+            { "FIXED", "KickBar and Threat Bar sit on EllesmereUI's nameplates. Before, they followed a hidden bar and ended up in the wrong place or out of sight." },
+        },
+    },
+    {
         version = "2.4.44",
         important = true,
         lines = {

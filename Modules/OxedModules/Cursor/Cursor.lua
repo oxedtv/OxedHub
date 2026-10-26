@@ -704,6 +704,7 @@ local function EnsureRoot()
     -- way the real pointer does. It takes no mouse input, so nothing under it
     -- stops being clickable.
     root = CreateFrame("Frame", nil, UIParent)
+    OxedHub:HideInPetBattle(root)
     root:SetAllPoints(UIParent)
     root:SetFrameStrata("TOOLTIP")
     root:EnableMouse(false)
@@ -2006,8 +2007,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "cursor",
         name     = "Cursor",
-        version  = "1.2.0",
-        updated  = 20261025.5,  -- its own minimap button
+        version  = "1.2.1",
+        updated  = 20261026.1,  -- hidden during pet battles
         author   = "Oxed",
         category = "character",
         keywords = { "cursor", "mouse", "pointer", "trail", "windows 95", "retro", "glow", "halo", "steering", "mouselook", "find", "fire", "frost", "meteor", "lightning", "void", "fel", "blood", "bubbles", "fairy" },

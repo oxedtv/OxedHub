@@ -420,6 +420,7 @@ local function CreateKickFrame()
     if kickFrame then return end
 
     local f = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    OxedHub:HideInPetBattle(f)
     f:EnableMouse(false)
     f:SetSize(40, 40)
     f:SetFrameStrata("HIGH")
@@ -1185,8 +1186,8 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "kickbar",
         name     = "KickBar",
-        version  = "2.0.0",
-        updated  = 20261013.9,
+        version  = "2.0.2",
+        updated  = 20261026.4,  -- EllesmereUI nameplates; hidden during pet battles
         author   = "Oxed",
         category = "combat",
         keywords = { "kick", "interrupt", "nameplate", "cast", "floating", "pummel", "counterspell" },

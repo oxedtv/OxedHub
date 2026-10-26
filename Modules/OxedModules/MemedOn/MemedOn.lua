@@ -67,7 +67,6 @@ local DEDUP_WINDOW = 0.75
 
 local PRESET_KEYWORDS = {
     "67",
-    "69",
     "devour",
     "Rick rolled",
     "wow",
@@ -78,7 +77,6 @@ local PRESET_KEYWORDS = {
 
 local PRESET_KEYWORD_CONFIG = {
     ["67"] = { sound = "", effect = "Wobble", intensity = 75, variations = { "6-7", "6 7" } },
-    ["69"] = { sound = "", effect = "Tilt", intensity = 70, variations = { "6-9", "6 9" } },
     ["devour"] = { sound = "", effect = "Blackhole", intensity = 85, variations = { "dev dh" } },
     ["rick rolled"] = { sound = "", effect = "Rickroll", intensity = 80 },
     ["wow"] = { sound = "", effect = "Wow", intensity = 75 },
@@ -139,6 +137,16 @@ local function EnsureData()
         end
     end
 
+    -- "69" was a preset until 4.3.1. Taken out of saved lists once; a player
+    -- who adds it back afterwards keeps it.
+    if not settings.removedPreset69 then
+        settings.removedPreset69 = true
+        for i = #settings.keywords, 1, -1 do
+            if settings.keywords[i] == "69" then table.remove(settings.keywords, i) end
+        end
+        settings.keywordConfig["69"] = nil
+    end
+
     if type(settings.spellTriggers) ~= "table" then
         settings.spellTriggers = {}
         for _, sp in ipairs(PRESET_SPELLS) do table.insert(settings.spellTriggers, sp) end
@@ -185,6 +193,30 @@ local function RunAlertEffect(effectName, intensity)
     if effs and effs[effectName] and effs[effectName].Run then
         pcall(effs[effectName].Run, intensity or settings.intensity or 70)
     end
+end
+
+-- ── Effects for Triggers ────────────────────────────────────────────────────
+-- A trigger can pick one of these effects as an action. It plays only while
+-- OxMemes is switched on, at the player's own intensity; force is the trigger
+-- card's preview, which plays it regardless.
+
+OxedHub.MemedOn = OxedHub.MemedOn or {}
+
+function OxedHub.MemedOn:IsEnabled()
+    return settings and settings.enabled == true or false
+end
+
+function OxedHub.MemedOn:RunTriggerEffect(effectName, force)
+    if not effectName or effectName == "" or effectName == "None" then return end
+    if force then
+        local effs = OxedHub.MemedOnEffects
+        if effs and effs[effectName] and effs[effectName].Run then
+            pcall(effs[effectName].Run, settings and settings.intensity or 70)
+        end
+        return
+    end
+    if not self:IsEnabled() then return end
+    RunAlertEffect(effectName, settings.intensity)
 end
 
 -- ── Original Feature: Animated Meme Toast HUD Banner ───────────────────────
@@ -1149,8 +1181,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "memedon",
         name     = "OxMemes",   -- renamed from MemedOn; id and saved settings unchanged
-        version  = "4.3.0",
-        updated  = 20261024.97,  -- renamed OxMemes, spell suggestions, long names fit
+        version  = "4.4.0",
+        updated  = 20261026.3,  -- effects as a trigger action; "69" preset removed
         author   = "Oxed",
         category = "chat",
         keywords = { "meme", "memedon", "sound", "chat", "trigger", "wobble", "explosion", "blackhole", "death", "bell" },

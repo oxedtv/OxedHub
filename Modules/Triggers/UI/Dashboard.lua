@@ -364,6 +364,9 @@ function Triggers:GetActionDetails(trigger)
     if actions.toy and actions.toy ~= "" then
         table.insert(lines, "|cffff8000Toy:|r " .. tostring(actions.toy))
     end
+    if actions.memeEffect and actions.memeEffect ~= "None" then
+        table.insert(lines, "|cffff66ccOxMemes:|r " .. tostring(actions.memeEffect))
+    end
     if actions.cooldownAnimation then
         table.insert(lines, "|cffff4040Cooldown Ready Animation|r")
     end
@@ -407,6 +410,9 @@ function Triggers:GetFormattedActionsSummary(trigger)
     end
     if actions.toy and actions.toy ~= "" then
         table.insert(parts, "|cffff8000[T]|r")
+    end
+    if actions.memeEffect and actions.memeEffect ~= "None" then
+        table.insert(parts, "|cffff66cc[M]|r")
     end
     if actions.cooldownAnimation then
         table.insert(parts, "|cffff4040[CD]|r")
@@ -488,6 +494,9 @@ function Triggers:GetActionsSummary(trigger)
     end
     if actions.toy and actions.toy ~= "" then
         table.insert(parts, "T")
+    end
+    if actions.memeEffect and actions.memeEffect ~= "None" then
+        table.insert(parts, "M")
     end
     if actions.cooldownAnimation then
         table.insert(parts, "CD")
