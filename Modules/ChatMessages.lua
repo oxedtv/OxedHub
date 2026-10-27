@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local print = OxedHub.Print or print
 
 -- ChatMessages Module - Chat templates and message handling
 local ChatMessages = {}

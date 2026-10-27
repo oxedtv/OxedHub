@@ -18,6 +18,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local print = OxedHub.Print or print
 local L = OxedHub.L
 
 -- ⚠ Only true/false/number/string here. ModuleAPI copies defaults key by key.

@@ -2,6 +2,7 @@
 -- Core logic: initialization, tooltip hook, display formatting, slash commands, and ActionHub Trigger.
 
 local addonName, OxedHub = ...
+local print = OxedHub.Print or print
 local L = OxedHub.L
 
 OxedHub.Shattersight = OxedHub.Shattersight or {}

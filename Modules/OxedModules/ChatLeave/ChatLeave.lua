@@ -5,6 +5,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local print = OxedHub.Print or print
 local L = OxedHub.L
 
 local DEFAULTS = {

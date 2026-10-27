@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local print = OxedHub.Print or print
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 -- ActionHub: the ActionHub tab in the OxedHub window: the hub list,

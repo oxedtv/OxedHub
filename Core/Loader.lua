@@ -4,6 +4,24 @@
 
 local addonName, OxedHub = ...
 
+-- Every line OxedHub prints to chat starts with "OxedHub:". Files take it as
+-- `local print = OxedHub.Print or print`. A line that already names OxedHub
+-- (after colour codes) is left as it is; a secret first value gets the tag
+-- as a separate value, since a secret cannot be inspected.
+local rawPrint = print
+local CHAT_TAG = "|cff00ff00OxedHub:|r"
+function OxedHub.Print(...)
+    local first = ...
+    if type(first) == "string" and not (issecretvalue and issecretvalue(first)) then
+        local plain = first:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+        plain = plain:sub(1, 40):lower():gsub("[%s%[%]]", "")
+        if plain:find("oxedhub", 1, true) then
+            return rawPrint(...)
+        end
+    end
+    return rawPrint(CHAT_TAG, ...)
+end
+
 -- Initialize Localization Table with fallback
 OxedHub.L = OxedHub.L or {}
 setmetatable(OxedHub.L, {

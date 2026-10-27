@@ -2,6 +2,7 @@
 -- Records actual disenchant outcomes by monitoring bag changes in Shattersight.
 
 local addonName, OxedHub = ...
+local print = OxedHub.Print or print
 local L = OxedHub.L
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 

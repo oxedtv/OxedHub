@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local print = OxedHub.Print or print
 
 -- MinimapButton Module - Uses LibDBIcon like TargetInsider
 local MinimapButton = {}

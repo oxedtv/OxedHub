@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local print = OxedHub.Print or print
 local L = OxedHub.L
 local Triggers = OxedHub.Triggers
 local C_Timer = C_Timer

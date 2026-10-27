@@ -5,6 +5,7 @@
 -- loaded: the popups are guarded (Guard, below) so another addon's skin
 -- cannot paint over them afterwards.
 local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter;
+local print = OxedHub.Print or print
 
 local function NoShow() end
 

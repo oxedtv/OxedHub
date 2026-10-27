@@ -3,6 +3,7 @@
 -- No 255-char limit, no macro UI clutter.
 
 local addonName, OxedHub = ...
+local print = OxedHub.Print or print
 local L = OxedHub.L
 local MacroRegistry = {}
 OxedHub.MacroRegistry = MacroRegistry

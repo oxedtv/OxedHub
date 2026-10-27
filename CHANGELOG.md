@@ -1,5 +1,11 @@
 # Oxed Hub
 
+## [v2.4.46](https://github.com/oxedtv/OxedHub/tree/v2.4.46) (2026-10-27)
+[Full Changelog](https://github.com/oxedtv/OxedHub/compare/v2.4.45...v2.4.46) [Previous Releases](https://github.com/oxedtv/OxedHub/releases)
+
+- Release 2.4.46: OxedHub: prefix on every chat message  
+    Every message OxedHub prints to chat now starts with OxedHub:.  
+
 ## [v2.4.45](https://github.com/oxedtv/OxedHub/tree/v2.4.45) (2026-10-26)
 [Full Changelog](https://github.com/oxedtv/OxedHub/compare/v2.4.44...v2.4.45) [Previous Releases](https://github.com/oxedtv/OxedHub/releases)
 

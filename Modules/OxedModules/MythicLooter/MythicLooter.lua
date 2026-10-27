@@ -14,6 +14,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local print = OxedHub.Print or print
 
 -- ── Namespace Initialization ────────────────────────────────────────────────
 OxedHub.MythicLooter = OxedHub.MythicLooter or {}

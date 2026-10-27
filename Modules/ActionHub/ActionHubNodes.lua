@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local print = OxedHub.Print or print
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 -- ActionHub: what a node shows: cooldowns, charges, proc and ready glows, dimming,

@@ -26,6 +26,12 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.46",
+        lines = {
+            { "CHANGED", "Every message OxedHub writes to chat now starts with OxedHub:, so it is always clear where it came from." },
+        },
+    },
+    {
         version = "2.4.45",
         important = true,
         lines = {

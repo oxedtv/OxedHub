@@ -10,6 +10,7 @@
 -- ============================================================================
 
 local addonName, OxedHub = ...
+local print = OxedHub.Print or print
 local L = OxedHub.L
 OxedHub.KickSyncKeystones = OxedHub.KickSyncKeystones or {}
 local KL = OxedHub.KickSyncKeystones

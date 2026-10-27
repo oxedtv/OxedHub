@@ -1,4 +1,5 @@
 local addonName, OxedHub = ...
+local print = OxedHub.Print or print
 
 local Toys = OxedHub.Toys or {}
 OxedHub.Toys = Toys

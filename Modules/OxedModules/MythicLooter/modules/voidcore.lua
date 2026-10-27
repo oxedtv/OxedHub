@@ -1,4 +1,5 @@
 local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; AddonName = "MythicLooter";
+local print = OxedHub.Print or print
 
 KeystoneLoot.Voidcore = {};
 
