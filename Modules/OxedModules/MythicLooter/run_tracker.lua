@@ -298,7 +298,8 @@ local function MarksAllowed()
     return SetRaidTarget and UnitGroupRolesAssigned and true or false
 end
 
--- The mark a unit should get, if it is unmarked and has one of the roles.
+-- The mark a unit should get, and whether its present mark could not be read.
+-- nil when it has no role to mark or already wears the right mark.
 local function WantedMark(unit)
     local okExists, exists = pcall(UnitExists, unit)
     if not (okExists and Bool(exists)) then return nil end
@@ -306,11 +307,15 @@ local function WantedMark(unit)
     role = okRole and Str(role)
     local want = (role == "TANK" and cfg.tankMark) or (role == "HEALER" and cfg.healerMark) or nil
     if not want or want <= 0 then return nil end
-    -- ⚠ A mark already on the unit answers as a secret, and SetRaidTarget
-    -- with the mark it has takes it off. Only an unmarked unit is marked.
+    -- ⚠ SetRaidTarget with the mark a unit already has takes it off. A mark
+    -- already on the unit can answer as a secret, which used to mean "leave
+    -- it", so a tank still wearing last key's mark (or any mark) never got
+    -- the right one. Now a readable mark is compared, and an unreadable one
+    -- is cleared first: clear-then-set ends the same way whatever was there.
     local okMark, current = pcall(GetRaidTargetIndex, unit)
-    if okMark and not IsSecret(current) and current == nil then return want end
-    return nil
+    if not okMark or IsSecret(current) then return want, true end
+    if current == want then return nil end
+    return want, false
 end
 
 local markGeneration = 0
@@ -334,8 +339,19 @@ local function MarkRoles()
             step = step + 1
             C_Timer.After(step * MARK_STEP, function()
                 if generation ~= markGeneration or not MarksAllowed() then return end
-                local want = WantedMark(unit)
-                if want then pcall(SetRaidTarget, unit, want) end
+                local want, unknown = WantedMark(unit)
+                if not want then return end
+                if unknown then
+                    -- Its own slot for the clear: in one burst the second
+                    -- call is the one the server drops.
+                    pcall(SetRaidTarget, unit, 0)
+                    C_Timer.After(MARK_STEP / 2, function()
+                        if generation ~= markGeneration or not MarksAllowed() then return end
+                        pcall(SetRaidTarget, unit, want)
+                    end)
+                else
+                    pcall(SetRaidTarget, unit, want)
+                end
             end)
         end
     end
@@ -839,6 +855,12 @@ lifecycle:SetScript("OnEvent", function(_, event)
     if event == "CHALLENGE_MODE_KEYSTONE_SLOTTED" then
         -- The key is in but the run has not begun: the last moment marks are allowed.
         MarkRoles()
+    elseif event == "READY_CHECK" then
+        -- KEYSTONE_SLOTTED reaches only the one who slots the key, so with
+        -- anyone else holding it nobody was marked. The ready check before a
+        -- key reaches the whole group. Only inside a dungeon, never in a key.
+        local _, kind = IsInInstance()
+        if kind == "party" then MarkRoles() end
     elseif event == "CHALLENGE_MODE_START" then
         C_Timer.After(1, function()
             if InKey() then BeginRun() end
@@ -964,7 +986,7 @@ function RT:ShowOptions()
         o:AddCheckbox(cfg, "learnTargets", "Learn targets from timed runs",
             "At each boss pull the forces are noted; a timed run keeps those numbers as that dungeon's targets.")
         o:AddCheckbox(cfg, "markRoles", "Mark the tank and healer when the key goes in",
-            "Only unmarked players are marked, so a mark already set is left alone.")
+            "When the key is slotted, and on a ready check inside a dungeon. A player wearing another mark is given the right one. Never once the key has started.")
         o:AddChoice(cfg, "tankMark", "Tank mark", MARKS)
         o:AddChoice(cfg, "healerMark", "Healer mark", MARKS)
 
@@ -1038,7 +1060,8 @@ login:SetScript("OnEvent", function(self)
     Bind()
     HookTooltip()
     for _, event in ipairs({ "CHALLENGE_MODE_START", "CHALLENGE_MODE_COMPLETED",
-            "CHALLENGE_MODE_RESET", "PLAYER_ENTERING_WORLD", "CHALLENGE_MODE_KEYSTONE_SLOTTED" }) do
+            "CHALLENGE_MODE_RESET", "PLAYER_ENTERING_WORLD", "CHALLENGE_MODE_KEYSTONE_SLOTTED",
+            "READY_CHECK" }) do
         pcall(lifecycle.RegisterEvent, lifecycle, event)
     end
 end)

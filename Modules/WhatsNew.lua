@@ -26,6 +26,16 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.47",
+        important = true,
+        lines = {
+            { "FIXED", "Triggers: the Interrupt rule hears your kick land again. It was only listening to you and your pet, so every kick, even a good one, counted as a miss. A kicked channel now counts as a success too." },
+            { "NEW", "Triggers: Solar Beam, and the warlock Spell Lock and Axe Toss, count as interrupts." },
+            { "FIXED", "MythicLooter: the tank and healer marks reach players already wearing another mark, and are also set on a ready check inside a dungeon, so they arrive whoever slots the key." },
+            { "FIXED", "Buff Reminder keeps working inside Mythic+ dungeons. While the game hid auras the bar froze, and food, flasks and oils stayed on it after you had used them." },
+        },
+    },
+    {
         version = "2.4.46",
         lines = {
             { "CHANGED", "Every message OxedHub writes to chat now starts with OxedHub:, so it is always clear where it came from." },

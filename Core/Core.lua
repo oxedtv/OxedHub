@@ -514,7 +514,13 @@ function Core:OnEvent(event, ...)
         self:OnSpellCastStart(...)
     elseif event == "UNIT_SPELLCAST_CHANNEL_STOP" then
         local unit = ...
-        if unit == "player" then OxedHub._activeChannel = nil end
+        if unit == "player" then
+            OxedHub._activeChannel = nil
+        elseif select(4, ...) ~= nil then
+            -- Someone stopped this channel: a kicked channel ends here, never
+            -- under UNIT_SPELLCAST_INTERRUPTED.
+            self:OnSpellInterrupted(...)
+        end
     elseif event == "UNIT_SPELLCAST_INTERRUPTED" then
         self:OnSpellInterrupted(...)
     elseif event == "RESURRECT_REQUEST" then
@@ -1600,8 +1606,10 @@ local function SafeUnitMatch(unitA, unitB)
         return false
     end
 
-    local ok, sameUnit = pcall(UnitIsUnit, unitA, unitB)
-    return ok and sameUnit or false
+    -- ⚠ UnitIsUnit can answer with a secret in combat, and `x or false` on
+    -- one is a boolean test: the answer is read inside the pcall.
+    local ok, sameUnit = pcall(function() return UnitIsUnit(unitA, unitB) == true end)
+    return ok and sameUnit == true
 end
 
 -- Efficiently scan auras into a pre-allocated buffer
@@ -2395,20 +2403,15 @@ function Core:OnSpellCastSucceeded(unit, castGUID, spellID)
     if wantsInterrupt then
         for _, interruptID in ipairs(OxedHub.CONFIG.INTERRUPT_SPELLS) do
             if spellID == interruptID then
-                local targetGUID = UnitGUID("target")
-                local mouseoverGUID = UnitGUID("mouseover")
-                local targetUnit = "target"
-                if mouseoverGUID and UnitIsEnemy("player", "mouseover") then
-                    targetGUID = mouseoverGUID
-                    targetUnit = "mouseover"
-                end
+                -- ⚠ In combat a GUID and UnitIsEnemy can be secrets, and
+                -- `if guid and ...` on one is the error that used to end this
+                -- whole handler. Who was kicked is decided when the cast is
+                -- interrupted, by OnSpellInterrupted, not guessed here.
                 interruptSeq = interruptSeq + 1
                 local mySeq = interruptSeq
                 pendingInterrupt = {
                     spellID = spellID,
                     time = GetTime(),
-                    targetGUID = targetGUID,
-                    targetUnit = targetUnit,
                     seq = mySeq,
                 }
 
@@ -3564,34 +3567,47 @@ function Core:OnCombatStateChanged(state)
 end
 
 -- Spell Interrupted handler
-function Core:OnSpellInterrupted(unit, castGUID, spellID)
+-- Whether our own kick stopped this unit's cast. interruptedBy (the event's
+-- fourth value) names who did it; read plainly it settles the question, and
+-- someone else's kick is not ours. A secret one cannot be compared, so then a
+-- unit we could have aimed at (target, focus, mouseover) is taken as ours.
+local function KickedByUs(unit, interruptedBy)
+    if interruptedBy ~= nil then
+        -- The answer is tested inside the pcall: on a secret, the test throws.
+        local ok, mine = pcall(function()
+            if interruptedBy == UnitGUID("player") then return true end
+            return false
+        end)
+        if ok then return mine end
+    end
+    return SafeUnitMatch(unit, "target") or SafeUnitMatch(unit, "focus")
+        or SafeUnitMatch(unit, "mouseover")
+end
+
+function Core:OnSpellInterrupted(unit, castGUID, spellID, interruptedBy)
+    -- Every unit's interrupted casts arrive here, so the common case leaves first.
+    if unit ~= "player" and not pendingInterrupt then return end
+
     local wantsSpellInterrupted = self:HasEnabledTrigger("SPELL_INTERRUPTED")
     local wantsInterrupt = self:HasEnabledTrigger("INTERRUPT_USED")
     if not wantsSpellInterrupted and not wantsInterrupt then
         return
     end
 
-    if wantsSpellInterrupted and unit == "player" then
-        OxedHub.Triggers:ProcessEvent("SPELL_INTERRUPTED", {
-            spellID = spellID,
-            unit = unit
-        })
+    if unit == "player" then
+        if wantsSpellInterrupted then
+            OxedHub.Triggers:ProcessEvent("SPELL_INTERRUPTED", {
+                spellID = spellID,
+                unit = unit
+            })
+        end
         return
     end
+    if unit == "pet" then return end
 
-    -- Detect our interrupt landing on the target via UNIT_SPELLCAST_INTERRUPTED
+    -- Our interrupt landing: the kicked unit's cast stops while one is pending.
     if wantsInterrupt and pendingInterrupt then
-        local guid = UnitGUID(unit)
-        local matchesPendingTarget = SafeUnitMatch(unit, pendingInterrupt.targetUnit)
-
-        if not matchesPendingTarget and guid and pendingInterrupt.targetGUID then
-            local ok, sameGuid = pcall(function()
-                return guid == pendingInterrupt.targetGUID
-            end)
-            matchesPendingTarget = ok and sameGuid or false
-        end
-
-        if matchesPendingTarget then
+        if KickedByUs(unit, interruptedBy) then
             local sid = pendingInterrupt.spellID
             pendingInterrupt = nil
             OxedHub.Triggers:ProcessEvent("INTERRUPT_USED", {

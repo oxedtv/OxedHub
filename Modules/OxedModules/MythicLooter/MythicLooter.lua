@@ -282,8 +282,8 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "mythiclooter",
         name     = "MythicLooter",
-        version  = "2.22.3",
-        updated  = 20261026.1,  -- run tracker hidden during pet battles
+        version  = "2.22.4",
+        updated  = 20261028.2,  -- role marks: right mark over a wrong one, and on a ready check
         author   = "Oxed",
         category = "groups",
         keywords = { "mythiclooter", "keystoneloot", "m+", "loot", "dungeon", "raid", "bis", "vault", "item" },

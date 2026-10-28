@@ -104,8 +104,13 @@ local function DoRegister()
     -- The end of a channel. Needed because a channel reports every one of its
     -- ticks as a successful cast, and knowing when it stopped is what tells
     -- those ticks apart from the player casting the spell again.
-    eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", "player", "pet")
-    eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_INTERRUPTED", "player", "pet", "target", "focus", "mouseover")
+    -- ⚠ RegisterUnitEvent takes two units and silently ignores the rest, so
+    -- "player", "pet", "target", ... never heard the target being kicked and
+    -- every interrupt was reported as a miss. Both events are taken for every
+    -- unit: OnSpellInterrupted leaves at once unless an interrupt is pending.
+    -- A channel that is kicked ends with CHANNEL_STOP, not INTERRUPTED.
+    eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
+    eventFrame:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
 
     -- Other trigger events
     eventFrame:RegisterEvent("ACHIEVEMENT_EARNED")

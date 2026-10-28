@@ -158,7 +158,9 @@ end
 local function AurasSecretNow()
     if C_Secrets and C_Secrets.ShouldAurasBeSecret then
         local ok, secret = pcall(C_Secrets.ShouldAurasBeSecret)
-        if ok and secret == true then return true end
+        -- ⚠ The answer itself can be a secret, and comparing one is an error:
+        -- a secret answer counts as "yes".
+        if ok and (IsSecret(secret) or secret == true) then return true end
     end
     return false
 end
@@ -431,11 +433,27 @@ local function GroupUnits()
     return PARTY_UNITS, 1 + math.min(4, GetNumSubgroupMembers())
 end
 
+-- ⚠ Inside a Mythic+ dungeon the bar now refreshes while the game keeps
+-- unit answers secret, and `if secret then` is the error. Each question goes
+-- through Ask: true, false, or nil for "cannot tell".
+local function Ask(fn, unit)
+    local ok, answer = pcall(fn, unit)
+    if not ok or IsSecret(answer) then return nil end
+    return answer and true or false
+end
+
 local function Countable(unit)
-    if not UnitExists(unit) or not UnitIsConnected(unit) then return false end
-    if UnitIsDeadOrGhost(unit) then return false end
-    if unit ~= "player" and not UnitIsVisible(unit) then return false end
+    if Ask(UnitExists, unit) ~= true or Ask(UnitIsConnected, unit) ~= true then return false end
+    if Ask(UnitIsDeadOrGhost, unit) ~= false then return false end
+    if unit ~= "player" and Ask(UnitIsVisible, unit) ~= true then return false end
     return true
+end
+
+-- A unit's class file ("MAGE"), or nil when it cannot be read.
+local function ClassOf(unit)
+    local ok, _, class = pcall(UnitClass, unit)
+    if not ok or IsSecret(class) or type(class) ~= "string" then return nil end
+    return class
 end
 
 -- A member's spec, when the game knows it (it does for anybody inspected,
@@ -560,10 +578,7 @@ local function GroupHasClass(wanted)
     local units, count = GroupUnits()
     for i = 1, count do
         local unit = units[i]
-        if UnitExists(unit) then
-            local _, class = UnitClass(unit)
-            if class == wanted then return true end
-        end
+        if Ask(UnitExists, unit) and ClassOf(unit) == wanted then return true end
     end
     return false
 end
@@ -664,7 +679,11 @@ local function EvaluateRaid(entry, out)
             if has == false then
                 missing = missing + 1
                 names = names or {}
-                names[#names + 1] = UnitName(unit)
+                -- The tooltip joins these with table.concat, which a secret breaks.
+                local okName, name = pcall(UnitName, unit)
+                if okName and type(name) == "string" and not IsSecret(name) then
+                    names[#names + 1] = name
+                end
             elseif has and remaining and (not soonest or remaining < soonest) then
                 soonest = remaining
             end
@@ -998,9 +1017,12 @@ local function TargetMacro(entry, spellID)
         local units, count = GroupUnits()
         for i = 1, count do
             local unit = units[i]
-            if unit ~= "player" and UnitExists(unit) and RoleOf(unit) == entry.role then
-                target = GetUnitName(unit, true)
-                break
+            if unit ~= "player" and Ask(UnitExists, unit) and RoleOf(unit) == entry.role then
+                local okName, name = pcall(GetUnitName, unit, true)
+                if okName and not IsSecret(name) then
+                    target = name
+                    break
+                end
             end
         end
     end
@@ -1040,7 +1062,11 @@ local function EvaluateTargeted(entry, out)
             if found == nil then return end         -- cannot tell: show nothing
             if found then
                 anyFound = true
-                settings.lastTargets[entry.key] = GetUnitName(unit, true)
+                -- Saved between sessions, so never a secret.
+                local okName, name = pcall(GetUnitName, unit, true)
+                if okName and type(name) == "string" and not IsSecret(name) then
+                    settings.lastTargets[entry.key] = name
+                end
                 if left and (not soonest or left < soonest) then soonest = left end
             end
         end
@@ -1889,10 +1915,22 @@ local function Refresh()
         Render(PreviewList())
         return
     end
-    -- While the game keeps auras secret, keep the bar as it was.
-    if AurasSecretNow() then return end
+    -- ⚠ Auras are kept secret in combat, and inside a Mythic+ dungeon even
+    -- out of it. Returning here froze the bar for the whole dungeon, the one
+    -- place it matters, and food, flasks, oils, pets and repairs never went
+    -- away once handled. Most buffs can still be asked about by spell ID; one
+    -- that cannot answers "cannot tell" and simply gets no icon. Only the
+    -- sound waits, since a missing icon may just be one the game would not
+    -- name.
     local list = Collect()
-    SoundForNew(list)
+    if AurasSecretNow() then
+        wipe(shownKeys)
+        for _, record in ipairs(list) do
+            if record.entry and record.entry.key then shownKeys[record.entry.key] = true end
+        end
+    else
+        SoundForNew(list)
+    end
     Render(list)
 end
 
@@ -2949,8 +2987,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "buffreminder",
         name     = "Buff Reminder",
-        version  = "1.8.1",
-        updated  = 20261026.5,  -- /oxbuffs why: says why an ask icon is missing
+        version  = "1.8.2",
+        updated  = 20261028.1,  -- keeps working in Mythic+ while the game hides auras
         author   = "Oxed",
         category = "combat",
         keywords = { "buff", "missing", "food", "flask", "rune", "oil", "pet", "poison", "consumables",

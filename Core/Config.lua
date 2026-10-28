@@ -2,7 +2,7 @@ local addonName, OxedHub = ...
 
 -- Configuration and Constants
 OxedHub.CONFIG = {
-    VERSION = "2.4.46",
+    VERSION = "2.4.47",
     DB_VERSION = 1,
 
     -- Shown in the Export/Import "About" panel. Edit freely.
@@ -169,6 +169,12 @@ OxedHub.CONFIG = {
         187707, -- Muzzle (Hunter)
         183752, -- Disrupt (Demon Hunter)
         351338, -- Quell (Evoker)
+        78675,  -- Solar Beam (Druid)
+        119910, -- Spell Lock, through Command Demon (Warlock)
+        132409, -- Spell Lock, sacrificed felhunter (Warlock)
+        119914, -- Axe Toss, through Command Demon (Warlock)
+        19647,  -- Spell Lock, cast by the felhunter itself
+        89766,  -- Axe Toss, cast by the felguard itself
     },
     
     -- Performance

@@ -1,5 +1,13 @@
 # Oxed Hub
 
+## [v2.4.47](https://github.com/oxedtv/OxedHub/tree/v2.4.47) (2026-10-28)
+[Full Changelog](https://github.com/oxedtv/OxedHub/compare/v2.4.46...v2.4.47) [Previous Releases](https://github.com/oxedtv/OxedHub/releases)
+
+- Release 2.4.47: Interrupt trigger, role marks and Buff Reminder fixes  
+    Interrupt rules detect a landed kick again, channels included; Solar Beam, Spell Lock and Axe Toss added.  
+    MythicLooter role marks replace a wrong mark and also fire on a ready check in a dungeon.  
+    Buff Reminder keeps refreshing inside Mythic+ while auras are hidden.  
+
 ## [v2.4.46](https://github.com/oxedtv/OxedHub/tree/v2.4.46) (2026-10-27)
 [Full Changelog](https://github.com/oxedtv/OxedHub/compare/v2.4.45...v2.4.46) [Previous Releases](https://github.com/oxedtv/OxedHub/releases)
 
