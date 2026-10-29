@@ -1,5 +1,12 @@
 # Oxed Hub
 
+## [v2.4.48](https://github.com/oxedtv/OxedHub/tree/v2.4.48) (2026-10-29)
+[Full Changelog](https://github.com/oxedtv/OxedHub/compare/v2.4.47...v2.4.48) [Previous Releases](https://github.com/oxedtv/OxedHub/releases)
+
+- Release 2.4.48: Trinket Ready module and MythicLooter This Week tab  
+    New Trinket Ready module: sound and a movable alert (size, colour, icon/name) when an on-use trinket is ready.  
+    MythicLooter This Week tab: own keystone with teleport, affixes, rating per dungeon, Great Vault progress.  
+
 ## [v2.4.47](https://github.com/oxedtv/OxedHub/tree/v2.4.47) (2026-10-28)
 [Full Changelog](https://github.com/oxedtv/OxedHub/compare/v2.4.46...v2.4.47) [Previous Releases](https://github.com/oxedtv/OxedHub/releases)
 

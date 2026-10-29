@@ -282,11 +282,11 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "mythiclooter",
         name     = "MythicLooter",
-        version  = "2.22.4",
-        updated  = 20261028.2,  -- role marks: right mark over a wrong one, and on a ready check
+        version  = "2.23.0",
+        updated  = 20261029.4,  -- This Week tab: your key, affixes, rating, Great Vault
         author   = "Oxed",
         category = "groups",
-        keywords = { "mythiclooter", "keystoneloot", "m+", "loot", "dungeon", "raid", "bis", "vault", "item" },
+        keywords = { "mythiclooter", "keystoneloot", "m+", "loot", "dungeon", "raid", "bis", "vault", "item", "affix", "rating", "week" },
         desc     = "Mythic+ & raid loot browser with a Best-in-Slot planner, drop reminders and keystone tooltips.",
         icon     = "Interface\\Icons\\INV_Relics_Hourglass_02",
 

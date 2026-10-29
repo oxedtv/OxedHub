@@ -54,6 +54,12 @@ function OxMythicLooterFrameMixin:InitializeTabSystem()
         self.keysTabId = self:AddNamedTab("Keys", self.KeysFrame);
     end
 
+    -- The player's own week (week_tab.lua): key, affixes, rating, vault.
+    if (KeystoneLoot.WeekTab) then
+        self.WeekFrame = KeystoneLoot.WeekTab.Create(self, self.DungeonsFrame);
+        self.weekTabId = self:AddNamedTab(OxedHub.T("This Week"), self.WeekFrame);
+    end
+
     self:SetTab(self.dungeonsTabId);
 end
 
@@ -183,15 +189,15 @@ function OxMythicLooterFrameMixin:SetTab(tabId)
     TabSystemOwnerMixin.SetTab(self, tabId);
 
     local tabName = self:GetTabName(tabId);
-    -- The Keys tab has no loot: the loot views and the filters keep the
-    -- dungeons or raids they were on (they only know those two).
-    if (tabName ~= "keys") then
+    -- The Keys and This Week tabs have no loot: the loot views and the
+    -- filters keep the dungeons or raids they were on (they only know those two).
+    local onKeys = (tabName == "keys" or tabName == "week");
+    if (not onKeys) then
         DB:Set("ui.selectedTab", tabName);
     end
 
-    -- The loot filters mean nothing on the Keys tab, and they sat under its
-    -- Sync and Announce buttons.
-    local onKeys = (tabName == "keys");
+    -- The loot filters mean nothing on those tabs, and they sat under the
+    -- Keys tab's Sync and Announce buttons.
     for _, dropdown in ipairs({ self.SlotDropdown, self.ClassDropdown, self.ItemLevelDropdown, self.CharacterDropdown }) do
         if (dropdown) then dropdown:SetShown(not onKeys); end
     end
@@ -236,10 +242,14 @@ end
 
 function OxMythicLooterFrameMixin:RefreshSize(tabId)
     local Frame = self:GetElementsForTab(tabId)[1];
-    -- The Keys tab takes the window's dungeons size, so switching to it does
-    -- not make the window jump.
-    if (Frame == self.KeysFrame and self.DungeonsFrame) then
+    -- The Keys and This Week tabs take the window's dungeons size, so
+    -- switching to them does not make the window jump.
+    if ((Frame == self.KeysFrame or Frame == self.WeekFrame) and self.DungeonsFrame) then
         Frame:SetSize(self.DungeonsFrame:GetSize());
+    end
+    -- This Week is taller than the Dungeons tab: it grows to what it needs.
+    if (Frame == self.WeekFrame and Frame.neededHeight and Frame:GetHeight() < Frame.neededHeight) then
+        Frame:SetHeight(Frame.neededHeight);
     end
     self:SetSize(Frame:GetSize());
 end
@@ -251,6 +261,8 @@ function OxMythicLooterFrameMixin:GetTabName(tabId)
         return "raids";
     elseif (self.keysTabId and tabId == self.keysTabId) then
         return "keys";
+    elseif (self.weekTabId and tabId == self.weekTabId) then
+        return "week";
     end
 
     return "dungeons"; -- Fallback

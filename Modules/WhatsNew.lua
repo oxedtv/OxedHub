@@ -26,6 +26,14 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.48",
+        important = true,
+        lines = {
+            { "NEW", "Trinket Ready module: a sound and an alert the moment an on-use trinket is ready again. Drag the alert where you want it, pick its size, colour and how long it stays, and whether it shows the icon, the name or both." },
+            { "NEW", "MythicLooter: a This Week tab. Your keystone (click its icon to teleport), this week's affixes, your rating with the best run in each dungeon, and how far each Great Vault row has got, with the item level of every slot you have unlocked." },
+        },
+    },
+    {
         version = "2.4.47",
         important = true,
         lines = {
