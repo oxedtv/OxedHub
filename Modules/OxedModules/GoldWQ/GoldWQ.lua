@@ -1798,8 +1798,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "goldwq",
         name     = "Gold World Quests",
-        version  = "1.1.0",
-        updated  = 20261024.9,  -- Gold Stock, and buttons between it and the tracker
+        version  = "1.1.1",
+        updated  = 20261030.2,  -- Gold Stock: delete asks first, on top of the window
         author   = "Marcus / Oxed",
         category = "quests",
         keywords = { "gold", "wq", "world quest", "caches", "special assignment", "tomtom", "route" },

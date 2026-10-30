@@ -1,5 +1,14 @@
 # Oxed Hub
 
+## [v2.4.49](https://github.com/oxedtv/OxedHub/tree/v2.4.49) (2026-10-30)
+[Full Changelog](https://github.com/oxedtv/OxedHub/compare/v2.4.48...v2.4.49) [Previous Releases](https://github.com/oxedtv/OxedHub/releases)
+
+- Release 2.4.49: Mythic Journey module, WQ Achievements zones, Item Tooltips bank counts  
+    New Mythic Journey module: rating graph, best per dungeon, milestones, recent keys (/mjourney).  
+    WQ Achievements: zone table; background scanning off by default.  
+    Item Tooltips: warband, bank and guild bank counts; race and place icons, current-character tick, layout options.  
+    Gold Stock delete confirmation; Trinket Ready skips trinkets without a Use: effect; Chat Filter ignore popup branding.  
+
 ## [v2.4.48](https://github.com/oxedtv/OxedHub/tree/v2.4.48) (2026-10-29)
 [Full Changelog](https://github.com/oxedtv/OxedHub/compare/v2.4.47...v2.4.48) [Previous Releases](https://github.com/oxedtv/OxedHub/releases)
 

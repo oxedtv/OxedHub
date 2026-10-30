@@ -271,22 +271,53 @@ for _, columns in pairs(COLUMNS) do OxedHub:RegisterLocalizedTable(columns, "lab
 
 local Refresh
 
+-- Its own box over the window: the game's popup shares the window's DIALOG
+-- strata and ended up hidden behind it, so the x looked like it did nothing.
+local confirmBox
+
 local function ConfirmDelete(key)
-    StaticPopupDialogs.OXEDHUB_GOLDSTOCK_DELETE = StaticPopupDialogs.OXEDHUB_GOLDSTOCK_DELETE or {
-        text = L["Forget %s and its gold?"],
-        button1 = DELETE or L["Delete"],
-        button2 = CANCEL or L["Cancel"],
-        OnAccept = function(_, data)
-            Stock().chars[data] = nil
-            print(PREFIX .. (L["forgot %s."]):format(data))
+    if not confirmBox then
+        local f = CreateFrame("Frame", nil, window, "BackdropTemplate")
+        f:SetSize(300, 96)
+        f:SetPoint("CENTER", window, "CENTER", 0, 0)
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:SetToplevel(true)
+        f:EnableMouse(true)
+        if f.SetBackdrop then
+            f:SetBackdrop({
+                bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+                edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+                tile = true, tileSize = 32, edgeSize = 24,
+                insets = { left = 6, right = 6, top = 6, bottom = 6 },
+            })
+        end
+        f.text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        f.text:SetPoint("TOPLEFT", 16, -18)
+        f.text:SetPoint("TOPRIGHT", -16, -18)
+        local yes = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        yes:SetSize(100, 22)
+        yes:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -4, 14)
+        yes:SetText(DELETE or L["Delete"])
+        yes:SetScript("OnClick", function()
+            local k = f.key
+            f:Hide()
+            if not k then return end
+            Stock().chars[k] = nil
+            print(PREFIX .. (L["forgot %s."]):format(k))
             Refresh()
-        end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
-    StaticPopup_Show("OXEDHUB_GOLDSTOCK_DELETE", key, nil, key)
+        end)
+        local no = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        no:SetSize(100, 22)
+        no:SetPoint("BOTTOMLEFT", f, "BOTTOM", 4, 14)
+        no:SetText(CANCEL or L["Cancel"])
+        no:SetScript("OnClick", function() f:Hide() end)
+        f:SetScript("OnHide", function(self) self.key = nil end)
+        f:Hide()
+        confirmBox = f
+    end
+    confirmBox.key = key
+    confirmBox.text:SetText((L["Forget %s and its gold?"]):format(key))
+    confirmBox:Show()
 end
 
 local function GetRow(i)

@@ -182,7 +182,9 @@ local function AskReason(full)
     if not (settings and settings.askReason and full and settings.players[full]) then return end
     if not StaticPopupDialogs.OXEDHUB_IGNORE_REASON then
         StaticPopupDialogs.OXEDHUB_IGNORE_REASON = {
-            text = L["Ignoring |cffffd100%s|r.\nWhy? (shown whenever they turn up again)"],
+            -- Branded, so it is never mistaken for another addon's ignore popup.
+            text = "|cff00ff00OxedHub|r |cff9d9d9d" .. L["Chat Filter"] .. "|r\n\n"
+                .. L["Ignoring |cffffd100%s|r.\nWhy? (shown whenever they turn up again)"],
             button1 = L["Save"],
             button2 = L["Skip"],
             hasEditBox = true,
@@ -2321,8 +2323,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "chatfilter",
         name     = "Chat Filter",
-        version  = "1.6.0",
-        updated  = 20261025.2,  -- its own minimap button
+        version  = "1.6.1",
+        updated  = 20261030.7,  -- OxedHub name on the ignore reason popup
         author   = "Oxed",
         category = "chat",
         keywords = { "chat", "spam", "ignore", "filter", "block", "mute", "words", "gil" },

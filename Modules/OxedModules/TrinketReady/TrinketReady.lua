@@ -61,8 +61,31 @@ local function ReadyAt(slot)
     return nil
 end
 
+-- Only trinkets with a "Use:" effect. A passive one ("Equip: chance on hit")
+-- still reports cooldowns, the 30 seconds after equipping and its own proc
+-- cooldown, and announced as if it could be pressed. The game names the use
+-- spell of an on-use item only; nil means passive.
+local onUseOf = {}        -- [item link] = true / false
+local function HasUse(link)
+    if not link then return false end
+    local known = onUseOf[link]
+    if known ~= nil then return known end
+    local fn = (C_Item and C_Item.GetItemSpell) or GetItemSpell
+    if not fn then return true end
+    local ok, name, spellID = pcall(fn, link)
+    if not ok then return false end
+    if issecretvalue and (issecretvalue(name) or issecretvalue(spellID)) then return false end
+    local use = (name ~= nil or spellID ~= nil)
+    -- Item data not loaded yet answers nil too: only remember a yes, or a no
+    -- once the item itself is known.
+    local loaded = not (C_Item and C_Item.IsItemDataCachedByID) or C_Item.IsItemDataCachedByID(link)
+    if use or loaded then onUseOf[link] = use end
+    return use
+end
+
 local function SlotWanted(slot)
     return settings[slot == 13 and "slot13" or "slot14"]
+        and HasUse(GetInventoryItemLink("player", slot))
 end
 
 -- ── The on-screen alert ────────────────────────────────────────────────────
@@ -176,7 +199,7 @@ local function WornTrinkets()
     local entries = {}
     for _, slot in ipairs(SLOTS) do
         local link = GetInventoryItemLink("player", slot)
-        if link then entries[#entries + 1] = { link = link, icon = GetInventoryItemTexture("player", slot) } end
+        if link and HasUse(link) then entries[#entries + 1] = { link = link, icon = GetInventoryItemTexture("player", slot) } end
     end
     if #entries == 0 then entries[1] = { link = nil } end
     return entries
@@ -383,8 +406,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "trinketready",
         name     = "Trinket Ready",
-        version  = "1.2.0",
-        updated  = 20261029.3,  -- placed by drag or sliders, text colour, icon or name only
+        version  = "1.2.1",
+        updated  = 20261030.6,  -- passive (Equip:) trinkets never announce
         author   = "Oxed",
         category = "combat",
         keywords = { "trinket", "cooldown", "ready", "alert", "sound" },

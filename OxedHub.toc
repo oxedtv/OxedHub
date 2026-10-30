@@ -2,7 +2,7 @@
 ## Title: Oxed Hub
 ## Notes: Unified interface for sounds, animations, emotes, chat messages, and toys based on in-game events
 ## Author: https://customwowaddon.com/
-## Version: 2.4.48
+## Version: 2.4.49
 ## SavedVariables: OxedHubDB, OxMythicLooterDB
 ## SavedVariablesPerCharacter: OxMythicLooterCharDB
 ## OptionalDeps: OxedHub_MemePack, OxedHub_GamingPack, OxedHub_CustomMedia
@@ -179,6 +179,7 @@ Modules\OxedModules\InviterInfo\InviterInfo.lua
 Modules\OxedModules\PurchaseGuard\PurchaseGuard.lua
 Modules\OxedModules\QuestItemAlert\QuestItemAlert.lua
 Modules\OxedModules\TrinketReady\TrinketReady.lua
+Modules\OxedModules\MythicJourney\MythicJourney.lua
 Modules\OxedModules\ChatLeave\ChatLeave.lua
 Modules\OxedModules\LootBanner\LootBanner.lua
 Modules\OxedModules\BuffIcons\BuffIcons.lua

@@ -26,6 +26,18 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.49",
+        important = true,
+        lines = {
+            { "NEW", "Mythic Journey module: your Mythic+ season at a glance. A rating graph, your best key in each dungeon, the milestones you have reached and your recent keys. Open it with /mjourney." },
+            { "NEW", "WQ Achievements: a table of zones, so you choose which ones are checked. Scanning on its own is now off by default and runs only when you ask." },
+            { "NEW", "Item Tooltips: counts in the warband bank, your bank and your guild banks. Race icons, place icons, a tick beside this character and new options for how the list looks." },
+            { "FIXED", "Gold Stock asks before deleting a character, and the question is no longer hidden behind the window." },
+            { "FIXED", "Trinket Ready ignores trinkets with no Use: effect, such as \"Equip: chance on hit\" ones." },
+            { "CHANGED", "Chat Filter: the ignore reason window shows the OxedHub name, so you can tell it is ours." },
+        },
+    },
+    {
         version = "2.4.48",
         important = true,
         lines = {

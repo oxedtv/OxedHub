@@ -32,7 +32,8 @@ local CURRENT_EXPANSION = 12
 local DEFAULTS = {
     minimapButton = true,   -- its own icon on the minimap while switched on
     enabled        = false,   -- off until the player switches it on
-    showAll        = false,   -- false: only what is still missing; true: finished ones too
+    autoScan       = false,   -- false: scan only when the list opens or Rescan is pressed
+    showAll       = false,   -- false: only what is still missing; true: finished ones too
     expansions     = "current", -- "current" or "all"
     wantAchieve    = true,
     wantMount      = true,
@@ -253,6 +254,12 @@ local function Expansions()
     return { CURRENT_EXPANSION }
 end
 
+-- Zones the player switched off in the zone table. A table, so it lives in
+-- the saved settings, never in DEFAULTS.
+local function ZoneOn(mapID)
+    return not (settings.skipZones and settings.skipZones[mapID])
+end
+
 local function BuildIndex()
     wipe(index)
     local faction = MyFaction()
@@ -316,6 +323,7 @@ local function RewardCollectibles(questID)
 end
 
 local Refresh   -- the window; defined below
+local RefreshZones, ShowZones   -- the zone table; defined below
 
 local function Announce(r)
     if not settings.announce then return false end
@@ -356,6 +364,7 @@ local function FinishScan(found)
     scanning = false
     if anyNew and settings.openOnFind and window and not window:IsShown() then window:Show() end
     if Refresh then Refresh() end
+    if RefreshZones then RefreshZones() end
     if scanAgain then
         scanAgain = false
         C_Timer.After(1, function() if running then GoScan() end end)
@@ -378,7 +387,9 @@ GoScan = function()
 
     local maps = {}
     for _, exp in ipairs(Expansions()) do
-        for _, mapID in ipairs(Data.ZoneIDList[exp] or {}) do maps[#maps + 1] = { mapID = mapID, exp = exp } end
+        for _, mapID in ipairs(Data.ZoneIDList[exp] or {}) do
+            if ZoneOn(mapID) then maps[#maps + 1] = { mapID = mapID, exp = exp } end
+        end
     end
     local seen, found = {}, {}
     local stillPending = {}
@@ -424,7 +435,8 @@ GoScan = function()
                                 for id, item in pairs(extra) do r.items[id] = r.items[id] or item end
                             end
                         end
-                        if next(r.achievements) or next(r.items) then
+                        -- A continent map also lists its zones' quests: a switched-off zone stays off.
+                        if (next(r.achievements) or next(r.items)) and ZoneOn(r.mapID) then
                             r.title = QuestTitle(questID)
                             r.zone = MapName(r.mapID)
                             r.left = C_TaskQuest.GetQuestTimeLeftSeconds and Plain(C_TaskQuest.GetQuestTimeLeftSeconds(questID))
@@ -620,10 +632,132 @@ end
 
 local ShowOptions   -- defined below
 
+-- ── The zone table ──────────────────────────────────────────────────────────
+-- Every zone the scan looks at, for the expansions chosen, with what the last
+-- scan found there. Untick a zone and it is never looked at.
+
+local zoneWindow
+
+RefreshZones = function()
+    if not (zoneWindow and zoneWindow:IsShown()) then return end
+    local counts = {}
+    for _, r in ipairs(results) do counts[r.mapID] = (counts[r.mapID] or 0) + 1 end
+    local n = 0
+    for _, exp in ipairs(Expansions()) do
+        local list = Data.ZoneIDList[exp]
+        if list and #list > 0 then
+            n = n + 1
+            local head = zoneWindow.heads[n] or zoneWindow.content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            zoneWindow.heads[n] = head
+            local row = zoneWindow.rows[n]
+            if row then row:Hide() end
+            head:ClearAllPoints()
+            head:SetPoint("TOPLEFT", zoneWindow.content, "TOPLEFT", 4, -(n - 1) * 22 - 4)
+            head:SetText(EXP_NAMES[exp] or (L["Expansion "] .. exp))
+            head:Show()
+            for _, mapID in ipairs(list) do
+                n = n + 1
+                if zoneWindow.heads[n] then zoneWindow.heads[n]:Hide() end
+                row = zoneWindow.rows[n]
+                if not row then
+                    row = CreateFrame("CheckButton", nil, zoneWindow.content, "UICheckButtonTemplate")
+                    row:SetSize(22, 22)
+                    row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    row.label:SetPoint("LEFT", row, "RIGHT", 2, 0)
+                    row.count = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+                    zoneWindow.rows[n] = row
+                end
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", zoneWindow.content, "TOPLEFT", 12, -(n - 1) * 22)
+                row.count:ClearAllPoints()
+                row.count:SetPoint("TOPRIGHT", zoneWindow.content, "TOPRIGHT", -6, -(n - 1) * 22 - 5)
+                row.label:SetText(MapName(mapID))
+                local on = ZoneOn(mapID)
+                row:SetChecked(on)
+                if not on then
+                    row.count:SetText(L["|cff9d9d9dnot scanned|r"])
+                elseif counts[mapID] then
+                    row.count:SetText((L["%d quest(s)"]):format(counts[mapID]))
+                else
+                    row.count:SetText("|cff9d9d9d0|r")
+                end
+                row:SetScript("OnClick", function(self)
+                    settings.skipZones = settings.skipZones or {}
+                    settings.skipZones[mapID] = (not self:GetChecked()) or nil
+                    GoScan()
+                    Refresh()
+                    RefreshZones()
+                end)
+                row:Show()
+            end
+        end
+    end
+    for i = n + 1, math.max(#zoneWindow.rows, #zoneWindow.heads) do
+        if zoneWindow.rows[i] then zoneWindow.rows[i]:Hide() end
+        if zoneWindow.heads[i] then zoneWindow.heads[i]:Hide() end
+    end
+    zoneWindow.content:SetHeight(math.max(1, n * 22))
+end
+
+ShowZones = function()
+    if not zoneWindow then
+        local f = CreateFrame("Frame", "OxedHubWQAchievementsZones", UIParent, "BasicFrameTemplate")
+        f:SetSize(300, 420)
+        f:SetPoint("TOPLEFT", window or UIParent, window and "TOPRIGHT" or "CENTER", 4, 0)
+        f:SetFrameStrata("DIALOG")
+        f:SetClampedToScreen(true)
+        f:EnableMouse(true)
+        f:SetMovable(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        f:Hide()
+        if f.TitleText then f.TitleText:SetText(L["Zones to scan"]) end
+        if f.CloseButton then f.CloseButton:SetScript("OnClick", function() f:Hide() end) end
+        tinsert(UISpecialFrames, "OxedHubWQAchievementsZones")
+        f.rows, f.heads = {}, {}
+
+        local function Button(text, onClick)
+            local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+            b:SetSize(84, 22)
+            b:SetText(text)
+            b:SetScript("OnClick", onClick)
+            return b
+        end
+        local function SetAll(on)
+            settings.skipZones = settings.skipZones or {}
+            for _, exp in ipairs(Expansions()) do
+                for _, mapID in ipairs(Data.ZoneIDList[exp] or {}) do settings.skipZones[mapID] = (not on) or nil end
+            end
+            GoScan()
+            Refresh()
+            RefreshZones()
+        end
+        local all = Button(L["All"], function() SetAll(true) end)
+        all:SetPoint("TOPLEFT", 10, -28)
+        local none = Button(L["None"], function() SetAll(false) end)
+        none:SetPoint("LEFT", all, "RIGHT", 6, 0)
+        local rescan = Button(L["Rescan"], function() GoScan() Refresh() end)
+        rescan:SetPoint("LEFT", none, "RIGHT", 6, 0)
+
+        local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", 10, -56)
+        scroll:SetPoint("BOTTOMRIGHT", -30, 10)
+        local content = CreateFrame("Frame", nil, scroll)
+        content:SetSize(250, 1)
+        scroll:SetScrollChild(content)
+        scroll:SetScript("OnSizeChanged", function(_, w) content:SetWidth(w) end)
+        f.content = content
+        f:SetScript("OnShow", function() RefreshZones() end)
+        zoneWindow = f
+    end
+    if zoneWindow:IsShown() then zoneWindow:Hide() else zoneWindow:Show() end
+end
+
 local function BuildWindow()
     if window then return end
     local f = CreateFrame("Frame", "OxedHubWQAchievementsWindow", UIParent, "BasicFrameTemplate")
-    f:SetSize(440, 460)
+    f:SetSize(480, 460)
     f:SetPoint(settings.point or "CENTER", UIParent, settings.point or "CENTER", settings.x or 0, settings.y or 0)
     f:SetFrameStrata("DIALOG")
     f:SetClampedToScreen(true)
@@ -649,22 +783,24 @@ local function BuildWindow()
         b:SetScript("OnClick", onClick)
         return b
     end
-    f.modeButton = Button("", 140, function()
+    f.modeButton = Button("", 130, function()
         settings.showAll = not settings.showAll
         GoScan()
         Refresh()
     end)
     f.modeButton:SetPoint("TOPLEFT", 10, -28)
-    f.expButton = Button("", 120, function()
+    f.expButton = Button("", 110, function()
         settings.expansions = settings.expansions == "all" and "current" or "all"
         GoScan()
         Refresh()
     end)
     f.expButton:SetPoint("LEFT", f.modeButton, "RIGHT", 6, 0)
-    local rescan = Button(L["Rescan"], 70, function() GoScan() Refresh() end)
+    local rescan = Button(L["Rescan"], 64, function() GoScan() Refresh() end)
     rescan:SetPoint("LEFT", f.expButton, "RIGHT", 6, 0)
-    local opt = Button(L["Options"], 70, function() ShowOptions() end)
-    opt:SetPoint("LEFT", rescan, "RIGHT", 6, 0)
+    local zones = Button(L["Zones"], 60, function() ShowZones() end)
+    zones:SetPoint("LEFT", rescan, "RIGHT", 6, 0)
+    local opt = Button(L["Options"], 64, function() ShowOptions() end)
+    opt:SetPoint("LEFT", zones, "RIGHT", 6, 0)
 
     local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 10, -56)
@@ -789,13 +925,19 @@ end
 
 -- ── Events ──────────────────────────────────────────────────────────────────
 
+-- With auto scan off, nothing is scanned in the background: only while the
+-- list is open, or when the player asks.
+local function MayScanAlone()
+    return settings.autoScan or (window and window:IsShown()) or false
+end
+
 local scanQueued = false
 local function QueueScan(delay)
-    if scanQueued then return end
+    if scanQueued or not MayScanAlone() then return end
     scanQueued = true
     C_Timer.After(delay or 2, function()
         scanQueued = false
-        GoScan()
+        if MayScanAlone() then GoScan() end
     end)
 end
 
@@ -837,7 +979,7 @@ local function Start()
     if running then return end
     running = true
     for _, e in ipairs(EVENTS) do pcall(events.RegisterEvent, events, e) end
-    if not ticker then ticker = C_Timer.NewTicker(300, function() if running then GoScan() end end) end
+    if not ticker then ticker = C_Timer.NewTicker(300, function() if running and MayScanAlone() then GoScan() end end) end
     QueueScan(6)
     QueuePlates()
 end
@@ -848,6 +990,7 @@ local function Stop()
     if ticker then ticker:Cancel() ticker = nil end
     HideAllMarks()
     if window then window:Hide() end
+    if zoneWindow then zoneWindow:Hide() end
 end
 
 -- ── Options ─────────────────────────────────────────────────────────────────
@@ -861,8 +1004,11 @@ ShowOptions = function()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
     if not optionsWindow then
-        local w = API:CreateOptionsWindow("WQ Achievements", 470, 628)
+        local w = API:CreateOptionsWindow("WQ Achievements", 470, 680)
         optionsWindow = w
+        w:AddCheckbox(settings, "autoScan", "Scan in the background (off: only while the list is open)", nil, function(on)
+            if on then QueueScan(1) end
+        end)
         w:AddChoice(settings, "showAll", "Achievements shown", {
             { value = false, text = L["Still needed only"] },
             { value = true,  text = L["All, finished ticked"] },
@@ -891,6 +1037,7 @@ ShowOptions = function()
             local icon = MinimapIcon()
             if icon then icon:Apply(settings.enabled == true) end
         end)
+        w:AddNote("Zones in the list picks which zones are scanned and shows what each one has up now.")
         w:AddNote("/wqach opens the list. Click a quest to see it on the map; click an achievement to open it, "
             .. "shift-click to link it, right-click for a web link. Objects on the ground have no nameplate; "
             .. "the game's own sparkle marks those.")
@@ -963,8 +1110,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "wqachievements",
         name     = "WQ Achievements",
-        version  = "1.1.0",
-        updated  = 20261025.1,  -- its own minimap button
+        version  = "1.2.0",
+        updated  = 20261030.1,  -- background scan switch, zone table
         author   = "Oxed",
         category = "quests",
         keywords = { "world quest", "wq", "achievement", "mount", "pet", "toy", "screenshot", "nameplate", "quest mark" },

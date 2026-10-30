@@ -225,6 +225,9 @@ local function Inventory()
     record.realm = GetRealmName()
     record.class = select(2, UnitClass("player"))
     record.faction = UnitFactionGroup("player")
+    local _, raceFile = UnitRace("player")
+    record.race = Clean(raceFile) or record.race
+    record.sex = Clean(UnitSex("player")) or record.sex
     record.lastSeen = time()
     return inv
 end
@@ -441,46 +444,125 @@ local function ItemCollection(tooltip, itemId, link)
     end
 end
 
-local function LocationsText(bags, gear, bank, mail)
+-- The game's own count, which knows the bank and the warband bank anywhere,
+-- bank open or not. nil when it cannot answer.
+local GetItemCountFn = (C_Item and C_Item.GetItemCount) or GetItemCount
+local function LiveCount(itemId, bank, warband)
+    if not GetItemCountFn then return nil end
+    local ok, n = pcall(GetItemCountFn, itemId, bank, false, bank, warband)
+    n = ok and Clean(n)
+    return type(n) == "number" and n or nil
+end
+
+-- Bank and warband bank from the live count; the saved scan when the game
+-- does not answer. Never below what the scan saw.
+local function LiveBankCounts(itemId, savedBank, savedWarband)
+    local carried = LiveCount(itemId, false, false)
+    local withBank = LiveCount(itemId, true, false)
+    local withAll = LiveCount(itemId, true, true)
+    local bank, warband = savedBank, savedWarband
+    if carried and withBank and withBank >= carried then bank = withBank - carried end
+    if withBank and withAll and withAll >= withBank then warband = withAll - withBank end
+    return bank, warband
+end
+
+local function GuildKey()
+    if not IsInGuild() then return nil end
+    local name = Clean(GetGuildInfo("player"))
+    local realm = Clean(GetRealmName())
+    if type(name) ~= "string" or name == "" then return nil end
+    return name .. "-" .. (realm or "?")
+end
+
+-- The tab on screen in the guild bank: its slots are only known once viewed.
+local function ScanGuildTab()
+    if not (settings and settings.enabled and settings.trackGuildBank) then return end
+    local key = GuildKey()
+    local tab = GetCurrentGuildBankTab and GetCurrentGuildBankTab()
+    if not key or not tab then return end
+    local ok, _, _, viewable = pcall(GetGuildBankTabInfo, tab)
+    if not ok or not viewable then return end
+    local gb = settings.guildBanks[key]
+    if type(gb) ~= "table" then
+        gb = { name = Clean(GetGuildInfo("player")), realm = Clean(GetRealmName()), tabs = {} }
+        settings.guildBanks[key] = gb
+    end
+    local map = {}
+    for slot = 1, (MAX_GUILDBANK_SLOTS_PER_TAB or 98) do
+        local link = GetGuildBankItemLink(tab, slot)
+        if link then
+            local id = tonumber(link:match("item:(%d+)"))
+            local _, count = GetGuildBankItemInfo(tab, slot)
+            if id then map[id] = (map[id] or 0) + (tonumber(count) or 1) end
+        end
+    end
+    gb.tabs[tab] = map
+    gb.at = time()
+end
+
+-- Race portraits from the game's atlas; the few races whose atlas name is not
+-- their race file are mapped here.
+local RACE_ATLAS = {
+    Scourge = "undead", HighmountainTauren = "highmountain", LightforgedDraenei = "lightforged",
+    ZandalariTroll = "zandalari", KulTiran = "kultiran", EarthenDwarf = "earthen",
+}
+
+local function RaceIcon(who)
+    if not (settings.showRaceIcons and who and type(who.race) == "string") then return "" end
+    local race = RACE_ATLAS[who.race] or who.race:lower()
+    local atlas = ("raceicon128-%s-%s"):format(race, who.sex == 3 and "female" or "male")
+    if not (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)) then return "" end
+    return CreateAtlasMarkup and (CreateAtlasMarkup(atlas, 14, 14) .. " ") or ""
+end
+
+local CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12|t "
+local PLACE_ICON = {
+    bags    = "|TInterface\\Icons\\INV_Misc_Bag_08:12|t",
+    gear    = "|TInterface\\Icons\\INV_Chest_Chain:12|t",
+    bank    = "|TInterface\\Icons\\INV_Misc_Coin_02:12|t",
+    mail    = "|TInterface\\Icons\\INV_Letter_15:12|t",
+    warband = "|TInterface\\Icons\\INV_Misc_Bag_EnchantedRunecloth:12|t",
+    guild   = "|TInterface\\Icons\\INV_Misc_Bag_10_Green:12|t",
+}
+
+-- "Bags 3, Bank 2", or the numbers with icons when the icon style is on.
+local function Places(bags, gear, bank, mail)
     local parts = {}
-    if bags > 0 then parts[#parts + 1] = L["Bags "] .. bags end
-    if gear > 0 then parts[#parts + 1] = L["Worn "] .. gear end
-    if bank > 0 then parts[#parts + 1] = L["Bank "] .. bank end
-    if mail > 0 then parts[#parts + 1] = L["Mail "] .. mail end
-    return table_concat(parts, ", ")
+    local icons = settings.inventoryIcons
+    local function Add(n, word, place)
+        if n <= 0 then return end
+        parts[#parts + 1] = icons and (n .. " " .. PLACE_ICON[place]) or (L[word] .. n)
+    end
+    Add(bags, "Bags ", "bags")
+    Add(gear, "Worn ", "gear")
+    Add(bank, "Bank ", "bank")
+    Add(mail, "Mail ", "mail")
+    return table_concat(parts, icons and "  " or ", ")
 end
 
 local function ItemInventory(tooltip, itemId)
     local _, altColour, totalColour = Colours()
     local key = PlayerKey()
-    local total, lines = 0, 0
+    local myRealm, myFaction = GetRealmName(), UnitFactionGroup("player")
+    local total = 0
+    local chars, others = {}, {}
 
     local mine = key and settings.inventory[key]
     if type(mine) == "table" then
         local bags = settings.trackCurrentBags and CountIn(mine.bags, itemId) or 0
         local gear = settings.trackCurrentEquipped and mine.equipped and mine.equipped[itemId] or 0
         local bank = settings.trackCurrentBank and CountIn(mine.bank, itemId) or 0
+        if settings.trackCurrentBank then bank = (LiveBankCounts(itemId, bank, 0)) end
         local mail = settings.trackCurrentMail and mine.mail and mine.mail[itemId] or 0
         local sum = bags + gear + bank + mail
         if sum > 0 then
-            local me = settings.characters[key]
-            tooltip:AddDoubleLine(("|c%s%s|r"):format(ClassHex(me and me.class), (me and me.name) or L["You"]),
-                LocationsText(bags, gear, bank, mail), 1, 1, 1, altColour[1], altColour[2], altColour[3])
-            total, lines = total + sum, lines + 1
-        end
-    end
-
-    if settings.trackWarbandBank then
-        local warband = CountIn(settings.warband, itemId)
-        if warband > 0 then
-            tooltip:AddDoubleLine(L["|cff66ccffWarband bank|r"], tostring(warband), 1, 1, 1, altColour[1], altColour[2], altColour[3])
-            total, lines = total + warband, lines + 1
+            chars[#chars + 1] = { who = settings.characters[key] or {}, key = key, me = true,
+                sum = sum, bags = bags, gear = gear, bank = bank, mail = mail }
+            total = total + sum
         end
     end
 
     if settings.trackAlts then
-        local myRealm, myFaction = GetRealmName(), UnitFactionGroup("player")
-        local alts = {}
         for altKey, inv in pairs(settings.inventory) do
             local who = settings.characters[altKey]
             if altKey ~= key and type(inv) == "table" and type(who) == "table"
@@ -495,43 +577,53 @@ local function ItemInventory(tooltip, itemId)
                 end
                 local sum = bags + gear + bank + mail
                 if sum > 0 then
-                    alts[#alts + 1] = { who = who, key = altKey, sum = sum, bags = bags, gear = gear, bank = bank, mail = mail }
+                    chars[#chars + 1] = { who = who, key = altKey, sum = sum, bags = bags, gear = gear, bank = bank, mail = mail }
                     total = total + sum
                 end
             end
         end
-        local sortBy = settings.sortAltsBy or "count"
-        table_sort(alts, function(a, b)
-            if sortBy == "name" then return (a.who.name or a.key) < (b.who.name or b.key) end
-            if sortBy == "realm" and (a.who.realm or "") ~= (b.who.realm or "") then
-                return (a.who.realm or "") < (b.who.realm or "")
-            end
-            if sortBy == "realm" then return (a.who.name or a.key) < (b.who.name or b.key) end
-            return a.sum > b.sum
-        end)
-        local maxShow = tonumber(settings.maxAltsToShow) or 8
-        for i, alt in ipairs(alts) do
-            if i > maxShow then
-                tooltip:AddLine((L["  and %d more"]):format(#alts - maxShow), 0.6, 0.6, 0.6)
-                break
-            end
-            local name = alt.who.name or alt.key:match("^([^-]+)") or alt.key
-            local realm = alt.who.realm or ""
-            local mode = settings.showAltRealm or "different"
-            local realmText = (realm ~= "" and (mode == "always" or (mode == "different" and realm ~= myRealm)))
-                and (" - " .. realm) or ""
-            local faction = ""
-            if settings.showAltFaction and alt.who.faction ~= myFaction then
-                faction = alt.who.faction == "Alliance" and " |cff0070dd[A]|r" or alt.who.faction == "Horde" and " |cffc41e3a[H]|r" or ""
-            end
-            local colour = settings.colorAltsByClass and ClassHex(alt.who.class) or "ffffffff"
-            tooltip:AddDoubleLine(("|c%s%s|r%s%s"):format(colour, name, realmText, faction),
-                LocationsText(alt.bags, alt.gear, alt.bank, alt.mail), 1, 1, 1, altColour[1], altColour[2], altColour[3])
-            lines = lines + 1
+    end
+
+    if settings.trackWarbandBank then
+        local _, warband = LiveBankCounts(itemId, 0, CountIn(settings.warband, itemId))
+        if warband > 0 then
+            others[#others + 1] = { L["|cff66ccffWarband bank|r"], warband, "warband" }
+            total = total + warband
         end
     end
 
-    if settings.showTotalCount and lines > 1 then
+    if settings.trackGuildBank then
+        for gKey, gb in pairs(settings.guildBanks) do
+            if type(gb) == "table" and (not settings.onlySameRealm or gb.realm == myRealm) then
+                local n = CountIn(gb.tabs, itemId)
+                if n > 0 then
+                    local label = (gb.name or gKey) .. ((gb.realm and gb.realm ~= myRealm) and (" - " .. gb.realm) or "")
+                    others[#others + 1] = { "|cff40c040<" .. label .. ">|r", n, "guild" }
+                    total = total + n
+                end
+            end
+        end
+    end
+
+    local lines = #chars + #others
+    if lines == 0 then return end
+
+    local sortBy = settings.sortAltsBy or "count"
+    local meFirst = settings.currentFirst ~= false
+    table_sort(chars, function(a, b)
+        if meFirst and (a.me or false) ~= (b.me or false) then return a.me == true end
+        local an, bn = a.who.name or a.key, b.who.name or b.key
+        if sortBy == "name" then return an < bn end
+        if sortBy == "realm" and (a.who.realm or "") ~= (b.who.realm or "") then
+            return (a.who.realm or "") < (b.who.realm or "")
+        end
+        if sortBy == "realm" then return an < bn end
+        if a.sum ~= b.sum then return a.sum > b.sum end
+        return an < bn
+    end)
+
+    local function Total()
+        if not (settings.showTotalCount and lines > 1) then return end
         if settings.totalHighlight then
             tooltip:AddDoubleLine(L["Total"], tostring(total), totalColour[1], totalColour[2], totalColour[3],
                 totalColour[1], totalColour[2], totalColour[3])
@@ -539,6 +631,38 @@ local function ItemInventory(tooltip, itemId)
             tooltip:AddDoubleLine(L["Total"], tostring(total), 1, 1, 1, 1, 1, 1)
         end
     end
+
+    if settings.blankLineBefore then tooltip:AddLine(" ") end
+    if settings.totalFirst then Total() end
+
+    local maxShow = tonumber(settings.maxAltsToShow) or 8
+    local mode = settings.showAltRealm or "different"
+    for i, c in ipairs(chars) do
+        if i > maxShow then
+            tooltip:AddLine((L["  and %d more"]):format(#chars - maxShow), 0.6, 0.6, 0.6)
+            break
+        end
+        local name = c.who.name or (c.me and L["You"]) or c.key:match("^([^-]+)") or c.key
+        local realm = c.who.realm or ""
+        local realmText = (realm ~= "" and (mode == "always" or (mode == "different" and realm ~= myRealm)))
+            and (" - " .. realm) or ""
+        local faction = ""
+        if settings.showAltFaction and c.who.faction and c.who.faction ~= myFaction then
+            faction = c.who.faction == "Alliance" and " |cff0070dd[A]|r" or c.who.faction == "Horde" and " |cffc41e3a[H]|r" or ""
+        end
+        local colour = (c.me or settings.colorAltsByClass) and ClassHex(c.who.class) or "ffffffff"
+        local mark = (c.me and settings.markCurrent) and CHECK or ""
+        tooltip:AddDoubleLine(("%s%s|c%s%s|r%s%s"):format(RaceIcon(c.who), mark, colour, name, realmText, faction),
+            Places(c.bags, c.gear, c.bank, c.mail), 1, 1, 1, altColour[1], altColour[2], altColour[3])
+    end
+
+    for _, o in ipairs(others) do
+        local right = settings.inventoryIcons and (o[2] .. " " .. PLACE_ICON[o[3]])
+            or (o[3] == "guild" and (L["Guild bank "] .. o[2]) or tostring(o[2]))
+        tooltip:AddDoubleLine(o[1], right, 1, 1, 1, altColour[1], altColour[2], altColour[3])
+    end
+
+    if not settings.totalFirst then Total() end
 end
 
 local function ProcessItem(tooltip, data)
@@ -761,6 +885,21 @@ watcher:SetScript("OnEvent", function(_, event, arg1)
         MarkAll(WARBAND_TABS)
     elseif event == "BANKFRAME_CLOSED" then
         bankOpen = false
+    elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" or event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
+        -- 12.0 opens the bank through the interaction manager; BANKFRAME_* may not come.
+        local t = Enum and Enum.PlayerInteractionType
+        local isBank = t and (arg1 == t.Banker or arg1 == t.AccountBanker or arg1 == t.CharacterBanker)
+        if isBank and event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" then
+            bankOpen = true
+            MarkAll(BANK_TABS)
+            MarkAll(WARBAND_TABS)
+        elseif isBank then
+            bankOpen = false
+        elseif t and arg1 == t.GuildBanker and event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" then
+            C_Timer.After(0.5, ScanGuildTab)
+        end
+    elseif event == "GUILDBANKBAGSLOTS_CHANGED" then
+        ScanGuildTab()
     elseif event == "PLAYERBANKSLOTS_CHANGED" or event == "PLAYERACCOUNTBANKSLOTS_CHANGED" then
         MarkAll(BANK_TABS)
         MarkAll(WARBAND_TABS)
@@ -781,6 +920,7 @@ local EVENTS = {
     "BAG_UPDATE", "BAG_UPDATE_DELAYED", "PLAYER_EQUIPMENT_CHANGED", "BANKFRAME_OPENED", "BANKFRAME_CLOSED",
     "PLAYERBANKSLOTS_CHANGED", "PLAYERACCOUNTBANKSLOTS_CHANGED", "MAIL_INBOX_UPDATE",
     "PLAYER_REGEN_ENABLED", "MODIFIER_STATE_CHANGED",
+    "PLAYER_INTERACTION_MANAGER_FRAME_SHOW", "PLAYER_INTERACTION_MANAGER_FRAME_HIDE", "GUILDBANKBAGSLOTS_CHANGED",
 }
 
 local function Start()
@@ -916,14 +1056,15 @@ local function BuildDetailsWindow(API)
 end
 
 local function BuildInventoryWindow(API)
-    local w = API:CreateOptionsWindow("Item Tooltips: Inventory and Alts", 460, 640)
+    local w = API:CreateOptionsWindow("Item Tooltips: Inventory and Alts", 460, 700)
     Heading(w, L["This character"])
     w:AddCheckbox(settings, "trackCurrentBags", "Bags")
     w:AddCheckbox(settings, "trackCurrentEquipped", "Worn")
     w:AddCheckbox(settings, "trackCurrentBank", "Bank", "Read when you open the bank.")
     w:AddCheckbox(settings, "trackCurrentMail", "Mail", "Read when you open the mailbox.")
     Heading(w, L["Account"])
-    w:AddCheckbox(settings, "trackWarbandBank", "Warband bank", "Read when you open the bank.")
+    w:AddCheckbox(settings, "trackWarbandBank", "Warband bank", "Counted live by the game, wherever you are.")
+    w:AddCheckbox(settings, "trackGuildBank", "Guild banks", "Read when you open a guild bank, one tab at a time as you view it.")
     w:AddCheckbox(settings, "trackAlts", "Other characters")
     w:AddCheckbox(settings, "colorAltsByClass", "Names in class colour")
     w:AddChoice(settings, "showAltRealm", "Realm", Data.REALM_CHOICES)
@@ -936,6 +1077,13 @@ local function BuildInventoryWindow(API)
     w:AddCheckbox(settings, "onlySameRealm", "This realm only")
     w:AddCheckbox(settings, "onlySameFaction", "This faction only")
     w:AddChoice(settings, "mod_inventory", "Show counts", Data.MODIFIER_CHOICES)
+    Heading(w, L["Look"])
+    w:AddCheckbox(settings, "showRaceIcons", "Race icons")
+    w:AddCheckbox(settings, "inventoryIcons", "Icons for bags, bank and mail instead of words")
+    w:AddCheckbox(settings, "markCurrent", "Tick beside this character")
+    w:AddCheckbox(settings, "currentFirst", "This character first")
+    w:AddCheckbox(settings, "blankLineBefore", "A blank line before the counts")
+    w:AddCheckbox(settings, "totalFirst", "Total above the characters")
     FitHeight(w)
     return w
 end
@@ -1004,6 +1152,7 @@ local function BuildDataWindow(API)
             wipe(settings.characters)
             wipe(settings.inventory)
             wipe(settings.warband)
+            wipe(settings.guildBanks)
             if key then settings.characters[key], settings.inventory[key] = me, mine end
             Refresh()
         end)
@@ -1059,6 +1208,7 @@ local function EnsureTables(config)
     if type(config.characters) ~= "table" then config.characters = {} end
     if type(config.inventory) ~= "table" then config.inventory = {} end
     if type(config.warband) ~= "table" then config.warband = {} end
+    if type(config.guildBanks) ~= "table" then config.guildBanks = {} end
     if type(config.idColor) ~= "table" then config.idColor = { 0.25, 0.75, 1.0 } end
     if type(config.altColor) ~= "table" then config.altColor = { 0.4, 0.9, 0.4 } end
     if type(config.totalColor) ~= "table" then config.totalColor = { 1.0, 0.82, 0.0 } end
@@ -1126,8 +1276,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "itemtooltips",
         name     = "Item Tooltips",
-        version  = "1.1.0",
-        updated  = 20261025.4,  -- its own minimap button
+        version  = "1.3.0",
+        updated  = 20261030.4,  -- race icons, place icons, tick, layout options
         author   = "Oxed",
         category = "items",
         keywords = { "tooltip", "item", "id", "aura", "spell", "inventory", "count", "alts", "expansion",

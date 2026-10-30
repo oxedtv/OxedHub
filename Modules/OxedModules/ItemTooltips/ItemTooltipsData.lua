@@ -80,6 +80,7 @@ Data.DEFAULTS = {
     trackCurrentBank      = true,
     trackCurrentMail      = true,
     trackWarbandBank      = true,
+    trackGuildBank        = true,
     trackAlts             = true,
     colorAltsByClass      = true,
     showAltRealm          = "different", -- "never", "different", "always"
@@ -90,6 +91,12 @@ Data.DEFAULTS = {
     sortAltsBy            = "count",     -- "count", "name", "realm"
     onlySameRealm         = false,
     onlySameFaction       = false,
+    showRaceIcons         = true,
+    inventoryIcons        = true,     -- numbers with icons; false: "Bags 3, Bank 2"
+    markCurrent           = true,
+    currentFirst          = true,
+    blankLineBefore       = false,
+    totalFirst            = false,
 
     -- Icon beside the tooltip
     iconSize              = 36,
