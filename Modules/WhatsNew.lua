@@ -26,6 +26,15 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.50",
+        important = true,
+        lines = {
+            { "NEW", "Player Frame module: your own frame tidied up, with buttons for dungeon and raid difficulty, loot spec, War Mode, your Mythic+ rating and key, item level and spec. Click for the quick choice, right-click to pick. Drag them where you want with /oxpf move." },
+            { "NEW", "Unit Frames module: class colours and spec icons with item level on target, focus and party frames, range in yards, what each party member and boss is targeting, where your party is, their rating and deaths. Move the pieces with /oxuf move." },
+            { "CHANGED", "Mythic Journey has the same look as MythicLooter, and its options have a button to open it." },
+        },
+    },
+    {
         version = "2.4.49",
         important = true,
         lines = {

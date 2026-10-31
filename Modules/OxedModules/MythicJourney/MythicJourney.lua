@@ -302,7 +302,7 @@ end
 
 -- ── The window ──────────────────────────────────────────────────────────────
 
-local W, H = 560, 560
+local W, H = 560, 600
 local ROW_H = 16
 
 local function Text(parent, font, justify)
@@ -479,7 +479,7 @@ end
 local ShowOptions   -- defined below
 
 local function Section(parent, label, anchor, y)
-    local fs = Text(parent, "GameFontNormal")
+    local fs = Text(parent, "GameFontNormalLarge")
     fs:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, y or -10)
     fs:SetText(label)
     return fs
@@ -487,7 +487,19 @@ end
 
 local function BuildWindow()
     if window then return end
-    local f = CreateFrame("Frame", "OxedHubMythicJourneyWindow", UIParent, "BasicFrameTemplate")
+    -- OxedHub's own look, the same as MythicLooter: stone backdrop and the
+    -- ornate border on a shell below the content, a close button in the corner.
+    local f = CreateFrame("Frame", "OxedHubMythicJourneyWindow", UIParent)
+    local Panel = OxedHub.UIComponents and OxedHub.UIComponents.Panel
+    if Panel and Panel.ApplyOrnateFrame then
+        local shell = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        shell:SetAllPoints(f)
+        shell:SetFrameLevel(f:GetFrameLevel())
+        shell:EnableMouse(false)
+        Panel.ApplyOrnateFrame(shell, L["Mythic Journey"], 0.96)
+    end
+    f.CloseButton = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.CloseButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", -3, -3)
     f:SetSize(W, H)
     f:SetPoint(settings.point or "CENTER", UIParent, settings.point or "CENTER", settings.x or 0, settings.y or 0)
     f:SetFrameStrata("DIALOG")
@@ -502,26 +514,26 @@ local function BuildWindow()
         settings.point, settings.x, settings.y = point, x, y
     end)
     f:Hide()
-    if f.TitleText then f.TitleText:SetText(L["Mythic Journey"]) end
-    if f.CloseButton then f.CloseButton:SetScript("OnClick", function() f:Hide() end) end
+    f.CloseButton:SetScript("OnClick", function() f:Hide() end)
     tinsert(UISpecialFrames, "OxedHubMythicJourneyWindow")
 
     f.season = Text(f, "GameFontNormalLarge")
-    f.season:SetPoint("TOPLEFT", 14, -32)
+    f.season:SetPoint("TOPLEFT", 18, -36)
     local opt = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    opt:SetSize(80, 20)
-    opt:SetPoint("TOPRIGHT", -12, -30)
+    opt:SetSize(90, 22)
+    opt:SetPoint("TOPRIGHT", -34, -30)
     opt:SetText(L["Options"])
     opt:SetScript("OnClick", function() ShowOptions() end)
+    if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(opt) end
 
     f.summary = Text(f)
     f.summary:SetPoint("TOPLEFT", f.season, "BOTTOMLEFT", 0, -6)
-    f.summary:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+    f.summary:SetPoint("RIGHT", f, "RIGHT", -18, 0)
 
     -- Rating graph.
     local graph = CreateFrame("Frame", nil, f, "BackdropTemplate")
     graph:SetPoint("TOPLEFT", f.summary, "BOTTOMLEFT", 0, -8)
-    graph:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+    graph:SetPoint("RIGHT", f, "RIGHT", -18, 0)
     graph:SetHeight(90)
     if graph.SetBackdrop then
         graph:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
@@ -544,7 +556,7 @@ local function BuildWindow()
     f.dungeons:SetPoint("TOPLEFT", dHead, "BOTTOMLEFT", 0, -4)
     f.dungeons:SetSize(colW, 8 * ROW_H)
 
-    local mHead = Text(f, "GameFontNormal")
+    local mHead = Text(f, "GameFontNormalLarge")
     mHead:SetPoint("TOPLEFT", dHead, "TOPLEFT", colW + 12, 0)
     mHead:SetText(L["Milestones"])
     f.milestones = CreateFrame("Frame", nil, f)
@@ -552,7 +564,7 @@ local function BuildWindow()
     f.milestones:SetSize(colW, 9 * ROW_H)
 
     -- Recent runs, scrolling.
-    local rHead = Text(f, "GameFontNormal")
+    local rHead = Text(f, "GameFontNormalLarge")
     rHead:SetPoint("TOPLEFT", f.milestones, "BOTTOMLEFT", -(colW + 12), -8)
     rHead:SetText(L["Recent keys"])
     local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
@@ -586,8 +598,23 @@ ShowOptions = function()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
     if not optionsWindow then
-        local w = API:CreateOptionsWindow("Mythic Journey", 440, 360)
+        local w = API:CreateOptionsWindow("Mythic Journey", 440, 400)
         optionsWindow = w
+
+        local open = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+        open:SetSize(170, 24)
+        open:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
+        open:SetText(L["Open Mythic Journey"])
+        open:SetScript("OnClick", function()
+            w:Hide()
+            if not (window and window:IsShown()) then Toggle() end
+        end)
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(open) end
+        local cmd = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        cmd:SetPoint("LEFT", open, "RIGHT", 10, 0)
+        cmd:SetText(L["or type /mjourney"])
+        w.cursorY = w.cursorY - 36
+
         w:AddCheckbox(settings, "announce", "After each key, the result and rating change in chat")
         w:AddCheckbox(settings, "milestoneChat", "Say each new milestone in chat")
         w:AddSoundPicker(settings, "milestoneSound", "Milestone sound")
@@ -678,8 +705,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "mythicjourney",
         name     = "Mythic Journey",
-        version  = "1.0.0",
-        updated  = 20261030.5,  -- new
+        version  = "1.1.0",
+        updated  = 20261031.7,  -- MythicLooter look, Open button in options
         author   = "Oxed",
         category = "groups",
         keywords = { "mythic", "m+", "keystone", "rating", "score", "season", "journey", "history", "milestone" },
