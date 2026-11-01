@@ -26,6 +26,17 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.51",
+        important = true,
+        lines = {
+            { "FIXED", "Player Frame: the War Mode button opens your talents, where the switch is. Addons are not allowed to change War Mode themselves, so the button raised an error." },
+            { "FIXED", "Unit Frames and Player Frame no longer raise an error when moving the pet frame's text and other pieces the game keeps secret in a fight." },
+            { "FIXED", "Party Keystones: Announce works again. A character in the message made the game refuse it, and when chat is closed to addons the list is shown to you instead." },
+            { "FIXED", "MythicLooter: when the game refuses raid marks or party messages it says so once, and stops trying until the next game patch." },
+            { "FIXED", "MythicLooter no longer raises an error when its window changes size in combat. It waits for the fight to end." },
+        },
+    },
+    {
         version = "2.4.50",
         important = true,
         lines = {

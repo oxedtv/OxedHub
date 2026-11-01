@@ -84,11 +84,28 @@ end
 
 local saved = {}
 
-local function Remember(region)
-    if not region or saved[region] then return end
+-- Blizzard's anchors as GetPoint gives them, or nil when any part comes back
+-- secret: a secret point cannot be handed to SetPoint again ("Usage" error on
+-- PetFrameHealthBarTextRight), so a region whose anchors are secret is left
+-- where Blizzard put it.
+local function ReadPoints(region)
     local points = {}
-    for i = 1, region:GetNumPoints() do points[i] = { region:GetPoint(i) } end
-    local s = { points = points, scale = region:GetScale(), alpha = region:GetAlpha() }
+    for i = 1, region:GetNumPoints() do
+        local p = { region:GetPoint(i) }
+        for k = 1, 5 do
+            if p[k] ~= nil and IsSecret(p[k]) then return nil end
+        end
+        points[i] = p
+    end
+    return points
+end
+
+-- Records a region once. True when its anchors were readable, so it may be
+-- moved and put back; callers that move a region check this first.
+local function Remember(region)
+    if not region then return false end
+    if saved[region] then return saved[region].points ~= nil end
+    local s = { points = ReadPoints(region), scale = region:GetScale(), alpha = region:GetAlpha() }
     if region.GetVertexColor then s.r, s.g, s.b, s.a = region:GetVertexColor() end
     if region.GetTextColor then s.tr, s.tg, s.tb = region:GetTextColor() end
     if region.GetStatusBarTexture then
@@ -98,14 +115,15 @@ local function Remember(region)
         s.br, s.bg, s.bb = region:GetStatusBarColor()
     end
     saved[region] = s
+    return s.points ~= nil
 end
 
 local function Restore(region)
     local s = saved[region]
     if not s then return end
-    if #s.points > 0 then
+    if s.points and #s.points > 0 then
         region:ClearAllPoints()
-        for _, p in ipairs(s.points) do region:SetPoint(unpack(p)) end
+        for _, p in ipairs(s.points) do pcall(region.SetPoint, region, unpack(p)) end
     end
     region:SetScale(s.scale)
     region:SetAlpha(s.alpha)
@@ -839,18 +857,16 @@ local function ApplyPet()
         if r then Remember(r) r:SetAlpha(0) end
     end
     local bar = PetFrameHealthBar or (PetFrame.healthbar)
-    if PetFrameHealthBarTextLeft then
-        Remember(PetFrameHealthBarTextLeft)
+    -- Moved only when Blizzard's anchors could be read back (see Remember).
+    if PetFrameHealthBarTextLeft and Remember(PetFrameHealthBarTextLeft) then
         PetFrameHealthBarTextLeft:ClearAllPoints()
         PetFrameHealthBarTextLeft:SetPoint("TOPLEFT", PetPortrait, "TOPRIGHT", 0, 1.5)
     end
-    if PetFrameHealthBarTextRight and bar then
-        Remember(PetFrameHealthBarTextRight)
+    if PetFrameHealthBarTextRight and bar and Remember(PetFrameHealthBarTextRight) then
         PetFrameHealthBarTextRight:ClearAllPoints()
         PetFrameHealthBarTextRight:SetPoint("BOTTOMRIGHT", bar, "TOPRIGHT", 0, 1.5)
     end
-    if PetFrameHealthBarText and bar then
-        Remember(PetFrameHealthBarText)
+    if PetFrameHealthBarText and bar and Remember(PetFrameHealthBarText) then
         PetFrameHealthBarText:ClearAllPoints()
         PetFrameHealthBarText:SetPoint("BOTTOM", bar, "TOP", 0, 1.5)
     end
@@ -1084,8 +1100,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "unitframes",
         name     = "Unit Frames",
-        version  = "1.2.0",
-        updated  = 20261031.5,  -- movable pieces with lock, spec icon drawn above the portrait
+        version  = "1.2.1",
+        updated  = 20261101.2,  -- no error when the pet frame anchors are secret
         author   = "Oxed",
         category = "character",
         keywords = { "unit", "frame", "target", "focus", "party", "boss", "pet", "class", "colour", "color", "range", "deaths" },

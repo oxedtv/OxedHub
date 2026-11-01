@@ -282,8 +282,8 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "mythiclooter",
         name     = "MythicLooter",
-        version  = "2.23.0",
-        updated  = 20261029.4,  -- This Week tab: your key, affixes, rating, Great Vault
+        version  = "2.23.1",
+        updated  = 20261101.1,  -- role marks stop after a refusal, no resize in combat, keys line without "|"
         author   = "Oxed",
         category = "groups",
         keywords = { "mythiclooter", "keystoneloot", "m+", "loot", "dungeon", "raid", "bis", "vault", "item", "affix", "rating", "week" },

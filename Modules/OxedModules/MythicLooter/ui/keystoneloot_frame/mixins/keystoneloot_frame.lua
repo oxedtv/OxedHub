@@ -240,7 +240,21 @@ function OxMythicLooterFrameMixin:OnDragStop()
     self:StopMovingOrSizing();
 end
 
+-- ⚠ The window holds secure teleport buttons, which makes it protected:
+-- resizing it in combat is blocked (a spec change mid-fight did it). The
+-- size waits for the fight to end.
+local sizeAfterCombat = CreateFrame("Frame");
+
 function OxMythicLooterFrameMixin:RefreshSize(tabId)
+    if (InCombatLockdown()) then
+        sizeAfterCombat.tabId = tabId;
+        sizeAfterCombat:RegisterEvent("PLAYER_REGEN_ENABLED");
+        sizeAfterCombat:SetScript("OnEvent", function(watch)
+            watch:UnregisterEvent("PLAYER_REGEN_ENABLED");
+            self:RefreshSize(watch.tabId);
+        end);
+        return;
+    end
     local Frame = self:GetElementsForTab(tabId)[1];
     -- The Keys and This Week tabs take the window's dungeons size, so
     -- switching to them does not make the window jump.

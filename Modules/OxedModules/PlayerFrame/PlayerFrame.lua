@@ -87,24 +87,46 @@ end
 
 local saved = {}
 
-local function Remember(region)
-    if not region or saved[region] then return end
+-- Blizzard's anchors as GetPoint gives them, or nil when any part comes back
+-- secret: a secret point cannot be handed to SetPoint again (a "Usage" error,
+-- seen on the pet frame), so such a region is left where Blizzard put it.
+local function ReadPoints(region)
     local points = {}
-    for i = 1, region:GetNumPoints() do points[i] = { region:GetPoint(i) } end
-    local s = { points = points, scale = region:GetScale() }
-    if region.GetSize then s.w, s.h = region:GetSize() end
+    for i = 1, region:GetNumPoints() do
+        local p = { region:GetPoint(i) }
+        for k = 1, 5 do
+            if p[k] ~= nil and Plain(p[k]) == nil then return nil end
+        end
+        points[i] = p
+    end
+    return points
+end
+
+-- Records a region once. True when its anchors were readable, so it may be
+-- moved and put back; callers that move a region check this first.
+local function Remember(region)
+    if not region then return false end
+    if saved[region] then return saved[region].points ~= nil end
+    local s = { points = ReadPoints(region), scale = region:GetScale() }
+    if region.GetSize then
+        local w, h = region:GetSize()
+        s.w, s.h = Plain(w), Plain(h)
+    end
     if region.GetVertexColor then s.r, s.g, s.b, s.a = region:GetVertexColor() end
     s.alpha = region:GetAlpha()
     saved[region] = s
+    return s.points ~= nil
 end
 
 local function Restore(region)
     local s = region and saved[region]
     if not s then return end
-    region:ClearAllPoints()
-    for _, p in ipairs(s.points) do region:SetPoint(unpack(p)) end
+    if s.points then
+        region:ClearAllPoints()
+        for _, p in ipairs(s.points) do pcall(region.SetPoint, region, unpack(p)) end
+    end
     region:SetScale(s.scale)
-    if s.w and s.w > 0 then region:SetSize(s.w, s.h) end
+    if s.w and s.h and s.w > 0 then region:SetSize(s.w, s.h) end
     if s.r and region.SetVertexColor then region:SetVertexColor(s.r, s.g, s.b, s.a) end
     region:SetAlpha(s.alpha)
 end
@@ -118,14 +140,12 @@ end
 local combatGlow
 
 local function ApplyCorner(c)
-    if c.PlayerPlayTime and c.GuideIcon then
-        Remember(c.PlayerPlayTime)
+    if c.PlayerPlayTime and c.GuideIcon and Remember(c.PlayerPlayTime) then
         c.PlayerPlayTime:ClearAllPoints()
         c.PlayerPlayTime:SetPoint("RIGHT", c.GuideIcon, "LEFT")
         c.PlayerPlayTime:SetSize(20, 20)
     end
-    if c.PVPIcon and Portrait() then
-        Remember(c.PVPIcon)
+    if c.PVPIcon and Portrait() and Remember(c.PVPIcon) then
         c.PVPIcon:SetSize(25, 25)
         c.PVPIcon:ClearAllPoints()
         c.PVPIcon:SetPoint("RIGHT", Portrait(), "LEFT", 13, -24)
@@ -136,8 +156,7 @@ local function ApplyCorner(c)
             region:SetScale(0.6)
         end
     end
-    if c.PlayerPortraitCornerIcon and Portrait() then
-        Remember(c.PlayerPortraitCornerIcon)
+    if c.PlayerPortraitCornerIcon and Portrait() and Remember(c.PlayerPortraitCornerIcon) then
         c.PlayerPortraitCornerIcon:ClearAllPoints()
         c.PlayerPortraitCornerIcon:SetPoint("BOTTOMRIGHT", Portrait(), 2, -2)
     end
@@ -146,9 +165,10 @@ end
 local function ApplyCombatIcon(c)
     local icon = c.AttackIcon
     if not (icon and PlayerName) then return end
-    Remember(icon)
-    icon:ClearAllPoints()
-    icon:SetPoint("RIGHT", PlayerName, "LEFT", -2, 0)
+    if Remember(icon) then
+        icon:ClearAllPoints()
+        icon:SetPoint("RIGHT", PlayerName, "LEFT", -2, 0)
+    end
     icon:SetVertexColor(1, 0, 0)
     if not combatGlow then
         combatGlow = c:CreateTexture(nil, "BACKGROUND")
@@ -172,9 +192,10 @@ end
 local function ApplyGroupNumber(c)
     local text = PlayerFrameGroupIndicatorText
     if not (text and PlayerLevelText) then return end
-    Remember(text)
-    text:ClearAllPoints()
-    text:SetPoint("RIGHT", PlayerLevelText, "LEFT")
+    if Remember(text) then
+        text:ClearAllPoints()
+        text:SetPoint("RIGHT", PlayerLevelText, "LEFT")
+    end
     if c.GroupIndicator then
         Remember(c.GroupIndicator)
         c.GroupIndicator:SetAlpha(0)
@@ -193,10 +214,11 @@ end
 local function ApplyHitText()
     local hit, portrait = HitText(), Portrait()
     if not (hit and portrait) then return end
-    Remember(hit)
-    hit:SetScale(0.75)
-    hit:ClearAllPoints()
-    hit:SetPoint("TOPLEFT", portrait, "BOTTOMLEFT", 0, -5)
+    if Remember(hit) then
+        hit:SetScale(0.75)
+        hit:ClearAllPoints()
+        hit:SetPoint("TOPLEFT", portrait, "BOTTOMLEFT", 0, -5)
+    end
 end
 
 local function ApplyClassBorder()
@@ -427,13 +449,18 @@ local function WarModeOn()
     return C_PvP and C_PvP.IsWarModeDesired and C_PvP.IsWarModeDesired() or false
 end
 
-local function SetWarMode(on)
-    if not (C_PvP and C_PvP.SetWarModeDesired) or InCombatLockdown() then return end
-    if C_PvP.CanToggleWarMode and not C_PvP.CanToggleWarMode(on) then
-        print(PREFIX .. L["War Mode can only be changed in a city or inn."])
-        return
+-- ⚠ C_PvP.SetWarModeDesired is forbidden to addons (ADDON_ACTION_FORBIDDEN
+-- on every click). The button opens the talents window, where the game's
+-- own War Mode switch is, and the player clicks that.
+local function OpenWarMode()
+    if InCombatLockdown() then return end
+    if PlayerSpellsUtil and PlayerSpellsUtil.OpenToClassTalentsTab then
+        pcall(PlayerSpellsUtil.OpenToClassTalentsTab)
+    elseif PlayerSpellsUtil and PlayerSpellsUtil.TogglePlayerSpellsFrame then
+        pcall(PlayerSpellsUtil.TogglePlayerSpellsFrame)
+    elseif TogglePlayerSpellsFrame then
+        pcall(TogglePlayerSpellsFrame)
     end
-    C_PvP.SetWarModeDesired(on)
 end
 
 local function UpdateWarMode()
@@ -585,20 +612,9 @@ local function BuildButtons(c)
         t:SetText(PVP_LABEL_WAR_MODE or L["War Mode"])
         t:AddLine(WarModeOn() and L["|cff00ff00On|r"] or L["|cffff2020Off|r"])
         t:AddLine(" ")
-        t:AddLine(L["Click: switch. Right-click: pick."], 0.6, 0.6, 0.6)
+        t:AddLine(L["Click: open talents, where War Mode is switched (in a city or inn)."], 0.6, 0.6, 0.6)
     end
-    pvpButton:SetScript("OnClick", function(self, mouse)
-        if mouse == "RightButton" then
-            Menu(self, function(root)
-                root:CreateTitle(PVP_LABEL_WAR_MODE or L["War Mode"])
-                root:CreateRadio(L["On"], WarModeOn, function() SetWarMode(true) end)
-                root:CreateRadio(L["Off"], function() return not WarModeOn() end, function() SetWarMode(false) end)
-            end)
-        else
-            SetWarMode(not WarModeOn())
-            Retip(self)
-        end
-    end)
+    pvpButton:SetScript("OnClick", OpenWarMode)
 
     keyButton = MakeButton("OxedHubPlayerFrameKeystone", row)
     keyButton.icon:ClearAllPoints()
@@ -945,8 +961,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "playerframe",
         name     = "Player Frame",
-        version  = "1.1.0",
-        updated  = 20261031.6,  -- raid + dungeon difficulty, War Mode, key and runs, item level, spec button, movable
+        version  = "1.1.1",
+        updated  = 20261101.3,  -- War Mode button opens talents (switching is refused to addons), secret anchors
         author   = "Oxed",
         category = "character",
         keywords = { "player", "unit", "frame", "portrait", "loot", "spec", "difficulty", "mythic", "assist", "class", "war mode", "item level" },

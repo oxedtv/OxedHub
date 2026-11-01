@@ -209,9 +209,43 @@ local function Say(text, sound)
     PlaySoundId(sound)
 end
 
+-- ⚠ Some calls the game refuses to addons in a key, and pcall stops the error,
+-- not the blocked-action report. Refusable makes the call; a refusal reported
+-- while it runs (the event comes inside the call) saves the game build under
+-- cfg[key], and Refused(key) then keeps the feature quiet for that build:
+-- one report, not one per key. Seen for SetRaidTarget and for party chat.
+local refusing        -- { key, note } while a Refusable call runs
+local refusalWatch = CreateFrame("Frame")
+refusalWatch:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+refusalWatch:RegisterEvent("ADDON_ACTION_BLOCKED")
+refusalWatch:SetScript("OnEvent", function(_, _, addon)
+    if not refusing or addon ~= addonName or not cfg then return end
+    local build = select(4, GetBuildInfo())
+    if cfg[refusing[1]] == build then return end
+    cfg[refusing[1]] = build
+    print(PREFIX .. OxedHub.T(refusing[2]))
+end)
+
+local function Refused(key)
+    return cfg[key] ~= nil and cfg[key] == select(4, GetBuildInfo())
+end
+
+local function Refusable(key, note, fn, ...)
+    refusing = { key, note }
+    pcall(fn, ...)
+    refusing = nil
+end
+
 local function TellParty(text)
-    if not cfg.tellParty or not IsInGroup() or IsInRaid() then return end
-    pcall(SendChatMessage, text, "PARTY")
+    if not cfg.tellParty or not IsInGroup() or IsInRaid() or Refused("chatRefusedBuild") then return end
+    -- 12.0 locks addon chat in some instance states; ask first where the game can say.
+    if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown then
+        local ok, locked = pcall(C_ChatInfo.InChatMessagingLockdown)
+        if ok and Bool(locked) then return end
+    end
+    Refusable("chatRefusedBuild",
+        "the game refused a party message from an addon during the key, so forces lines in party chat are off for this game version.",
+        SendChatMessage, text, "PARTY")
 end
 
 local function CheckReady()
@@ -292,7 +326,17 @@ end
 local MARK_STEP = 0.4
 local MARK_ROUNDS = 2
 
+-- ⚠ The game has also refused marks before the key started (5 reports on one
+-- key). Any refusal turns automatic marks off for this game build (see
+-- Refusable above). Switching the option off and on clears it.
+local function Mark(unit, index)
+    Refusable("marksRefusedBuild",
+        "the game refused a raid mark from an addon here, so automatic tank and healer marks are off for this game version.",
+        SetRaidTarget, unit, index)
+end
+
 local function MarksAllowed()
+    if Refused("marksRefusedBuild") then return false end
     if not cfg.markRoles or not IsInGroup() or IsInRaid() or InCombatLockdown() then return false end
     if C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive() then return false end
     return SetRaidTarget and UnitGroupRolesAssigned and true or false
@@ -344,13 +388,13 @@ local function MarkRoles()
                 if unknown then
                     -- Its own slot for the clear: in one burst the second
                     -- call is the one the server drops.
-                    pcall(SetRaidTarget, unit, 0)
+                    Mark(unit, 0)
                     C_Timer.After(MARK_STEP / 2, function()
                         if generation ~= markGeneration or not MarksAllowed() then return end
-                        pcall(SetRaidTarget, unit, want)
+                        Mark(unit, want)
                     end)
                 else
-                    pcall(SetRaidTarget, unit, want)
+                    Mark(unit, want)
                 end
             end)
         end
@@ -980,13 +1024,15 @@ function RT:ShowOptions()
         o:AddCheckbox(cfg, "tooltip", "Each mob's share in its tooltip")
         o:AddCheckbox(cfg, "readyAlert", "Say when the forces are ready for the next boss")
         o:AddSoundPicker(cfg, "readySound", "Ready sound", "None")
-        o:AddCheckbox(cfg, "tellParty", "Tell the party too", "One line in party chat when the forces are ready for a boss, and at 100%.")
+        o:AddCheckbox(cfg, "tellParty", "Tell the party too", "One line in party chat when the forces are ready for a boss, and at 100%.",
+            function() cfg.chatRefusedBuild = nil end)
         o:AddCheckbox(cfg, "lowPullAlert", "Warn when a boss is pulled before its target")
         o:AddSoundPicker(cfg, "lowPullSound", "Warning sound", "None")
         o:AddCheckbox(cfg, "learnTargets", "Learn targets from timed runs",
             "At each boss pull the forces are noted; a timed run keeps those numbers as that dungeon's targets.")
         o:AddCheckbox(cfg, "markRoles", "Mark the tank and healer when the key goes in",
-            "When the key is slotted, and on a ready check inside a dungeon. A player wearing another mark is given the right one. Never once the key has started.")
+            "When the key is slotted, and on a ready check inside a dungeon. A player wearing another mark is given the right one. Never once the key has started.",
+            function() cfg.marksRefusedBuild = nil end)
         o:AddChoice(cfg, "tankMark", "Tank mark", MARKS)
         o:AddChoice(cfg, "healerMark", "Healer mark", MARKS)
 

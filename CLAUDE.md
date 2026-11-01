@@ -299,6 +299,24 @@ button asks the client, and a yes is saved per build. All five PvP trigger
 files check `Triggers:IsSelfAuraNativeBlocked()` before calling it. Never add
 an automatic probe back.
 
+### More things refused or secret (2.4.50 reports)
+
+- `C_PvP.SetWarModeDesired` is forbidden to addons. Player Frame's War Mode
+  button only opens the talents window, where the game's own switch is.
+- `GetPoint` on Blizzard's unit frame regions can return **secret** points,
+  and handing those back to `SetPoint` is an error. Unit Frames and Player
+  Frame only move a region whose points read back plain (`Remember` returns
+  true), and restore inside `pcall`.
+- A `|` in `SendChatMessage` text is an "Invalid escape code" and the whole
+  line is refused. Join chat lines with commas or `/`.
+- `SetRaidTarget` from a timer was forbidden even before the key started.
+  MythicLooter's role marks turn themselves off for the game build after one
+  refusal (`marksRefusedBuild`). Its party line during a key
+  (`SendChatMessage` "PARTY") was blocked the same way and uses the same
+  `Refusable` wrapper in `run_tracker.lua` (`chatRefusedBuild`).
+- MythicLooter's window holds secure teleport buttons, so it is protected:
+  `RefreshSize` waits for the end of combat.
+
 ### Dynamic audio switching and sound handles in combat
 
 `PlaySoundFile(path, channel)` and `PlaySound(id, channel)` return `willPlay, soundHandle`.

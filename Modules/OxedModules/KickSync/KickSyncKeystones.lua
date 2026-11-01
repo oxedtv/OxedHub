@@ -876,8 +876,19 @@ function KL:AnnounceToChat()
     end
 
     local chatTarget = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or nil)
-    local out = L["Keys: "] .. table.concat(entries, " | ")
-    if chatTarget then
+    -- ⚠ No "|" in a chat message: the game reads it as the start of an escape
+    -- code and refuses the whole line ("Invalid escape code").
+    local out = L["Keys: "] .. table.concat(entries, ", ")
+    -- 12.0 can lock addon chat in an instance (a key under way); then the line
+    -- is shown to the player only, rather than raising a blocked-action report.
+    local locked = false
+    if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown then
+        local ok, value = pcall(C_ChatInfo.InChatMessagingLockdown)
+        locked = ok and not (issecretvalue and issecretvalue(value)) and value == true
+    end
+    if chatTarget and locked then
+        print(L["|cff9d5db8MythicLooter|r (the game does not let addons talk in chat right now): "] .. out)
+    elseif chatTarget then
         SendChatMessage(out, chatTarget)
     else
         print(L["|cff9d5db8MythicLooter|r (only you see this, you are not in a group): "] .. out)
