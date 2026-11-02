@@ -282,8 +282,8 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "mythiclooter",
         name     = "MythicLooter",
-        version  = "2.23.1",
-        updated  = 20261101.1,  -- role marks stop after a refusal, no resize in combat, keys line without "|"
+        version  = "2.23.2",
+        updated  = 20261102.97,  -- automatic role marks removed: the game refuses them
         author   = "Oxed",
         category = "groups",
         keywords = { "mythiclooter", "keystoneloot", "m+", "loot", "dungeon", "raid", "bis", "vault", "item", "affix", "rating", "week" },

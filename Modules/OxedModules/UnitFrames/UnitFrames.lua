@@ -292,6 +292,10 @@ local placed = {}   -- key -> { { region, point, rel, relPoint, x, y }, ... }
 local PIECES = {
     { key = "targetSpec",  label = "Spec icon" },
     { key = "targetRange", label = "Range" },
+    -- ⚠ Their own keys on EllesmereUI's frames: an offset dragged for Blizzard's
+    -- frame threw the same piece far off the other one, out of sight.
+    { key = "replacedSpec",  label = "Spec icon" },
+    { key = "replacedRange", label = "Range" },
     { key = "partyClass",  label = "Party spec icon" },
     { key = "partyTarget", label = "Party targets" },
     { key = "bossTarget",  label = "Boss targets" },
@@ -425,17 +429,33 @@ local function Holder(frame, above)
     return h
 end
 
+-- ⚠ EllesmereUI's frames must never be given a .unit field: Blizzard's ping code
+-- reads it in secure code, and a value an addon wrote there breaks pings. So
+-- which unit its frames show is kept here, off the frame.
+local replacedUnit = {}
+
+local function UnitOf(frame)
+    return frame.unit or replacedUnit[frame]
+end
+
 local function PaintTarget(frame)
-    if not (frame and frame.unit) then return end
+    local unit = frame and UnitOf(frame)
+    if not unit then return end
     local container, _, bar = TargetParts(frame)
-    if container and not frame.oxClass and not InCombatLockdown() then
+    -- Another addon's frame has no container or portrait of ours to sit on.
+    if (container or replacedUnit[frame]) and not frame.oxClass and not InCombatLockdown() then
         -- Round, with a ring, sitting on the bottom of the portrait. Drawn on
         -- a holder above the container: the portrait and its border belong
         -- to a child frame, which would cover regions made on the frame.
         local h = Holder(frame, container)
         frame.oxClass = h:CreateTexture(nil, "OVERLAY", nil, 6)
         frame.oxClass:SetSize(18, 18)
-        Place("targetSpec", frame.oxClass, "BOTTOM", container.Portrait or frame, "BOTTOM", -7, -2)
+        if container then
+            Place("targetSpec", frame.oxClass, "BOTTOM", container.Portrait or frame, "BOTTOM", -7, -2)
+        else
+            -- Above the frame, clear of its bars: there is no portrait to sit on.
+            Place("replacedSpec", frame.oxClass, "BOTTOMLEFT", frame, "TOPLEFT", 3, 4)
+        end
         local mask = h:CreateMaskTexture()
         mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
         mask:SetAllPoints(frame.oxClass)
@@ -453,17 +473,17 @@ local function PaintTarget(frame)
         frame.oxILvl:ClearAllPoints()
         frame.oxILvl:SetPoint("LEFT", frame.oxClass, "RIGHT", 2, 0)
     end
-    PaintClassIcon(frame.oxClass, frame.unit, frame.oxILvl)
+    PaintClassIcon(frame.oxClass, unit, frame.oxILvl)
     if frame.oxRing then
-        local r, g, b = UnitColour(frame.unit)
+        local r, g, b = UnitColour(unit)
         frame.oxRing:SetVertexColor(r or 1, g or 1, b or 1)
     end
 
     local main = frame.TargetFrameContent and frame.TargetFrameContent.TargetFrameContentMain
-    PaintName(main and main.Name, frame.unit, Active("targetColour"))
+    PaintName(main and main.Name, unit, Active("targetColour"))
 
     if not (Active("targetColour") and container) then return end
-    local r, g, b = UnitColour(frame.unit)
+    local r, g, b = UnitColour(unit)
     if not r then r, g, b = 1, 1, 1 end
     for _, tex in ipairs({ container.FrameTexture or false, container.BossPortraitFrameTexture or false }) do
         if tex then Remember(tex) tex:SetVertexColor(r, g, b) end
@@ -475,10 +495,21 @@ local function PaintTarget(frame)
     end
 end
 
+-- ⚠ EllesmereUI hides Blizzard's target and focus frames and draws its own, so
+-- anything made on Blizzard's was never seen. Its frames are used in their place
+-- when it has made them (it makes none for a unit left on Blizzard's frame). Only
+-- the spec icon, item level and range go on them: colours are its own to set.
 local function TargetFrames()
     local list = {}
-    if TargetFrame then list[#list + 1] = TargetFrame end
-    if FocusFrame then list[#list + 1] = FocusFrame end
+    for _, pair in ipairs({ { "EllesmereUIUnitFrames_Target", TargetFrame, "target" }, { "EllesmereUIUnitFrames_Focus", FocusFrame, "focus" } }) do
+        local replacement = _G[pair[1]]
+        if replacement then
+            replacedUnit[replacement] = pair[3]
+            list[#list + 1] = replacement
+        elseif pair[2] then
+            list[#list + 1] = pair[2]
+        end
+    end
     return list
 end
 
@@ -523,7 +554,7 @@ local function BuildRange(frame)
     -- Outside the frame's left edge: the level text sits just inside it.
     -- One line "8-15", the speed under it only while the unit moves.
     frame.oxRangeMax = Label()
-    Place("targetRange", frame.oxRangeMax, "RIGHT", frame, "LEFT", 4, 8)
+    Place(replacedUnit[frame] and "replacedRange" or "targetRange", frame.oxRangeMax, "RIGHT", frame, "LEFT", 4, 8)
     frame.oxRangeMin = Label()   -- unused, kept so HideRange stays simple
     frame.oxSpeed = Label()
     frame.oxSpeed:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
@@ -536,10 +567,10 @@ local function HideRange(frame)
 end
 
 local function PaintRangeFor(frame)
-    if not (frame and frame.unit) then return end
+    if not (frame and UnitOf(frame)) then return end
     if not frame.oxRangeMax and InCombatLockdown() then return end
     BuildRange(frame)
-    local unit = frame.unit
+    local unit = UnitOf(frame)
     if not Active("targetRange") or not frame:IsShown() or Known(UnitExists, unit) ~= true
         or Known(UnitIsUnit, unit, "player") == true then
         HideRange(frame)
@@ -1100,8 +1131,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "unitframes",
         name     = "Unit Frames",
-        version  = "1.2.1",
-        updated  = 20261101.2,  -- no error when the pet frame anchors are secret
+        version  = "1.2.2",
+        updated  = 20261102.98,  -- spec icon, item level and range on EllesmereUI's target and focus frames
         author   = "Oxed",
         category = "character",
         keywords = { "unit", "frame", "target", "focus", "party", "boss", "pet", "class", "colour", "color", "range", "deaths" },

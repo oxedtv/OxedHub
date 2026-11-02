@@ -241,6 +241,7 @@ local function FindInterruptSpell()
     if found then
         interruptSpellID = found
         local _, _, icon = GetSpellInfoCompat(found)
+        if not icon and C_Spell and C_Spell.GetSpellTexture then icon = C_Spell.GetSpellTexture(found) end
         interruptIcon = icon
         if C_Spell and C_Spell.SpellHasRange then
             interruptHasRange = C_Spell.SpellHasRange(found) or false
@@ -439,14 +440,17 @@ local function CreateKickFrame()
     f:SetBackdropBorderColor(0, 1, 0, 1)
 
     -- Full-color Spell Icon
-    local icon = f:CreateTexture(nil, "BACKGROUND")
+    -- ⚠ ARTWORK, not BACKGROUND: the backdrop's dark centre is on BACKGROUND too,
+    -- and two textures on one layer have no fixed order, so it could cover the
+    -- icon and leave an empty square. Below the glow, which is ARTWORK 2.
+    local icon = f:CreateTexture(nil, "ARTWORK", nil, -2)
     icon:SetPoint("TOPLEFT", 2, -2)
     icon:SetPoint("BOTTOMRIGHT", -2, 2)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     f.icon = icon
 
     -- Desaturated Icon Layer (for "Almost Ready" preview)
-    local iconDesat = f:CreateTexture(nil, "BACKGROUND", nil, 1)
+    local iconDesat = f:CreateTexture(nil, "ARTWORK", nil, -1)
     iconDesat:SetAllPoints(icon)
     iconDesat:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     iconDesat:SetDesaturated(true)
@@ -1187,8 +1191,8 @@ local function RegisterModule()
     OxedHub.ModuleAPI:Register({
         id       = "kickbar",
         name     = "KickBar",
-        version  = "2.0.2",
-        updated  = 20261026.4,  -- EllesmereUI nameplates; hidden during pet battles
+        version  = "2.0.3",
+        updated  = 20261102.96,  -- the icon no longer hides behind its own background
         author   = "Oxed",
         category = "combat",
         keywords = { "kick", "interrupt", "nameplate", "cast", "floating", "pummel", "counterspell" },

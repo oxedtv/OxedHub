@@ -14,6 +14,41 @@ local addonName, OxedHub = ...
 local WhatsNew = {}
 OxedHub.WhatsNew = WhatsNew
 
+-- The day sounds and animations leave OxedHub for their own packs, and the days
+-- until then. One copy, read by this window's header and the main page's card,
+-- so the two can never disagree. Counted on the game's calendar (server date),
+-- not the computer's clock.
+OxedHub.PackMove = {
+    deadline = { year = 2026, month = 12, day = 1 },
+    -- The packs they move to; `global` is what a pack sets once it is installed.
+    links = {
+        sounds = {
+            title = "OxedHub Sounds Pack",
+            url = "https://www.curseforge.com/wow/addons/oxedhub-sounds-pack",
+            global = "OxedHubSoundsPack",
+        },
+        animations = {
+            title = "OxedHub Animations Pack",
+            url = "https://www.curseforge.com/wow/addons/oxedhub-animations-pack",
+            global = "OxedHubAnimationsPack",
+        },
+    },
+}
+
+function OxedHub.PackMove.DaysLeft()
+    local deadline = OxedHub.PackMove.deadline
+    local today
+    local cal = C_DateAndTime and C_DateAndTime.GetCurrentCalendarTime and C_DateAndTime.GetCurrentCalendarTime()
+    if cal and cal.year and cal.month and cal.monthDay then
+        today = time({ year = cal.year, month = cal.month, day = cal.monthDay, hour = 12 })
+    else
+        local d = date("*t")
+        today = time({ year = d.year, month = d.month, day = d.day, hour = 12 })
+    end
+    local due = time({ year = deadline.year, month = deadline.month, day = deadline.day, hour = 12 })
+    return math.floor((due - today) / 86400 + 0.5)
+end
+
 local KIND_COLORS = {
     ADDED   = "ff40ff40",
     NEW     = "ff40ff40",   -- 2.4.10 wrote NEW; it showed grey without this
@@ -25,6 +60,27 @@ local KIND_COLORS = {
 -- are shown, so an update that skips a version still explains everything that
 -- changed in between.
 WhatsNew.RELEASES = {
+    {
+        version = "2.4.52",
+        important = true,
+        lines = {
+            { "NEW", "Target Marker module (Modules, Combat): a marker on your current target's nameplate, in thirteen styles: arrows, a dot, a raid mark, a crosshair, a column of light, or a box, corners, glow, tint or line on the health bar. Choose its colour, a second colour for combat, size, opacity and animation, a sound on a new target, and whether it shows only on enemies or only in combat. Type /oxtarget." },
+            { "NEW", "Game Events module (Modules, Quests & Travel): a list of what is on today and what is coming up, read from the game's calendar, and it opens beside the calendar too. Click a holiday for its Wowhead link. Type /oxevents." },
+            { "NEW", "Keep Open module (Modules, Character & UI): opening a game window no longer closes the others, and Escape closes them. Pair it with Frame Mover to give each window its own place. Type /keepopen." },
+            { "NEW", "Gold Stock is now its own module (Modules, Bags & Mail). Type /goldstock. If you already used it, it stays on and keeps your characters. /gwq gold still opens it." },
+            { "NEW", "Gold Stock counts gold waiting in the mail, read when a character opens a mailbox. Gold you mail to your own characters stays in the total from the moment it is sent." },
+            { "CHANGED", "Gold Stock's export now lists guild banks and the warband bank as well as characters, with bags, mail and total in their own columns." },
+            { "FIXED", "Gold Stock keeps the warband bank's amount if the game has not sent it yet after login, instead of showing 0." },
+            { "CHANGED", "MythicLooter: the automatic tank and healer marks are gone. The game refuses raid marks from addons, and each try raised an error." },
+            { "CHANGED", "Copy Chat's button is round, like the Chat Buttons." },
+            { "FIXED", "Unit Frames: with EllesmereUI, the spec icon, item level and range now show on its target and focus frames." },
+            { "FIXED", "KickBar shows its spell icon again instead of an empty square." },
+            { "FIXED", "Smart Misdirect: the macro's icon shows the cooldown, it no longer casts at a random target or brings up the targeting cursor when a button is empty, and a pet called after login is found. Pressing Create / Update Macro also switches the module on. Macros made before this update fix themselves." },
+            { "CHANGED", "Game Events, Keep Open, Gold Stock and Target Marker each have a minimap icon, which you can turn off in their options." },
+            { "CHANGED", "Gold Stock's list has the addon's own scroll bar and scrolls with the mouse wheel." },
+            { "CHANGED", "What's New shows how many days are left until sounds and animations move to their own packs, with buttons for both packs and whether each one is installed." },
+        },
+    },
     {
         version = "2.4.51",
         important = true,
@@ -1014,6 +1070,7 @@ local function AddDivider(parent)
 end
 
 local function BuildWindow()
+    local L = OxedHub.L
     local f = CreateFrame("Frame", "OxedHubWhatsNewFrame", UIParent, "BasicFrameTemplateWithInset")
     f:SetSize(640, 600)
     f:SetPoint("CENTER")
@@ -1070,6 +1127,99 @@ local function BuildWindow()
     local subheading = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     subheading:SetPoint("TOP", heading, "BOTTOM", 0, -3)
     f.subheading = subheading
+
+    -- The countdown to the packs, in the free space left of the logos: a big
+    -- number like the main page's card. Filled in on every Show.
+    local packCountdown = CreateFrame("Frame", nil, f)
+    packCountdown:SetSize(180, 110)
+    packCountdown:SetPoint("TOPLEFT", f, "TOPLEFT", 24, -34)
+    f.packCountdown = packCountdown
+
+    local packDays = packCountdown:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    packDays:SetPoint("TOPLEFT", packCountdown, "TOPLEFT", 0, 0)
+    local daysFont = packDays:GetFont()
+    if daysFont then packDays:SetFont(OxedHub:GetFont(daysFont), 56, "THICKOUTLINE") end
+    f.packDays = packDays
+
+    local packDaysLabel = packCountdown:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    packDaysLabel:SetPoint("BOTTOMLEFT", packDays, "BOTTOMRIGHT", 6, 8)
+    f.packDaysLabel = packDaysLabel
+
+    local packDaysNote = packCountdown:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    packDaysNote:SetPoint("TOPLEFT", packDays, "BOTTOMLEFT", 0, -4)
+    packDaysNote:SetWidth(180)
+    packDaysNote:SetJustifyH("LEFT")
+    f.packDaysNote = packDaysNote
+
+    -- Its own box for the link, over this window: the game's popup sits in a
+    -- lower strata and would open behind it, so the button would seem dead.
+    local linkBox = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    linkBox:SetSize(380, 100)
+    linkBox:SetPoint("TOP", f, "TOP", 0, -60)
+    linkBox:SetFrameLevel(f:GetFrameLevel() + 20)
+    linkBox:EnableMouse(true)
+    linkBox:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 24,
+        insets = { left = 6, right = 6, top = 6, bottom = 6 },
+    })
+    linkBox:Hide()
+
+    local linkText = linkBox:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    linkText:SetPoint("TOP", linkBox, "TOP", 0, -16)
+
+    local linkEdit = CreateFrame("EditBox", nil, linkBox, "InputBoxTemplate")
+    linkEdit:SetAutoFocus(false)   -- never take the keyboard on its own
+    linkEdit:SetSize(340, 20)
+    linkEdit:SetPoint("TOP", linkBox, "TOP", 0, -36)
+    linkEdit:SetScript("OnEscapePressed", function() linkBox:Hide() end)
+    linkEdit:SetScript("OnEnterPressed", function() linkBox:Hide() end)
+    -- Read only: typing puts the link back.
+    linkEdit:SetScript("OnTextChanged", function(self, user)
+        if user and linkBox.url then
+            self:SetText(linkBox.url)
+            self:HighlightText()
+        end
+    end)
+    linkBox:SetScript("OnHide", function() linkEdit:ClearFocus() end)
+
+    local linkDone = CreateFrame("Button", nil, linkBox, "UIPanelButtonTemplate")
+    linkDone:SetSize(100, 22)
+    linkDone:SetPoint("BOTTOM", linkBox, "BOTTOM", 0, 12)
+    linkDone:SetText(L["Done"])
+    linkDone:SetScript("OnClick", function() linkBox:Hide() end)
+
+    -- The two packs, on the right of the logos, each with whether it is installed.
+    f.packLinks = {}
+    for index, key in ipairs({ "sounds", "animations" }) do
+        local pack = OxedHub.PackMove.links[key]
+        local button = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        button:SetSize(150, 22)
+        button:SetPoint("TOPRIGHT", f, "TOPRIGHT", -28, -40 - (index - 1) * 50)
+        button:SetText(key == "sounds" and L["Sounds Pack Link"] or L["Animations Pack Link"])
+        button:SetNormalFontObject("GameFontNormalSmall")
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(button) end
+        button:SetScript("OnClick", function()
+            linkBox.url = pack.url
+            linkText:SetText(L["Copy the "] .. pack.title .. L[" link (Ctrl+C):"])
+            linkEdit:SetText(pack.url)
+            linkBox:Show()
+            linkEdit:SetFocus()
+            linkEdit:HighlightText()
+        end)
+        button:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine(pack.title, 1, 0.82, 0)
+            GameTooltip:AddLine(L["Click to copy the CurseForge link."], 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+        local status = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        status:SetPoint("TOP", button, "BOTTOM", 0, -3)
+        f.packLinks[index] = { pack = pack, status = status }
+    end
 
     local headerLine = AddDivider(f)
     headerLine:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -160)
@@ -1300,6 +1450,31 @@ function WhatsNew:Show(all)
     local db = Store()
     self.frame.check:SetChecked(db and db.whatsNewDisabled and true or false)
     self.frame.subheading:SetText(("Version %s"):format(CurrentVersion()))
+
+    -- Worked out here rather than once, so it is right after midnight too. Gone
+    -- on the day itself: by then there is nothing left to count down to.
+    local left = OxedHub.PackMove.DaysLeft()
+    local L = OxedHub.L
+    self.frame.packCountdown:SetShown(left > 0)
+    if left > 0 then
+        self.frame.packDays:SetText(tostring(left))
+        self.frame.packDaysLabel:SetText(left == 1 and L["DAY LEFT"] or L["DAYS LEFT"])
+        self.frame.packDaysNote:SetText(L["until sounds and animations move to their own packs"])
+        -- Orange, and red for the last three days, as on the main page.
+        if left <= 3 then
+            self.frame.packDays:SetTextColor(0.9, 0.15, 0.1, 1)
+        else
+            self.frame.packDays:SetTextColor(1, 0.55, 0.1, 1)
+        end
+    end
+    -- The packs stay useful after the day itself, so these are not tied to it.
+    for _, link in ipairs(self.frame.packLinks) do
+        if type(_G[link.pack.global]) == "table" then
+            link.status:SetText(L["|cff20a020Installed|r"])
+        else
+            link.status:SetText(L["|cffb02020Not installed|r"])
+        end
+    end
 
     RenderReleases(self.frame.content, self:GetReleasesToShow(all))
     self.frame:Show()

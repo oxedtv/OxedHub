@@ -3,8 +3,7 @@
 -- During a Mythic+ key: how far the enemy forces are, how much more is
 -- wanted before the next boss, what the pull in progress is worth, and each
 -- mob's share on its nameplate and tooltip. Says when the forces are ready
--- for the next boss, warns when a boss is pulled short, and can put the
--- tank's and healer's marks on them when the key starts.
+-- for the next boss, and warns when a boss is pulled short.
 --
 -- Targets ("have this much before pulling that boss") are the player's own:
 -- the last boss wants 100%, and every timed run notes what you had at each
@@ -37,9 +36,6 @@ local DEFAULTS = {
     lowPullSound = "",
     learnTargets = true,    -- a timed run's numbers become the dungeon's targets
     bgAlpha      = 0,       -- the panel's background, like the keystone list
-    markRoles    = false,   -- marks on the tank and healer when the key starts
-    tankMark     = 6,       -- square
-    healerMark   = 5,       -- moon
     locked       = false,
     scale        = 1,
     point = "TOP", x = 0, y = -180,
@@ -213,7 +209,7 @@ end
 -- not the blocked-action report. Refusable makes the call; a refusal reported
 -- while it runs (the event comes inside the call) saves the game build under
 -- cfg[key], and Refused(key) then keeps the feature quiet for that build:
--- one report, not one per key. Seen for SetRaidTarget and for party chat.
+-- one report, not one per key. Seen for party chat.
 local refusing        -- { key, note } while a Refusable call runs
 local refusalWatch = CreateFrame("Frame")
 refusalWatch:RegisterEvent("ADDON_ACTION_FORBIDDEN")
@@ -315,91 +311,9 @@ local function LearnFromRun()
         or "this timed run's boss numbers are now your targets for %s."):format(run.name or "this dungeon"))
 end
 
--- ── Role marks ──────────────────────────────────────────────────────────────
-
--- ⚠ Only before the key starts. Once a keystone run is under way the game
--- forbids raid marks from addons (ADDON_ACTION_FORBIDDEN, even inside pcall:
--- pcall stops the error, not the report). Marked when the key is slotted.
--- ⚠ One mark at a time, MARK_STEP apart. Set in one burst, only the first
--- reached the server: the tank got its mark and the healer never did. A
--- second round a moment later catches any that were still dropped.
-local MARK_STEP = 0.4
-local MARK_ROUNDS = 2
-
--- ⚠ The game has also refused marks before the key started (5 reports on one
--- key). Any refusal turns automatic marks off for this game build (see
--- Refusable above). Switching the option off and on clears it.
-local function Mark(unit, index)
-    Refusable("marksRefusedBuild",
-        "the game refused a raid mark from an addon here, so automatic tank and healer marks are off for this game version.",
-        SetRaidTarget, unit, index)
-end
-
-local function MarksAllowed()
-    if Refused("marksRefusedBuild") then return false end
-    if not cfg.markRoles or not IsInGroup() or IsInRaid() or InCombatLockdown() then return false end
-    if C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive() then return false end
-    return SetRaidTarget and UnitGroupRolesAssigned and true or false
-end
-
--- The mark a unit should get, and whether its present mark could not be read.
--- nil when it has no role to mark or already wears the right mark.
-local function WantedMark(unit)
-    local okExists, exists = pcall(UnitExists, unit)
-    if not (okExists and Bool(exists)) then return nil end
-    local okRole, role = pcall(UnitGroupRolesAssigned, unit)
-    role = okRole and Str(role)
-    local want = (role == "TANK" and cfg.tankMark) or (role == "HEALER" and cfg.healerMark) or nil
-    if not want or want <= 0 then return nil end
-    -- ⚠ SetRaidTarget with the mark a unit already has takes it off. A mark
-    -- already on the unit can answer as a secret, which used to mean "leave
-    -- it", so a tank still wearing last key's mark (or any mark) never got
-    -- the right one. Now a readable mark is compared, and an unreadable one
-    -- is cleared first: clear-then-set ends the same way whatever was there.
-    local okMark, current = pcall(GetRaidTargetIndex, unit)
-    if not okMark or IsSecret(current) then return want, true end
-    if current == want then return nil end
-    return want, false
-end
-
-local markGeneration = 0
-
-local function MarkRoles()
-    if not MarksAllowed() then return end
-    markGeneration = markGeneration + 1
-    local generation = markGeneration
-    -- Only the units with a mark to give, so the marks land within a second
-    -- or two rather than after a slot for every empty party place.
-    local units = {}
-    for _, unit in ipairs({ "player", "party1", "party2", "party3", "party4" }) do
-        if WantedMark(unit) then units[#units + 1] = unit end
-    end
-    if #units == 0 then return end
-    local step = 0
-    for round = 1, MARK_ROUNDS do
-        for _, unit in ipairs(units) do
-            -- Every unit gets a slot, asked again when its turn comes: the
-            -- group, the roles and the marks can all change in between.
-            step = step + 1
-            C_Timer.After(step * MARK_STEP, function()
-                if generation ~= markGeneration or not MarksAllowed() then return end
-                local want, unknown = WantedMark(unit)
-                if not want then return end
-                if unknown then
-                    -- Its own slot for the clear: in one burst the second
-                    -- call is the one the server drops.
-                    Mark(unit, 0)
-                    C_Timer.After(MARK_STEP / 2, function()
-                        if generation ~= markGeneration or not MarksAllowed() then return end
-                        Mark(unit, want)
-                    end)
-                else
-                    Mark(unit, want)
-                end
-            end)
-        end
-    end
-end
+-- ⚠ No automatic raid marks. SetRaidTarget is protected: calling it from addon
+-- code was forbidden even before the key started, and each try raised an error.
+-- Only a secure button the player presses could do it.
 
 -- ── Nameplates and tooltips ─────────────────────────────────────────────────
 
@@ -896,16 +810,7 @@ end)
 local lifecycle = CreateFrame("Frame")
 lifecycle:SetScript("OnEvent", function(_, event)
     if not cfg then return end
-    if event == "CHALLENGE_MODE_KEYSTONE_SLOTTED" then
-        -- The key is in but the run has not begun: the last moment marks are allowed.
-        MarkRoles()
-    elseif event == "READY_CHECK" then
-        -- KEYSTONE_SLOTTED reaches only the one who slots the key, so with
-        -- anyone else holding it nobody was marked. The ready check before a
-        -- key reaches the whole group. Only inside a dungeon, never in a key.
-        local _, kind = IsInInstance()
-        if kind == "party" then MarkRoles() end
-    elseif event == "CHALLENGE_MODE_START" then
+    if event == "CHALLENGE_MODE_START" then
         C_Timer.After(1, function()
             if InKey() then BeginRun() end
         end)
@@ -924,13 +829,6 @@ lifecycle:SetScript("OnEvent", function(_, event)
 end)
 
 -- ── Options ─────────────────────────────────────────────────────────────────
-
-local MARKS = {
-    { value = 0, text = "None" },
-    { value = 1, text = "Star" }, { value = 2, text = "Circle" }, { value = 3, text = "Diamond" },
-    { value = 4, text = "Triangle" }, { value = 5, text = "Moon" }, { value = 6, text = "Square" },
-    { value = 7, text = "Cross" }, { value = 8, text = "Skull" },
-}
 
 -- Sliders for this dungeon's boss targets. Only inside a key: that is where
 -- the bosses' names are known.
@@ -1030,11 +928,6 @@ function RT:ShowOptions()
         o:AddSoundPicker(cfg, "lowPullSound", "Warning sound", "None")
         o:AddCheckbox(cfg, "learnTargets", "Learn targets from timed runs",
             "At each boss pull the forces are noted; a timed run keeps those numbers as that dungeon's targets.")
-        o:AddCheckbox(cfg, "markRoles", "Mark the tank and healer when the key goes in",
-            "When the key is slotted, and on a ready check inside a dungeon. A player wearing another mark is given the right one. Never once the key has started.",
-            function() cfg.marksRefusedBuild = nil end)
-        o:AddChoice(cfg, "tankMark", "Tank mark", MARKS)
-        o:AddChoice(cfg, "healerMark", "Healer mark", MARKS)
 
         local preview = CreateFrame("Button", nil, o, "UIPanelButtonTemplate")
         preview:SetSize(110, 22)
@@ -1106,8 +999,7 @@ login:SetScript("OnEvent", function(self)
     Bind()
     HookTooltip()
     for _, event in ipairs({ "CHALLENGE_MODE_START", "CHALLENGE_MODE_COMPLETED",
-            "CHALLENGE_MODE_RESET", "PLAYER_ENTERING_WORLD", "CHALLENGE_MODE_KEYSTONE_SLOTTED",
-            "READY_CHECK" }) do
+            "CHALLENGE_MODE_RESET", "PLAYER_ENTERING_WORLD" }) do
         pcall(lifecycle.RegisterEvent, lifecycle, event)
     end
 end)

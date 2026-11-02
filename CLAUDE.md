@@ -309,11 +309,12 @@ an automatic probe back.
   true), and restore inside `pcall`.
 - A `|` in `SendChatMessage` text is an "Invalid escape code" and the whole
   line is refused. Join chat lines with commas or `/`.
-- `SetRaidTarget` from a timer was forbidden even before the key started.
-  MythicLooter's role marks turn themselves off for the game build after one
-  refusal (`marksRefusedBuild`). Its party line during a key
-  (`SendChatMessage` "PARTY") was blocked the same way and uses the same
-  `Refusable` wrapper in `run_tracker.lua` (`chatRefusedBuild`).
+- `SetRaidTarget` is protected: from addon code it was forbidden even before the
+  key started, and a once-per-build guard still left repeated reports. MythicLooter's
+  automatic role marks were removed. Never add an automatic call back; only a
+  secure button the player presses could do it.
+- MythicLooter's party line during a key (`SendChatMessage` "PARTY") can be blocked
+  too and uses the `Refusable` wrapper in `run_tracker.lua` (`chatRefusedBuild`).
 - MythicLooter's window holds secure teleport buttons, so it is protected:
   `RefreshSize` waits for the end of combat.
 

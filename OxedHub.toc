@@ -2,7 +2,7 @@
 ## Title: Oxed Hub
 ## Notes: Unified interface for sounds, animations, emotes, chat messages, and toys based on in-game events
 ## Author: https://customwowaddon.com/
-## Version: 2.4.51
+## Version: 2.4.52
 ## SavedVariables: OxedHubDB, OxMythicLooterDB
 ## SavedVariablesPerCharacter: OxMythicLooterCharDB
 ## OptionalDeps: OxedHub_MemePack, OxedHub_GamingPack, OxedHub_CustomMedia
@@ -160,7 +160,7 @@ Modules\OxedModules\Instances\Instances.lua
 Modules\OxedModules\PvPProgress\PvPProgress.lua
 Modules\OxedModules\GoldWQ\GoldWQData.lua
 Modules\OxedModules\GoldWQ\GoldWQ.lua
-Modules\OxedModules\GoldWQ\GoldStock.lua
+Modules\OxedModules\GoldStock\GoldStock.lua
 Modules\OxedModules\WQAchievements\WQAchievementsData.lua
 Modules\OxedModules\WQAchievements\WQAchievements.lua
 Modules\OxedModules\BResLustTracker\BResLustTracker.lua
@@ -197,6 +197,9 @@ Modules\OxedModules\Heartbeat\Heartbeat.lua
 Modules\OxedModules\Reputations\Reputations.lua
 Modules\OxedModules\Currencies\Currencies.lua
 Modules\OxedModules\FrameMover\FrameMover.lua
+Modules\OxedModules\KeepWindowsOpen\KeepWindowsOpen.lua
+Modules\OxedModules\GameEvents\GameEvents.lua
+Modules\OxedModules\TargetMarker\TargetMarker.lua
 Modules\OxedModules\AddonManager\AddonManager.lua
 Modules\OxedModules\BubbleChat\BubbleChat.lua
 Modules\OxedModules\ItemTooltips\ItemTooltipsData.lua

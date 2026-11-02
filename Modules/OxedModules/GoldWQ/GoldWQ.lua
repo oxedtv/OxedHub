@@ -31,12 +31,6 @@ local DEFAULTS = {
     collapsed   = false,  -- collapse HUD to title bar
     noBorder    = false,  -- hide HUD border
     minimap     = true,   -- show minimap button
-
-    -- Gold Stock (GoldStock.lua): the account's gold across characters
-    stockWarbandInTotal   = true,   -- the warband bank counts toward the total
-    stockCombineFactions  = false,  -- Realms view: one line per realm, not per faction
-    stockRoundDown        = true,   -- export whole gold
-    stockMinGold          = 0,      -- hide characters with less gold than this
 }
 
 local settings          -- OxedHubDB.modules.goldwq, bound at login
@@ -1303,7 +1297,8 @@ buildUI = function()
     ApplyRedButtonStyle(goldBtn)
     goldBtn:SetScript("OnClick", function()
         if not OxedHub.GoldStock then return end
-        ui:Hide()
+        -- Its own module now: while off, the tracker stays and chat says why.
+        if OxedHub.GoldStock:IsRunning() then ui:Hide() end
         OxedHub.GoldStock:Show()
     end)
     goldBtn:SetScript("OnEnter", function(self)
@@ -1798,8 +1793,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "goldwq",
         name     = "Gold World Quests",
-        version  = "1.1.1",
-        updated  = 20261030.2,  -- Gold Stock: delete asks first, on top of the window
+        version  = "1.2.0",
+        updated  = 20261102.1,  -- Gold Stock moved out into its own module
         author   = "Marcus / Oxed",
         category = "quests",
         keywords = { "gold", "wq", "world quest", "caches", "special assignment", "tomtom", "route" },
@@ -1848,7 +1843,6 @@ loginFrame:SetScript("OnEvent", function(self)
 
             shouldAnnounce = settings.announce
             requestScan(3)
-            if OxedHub.GoldStock then OxedHub.GoldStock:Start(settings) end
 
             if settings.collapsed and settings.coinShown then
                 -- Minimised before the reload: the coin comes back where it was.
@@ -1877,7 +1871,6 @@ loginFrame:SetScript("OnEvent", function(self)
             end
 
             clearRoute()
-            if OxedHub.GoldStock then OxedHub.GoldStock:Stop() end
 
             if ui then ui:Hide() end
             if optionsWindow then optionsWindow:Hide() end

@@ -1,19 +1,20 @@
 -- ============================================================================
--- Gold World Quests: Gold Stock
--- How much gold the account has, everywhere: every character's purse, each
--- guild bank one of them has opened, and the warband bank. A window with
+-- Gold Stock
+-- How much gold the account has, everywhere: every character's bags and mail,
+-- each guild bank one of them has opened, and the warband bank. A window with
 -- three views (characters, realms, guilds), totals, a filter, and an export
 -- as CSV or JSON to copy out.
 --
--- Started and stopped by GoldWQ.lua's OnEnable / OnDisable; nothing is read
--- or saved while the module is off. Data lives in the module's settings:
---   stock.chars["Name-Realm"]  = { name, realm, class, faction, copper, guild, at }
+-- Its own module since it left Gold World Quests; nothing is read or saved
+-- while it is off. Data lives in OxedHubDB.modules.goldstock:
+--   stock.chars["Name-Realm"]  = { name, realm, class, faction, copper, bank, mail, guild, at }
 --   stock.guilds["Guild-Realm"] = { name, realm, copper, at, by, skip }
 --   stock.warband              = { copper, at }
 -- (tables made here, never in DEFAULTS: they would be shared by reference).
 --
--- ⚠ A guild bank's gold is only known while its window is open; what the
--- window shows is the last time someone on this account looked.
+-- ⚠ A guild bank's gold is only known while its window is open, and mail's
+-- while a mailbox is; what the window shows is the last time someone on this
+-- account looked.
 -- ============================================================================
 
 local addonName, OxedHub = ...
@@ -26,10 +27,20 @@ OxedHub.GoldStock = GoldStock
 
 local PREFIX = "|cffffd100Gold Stock:|r "
 
-local settings          -- GoldWQ's settings, handed over in Start
+local DEFAULTS = {
+    enabled               = false,  -- off until the player enables it (OxedHub standard)
+    stockWarbandInTotal   = true,   -- the warband bank counts toward the total
+    stockCombineFactions  = false,  -- Realms view: one line per realm, not per faction
+    stockRoundDown        = true,   -- export whole gold
+    stockMinGold          = 0,      -- hide characters with less gold than this
+    minimapButton         = true,
+}
+
+local settings          -- OxedHubDB.modules.goldstock, bound at login
 local running = false
 local myKey             -- "Name-Realm", read once out of combat
-local window, exportWindow
+local window, exportWindow, optionsWindow
+local minimapIcon, MinimapIcon
 
 local events = CreateFrame("Frame")
 
@@ -57,6 +68,17 @@ local function Coins(copper, roundGold)
         if ok and type(text) == "string" then return text end
     end
     return (BreakUpLargeNumbers or tostring)(math.floor(copper / 10000)) .. "g"
+end
+
+-- For a column that is usually empty: a row of zero coins hides the ones that matter.
+local function CoinsOrDash(copper)
+    if (copper or 0) < 10000 then return "|cff777777-|r" end
+    return Coins(copper, true)
+end
+
+-- Everything one character holds.
+local function CharGold(c)
+    return (c.copper or 0) + (c.bank or 0) + (c.mail or 0)
 end
 
 local function Ago(t)
@@ -95,6 +117,19 @@ local function ReadMe()
     me.name, me.realm = myKey:match("^(.-)%-(.+)$")
     local money = GetMoney and GetMoney()
     if type(money) == "number" and not IsSecret(money) then me.copper = money end
+    -- A character's own bank holds no gold today, only the warband and guild
+    -- banks do. Asking the game rather than assuming means it gets counted if
+    -- that ever changes.
+    if C_Bank and C_Bank.DoesBankTypeSupportMoneyTransfer and C_Bank.FetchDepositedMoney
+        and Enum and Enum.BankType and Enum.BankType.Character then
+        local ok, holdsGold = pcall(C_Bank.DoesBankTypeSupportMoneyTransfer, Enum.BankType.Character)
+        if ok and not IsSecret(holdsGold) and holdsGold then
+            local read, copper = pcall(C_Bank.FetchDepositedMoney, Enum.BankType.Character)
+            if read and type(copper) == "number" and not IsSecret(copper) then
+                me.bank = copper > 0 and copper or nil
+            end
+        end
+    end
     me.at = time()
     if not InCombatLockdown() then
         local _, class = UnitClass("player")
@@ -110,11 +145,15 @@ local function ReadMe()
     end
 end
 
-local function ReadWarband()
+-- Soon after login a 0 can mean the game does not have the figure yet, and it
+-- would wipe the amount we saved. So a 0 only replaces a saved amount when
+-- `trusted`: the game just said the bank's money changed, or the bank is open.
+local function ReadWarband(trusted)
     if not running or not (C_Bank and C_Bank.FetchDepositedMoney and Enum and Enum.BankType) then return end
     local ok, copper = pcall(C_Bank.FetchDepositedMoney, Enum.BankType.Account)
     if ok and type(copper) == "number" and not IsSecret(copper) then
         local w = Stock().warband
+        if copper == 0 and (w.copper or 0) > 0 and not trusted then return end
         w.copper, w.at = copper, time()
     end
 end
@@ -133,6 +172,80 @@ local function ReadGuildBank()
         Stock().guilds[key] = g
     end
     g.name, g.realm, g.copper, g.at, g.by = guild, realm, copper, time(), myKey
+end
+
+-- Gold waiting in the mailbox. Read on MAIL_INBOX_UPDATE only: at MAIL_SHOW the
+-- inbox has not arrived yet and would read as empty. The game hands over the
+-- first 50 letters, so gold further down is not seen until those are cleared.
+local mailOpen = false
+local function ReadMail()
+    if not running or not mailOpen or not myKey or not (GetInboxNumItems and GetInboxHeaderInfo) then return end
+    local me = Stock().chars[myKey]
+    if type(me) ~= "table" then return end
+    local ok, shown = pcall(GetInboxNumItems)
+    if not ok or type(shown) ~= "number" or IsSecret(shown) then return end
+    local sum = 0
+    for i = 1, shown do
+        local read, _, _, _, _, money = pcall(GetInboxHeaderInfo, i)
+        if not read then return end
+        if type(money) == "number" and not IsSecret(money) then sum = sum + money end
+    end
+    me.mail = sum > 0 and sum or nil
+end
+
+-- ── Gold mailed to your own characters ──────────────────────────────────────
+-- It leaves the sender's bags at once but the other character cannot read its
+-- mailbox until it logs in, so it would drop out of the total. Added to that
+-- character's mail figure instead, which ReadMail replaces with the real sum
+-- the next time it opens a mailbox.
+--
+-- The amount comes from SetSendMailMoney because the game resets it once
+-- SendMail has run. One letter at a time, not a queue: a send cancelled at the
+-- game's confirmation may never report back, and a queue would then pay the
+-- next letter's success to the wrong character.
+local moneyToSend = 0
+local sending        -- { to, copper } between SendMail and the game's answer
+local mailHooked = false
+
+local function OwnCharacter(recipient)
+    if type(recipient) ~= "string" or IsSecret(recipient) then return nil end
+    local name, realm = recipient:match("^%s*([^%-%s]+)%-?(.-)%s*$")
+    if not name then return nil end
+    realm = realm ~= "" and realm:gsub("[%s%-]", "") or Realm()
+    local chars = Stock().chars
+    local exact = chars[name .. "-" .. realm]
+    if type(exact) == "table" then return exact end
+    name, realm = name:lower(), realm:lower()
+    for _, c in pairs(chars) do
+        if type(c) == "table" and c.name and c.realm
+            and c.name:lower() == name and c.realm:lower() == realm then
+            return c
+        end
+    end
+    return nil
+end
+
+local function HookMail()
+    if mailHooked or not (hooksecurefunc and SendMail and SetSendMailMoney) then return end
+    mailHooked = true
+    hooksecurefunc("SetSendMailMoney", function(copper)
+        -- What the game accepted, when it says; it refuses what you cannot afford.
+        local held = GetSendMailMoney and GetSendMailMoney()
+        if type(held) == "number" and not IsSecret(held) then copper = held end
+        moneyToSend = (type(copper) == "number" and not IsSecret(copper)) and copper or 0
+    end)
+    hooksecurefunc("SendMail", function(recipient)
+        sending = (running and moneyToSend > 0) and { to = recipient, copper = moneyToSend } or nil
+        moneyToSend = 0
+    end)
+end
+
+local function MailDelivered()
+    local letter = sending
+    sending = nil
+    if not (running and letter) then return end
+    local c = OwnCharacter(letter.to)
+    if c then c.mail = (c.mail or 0) + letter.copper end
 end
 
 -- ── Putting it together ─────────────────────────────────────────────────────
@@ -155,7 +268,7 @@ local function CharacterRows()
     local text, min = Filter()
     local list = {}
     for key, c in pairs(Stock().chars) do
-        if type(c) == "table" and (c.copper or 0) >= min and Matches(text, c.name, c.realm, c.guild) then
+        if type(c) == "table" and CharGold(c) >= min and Matches(text, c.name, c.realm, c.guild) then
             list[#list + 1] = { key = key, c = c }
         end
     end
@@ -190,10 +303,10 @@ local function RealmRows()
     end
     local guildFaction = {}
     for _, c in pairs(Stock().chars) do
-        if type(c) == "table" and c.realm and (c.copper or 0) >= min and Matches(text, c.name, c.realm, c.guild) then
+        if type(c) == "table" and c.realm and CharGold(c) >= min and Matches(text, c.name, c.realm, c.guild) then
             local e = Entry(c.realm, c.faction)
             e.chars = e.chars + 1
-            e.personal = e.personal + (c.copper or 0)
+            e.personal = e.personal + CharGold(c)
             if c.guild then guildFaction[c.guild] = c.faction end
         end
     end
@@ -207,16 +320,20 @@ local function RealmRows()
 end
 
 local function Totals()
-    local personal, guild = 0, 0
+    local bags, bank, mail, guild = 0, 0, 0, 0
     for _, c in pairs(Stock().chars) do
-        if type(c) == "table" then personal = personal + (c.copper or 0) end
+        if type(c) == "table" then
+            bags = bags + (c.copper or 0)
+            bank = bank + (c.bank or 0)
+            mail = mail + (c.mail or 0)
+        end
     end
     for _, g in pairs(Stock().guilds) do
         if type(g) == "table" and not g.skip then guild = guild + (g.copper or 0) end
     end
     local warband = Stock().warband.copper or 0
-    local total = personal + guild + (settings.stockWarbandInTotal ~= false and warband or 0)
-    return personal, guild, warband, total
+    local total = bags + bank + mail + guild + (settings.stockWarbandInTotal ~= false and warband or 0)
+    return bags, bank, mail, guild, warband, total
 end
 
 -- ── The window ──────────────────────────────────────────────────────────────
@@ -244,12 +361,14 @@ end
 
 local COLUMNS = {
     chars = {
-        { label = "Name",    width = 130, sort = function(r) return r.c.name or "" end, text = function(r) return ClassName(r.c) end },
-        { label = "Realm",   width = 115, sort = function(r) return r.c.realm or "" end, text = function(r) return r.c.realm or "" end },
-        { label = "Faction", width = 70,  sort = function(r) return r.c.faction or "" end, text = function(r) return FactionText(r.c.faction) end },
-        { label = "Gold",    width = 140, sort = function(r) return r.c.copper or 0 end, text = function(r) return Coins(r.c.copper, true) end, right = true },
-        { label = "Guild",   width = 120, sort = function(r) return r.c.guild or "" end, text = function(r) return (r.c.guild or ""):match("^(.-)%-[^%-]+$") or "" end },
-        { label = "Updated", width = 70,  sort = function(r) return r.c.at or 0 end, text = function(r) return "|cff9d9d9d" .. Ago(r.c.at) .. "|r" end },
+        { label = "Name",    width = 110, sort = function(r) return r.c.name or "" end, text = function(r) return ClassName(r.c) end },
+        { label = "Realm",   width = 95,  sort = function(r) return r.c.realm or "" end, text = function(r) return r.c.realm or "" end },
+        { label = "Faction", width = 60,  sort = function(r) return r.c.faction or "" end, text = function(r) return FactionText(r.c.faction) end },
+        { label = "Bags",    width = 115, sort = function(r) return r.c.copper or 0 end, text = function(r) return Coins(r.c.copper, true) end, right = true },
+        { label = "Mail",    width = 80,  sort = function(r) return r.c.mail or 0 end, text = function(r) return CoinsOrDash(r.c.mail) end, right = true },
+        { label = "Total",   width = 115, sort = function(r) return CharGold(r.c) end, text = function(r) return Coins(CharGold(r.c), true) end, right = true },
+        { label = "Guild",   width = 85,  sort = function(r) return r.c.guild or "" end, text = function(r) return (r.c.guild or ""):match("^(.-)%-[^%-]+$") or "" end },
+        { label = "Updated", width = 65,  sort = function(r) return r.c.at or 0 end, text = function(r) return "|cff9d9d9d" .. Ago(r.c.at) .. "|r" end },
     },
     realms = {
         { label = "Realm",      width = 140, sort = function(r) return r.realm end, text = function(r) return r.realm end },
@@ -360,7 +479,7 @@ Refresh = function()
 
     local list = tab == "realms" and RealmRows() or tab == "guilds" and GuildRows() or CharacterRows()
     local cols = COLUMNS[tab]
-    local sortIndex = window.sort[tab] or (tab == "chars" and 4 or tab == "realms" and 6 or 3)
+    local sortIndex = window.sort[tab] or (tab == "chars" and 6 or tab == "realms" and 6 or 3)
     local desc = window.desc[tab]
     if desc == nil then desc = true end
     local key = cols[sortIndex] and cols[sortIndex].sort
@@ -451,9 +570,10 @@ Refresh = function()
     window.content:SetHeight(math.max(1, #list * ROW_H))
     window.empty:SetShown(#list == 0)
 
-    local personal, guild, warband, total = Totals()
-    window.totals:SetText((L["|cffffd100Characters|r %s    |cffffd100Guild banks|r %s    |cffffd100Warband bank|r %s%s\n|cffffd100Total|r %s"])
-        :format(Coins(personal, true), Coins(guild, true), Coins(warband, true),
+    local bags, bank, mail, guild, warband, total = Totals()
+    window.totals:SetText((L["|cffffd100Bags|r %s%s    |cffffd100Mail|r %s    |cffffd100Guild banks|r %s    |cffffd100Warband bank|r %s%s\n|cffffd100Total|r %s"])
+        :format(Coins(bags, true), bank > 0 and ("    |cffffd100" .. L["Bank"] .. "|r " .. Coins(bank, true)) or "",
+            Coins(mail, true), Coins(guild, true), Coins(warband, true),
             settings.stockWarbandInTotal ~= false and "" or L[" |cff9d9d9d(not in total)|r"], Coins(total, true)))
 end
 
@@ -476,25 +596,48 @@ local function JSONString(v)
     return '"' .. v .. '"'
 end
 
-local function ExportText(kind)
+-- Characters richest first, then the guild banks counted in the totals, then
+-- the warband bank. The search applies; the warband bank has no name to match,
+-- so it is left out while one is typed.
+local function ExportRows()
+    local rows = {}
     local list = CharacterRows()
-    table.sort(list, function(a, b) return (a.c.copper or 0) > (b.c.copper or 0) end)
+    table.sort(list, function(a, b) return CharGold(a.c) > CharGold(b.c) end)
+    for _, r in ipairs(list) do
+        local c = r.c
+        rows[#rows + 1] = { type = "character", name = c.name, realm = c.realm, faction = c.faction,
+            bags = c.copper, bank = c.bank, mail = c.mail, gold = CharGold(c), guild = c.guild, at = c.at }
+    end
+    for _, r in ipairs(GuildRows()) do
+        if not r.g.skip then
+            rows[#rows + 1] = { type = "guild", name = r.g.name, realm = r.g.realm, gold = r.g.copper, at = r.g.at }
+        end
+    end
+    local w = Stock().warband
+    if w.copper and Filter() == "" then
+        rows[#rows + 1] = { type = "warband", name = "Warband bank", gold = w.copper, at = w.at }
+    end
+    return rows
+end
+
+local function ExportText(kind)
+    local rows = ExportRows()
     local out = {}
     if kind == "json" then
         out[1] = "["
-        for i, r in ipairs(list) do
-            local c = r.c
-            out[#out + 1] = ('  {"name":%s,"realm":%s,"faction":%s,"gold":%s,"guild":%s,"updated":%d}%s'):format(
-                JSONString(c.name), JSONString(c.realm), JSONString(c.faction), Gold(c.copper),
-                JSONString(c.guild), c.at or 0, i < #list and "," or "")
+        for i, r in ipairs(rows) do
+            out[#out + 1] = ('  {"type":%s,"name":%s,"realm":%s,"faction":%s,"bags":%s,"bank":%s,"mail":%s,"gold":%s,"guild":%s,"updated":%d}%s'):format(
+                JSONString(r.type), JSONString(r.name), JSONString(r.realm), JSONString(r.faction),
+                Gold(r.bags), Gold(r.bank), Gold(r.mail), Gold(r.gold),
+                JSONString(r.guild), r.at or 0, i < #rows and "," or "")
         end
         out[#out + 1] = "]"
     else
-        out[1] = "Name,Realm,Faction,Gold,Guild,Updated"
-        for _, r in ipairs(list) do
-            local c = r.c
-            out[#out + 1] = table.concat({ CSVField(c.name), CSVField(c.realm), CSVField(c.faction),
-                Gold(c.copper), CSVField(c.guild), c.at and date("%Y-%m-%d %H:%M", c.at) or "" }, ",")
+        out[1] = "Type,Name,Realm,Faction,Bags,Bank,Mail,Gold,Guild,Updated"
+        for _, r in ipairs(rows) do
+            out[#out + 1] = table.concat({ r.type, CSVField(r.name), CSVField(r.realm), CSVField(r.faction),
+                Gold(r.bags), Gold(r.bank), Gold(r.mail), Gold(r.gold), CSVField(r.guild),
+                r.at and date("%Y-%m-%d %H:%M", r.at) or "" }, ",")
         end
     end
     return table.concat(out, "\n")
@@ -555,7 +698,7 @@ end
 local function BuildWindow()
     if window then return end
     local f = CreateFrame("Frame", "OxedHubGoldStockWindow", UIParent, "BasicFrameTemplate")
-    f:SetSize(690, 470)
+    f:SetSize(800, 470)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(150)
@@ -610,9 +753,13 @@ local function BuildWindow()
     scroll:SetPoint("TOPLEFT", 0, -2)
     scroll:SetPoint("BOTTOMRIGHT", -24, 2)
     local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(630, 1)
+    content:SetSize(740, 1)
     scroll:SetScrollChild(content)
     scroll:SetScript("OnSizeChanged", function(self, w) content:SetWidth(w) end)
+    -- The addon's own bar, which also gives the wheel.
+    if OxedHub.UIComponents and OxedHub.UIComponents.Scroll then
+        OxedHub.UIComponents.Scroll.StyleFrame(scroll)
+    end
     f.content = content
 
     f.empty = list:CreateFontString(nil, "OVERLAY", "GameFontDisable")
@@ -718,6 +865,10 @@ local function BuildWindow()
     end
 
     f:SetScript("OnShow", function()
+        -- Both lead back to Gold World Quests, so only while that module is on.
+        local trackerOn = OxedHub.ModuleAPI and OxedHub.ModuleAPI:IsModuleEnabled("goldwq") or false
+        tracker:SetShown(trackerOn)
+        mini:SetShown(trackerOn)
         ReadMe()
         ReadWarband()
         Refresh()
@@ -740,8 +891,20 @@ events:SetScript("OnEvent", function(_, event, arg1)
         ReadGuildBank()
     elseif event == "GUILDBANKFRAME_CLOSED" then
         guildBankOpen = false
-    elseif event == "ACCOUNT_MONEY" then
-        ReadWarband()
+    elseif event == "ACCOUNT_MONEY" or event == "BANKFRAME_OPENED" then
+        ReadWarband(true)
+    elseif event == "MAIL_SHOW" then
+        mailOpen = true
+        sending = nil
+        ReadMe()   -- makes sure this character has its row and key before the inbox arrives
+    elseif event == "MAIL_CLOSED" then
+        mailOpen = false
+    elseif event == "MAIL_INBOX_UPDATE" then
+        ReadMail()
+    elseif event == "MAIL_SEND_SUCCESS" then
+        MailDelivered()
+    elseif event == "MAIL_FAILED" or event == "SECURE_TRANSFER_CANCEL" then
+        sending = nil
     else
         ReadMe()
     end
@@ -750,8 +913,10 @@ end)
 
 local EVENTS = {
     "PLAYER_MONEY", "PLAYER_ENTERING_WORLD", "PLAYER_GUILD_UPDATE", "PLAYER_REGEN_ENABLED",
-    "ACCOUNT_MONEY", "GUILDBANK_UPDATE_MONEY", "GUILDBANKFRAME_OPENED", "GUILDBANKFRAME_CLOSED",
+    "ACCOUNT_MONEY", "BANKFRAME_OPENED", "GUILDBANK_UPDATE_MONEY", "GUILDBANKFRAME_OPENED", "GUILDBANKFRAME_CLOSED",
     "PLAYER_INTERACTION_MANAGER_FRAME_SHOW", "PLAYER_INTERACTION_MANAGER_FRAME_HIDE",
+    "MAIL_SHOW", "MAIL_CLOSED", "MAIL_INBOX_UPDATE",
+    "MAIL_SEND_SUCCESS", "MAIL_FAILED", "SECURE_TRANSFER_CANCEL",
 }
 
 function GoldStock:Start(config)
@@ -760,6 +925,7 @@ function GoldStock:Start(config)
     running = true
     Stock()
     for _, e in ipairs(EVENTS) do pcall(events.RegisterEvent, events, e) end
+    HookMail()
     C_Timer.After(2, function()
         ReadMe()
         ReadWarband()
@@ -768,49 +934,194 @@ end
 
 function GoldStock:Stop()
     running = false
+    mailOpen, guildBankOpen = false, false
+    sending = nil
     events:UnregisterAllEvents()
     if window then window:Hide() end
     if exportWindow then exportWindow:Hide() end
 end
 
+function GoldStock:IsRunning()
+    return running
+end
+
+local function SayOff()
+    print(PREFIX .. L["switched off. Turn it on in |cffffd100/ohub|r > Modules."])
+end
+
 function GoldStock:Show()
-    if not running then
-        print(PREFIX .. L["Gold World Quests is switched off."])
-        return
-    end
+    if not running then return SayOff() end
     BuildWindow()
     window:Show()
     window:Raise()
 end
 
 function GoldStock:Toggle()
-    if not running then
-        print(PREFIX .. L["Gold World Quests is switched off."])
-        return
-    end
+    if not running then return SayOff() end
     BuildWindow()
     window:SetShown(not window:IsShown())
 end
 
--- One line per character plus the totals, for /gwq gold in chat.
+-- One line per character plus the totals, for /goldstock list in chat.
 function GoldStock:PrintSummary()
-    if not running then return end
+    if not running then return SayOff() end
     ReadMe()
     ReadWarband()
     local list = CharacterRows()
-    table.sort(list, function(a, b) return (a.c.copper or 0) > (b.c.copper or 0) end)
+    table.sort(list, function(a, b) return CharGold(a.c) > CharGold(b.c) end)
     print(PREFIX .. L["gold on this account:"])
     for _, r in ipairs(list) do
-        print(("   %s-%s  %s"):format(ClassName(r.c), r.c.realm or "?", Coins(r.c.copper, true)))
+        print(("   %s-%s  %s"):format(ClassName(r.c), r.c.realm or "?", Coins(CharGold(r.c), true)))
     end
-    local personal, guild, warband, total = Totals()
-    print((L["   Characters %s, guild banks %s, warband bank %s. |cffffd100Total %s|r"])
-        :format(Coins(personal, true), Coins(guild, true), Coins(warband, true), Coins(total, true)))
+    local bags, bank, mail, guild, warband, total = Totals()
+    print((L["   Bags %s%s, mail %s, guild banks %s, warband bank %s. |cffffd100Total %s|r"])
+        :format(Coins(bags, true), bank > 0 and (L[", bank %s"]):format(Coins(bank, true)) or "",
+            Coins(mail, true), Coins(guild, true), Coins(warband, true), Coins(total, true)))
 end
 
 -- The amount for a tooltip line (the minimap button).
 function GoldStock:Total()
     if not settings then return 0 end
-    local _, _, _, total = Totals()
+    local _, _, _, _, _, total = Totals()
     return total
 end
+
+-- ── Options ─────────────────────────────────────────────────────────────────
+-- The window's own tick boxes stay in the window, beside what they change.
+
+local function ShowOptions()
+    local API = OxedHub.ModuleAPI
+    if not API or not settings then return end
+    if not optionsWindow then
+        local w = API:CreateOptionsWindow("Gold Stock", 460, 360)
+        optionsWindow = w
+
+        local open = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+        open:SetSize(170, 24)
+        open:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
+        open:SetText(L["Open Gold Stock"])
+        open:SetScript("OnClick", function()
+            w:Hide()
+            GoldStock:Show()
+        end)
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(open) end
+        local cmd = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        cmd:SetPoint("LEFT", open, "RIGHT", 10, 0)
+        cmd:SetText(L["or type /goldstock"])
+        w.cursorY = w.cursorY - 36
+
+        w:AddCheckbox(settings, "minimapButton", "Show minimap button", nil, function()
+            local icon = MinimapIcon()
+            if icon then icon:Apply(true) end
+        end)
+        w:AddNote("Bags: counted each time a character logs in. Mail: counted when that character opens a mailbox, and gold you mail to your own characters counts as soon as it is sent.")
+        w:AddNote("Guild banks: counted when one of your characters opens the bank, so the figure is from the last visit. The warband bank is read wherever you are.")
+        w:AddNote("A character's own bank cannot hold gold. The game keeps banked gold only in the warband and guild banks.")
+        w:AddNote("/goldstock list prints it all in chat.")
+        w:AddModuleLinks("Works together with", { "goldwq" })
+    end
+    optionsWindow:Show()
+end
+
+MinimapIcon = function()
+    if minimapIcon or not settings then return minimapIcon end
+    local API = OxedHub.ModuleAPI
+    minimapIcon = API and API.MinimapButton and API:MinimapButton({
+        key = "goldstock", label = L["Gold Stock"], icon = "Interface\\Icons\\INV_Misc_Coin_01", config = settings,
+        hint = L["Click: the window. Right-click: options."],
+        onClick = function(mouse)
+            if mouse == "RightButton" then ShowOptions() else GoldStock:Toggle() end
+        end,
+    })
+    return minimapIcon
+end
+
+SLASH_OXEDGOLDSTOCK1 = "/goldstock"
+SLASH_OXEDGOLDSTOCK2 = "/oxstock"
+SlashCmdList["OXEDGOLDSTOCK"] = function(msg)
+    msg = (msg or ""):lower():match("^%s*(.-)%s*$")
+    if msg == "list" then
+        GoldStock:PrintSummary()
+    elseif msg == "options" or msg == "config" then
+        ShowOptions()
+    else
+        GoldStock:Toggle()
+    end
+end
+
+-- ── Registration ────────────────────────────────────────────────────────────
+
+-- Up to 2.4.51 all of this lived in Gold World Quests' settings. Moved across
+-- once, so nobody loses the characters they have gathered. A player who was
+-- using it stays switched on: it did not ask to be turned on, it merely moved.
+local MOVED_KEYS = { "stock", "stockWarbandInTotal", "stockCombineFactions", "stockRoundDown", "stockMinGold" }
+
+local function BindSettings()
+    OxedHubDB = OxedHubDB or {}
+    OxedHubDB.modules = OxedHubDB.modules or {}
+    local config = OxedHubDB.modules.goldstock
+    if type(config) ~= "table" then
+        config = {}
+        OxedHubDB.modules.goldstock = config
+    end
+    local old = OxedHubDB.modules.goldwq
+    if not config.movedFromGoldWQ then
+        config.movedFromGoldWQ = true
+        if type(old) == "table" then
+            local inUse = old.enabled == true and type(old.stock) == "table"
+                and type(old.stock.chars) == "table" and next(old.stock.chars) ~= nil
+            for _, key in ipairs(MOVED_KEYS) do
+                if config[key] == nil then config[key] = old[key] end
+                old[key] = nil
+            end
+            if inUse then
+                config.enabled, config.playerSet, config.defaultOffSeen = true, true, true
+            end
+        end
+    end
+    for key, value in pairs(DEFAULTS) do
+        if config[key] == nil then config[key] = value end
+    end
+    settings = config
+end
+
+local loginFrame = CreateFrame("Frame")
+loginFrame:RegisterEvent("PLAYER_LOGIN")
+loginFrame:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_LOGIN")
+    BindSettings()
+
+    if not OxedHub.ModuleAPI then return end
+
+    OxedHub.ModuleAPI:Register({
+        id       = "goldstock",
+        name     = "Gold Stock",
+        version  = "1.0.2",
+        updated  = 20261102.9,  -- gold mailed to your own characters stays counted; warband bank keeps its figure at login
+        author   = "Oxed",
+        category = "items",
+        keywords = { "gold", "money", "stock", "alts", "guild bank", "warband", "bank", "mail", "export" },
+        -- Clipped at about 100 characters on the card; detail goes in Options.
+        desc     = "Gold on all your characters: bags, mail, guild banks and the warband bank. /goldstock",
+        icon     = "Interface\\Icons\\INV_Misc_Coin_01",
+
+        defaults = DEFAULTS,
+
+        OnOptionsShow = function() ShowOptions() end,
+        -- On the minimap button's right-click menu and as an Action Hub node.
+        quick = {
+            { text = L["Show or hide"], func = function() GoldStock:Toggle() end },
+        },
+
+        OnEnable = function(_, config)
+            GoldStock:Start(config)
+            local icon = MinimapIcon()
+            if icon then icon:Apply(true) end
+        end,
+
+        OnDisable = function()
+            GoldStock:Stop()
+            if minimapIcon then minimapIcon:Apply(false) end
+        end,
+    })
+end)

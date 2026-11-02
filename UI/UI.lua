@@ -1342,12 +1342,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.51)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.52)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.51")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.52")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
@@ -1373,13 +1373,13 @@ function UI:CreateDashboardTab()
         },
         sounds = {
             title = "OxedHub Sounds Pack",
-            url = "https://www.curseforge.com/wow/addons/oxedhub-sounds-pack",
+            url = OxedHub.PackMove.links.sounds.url,
             texture = "Interface\\AddOns\\OxedHub\\Media\\Textures\\logo\\OxedHub_SoundPack.png",
             global = "OxedHubSoundsPack",
         },
         animations = {
             title = "OxedHub Animations Pack",
-            url = "https://www.curseforge.com/wow/addons/oxedhub-animations-pack",
+            url = OxedHub.PackMove.links.animations.url,
             texture = "Interface\\AddOns\\OxedHub\\Media\\Textures\\logo\\OxedHub_animationPack.png",
             global = "OxedHubAnimationsPack",
         },
@@ -1528,23 +1528,11 @@ function UI:CreateDashboardTab()
     -- ───────────────────────────────────────────────────────────────
     -- CARD 0: SOUNDS AND ANIMATIONS MOVE TO THEIR OWN PACKS
     -- ───────────────────────────────────────────────────────────────
-    -- A countdown in days to the release that takes them out of OxedHub,
-    -- counted on the game's calendar (server date), not the computer's clock.
-    local PACK_DEADLINE = { year = 2026, month = 12, day = 1 }
+    -- A countdown in days to the release that takes them out of OxedHub.
+    -- The date and the count live in WhatsNew.lua, whose header shows them too.
+    local PACK_DEADLINE = OxedHub.PackMove.deadline
+    local DaysLeft = OxedHub.PackMove.DaysLeft
     local PACK_CARD_REST = 10 * 86400   -- "Got it, hide this" lasts ten days
-
-    local function DaysLeft()
-        local today
-        local cal = C_DateAndTime and C_DateAndTime.GetCurrentCalendarTime and C_DateAndTime.GetCurrentCalendarTime()
-        if cal and cal.year and cal.month and cal.monthDay then
-            today = time({ year = cal.year, month = cal.month, day = cal.monthDay, hour = 12 })
-        else
-            local d = date("*t")
-            today = time({ year = d.year, month = d.month, day = d.day, hour = 12 })
-        end
-        local due = time({ year = PACK_DEADLINE.year, month = PACK_DEADLINE.month, day = PACK_DEADLINE.day, hour = 12 })
-        return math.floor((due - today) / 86400 + 0.5)
-    end
 
     local packTitle = packsCard:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     packTitle:SetPoint("TOPLEFT", packsCard, "TOPLEFT", 55, -14)

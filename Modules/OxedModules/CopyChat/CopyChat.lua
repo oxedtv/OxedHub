@@ -370,26 +370,42 @@ local function PlaceAllButtons()
     for button, frame in pairs(allButtons) do PlaceButton(button, frame) end
 end
 
+local BUTTON_SIZE = 26   -- the same as the Chat Buttons module's
+
 -- One button on `frame`. `describe(tooltip)` fills the tooltip, `copy()` runs
 -- on click. Used for the game's chat windows and for Chattynator's alike.
 local function MakeButton(frame, name, describe, copy)
     local button = CreateFrame("Button", name, frame)
-    button:SetSize(18, 18)
+    button:SetSize(BUTTON_SIZE, BUTTON_SIZE)
     button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     button:EnableMouse(true)
     -- Above the chat text, or the frame swallows the click.
     button:SetFrameStrata("HIGH")
     button:SetFrameLevel((frame:GetFrameLevel() or 1) + 10)
 
-    -- An atlas that is not in this build leaves an invisible button, which
-    -- looks exactly like a broken one. A plain texture is used if the atlas
-    -- does not take.
-    local ok = pcall(button.SetNormalAtlas, button, "poi-workorders")
-    if not ok or not button:GetNormalTexture() then
-        button:SetNormalTexture("Interface\\Buttons\\UI-GuildButton-PublicNote-Up")
+    -- Round, like the Chat Buttons module's: a dark disc, the icon, the minimap's
+    -- border. That border's art sits in the top-left of its file.
+    local disc = button:CreateTexture(nil, "BACKGROUND")
+    disc:SetAllPoints()
+    disc:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    disc:SetVertexColor(0, 0, 0, 0.7)
+
+    -- An atlas that is not in this build leaves an empty disc, which looks
+    -- exactly like a broken button. A plain texture is used if the atlas does
+    -- not take.
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("TOPLEFT", 4, -4)
+    icon:SetPoint("BOTTOMRIGHT", -4, 4)
+    local ok = pcall(icon.SetAtlas, icon, "poi-workorders")
+    if not ok or not icon:GetAtlas() then
+        icon:SetTexture("Interface\\Buttons\\UI-GuildButton-PublicNote-Up")
     end
-    pcall(button.SetHighlightTexture, button, "Interface\\Buttons\\UI-Common-MouseHilight")
-    button:SetAlpha(0.8)
+
+    local border = button:CreateTexture(nil, "OVERLAY")
+    border:SetSize(BUTTON_SIZE * 54 / 32, BUTTON_SIZE * 54 / 32)
+    border:SetPoint("TOPLEFT", 0, 0)
+    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    pcall(button.SetHighlightTexture, button, "Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 
     -- The bottom right corner by default: the one part of a chat window that is
     -- never text. The player can move it from Options.
@@ -426,11 +442,9 @@ local function MakeButton(frame, name, describe, copy)
             GameTooltip:AddLine(L["Unlocked: drag to move. Lock it again in Options."], 1, 0.82, 0, true)
         end
         GameTooltip:Show()
-        self:SetAlpha(1)
     end)
     button:SetScript("OnLeave", function(self)
         GameTooltip:Hide()
-        self:SetAlpha(0.65)
     end)
     button:SetScript("OnClick", function(self)
         -- Letting go after a drag also counts as a click; that one only moved it.
@@ -629,7 +643,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "copychat",
         name     = "Copy Chat",
-        version  = "1.1.0",
+        version  = "1.2.0",
+        updated  = 20261102.99,  -- a round button, like Chat Buttons
         author   = "Oxed",
         category = "chat",
         keywords = { "copy", "chat", "text", "clipboard", "chattynator" },

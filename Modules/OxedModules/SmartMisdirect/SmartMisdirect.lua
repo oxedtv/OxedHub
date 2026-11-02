@@ -11,7 +11,7 @@ local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer
 
 -- ── Default Settings ────────────────────────────────────────────────────────
 local DEFAULTS = {
-    enabled         = true,
+    enabled         = false,
     announceTarget  = false,
     prioritizeFocus = true,
     includePet      = true,    -- Fallback to Hunter pet when solo or no tank
@@ -25,6 +25,7 @@ local TRICKS_OF_THE_TRADE_ID = 57934  -- Rogue
 
 local settings
 local optionsWindow
+local enableBox           -- the options window's Enable tick box
 local secureButtons = {}
 local updateQueued = false
 local currentTarget = nil
@@ -88,6 +89,38 @@ end
 
 -- ── Secure Action Buttons ───────────────────────────────────────────────────
 
+-- ⚠ A plain "/click" arrives as a key release, and with pressAndHoldAction set
+-- a release reads "typerelease", not "type". Clearing only "type" left the spell
+-- armed with no unit: the game then cast it at whatever it liked, or put up the
+-- targeting cursor. Always set or clear the two together.
+local function PointButton(btn, unit)
+    local action = unit and "spell" or nil
+    btn:SetAttribute("type", action)
+    btn:SetAttribute("typerelease", action)
+    btn:SetAttribute("unit", unit)
+end
+
+-- "cannot tell" counts as there: UnitExists can answer with a secret in combat.
+local function UnitIsGone(unit)
+    local ok, exists = pcall(UnitExists, unit)
+    if not ok or (issecretvalue and issecretvalue(exists)) then return false end
+    return not exists
+end
+
+-- Pressing the macro with nobody to cast on otherwise does nothing at all, which
+-- looks exactly like a broken macro. Runs after the last button of the macro.
+local lastNoTargetSay = 0
+local function SayIfNoTarget()
+    for _, btn in ipairs(secureButtons) do
+        local unit = btn:GetAttribute("unit")
+        if unit and not UnitIsGone(unit) then return end
+    end
+    local now = GetTime()
+    if now - lastNoTargetSay < 5 then return end
+    lastNoTargetSay = now
+    print(L["|cff0091edSmartMD:|r |cffff5555No valid target found|r"])
+end
+
 local function CreateSecureButtons()
     if not IsEligibleClass() then return end
     if #secureButtons > 0 then return end
@@ -111,6 +144,7 @@ local function CreateSecureButtons()
         btn:RegisterForClicks("LeftButtonDown", "LeftButtonUp")
         secureButtons[i] = btn
     end
+    secureButtons[2]:SetScript("PostClick", SayIfNoTarget)
 end
 
 -- ── Target Resolution ───────────────────────────────────────────────────────
@@ -218,11 +252,12 @@ local function GetTargets()
         push(tank)
     end
 
-    -- 3. Pet fallback (Hunters only)
+    -- 3. Pet fallback (Hunters only). Named whether or not the pet is out right
+    -- now: the buttons can only change out of combat, so one called later (or
+    -- slower than the login check) would otherwise find the macro empty. The
+    -- game skips the button by itself while there is no pet.
     if IsHunter() and settings.includePet and #out == 0 then
-        if UnitExists("pet") then
-            push("pet")
-        end
+        push("pet")
     end
 
     return out
@@ -265,14 +300,7 @@ local function ProcessQueuedUpdate()
     wasMounted = mounted
 
     for i, btn in ipairs(secureButtons) do
-        local t = targets[i]
-        if t then
-            btn:SetAttribute("type", "spell")
-            btn:SetAttribute("unit", t)
-        else
-            btn:SetAttribute("type", nil)
-            btn:SetAttribute("unit", nil)
-        end
+        PointButton(btn, targets[i])
     end
 end
 
@@ -288,13 +316,38 @@ local function ClearButtons()
         return
     end
     for _, btn in ipairs(secureButtons) do
-        btn:SetAttribute("type", nil)
-        btn:SetAttribute("unit", nil)
+        PointButton(btn, nil)
     end
     currentTarget = nil
 end
 
 -- ── Macro Generation ────────────────────────────────────────────────────────
+
+local CLICK_LINES = "/click OxedHub_SmartMisdirectButton1\n/click OxedHub_SmartMisdirectButton2"
+
+-- #showtooltip has to name the spell. With only /click lines the game does not
+-- know what the macro casts, so the icon on the bar never shows a cooldown.
+local function MacroBody()
+    return "#showtooltip " .. GetActiveSpellName() .. "\n" .. CLICK_LINES
+end
+
+local function MacroNameAndIcon()
+    if IsHunter() then return "SmartMD", 132180 end  -- Misdirection icon
+    return "SmartTotT", 236283                       -- Tricks icon
+end
+
+-- A macro made by an earlier version keeps its old body until something rewrites
+-- it. Only ever the exact body we wrote: a macro the player edited stays theirs.
+local function RefreshOldMacro()
+    if InCombatLockdown() then return end
+    local macroName, icon = MacroNameAndIcon()
+    local index = GetMacroIndexByName(macroName)
+    if not index or index <= 0 then return end
+    local body = GetMacroBody(index)
+    if type(body) == "string" and body:gsub("%s+$", "") == "#showtooltip\n" .. CLICK_LINES then
+        EditMacro(index, macroName, icon, MacroBody())
+    end
+end
 
 local function CreateOrUpdateMacro()
     if not IsEligibleClass() then
@@ -306,13 +359,19 @@ local function CreateOrUpdateMacro()
         return nil
     end
 
+    -- The player asked for the macro, and while the module is off the buttons it
+    -- clicks are empty, and after a reload do not exist at all.
+    if settings and not settings.enabled and OxedHub.ModuleAPI then
+        OxedHub.ModuleAPI:SetModuleEnabled("smartmisdirect", true)
+        if enableBox then enableBox.Refresh() end
+        print(L["|cff0091edSmartMD:|r Smart Misdirect was off, so it is now switched on."])
+    end
+
     CreateSecureButtons()
     QueueUpdate()
 
-    local hunter = IsHunter()
-    local macroName = hunter and "SmartMD" or "SmartTotT"
-    local icon      = hunter and 132180 or 236283  -- Misdirection / Tricks icon
-    local body      = "#showtooltip\n/click OxedHub_SmartMisdirectButton1\n/click OxedHub_SmartMisdirectButton2"
+    local macroName, icon = MacroNameAndIcon()
+    local body = MacroBody()
 
     local existing = GetMacroIndexByName(macroName)
     if not existing or existing <= 0 then
@@ -376,7 +435,10 @@ local function StartModule()
     if not IsEligibleClass() then return end
     CreateSecureButtons()
     SetupEvents()
-    C_Timer.After(1, function() QueueUpdate() end)
+    C_Timer.After(1, function()
+        QueueUpdate()
+        RefreshOldMacro()
+    end)
 end
 
 local function StopModule()
@@ -433,8 +495,10 @@ local function ShowOptions()
         w.cursorY = w.cursorY - 34
 
         -- Settings Toggles
-        w:AddCheckbox(settings, "enabled", "Enable Smart Misdirect", "Activates secure action buttons and automatic retargeting.", function(val)
-            if val then QueueUpdate() else ClearButtons() end
+        -- Through the same switch as the card: on its own this tick box never
+        -- started the event watcher, and the card went on saying Disabled.
+        enableBox = w:AddCheckbox(settings, "enabled", "Enable Smart Misdirect", "Activates secure action buttons and automatic retargeting.", function(val)
+            API:SetModuleEnabled("smartmisdirect", val)
         end)
 
         w:AddCheckbox(settings, "announceTarget", "Announce target changes in chat", "Prints target updates in chat window when group changes.")
@@ -550,8 +614,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "smartmisdirect",
         name     = "Smart Misdirect",
-        version  = "1.0.0",
-        updated  = 20261013.9,
+        version  = "1.0.1",
+        updated  = 20261102.4,  -- macro shows the cooldown; an empty button no longer casts at random
         author   = "Oxed",
         category = "combat",
         keywords = { "smartmisdirect", "misdirection", "tricks", "tank", "focus", "hunter", "rogue", "md", "threat" },

@@ -60,6 +60,7 @@ button, and the page can be searched and filtered by category.
 - **Heartbeat** — a heartbeat in combat that speeds up at low health, and a flatline when you die.
 - **KickBar** — an interrupt alert on the enemy's nameplate or a floating icon, with a timer and an almost-ready preview.
 - **Markers** — raid marks, world flares, a ready check and a pull timer on screen (`/oxmark`).
+- **Target Marker** — a marker on your target's nameplate in thirteen styles, from arrows to a glow or a crosshair (`/oxtarget`).
 - **Smart Misdirect** — Misdirection and Tricks of the Trade on the right target with one button.
 - **Threat Bar** — a threat bar under every enemy nameplate, glowing as you close in (`/oxthreat`).
 - **Trinket Ready** — a sound and a movable alert the moment an on-use trinket is ready again.
@@ -85,6 +86,7 @@ button, and the page can be searched and filtered by category.
 - **Flight Timer** — a timer bar on flight paths, with a sound before you land (`/oxflight`).
 - **Gold World Quests** — gold world quests, special assignments and weekly caches in Midnight.
 - **WQ Achievements** — world quests up now that count toward achievements, mounts, pets or toys you still need.
+- **Game Events** — today's and upcoming game events from the calendar, with Wowhead links (`/oxevents`).
 - **Prey Hunt** — the hunt's stages as a bar, ambush and kill sounds, and achievement marks at Astalor.
 - **Quest Item Alert** — names the quest an item starts before you delete it, and whether you did it.
 
@@ -99,6 +101,7 @@ button, and the page can be searched and filtered by category.
 - **Durability** — gear durability on screen, the worst slots, repair cost, and a reminder before a dungeon.
 - **Item Tooltips** — IDs, collection status and counts across your characters in tooltips.
 - **Mail** — Open All, return, forward, an address book and attaching from bags (`/oxmail`).
+- **Gold Stock** — gold on all your characters: bags, mail, guild banks and the warband bank, with totals and export (`/goldstock`).
 
 ### Character & UI
 
@@ -108,6 +111,7 @@ button, and the page can be searched and filtered by category.
 - **Experience Bar** — an experience bar with quest XP, rested bonus and levelling rate (`/oxexp`).
 - **AddOn Manager** — addons grouped and searchable, switched per character, with saved sets (`/oxaddons`).
 - **Frame Mover** — drag the game's windows anywhere, and they open there again (`/oxmove`).
+- **Keep Open** — opening a game window no longer closes the others (`/keepopen`).
 - **Minimap Buttons** — every addon's minimap button in one drawer.
 - **Missing Gems** — marks gear with empty sockets and reminds you before a dungeon.
 - **Camera** — ActionCam settings in a window: tilt, over the shoulder, target focus, field of view.
