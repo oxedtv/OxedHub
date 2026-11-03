@@ -1342,12 +1342,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.53)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.54)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.53")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.54")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
@@ -3726,6 +3726,14 @@ function UI:CreateModulesTab()
     local desc = header:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
     desc:SetText(L["MODULES_DESC"] or "Modules are a new feature of OxedHub, and we're currently testing them live.")
+
+    local shareAll = CreateFrame("Button", nil, header, "UIPanelButtonTemplate")
+    shareAll:SetSize(150, 24)
+    shareAll:SetPoint("TOPRIGHT", header, "TOPRIGHT", -16, -48)
+    shareAll:SetText(L["Share all modules"])
+    shareAll:SetScript("OnClick", function()
+        if OxedHub.Share then OxedHub.Share:ShowModuleShare(nil) end
+    end)
     
     tab.scrollFrame = scrollFrame
     tab.scrollChild = scrollChild
@@ -6853,6 +6861,10 @@ function UI:DescribeEnvelope(env)
         return string.format(L["%d ActionHub(s)"], #hubs)
     elseif scope == "module" then
         return L["Module settings: |cff88ff88"] .. tostring(p.moduleName or p.moduleId or "?") .. "|r"
+    elseif scope == "modules" then
+        local n = 0
+        for _ in pairs(p.modules or {}) do n = n + 1 end
+        return string.format(L["Settings of %d module(s)"], n)
     end
     return L["Unknown scope"]
 end
@@ -7525,6 +7537,48 @@ function UI:GetImportDetails(data)
                         table.insert(rows, { (entry.changed and "|cffffd100" or "|cff888888") .. entry.key .. "|r", shown })
                     end
                 end
+            elseif scope == "modules" then
+                -- Only what would change, or the list runs to thousands of rows.
+                local API = OxedHub.ModuleAPI
+                for _, entry in ipairs(API:DescribeSharedSwitches(p)) do
+                    table.insert(rows, { "|cffff8800" .. entry.name .. "|r",
+                        entry.on and L["switches on"] or L["switches off"] })
+                end
+                local ids = {}
+                for id in pairs(p.modules or {}) do
+                    if type(id) == "string" then ids[#ids + 1] = id end
+                end
+                table.sort(ids)
+                for _, id in ipairs(ids) do
+                    local shared = p.modules[id]
+                    local list, mod = nil, nil
+                    if type(shared) == "table" and shared.moduleId == id then
+                        list, mod = API:DescribeSharedSettings(shared)
+                    end
+                    if not list then
+                        table.insert(rows, { "|cff888888" .. id .. "|r", L["|cffff4444You do not have this module.|r"] })
+                    else
+                        local changed = {}
+                        for _, entry in ipairs(list) do
+                            if entry.changed then changed[#changed + 1] = entry end
+                        end
+                        if #changed > 0 then
+                            table.insert(rows, { "|cff88ff88" .. tostring(mod.name or id) .. "|r", "" })
+                        end
+                        for _, entry in ipairs(changed) do
+                            local shown
+                            if type(entry.value) == "table" then
+                                local n = 0
+                                for _ in pairs(entry.value) do n = n + 1 end
+                                shown = string.format(L["list of %d"], n)
+                            else
+                                -- Doubled bars: shown as text, never as colour or link codes.
+                                shown = tostring(entry.value):gsub("|", "||"):sub(1, 80)
+                            end
+                            table.insert(rows, { "   |cffffd100" .. entry.key .. "|r", shown })
+                        end
+                    end
+                end
             end
         end
 
@@ -7779,6 +7833,9 @@ function UI:ShowImportConfirm(data, onImported)
         -- Modules are account-wide, not in a profile, so there is no target.
         targetText = L["|cffffd100Replaces these settings of the module.|r Whether it is switched on stays as it is.\n|cff888888Undo is in the module's Share window.|r"]
         f.newProfileBtn:Hide()
+    elseif data.formatVersion == 3 and data.scope == "modules" then
+        targetText = L["|cffffd100Replaces the settings of these modules.|r Your triggers and profiles are not touched.\n|cff888888Undo is in the Share all modules window.|r"]
+        f.newProfileBtn:Hide()
     elseif isPartial then
         -- Partial data merges into a profile you pick, so overwriting is real.
         targetText = L["|cffffd100Imports into:|r "] .. target
@@ -7955,6 +8012,10 @@ function UI:SerializeScoped(scope, opts)
     elseif scope == "module" then
         local shared = OxedHub.ModuleAPI:BuildSharePayload(opts.moduleId)
         if not shared then return nil, L["This module has no settings to share."] end
+        envelope.payload = shared
+    elseif scope == "modules" then
+        local shared = OxedHub.ModuleAPI:BuildShareAllPayload(opts.includeEnabled)
+        if not shared then return nil, L["No modules have settings to share."] end
         envelope.payload = shared
     else
         return nil, L["Unknown export scope: "] .. tostring(scope)
@@ -8815,6 +8876,17 @@ function UI:ApplyScopedImport(env)
         if ok then
             print(string.format(L["|cff00ff00Oxed Hub:|r Imported %d setting(s) into |cffffff00%s|r from |cffffff00%s|r."],
                 result, tostring(payload.moduleName or payload.moduleId), self:FormatAuthorName(author)))
+        else
+            print("|cffff0000Oxed Hub:|r " .. tostring(result))
+        end
+        return
+    end
+
+    if scope == "modules" then
+        local ok, result, skipped = OxedHub.ModuleAPI:ApplyAllSharedSettings(payload)
+        if ok then
+            print(string.format(L["|cff00ff00Oxed Hub:|r Imported the settings of %d module(s), skipped %d, from |cffffff00%s|r."],
+                result, skipped, self:FormatAuthorName(author)))
         else
             print("|cffff0000Oxed Hub:|r " .. tostring(result))
         end

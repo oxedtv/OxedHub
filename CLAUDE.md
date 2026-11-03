@@ -360,3 +360,7 @@ history), so `ShareableKey` in `Core\ModuleAPI.lua` shares plain values but a
 **table only when listed** in `SHARE_TABLES` or the module's own `shareTables`.
 A new list worth sharing must be added there; never list anything naming players.
 `enabled` is never imported, and the filter runs again on the receiving end.
+
+"Share all modules" on the Modules page opens the same window with no module and
+uses scope `modules`: the same filter per module, no chat button. On/off travels
+only if the exporter ticks it, and the confirmation lists every module it switches.

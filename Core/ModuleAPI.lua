@@ -865,6 +865,87 @@ function ModuleAPI:UndoSharedImport(id)
     return true
 end
 
+-- Every module at once, for moving to another account. The same filter applies
+-- as for one module; which ones are on travels only if the player ticks it.
+function ModuleAPI:BuildShareAllPayload(includeEnabled)
+    local modules = {}
+    for id in pairs(self.modules) do
+        modules[id] = self:BuildSharePayload(id)
+    end
+    if not next(modules) then return nil end
+    local payload = { modules = modules }
+    if includeEnabled then
+        payload.enabled = {}
+        for id in pairs(self.modules) do
+            payload.enabled[id] = self:IsModuleEnabled(id)
+        end
+    end
+    return payload
+end
+
+-- Which modules an all-modules string would switch, as { id, name, on }.
+function ModuleAPI:DescribeSharedSwitches(payload)
+    local out = {}
+    if type(payload.enabled) ~= "table" then return out end
+    for id, on in pairs(payload.enabled) do
+        local mod = self.modules[id]
+        if mod and type(on) == "boolean" and self:IsModuleEnabled(id) ~= on then
+            out[#out + 1] = { id = id, name = tostring(mod.name or id), on = on }
+        end
+    end
+    table.sort(out, function(a, b) return a.name < b.name end)
+    return out
+end
+
+-- Modules this client does not have are skipped and counted. What was replaced
+-- is noted, so that Undo takes back this import and not an older one.
+function ModuleAPI:ApplyAllSharedSettings(payload)
+    if type(payload.modules) ~= "table" then return false, L["Invalid import string."] end
+    if InCombatLockdown() then return false, L["Cannot import in combat."] end
+
+    local undo = { ids = {}, enabled = {} }
+    local skipped = 0
+    for id, shared in pairs(payload.modules) do
+        if self.modules[id] and type(shared) == "table" and shared.moduleId == id
+            and self:ApplySharedSettings(shared) then
+            undo.ids[#undo.ids + 1] = id
+        else
+            skipped = skipped + 1
+        end
+    end
+
+    self.switchingAll = true
+    for _, entry in ipairs(self:DescribeSharedSwitches(payload)) do
+        undo.enabled[entry.id] = not entry.on
+        self:SetModuleEnabled(entry.id, entry.on)
+    end
+    self.switchingAll = false
+    OxedHubDB.moduleImportAll = undo
+    self:RefreshModulesTab()
+    return true, #undo.ids, skipped
+end
+
+function ModuleAPI:HasAllImportBackup()
+    return OxedHubDB and OxedHubDB.moduleImportAll ~= nil
+end
+
+function ModuleAPI:UndoAllSharedImport()
+    local undo = OxedHubDB.moduleImportAll
+    if not undo then return false end
+    if InCombatLockdown() then return false, L["Cannot import in combat."] end
+    for _, id in ipairs(undo.ids or {}) do
+        self:UndoSharedImport(id)
+    end
+    self.switchingAll = true
+    for id, on in pairs(undo.enabled or {}) do
+        if self.modules[id] then self:SetModuleEnabled(id, on) end
+    end
+    self.switchingAll = false
+    OxedHubDB.moduleImportAll = nil
+    self:RefreshModulesTab()
+    return true
+end
+
 function ModuleAPI:RestartAfterImport(mod, config)
     if config.enabled ~= false then
         for _, handler in ipairs({ mod.OnDisable or false, mod.OnEnable or false }) do

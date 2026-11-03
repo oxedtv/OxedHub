@@ -344,17 +344,26 @@ end
 -- ---------------------------------------------------------------------------
 
 function Share:FillModuleShare(f)
-    local text, err = OxedHub.UI:BuildScopedExportString("module", { moduleId = f.mod.id })
+    local API = OxedHub.ModuleAPI
+    local text, err, canUndo
+    if f.mod then
+        text, err = OxedHub.UI:BuildScopedExportString("module", { moduleId = f.mod.id })
+        canUndo = API:HasImportBackup(f.mod.id)
+    else
+        text, err = OxedHub.UI:BuildScopedExportString("modules", { includeEnabled = f.enabledCheck:GetChecked() })
+        canUndo = API:HasAllImportBackup()
+    end
     f.editBox:SetText(text or "")
     f.status:SetText(text and "" or ("|cffff4444" .. tostring(err) .. "|r"))
     f.chatBtn:SetEnabled(text ~= nil)
-    f.undoBtn:SetEnabled(OxedHub.ModuleAPI:HasImportBackup(f.mod.id) and true or false)
+    f.undoBtn:SetEnabled(canUndo and true or false)
     if text then
         f.editBox:SetFocus()
         f.editBox:HighlightText()
     end
 end
 
+-- With no module it shares all of them, for moving to another account.
 function Share:ShowModuleShare(mod)
     local f = self.moduleWindow
     if not f then
@@ -377,7 +386,7 @@ function Share:ShowModuleShare(mod)
         note:SetPoint("TOPLEFT", 16, -32)
         note:SetPoint("TOPRIGHT", -16, -32)
         note:SetJustifyH("LEFT")
-        note:SetText(L["Press Ctrl+C to copy. To import, paste a string here with Ctrl+V and press Import. Lists of characters, history and whether the module is on are never included."])
+        f.note = note
 
         local box = CreateFrame("Frame", nil, f, "BackdropTemplate")
         box:SetPoint("TOPLEFT", 14, -62)
@@ -400,8 +409,10 @@ function Share:ShowModuleShare(mod)
         edit:SetMultiLine(true)
         edit:SetFontObject("ChatFontNormal")
         edit:SetWidth(390)
-        edit:SetMaxLetters(0)
         edit:SetMaxBytes(0)
+        -- A real number, as the import box in UI.lua uses: with 0 here the box
+        -- held a single character.
+        edit:SetMaxLetters(999999)
         edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
         scroll:SetScrollChild(edit)
         box:EnableMouse(true)
@@ -434,7 +445,13 @@ function Share:ShowModuleShare(mod)
         f.undoBtn = NewButton(L["Undo import"], 100)
         f.undoBtn:SetPoint("LEFT", copyBtn, "RIGHT", 6, 0)
         f.undoBtn:SetScript("OnClick", function()
-            local ok, err = OxedHub.ModuleAPI:UndoSharedImport(f.mod.id)
+            local API = OxedHub.ModuleAPI
+            local ok, err
+            if f.mod then
+                ok, err = API:UndoSharedImport(f.mod.id)
+            else
+                ok, err = API:UndoAllSharedImport()
+            end
             if not ok and err then Print("|cffff4444" .. tostring(err) .. "|r") end
             Share:FillModuleShare(f)
         end)
@@ -453,11 +470,33 @@ function Share:ShowModuleShare(mod)
             OxedHub.UI:ShowImportConfirm(data, function() f:Hide() end)
         end)
 
+        -- Takes the chat button's place when sharing all modules: a whole
+        -- account's settings are for moving, not for posting to a channel.
+        local enabledCheck = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+        enabledCheck:SetSize(24, 24)
+        enabledCheck:SetPoint("BOTTOMLEFT", 14, 16)
+        local enabledText = enabledCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        enabledText:SetPoint("LEFT", enabledCheck, "RIGHT", 2, 0)
+        enabledText:SetText(L["Include on/off"])
+        enabledCheck:SetScript("OnClick", function() Share:FillModuleShare(f) end)
+        f.enabledCheck = enabledCheck
+
         self.moduleWindow = f
     end
 
     f.mod = mod
-    if f.TitleText then f.TitleText:SetText(L["Share: "] .. tostring(mod.name or mod.id)) end
+    if mod then
+        f.note:SetText(L["Press Ctrl+C to copy. To import, paste a string here with Ctrl+V and press Import. Lists of characters, history and whether the module is on are never included."])
+        f.chatBtn:Show()
+        f.enabledCheck:Hide()
+    else
+        f.note:SetText(L["Press Ctrl+C to copy, then paste on the other account and press Import. Lists of characters and history are never included."])
+        f.chatBtn:Hide()
+        f.enabledCheck:Show()
+    end
+    if f.TitleText then
+        f.TitleText:SetText(mod and (L["Share: "] .. tostring(mod.name or mod.id)) or L["Share all modules"])
+    end
     f:Show()
     f:Raise()
     self:FillModuleShare(f)

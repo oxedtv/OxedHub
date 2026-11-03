@@ -61,6 +61,14 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.54",
+        important = true,
+        lines = {
+            { "NEW", "Share all modules button on the Modules page: copy the settings of every module as one string and import them on another account. Tick Include on/off to bring along which modules are switched on. Undo import puts yours back." },
+            { "FIXED", "The Share window's text box held only one character, so strings could not be copied or pasted." },
+        },
+    },
+    {
         version = "2.4.53",
         important = true,
         lines = {
