@@ -61,6 +61,15 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.53",
+        important = true,
+        lines = {
+            { "NEW", "Share button on every built-in module's card: copy that module's settings as a string, or send them to chat as a link. Import shows every setting before it is applied, and Undo import puts yours back." },
+            { "CHANGED", "A shared string carries a module's settings only: never whether it is on, and never private lists such as whispers, mail contacts or Auto Vendor's items." },
+            { "FIXED", "Share links in chat: fixed an error from secret chat text in a fight, sending and receiving on the current game version, and clicking your own link in a whisper." },
+        },
+    },
+    {
         version = "2.4.52",
         important = true,
         lines = {

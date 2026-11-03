@@ -683,6 +683,206 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
     return f
 end
 
+-- ── Sharing a module's settings ─────────────────────────────────────────────
+-- A module's saved table also holds things that are not settings at all: other
+-- players' whispers, mail contacts, what every alt carries, run history. So a
+-- plain value is shared unless named below, and a table only when listed here
+-- (or in the module's own shareTables = { "key" }). Colours are always fine.
+-- The same filter runs on both ends: a string is never trusted to contain only
+-- what our own export would have put in it.
+local SHARE_TABLES = {
+    addonmanager = { sets = true },
+    attributes = { statTargets = true, hudStats = true },
+    autoqueue = { roles = true, eyePoint = true, queuePoint = true },
+    bosstimers = { abilities = true, colours = true },
+    bufficons = { spells = true },
+    buffreminder = { customBuffs = true },
+    chatfilter = { filters = true },
+    currencies = { goals = true, tracked = true },
+    cursor = { themeSettings = true },
+    framemover = { positions = true, scales = true },
+    goldwq = { ui = true, disabledCaches = true },
+    memedon = { keywords = true, keywordConfig = true, spellTriggers = true,
+        spellConfig = true, messageExclusions = true },
+    minimapbuttons = { ignore = true, include = true },
+    playerframe = { offsets = true },
+    teleports = { hidden = true },
+    unitframes = { offsets = true },
+    wqachievements = { skipZones = true },
+}
+
+-- Whether a module runs is the player's own choice, never an import's.
+local SHARE_NEVER = {
+    enabled = true, playerSet = true, defaultOffSeen = true, minimap = true,
+    manualName = true,   -- a character's name, in Smart Misdirect
+}
+
+local MAX_SHARE_DEPTH = 10
+
+local function CopyPlain(value, depth)
+    local kind = type(value)
+    if kind == "string" or kind == "number" or kind == "boolean" then return value end
+    if kind ~= "table" or depth > MAX_SHARE_DEPTH then return nil end
+    local out = {}
+    for k, v in pairs(value) do
+        local keyKind = type(k)
+        if keyKind == "string" or keyKind == "number" then
+            out[k] = CopyPlain(v, depth + 1)
+        end
+    end
+    return out
+end
+
+local function IsColour(value)
+    if #value < 3 or #value > 4 then return false end
+    for k, v in pairs(value) do
+        if type(k) ~= "number" or type(v) ~= "number" then return false end
+    end
+    return true
+end
+
+-- Empties and refills dst rather than swapping it: modules hold on to their
+-- tables, a colour swatch for one, and would go on using the old one.
+local function Overwrite(dst, src)
+    for k in pairs(dst) do
+        if src[k] == nil then dst[k] = nil end
+    end
+    for k, v in pairs(src) do
+        if type(v) == "table" then
+            if type(dst[k]) ~= "table" then dst[k] = {} end
+            Overwrite(dst[k], v)
+        else
+            dst[k] = v
+        end
+    end
+end
+
+local function ShareableKey(mod, key, value)
+    if type(key) ~= "string" or SHARE_NEVER[key] or key:find("^last") then return false end
+    if type(value) ~= "table" then return true end
+    if IsColour(value) then return true end
+    local listed = SHARE_TABLES[tostring(mod.id):lower()]
+    if listed and listed[key] then return true end
+    if type(mod.shareTables) == "table" then
+        for _, name in ipairs(mod.shareTables) do
+            if name == key then return true end
+        end
+    end
+    return false
+end
+
+local function FilterSettings(mod, source)
+    local out = {}
+    for key, value in pairs(source) do
+        if ShareableKey(mod, key, value) then
+            -- A setting of the wrong kind would break the module that reads it.
+            local default = mod.defaults and mod.defaults[key]
+            if default == nil or type(default) == type(value) then
+                out[key] = CopyPlain(value, 1)
+            end
+        end
+    end
+    return out
+end
+
+function ModuleAPI:BuildSharePayload(id)
+    local mod = self.modules[id]
+    local config = OxedHubDB and OxedHubDB.modules and OxedHubDB.modules[id]
+    if not (mod and type(config) == "table") then return nil end
+    local settings = FilterSettings(mod, config)
+    if not next(settings) then return nil end
+    return { moduleId = id, moduleName = mod.name, moduleVersion = mod.version, settings = settings }
+end
+
+-- What an incoming string would change, for the confirmation window: a sorted
+-- list of { key, value, changed }. Nil when this client has no such module.
+function ModuleAPI:DescribeSharedSettings(payload)
+    local mod = type(payload) == "table" and self.modules[payload.moduleId]
+    local config = mod and OxedHubDB.modules and OxedHubDB.modules[payload.moduleId]
+    if not (config and type(payload.settings) == "table") then return nil end
+    local out = {}
+    for key, value in pairs(FilterSettings(mod, payload.settings)) do
+        local changed = type(value) == "table" or config[key] ~= value
+        out[#out + 1] = { key = key, value = value, changed = changed }
+    end
+    table.sort(out, function(a, b) return a.key < b.key end)
+    return out, mod
+end
+
+-- Writes the settings over this module's, keeping the ones replaced so that one
+-- import can be taken back. A module that is running restarts to pick them up.
+function ModuleAPI:ApplySharedSettings(payload)
+    local list, mod = self:DescribeSharedSettings(payload)
+    if not list then return false, L["You do not have this module. Update Oxed Hub."] end
+    if InCombatLockdown() then return false, L["Cannot import in combat."] end
+
+    local id = payload.moduleId
+    local config = OxedHubDB.modules[id]
+    OxedHubDB.moduleImportBackups = OxedHubDB.moduleImportBackups or {}
+    OxedHubDB.moduleImportBackups[id] = FilterSettings(mod, config)
+
+    for _, entry in ipairs(list) do
+        if type(entry.value) == "table" then
+            if type(config[entry.key]) ~= "table" then config[entry.key] = {} end
+            Overwrite(config[entry.key], entry.value)
+        else
+            config[entry.key] = entry.value
+        end
+    end
+    self:RestartAfterImport(mod, config)
+    return true, #list
+end
+
+function ModuleAPI:HasImportBackup(id)
+    local backups = OxedHubDB and OxedHubDB.moduleImportBackups
+    return backups and backups[id] ~= nil
+end
+
+function ModuleAPI:UndoSharedImport(id)
+    local mod = self.modules[id]
+    local backup = OxedHubDB.moduleImportBackups and OxedHubDB.moduleImportBackups[id]
+    if not (mod and backup) then return false end
+    if InCombatLockdown() then return false, L["Cannot import in combat."] end
+    local config = OxedHubDB.modules[id]
+    -- Anything shareable the import added is taken out again as well.
+    for key, value in pairs(FilterSettings(mod, config)) do
+        if backup[key] == nil and value ~= nil then config[key] = nil end
+    end
+    for key, value in pairs(backup) do
+        if type(value) == "table" then
+            if type(config[key]) ~= "table" then config[key] = {} end
+            Overwrite(config[key], value)
+        else
+            config[key] = value
+        end
+    end
+    OxedHubDB.moduleImportBackups[id] = nil
+    -- A default the undo just removed comes back, as it would at the next login.
+    for key, value in pairs(mod.defaults or {}) do
+        if config[key] == nil then config[key] = value end
+    end
+    self:RestartAfterImport(mod, config)
+    return true
+end
+
+function ModuleAPI:RestartAfterImport(mod, config)
+    if config.enabled ~= false then
+        for _, handler in ipairs({ mod.OnDisable or false, mod.OnEnable or false }) do
+            if handler then
+                local ok, err = pcall(handler, mod, config, mod._api)
+                if not ok then
+                    print("|cffff0000OxedHub Module Error (" .. tostring(mod.name or mod.id) .. "):|r " .. tostring(err))
+                end
+            end
+        end
+    end
+    for _, window in ipairs(optionWindows) do
+        if window:IsShown() then
+            for _, box in ipairs(window.checks) do box.Refresh() end
+        end
+    end
+end
+
 -- The name of an OxedHub sound id, for an options window. The library is
 -- shared across characters where the player chose that.
 function ModuleAPI:SoundName(id, emptyText)
@@ -1347,7 +1547,25 @@ function ModuleAPI:RefreshModulesTab()
                 ModuleAPI:SetModuleEnabled(current.id, self:GetChecked() and true or false)
             end)
             card.enableCheck = enableCheck
-            
+
+            -- An icon: the words would run into the status line in Russian.
+            local shareBtn = CreateFrame("Button", nil, card)
+            shareBtn:SetSize(20, 20)
+            shareBtn:SetPoint("RIGHT", enableCheck.text, "LEFT", -6, 0)
+            shareBtn:SetNormalTexture("Interface\\Buttons\\UI-GuildButton-PublicNote-Up")
+            shareBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+            shareBtn:SetScript("OnClick", function()
+                if card.mod and OxedHub.Share then OxedHub.Share:ShowModuleShare(card.mod) end
+            end)
+            shareBtn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText(L["Share settings"])
+                GameTooltip:AddLine(L["Copy them as a string, post them in chat, or import someone else's."], 1, 1, 1, true)
+                GameTooltip:Show()
+            end)
+            shareBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            card.shareBtn = shareBtn
+
             tab.cards[cardIndex] = card
         end
         
@@ -1371,9 +1589,11 @@ function ModuleAPI:RefreshModulesTab()
             active = self:IsModuleEnabled(mod.id)
             card.enableCheck:SetChecked(active)
             card.enableCheck:Show()
+            card.shareBtn:Show()
         else
             active = mod.isLoaded
             card.enableCheck:Hide()
+            card.shareBtn:Hide()
         end
 
         if active then

@@ -350,3 +350,13 @@ return `notInterruptible` as a `<secret boolean>`.
   `frame:SetAlphaFromBoolean(val, falseAlpha, trueAlpha)` and fall back to visible
   UI textures (`TargetFrameSpellBar.BorderShield:IsVisible()`) for Lua-side logic.
 
+
+## Sharing a module's settings
+
+The icon on a module card opens `Share:ShowModuleShare` (`Modules\ProfileShare.lua`):
+a string to copy, a chat link through the usual share transfer, and paste-to-import.
+A module's saved table also holds private data (whispers, contacts, alts' bags,
+history), so `ShareableKey` in `Core\ModuleAPI.lua` shares plain values but a
+**table only when listed** in `SHARE_TABLES` or the module's own `shareTables`.
+A new list worth sharing must be added there; never list anything naming players.
+`enabled` is never imported, and the filter runs again on the receiving end.

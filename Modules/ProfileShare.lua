@@ -131,6 +131,7 @@ local SCOPE_LABELS = {
     oxedring  = "Ring",
     hubs      = "Action Hub",
     toymixes  = "Toy Mix",
+    module    = "Module",
 }
 
 function Share:GetScopeLabel(scope)
@@ -223,15 +224,22 @@ function Share:PostToChat(scope, opts, label, slashPrefix)
 
     local text = (slashPrefix or "") .. self:BuildChatText(shareID, label)
 
-    local active = ChatEdit_GetActiveWindow()
+    -- The chat globals moved into ChatFrameUtil in 12.0, so each is looked up.
+    local getActive = ChatEdit_GetActiveWindow or (ChatFrameUtil and ChatFrameUtil.GetActiveWindow)
+    local active = getActive and getActive()
     if active then
         active:SetText(text)
-        ChatEdit_ParseText(active, 0)
+        if ChatEdit_ParseText then ChatEdit_ParseText(active, 0) end
         active:SetFocus()
         active:HighlightText(0, 0)
         active:SetCursorPosition(active:GetNumLetters())
-    else
+    elseif ChatFrameUtil and ChatFrameUtil.OpenChat then
+        ChatFrameUtil.OpenChat(text)
+    elseif ChatFrame_OpenChat then
         ChatFrame_OpenChat(text)
+    else
+        Print("|cffff4444" .. L["Could not open the chat box."] .. "|r")
+        return false
     end
 
     Print(L["Ready in your chat box - press |cffffd100Enter|r to post it."])
@@ -327,6 +335,132 @@ function Share:ShowChannelPicker(scope, opts, label)
     f.header:SetText(L["Sharing |cffffd100"] .. tostring(label) .. L["|r\nPick where to post the link:"])
     f.whisperBox:SetText("")
     f:Show()
+end
+
+-- ---------------------------------------------------------------------------
+-- A MODULE'S SHARE WINDOW
+-- One box for both directions: it opens holding this module's string, ready to
+-- copy, and a string pasted over it is what Import reads.
+-- ---------------------------------------------------------------------------
+
+function Share:FillModuleShare(f)
+    local text, err = OxedHub.UI:BuildScopedExportString("module", { moduleId = f.mod.id })
+    f.editBox:SetText(text or "")
+    f.status:SetText(text and "" or ("|cffff4444" .. tostring(err) .. "|r"))
+    f.chatBtn:SetEnabled(text ~= nil)
+    f.undoBtn:SetEnabled(OxedHub.ModuleAPI:HasImportBackup(f.mod.id) and true or false)
+    if text then
+        f.editBox:SetFocus()
+        f.editBox:HighlightText()
+    end
+end
+
+function Share:ShowModuleShare(mod)
+    local f = self.moduleWindow
+    if not f then
+        f = CreateFrame("Frame", "OxedHubModuleShare", UIParent, "BasicFrameTemplateWithInset")
+        f:SetSize(460, 300)
+        f:SetPoint("CENTER")
+        -- Under the channel picker and the import confirmation.
+        f:SetFrameStrata("DIALOG")
+        f:SetFrameLevel(210)
+        f:SetClampedToScreen(true)
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        tinsert(UISpecialFrames, "OxedHubModuleShare")
+        if f.CloseButton then f.CloseButton:SetScript("OnClick", function() f:Hide() end) end
+
+        local note = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        note:SetPoint("TOPLEFT", 16, -32)
+        note:SetPoint("TOPRIGHT", -16, -32)
+        note:SetJustifyH("LEFT")
+        note:SetText(L["Press Ctrl+C to copy. To import, paste a string here with Ctrl+V and press Import. Lists of characters, history and whether the module is on are never included."])
+
+        local box = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        box:SetPoint("TOPLEFT", 14, -62)
+        box:SetPoint("BOTTOMRIGHT", -14, 70)
+        box:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 },
+        })
+        box:SetBackdropColor(0.06, 0.06, 0.06, 1)
+        box:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+
+        local scroll = CreateFrame("ScrollFrame", nil, box, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", 8, -8)
+        scroll:SetPoint("BOTTOMRIGHT", -28, 8)
+
+        local edit = CreateFrame("EditBox", nil, scroll)
+        edit:SetAutoFocus(false)
+        edit:SetMultiLine(true)
+        edit:SetFontObject("ChatFontNormal")
+        edit:SetWidth(390)
+        edit:SetMaxLetters(0)
+        edit:SetMaxBytes(0)
+        edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        scroll:SetScrollChild(edit)
+        box:EnableMouse(true)
+        box:SetScript("OnMouseDown", function() edit:SetFocus() end)
+        f.editBox = edit
+        f:SetScript("OnHide", function() edit:ClearFocus() end)
+
+        f.status =f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        f.status:SetPoint("BOTTOMLEFT", 16, 48)
+        f.status:SetPoint("BOTTOMRIGHT", -16, 48)
+        f.status:SetJustifyH("LEFT")
+
+        local function NewButton(text, width)
+            local btn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+            btn:SetSize(width, 24)
+            btn:SetText(text)
+            return btn
+        end
+
+        f.chatBtn = NewButton(L["Send to chat"], 120)
+        f.chatBtn:SetPoint("BOTTOMLEFT", 14, 16)
+        f.chatBtn:SetScript("OnClick", function()
+            Share:ShowChannelPicker("module", { moduleId = f.mod.id }, f.mod.name or f.mod.id)
+        end)
+
+        local copyBtn = NewButton(L["Copy string"], 100)
+        copyBtn:SetPoint("LEFT", f.chatBtn, "RIGHT", 6, 0)
+        copyBtn:SetScript("OnClick", function() Share:FillModuleShare(f) end)
+
+        f.undoBtn = NewButton(L["Undo import"], 100)
+        f.undoBtn:SetPoint("LEFT", copyBtn, "RIGHT", 6, 0)
+        f.undoBtn:SetScript("OnClick", function()
+            local ok, err = OxedHub.ModuleAPI:UndoSharedImport(f.mod.id)
+            if not ok and err then Print("|cffff4444" .. tostring(err) .. "|r") end
+            Share:FillModuleShare(f)
+        end)
+
+        local importBtn = NewButton(L["Import"], 90)
+        importBtn:SetPoint("BOTTOMRIGHT", -14, 16)
+        importBtn:SetScript("OnClick", function()
+            local text = f.editBox:GetText():gsub("%s+", "")
+            local data, err = OxedHub.UI:DecodeExportString(text)
+            if not data then
+                f.status:SetText("|cffff4444" .. tostring(err) .. "|r")
+                return
+            end
+            f.status:SetText("")
+            -- Never applied from here: the confirmation lists every setting.
+            OxedHub.UI:ShowImportConfirm(data, function() f:Hide() end)
+        end)
+
+        self.moduleWindow = f
+    end
+
+    f.mod = mod
+    if f.TitleText then f.TitleText:SetText(L["Share: "] .. tostring(mod.name or mod.id)) end
+    f:Show()
+    f:Raise()
+    self:FillModuleShare(f)
 end
 
 -- ---------------------------------------------------------------------------
@@ -760,7 +894,12 @@ local WATCHED_CHAT_EVENTS = {
 -- on the receiving client only, so the link never crosses the network and is
 -- never subject to the outgoing hyperlink filtering that drops custom links.
 function Share:RegisterChatFilters()
-    local function filter(_, _, message, author, ...)
+    local function filter(_, event, message, author, ...)
+        -- Text and author can be secret on 12.0, and matching one is an error
+        -- that would break the chat line.
+        if issecretvalue and (issecretvalue(message) or issecretvalue(author)) then
+            return false, message, author, ...
+        end
         if type(message) ~= "string" then
             return false, message, author, ...
         end
@@ -770,15 +909,20 @@ function Share:RegisterChatFilters()
             return false, message, author, ...
         end
 
-        local owner = FullPlayerName(author) or author
+        -- On a whisper we sent, "author" is the person we sent it to.
+        local owner = event == "CHAT_MSG_WHISPER_INFORM" and MyFullName()
+            or FullPlayerName(author) or author
         Share.linkOwners[shareID] = owner
 
         local rewritten = Share:BuildLink(shareID, owner, label) .. L[" |cff888888(click to import)|r"]
         return false, rewritten, author, ...
     end
 
+    local addFilter = ChatFrame_AddMessageEventFilter
+        or (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter)
+    if not addFilter then return end
     for _, event in ipairs(WATCHED_CHAT_EVENTS) do
-        ChatFrame_AddMessageEventFilter(event, filter)
+        addFilter(event, filter)
     end
 end
 
