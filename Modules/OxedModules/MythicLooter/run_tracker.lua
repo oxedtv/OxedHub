@@ -46,7 +46,18 @@ local DEFAULTS = {
     bigSize      = 28,
     bigLocked    = false,
     bigPoint = "TOP", bigX = 0, bigY = -110,
-    -- colorProgress, colorDone, colorMissing are tables, built in Bind.
+    pullLive     = true,    -- a line of its own: forces now + this pull = forces after it
+    pullCombatOnly = true,  -- only while something is pulled
+    pullCounts   = false,   -- counts instead of percentages on that line
+    pullScale    = 1,
+    pullLocked   = false,
+    pullPoint = "CENTER", pullX = 400, pullY = 300,
+    plateShow    = "percent", -- on the nameplate: "percent", "count" or "both"
+    plateScale   = 1,
+    plateX       = -6,
+    plateY       = 0,
+    tooltipCount = true,    -- the mob's count beside its percentage in the tooltip
+    -- colorProgress, colorDone, colorMissing, plateColor are tables, built in Bind.
     -- "targets" and "manual" are tables, built in Bind.
 }
 
@@ -353,12 +364,20 @@ local function ShowPlate(unit)
         label.text = label:CreateFontString(nil, "OVERLAY")
         label.text:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
         label.text:SetPoint("LEFT", label, "LEFT", 0, 0)
-        label.text:SetTextColor(1, 0.82, 0, 1)
     end
     plates[unit] = label
     label:ClearAllPoints()
-    if not pcall(label.SetPoint, label, "LEFT", plate, "RIGHT", -6, 0) then return DropPlate(unit) end
-    label.text:SetFormattedText("%s", percent)
+    label:SetScale(cfg.plateScale)
+    if not pcall(label.SetPoint, label, "LEFT", plate, "RIGHT", cfg.plateX, cfg.plateY) then return DropPlate(unit) end
+    local colour = cfg.plateColor
+    label.text:SetTextColor(colour[1], colour[2], colour[3], 1)
+    if cfg.plateShow == "count" then
+        label.text:SetFormattedText("+%s", count)
+    elseif cfg.plateShow == "both" then
+        label.text:SetFormattedText("+%s%% (%s)", percent, count)
+    else
+        label.text:SetFormattedText("+%s%%", percent)
+    end
     label:Show()
 end
 
@@ -388,8 +407,195 @@ local function HookTooltip()
         local kind = type(percent)
         if kind ~= "string" and kind ~= "number" then return end
         if not IsSecret(count) and (Num(count) or 0) <= 0 then return end
-        pcall(tooltip.AddDoubleLine, tooltip, "Enemy forces", percent, 1, 0.82, 0, 1, 1, 1)
+        local value = percent
+        if cfg.tooltipCount and run.total then
+            local okText, text = pcall(string.format, "%s%% %s/%d", percent, count, run.total)
+            if okText then value = text end
+        end
+        pcall(tooltip.AddDoubleLine, tooltip, OxedHub.T("Enemy forces"), value, 1, 0.82, 0, 1, 1, 1)
     end)
+end
+
+-- ── The pull in progress ────────────────────────────────────────────────────
+-- What the mobs now fighting will add. Their counts are secret in a fight, so
+-- Lua cannot add them up: the game does it instead. Hidden bars are laid end to
+-- end, each as wide in pixels as its count, and where the last one ends is the
+-- sum. That position is secret too, and goes straight to the text.
+
+local pullFrame
+local pullHolder
+local pullBars = {}
+local pullToken = 0
+local pullQueued = false
+local percentFormats = {}
+
+local function SavePullPosition()
+    local point, _, _, x, y = pullFrame:GetPoint(1)
+    if point then cfg.pullPoint, cfg.pullX, cfg.pullY = point, x, y end
+end
+
+local function BuildPullFrame()
+    if pullFrame then return end
+    pullFrame = CreateFrame("Frame", nil, UIParent)
+    OxedHub:HideInPetBattle(pullFrame)
+    pullFrame:SetSize(220, 24)
+    pullFrame:SetMovable(true)
+    pullFrame:SetClampedToScreen(true)
+    pullFrame:RegisterForDrag("LeftButton")
+    pullFrame:SetScript("OnDragStart", function(self)
+        if not cfg.pullLocked then self:StartMoving() end
+    end)
+    pullFrame:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        SavePullPosition()
+    end)
+    pullFrame.text = pullFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+    pullFrame.text:SetPoint("CENTER")
+    pullFrame:Hide()
+end
+
+local function PlacePullFrame()
+    pullFrame:ClearAllPoints()
+    pullFrame:SetPoint(cfg.pullPoint, UIParent, cfg.pullPoint, cfg.pullX, cfg.pullY)
+    pullFrame:SetScale(cfg.pullScale)
+    pullFrame:EnableMouse(not cfg.pullLocked)
+end
+
+-- A secret answer counts as not pulled: testing one raises the error pcall catches.
+local function IsPulled(unit)
+    local ok, pulled = pcall(function()
+        if not UnitCanAttack("player", unit) then return false end
+        if UnitThreatSituation("player", unit) ~= nil then return true end
+        if UnitPlayerControlled(unit .. "target") then return true end
+        return false
+    end)
+    return ok and pulled == true
+end
+
+local function PulledUnits()
+    local units = {}
+    for _, plate in ipairs(C_NamePlate.GetNamePlates() or {}) do
+        local unit = plate.namePlateUnitToken or (plate.UnitFrame and plate.UnitFrame.unit)
+        if type(unit) == "string" and not IsSecret(unit) and IsPulled(unit) then
+            units[#units + 1] = unit
+        end
+    end
+    return units
+end
+
+-- The Nth hidden bar, chained to what came before it.
+local function PullBar(index, total, value, after)
+    local bar = pullBars[index]
+    if not bar then
+        bar = CreateFrame("StatusBar", nil, pullHolder)
+        bar:SetStatusBarTexture("Interface\TargetingFrame\UI-StatusBar")
+        pullBars[index] = bar
+    end
+    bar:ClearAllPoints()
+    if after then
+        bar:SetPoint("LEFT", after, "RIGHT", 0, 0)
+    else
+        bar:SetPoint("LEFT", pullHolder, "LEFT", 0, 0)
+    end
+    bar:SetSize(total, 4)
+    bar:SetMinMaxValues(0, total)
+    bar:SetValue(value)
+    bar:Show()
+    return bar:GetStatusBarTexture()
+end
+
+-- Turns a secret count into a secret percentage with two places.
+local function PercentText(count, total)
+    local format = percentFormats[total]
+    if not format then
+        format = { config = CreateAbbreviateConfig({
+            { breakpoint = 0.00001, abbreviation = "", significandDivisor = total / 10000,
+              fractionDivisor = 100, abbreviationIsGlobal = false },
+        }) }
+        percentFormats[total] = format
+    end
+    return AbbreviateNumbers(count, format)
+end
+
+local function HidePull()
+    pullToken = pullToken + 1
+    if pullFrame then pullFrame:Hide() end
+end
+
+local function ShowPullText(pull, after, pullPct, afterPct)
+    local label = OxedHub.T("Pull:")
+    local total = run.total or 0
+    if cfg.pullCounts then
+        pullFrame.text:SetFormattedText("%s %d + %s = %s / %d", label, run.cur or 0, pull, after, total)
+    else
+        pullFrame.text:SetFormattedText("%s %s + %s%% = %s%%", label, Pct(run.pct), pullPct, afterPct)
+    end
+    pullFrame:Show()
+end
+
+local function UpdatePull()
+    pullQueued = false
+    if not (cfg and cfg.pullLive) then return HidePull() end
+    BuildPullFrame()
+    PlacePullFrame()
+
+    if run.preview and not run.active then
+        ShowPullText(25, 337, "5.43", "73.26")
+        return
+    end
+    local total = Num(run.total)
+    if not (run.active and HasUnitShare() and total and total > 0
+        and CreateAbbreviateConfig and AbbreviateNumbers) then return HidePull() end
+
+    local units = PulledUnits()
+    if #units == 0 then
+        if cfg.pullCombatOnly then return HidePull() end
+        ShowPullText(0, run.cur or 0, "0", ("%.2f"):format(run.pct or 0))
+        return
+    end
+
+    if not pullHolder then
+        -- No parent: at scale 1 from the screen's edge, one pixel is one count.
+        pullHolder = CreateFrame("Frame")
+        pullHolder:SetSize(1, 1)
+        pullHolder:SetPoint("LEFT")
+        pullHolder:SetAlpha(0)
+    end
+    local used = 1
+    local last = PullBar(used, total, 0)
+    for _, unit in ipairs(units) do
+        local ok, count = pcall(C_ScenarioInfo.GetUnitCriteriaProgressValues, unit)
+        if ok and type(count) ~= "nil" then
+            used = used + 1
+            last = PullBar(used, total, count, last)
+        end
+    end
+    local pullEnd = last
+    used = used + 1
+    local afterEnd = PullBar(used, total, Num(run.cur) or 0, pullEnd)
+    for i = used + 1, #pullBars do pullBars[i]:Hide() end
+
+    -- The bars have a position only after the game has laid them out.
+    pullToken = pullToken + 1
+    local token = pullToken
+    C_Timer.After(0, function()
+        C_Timer.After(0, function()
+            if token ~= pullToken or not run.active then return end
+            local ok = pcall(function()
+                local pull, after = pullEnd:GetRight(), afterEnd:GetRight()
+                ShowPullText(C_StringUtil.RoundToNearestString(pull), C_StringUtil.RoundToNearestString(after),
+                    PercentText(pull, total), PercentText(after, total))
+            end)
+            if not ok then pullFrame:Hide() end
+        end)
+    end)
+end
+
+-- Threat updates come many times a second in a big pull.
+local function QueuePull()
+    if pullQueued then return end
+    pullQueued = true
+    C_Timer.After(0.1, UpdatePull)
 end
 
 -- ── The panel ───────────────────────────────────────────────────────────────
@@ -722,7 +928,7 @@ end
 local watcher = CreateFrame("Frame")
 local RUN_EVENTS = {
     "SCENARIO_CRITERIA_UPDATE", "ENCOUNTER_START", "ENCOUNTER_END", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
-    "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED",
+    "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED", "UNIT_THREAT_LIST_UPDATE",
 }
 
 local updateQueued = false
@@ -767,6 +973,7 @@ local function BeginRun()
     ReadState()
     Paint()
     ShowAllPlates()
+    QueuePull()
 end
 
 local function EndRun()
@@ -774,10 +981,12 @@ local function EndRun()
     run.active = false
     for _, event in ipairs(RUN_EVENTS) do pcall(watcher.UnregisterEvent, watcher, event) end
     DropAllPlates()
+    HidePull()
     Paint()
 end
 
 watcher:SetScript("OnEvent", function(_, event, arg1)
+    QueuePull()
     if event == "SCENARIO_CRITERIA_UPDATE" then
         QueueUpdate()
     elseif event == "ENCOUNTER_START" then
@@ -879,6 +1088,39 @@ function RT:Preview()
         run.mapID = nil
     end
     Paint()
+    UpdatePull()
+end
+
+-- The pull line and the nameplate text.
+local pullWindow
+function RT:ShowPullOptions()
+    local API = OxedHub.ModuleAPI
+    if not (API and cfg) then return end
+    if not pullWindow then
+        local function Plates()
+            DropAllPlates()
+            ShowAllPlates()
+        end
+        local o = API:CreateOptionsWindow("Run Tracker: Pull and Nameplates", 460, 620)
+        o:AddCheckbox(cfg, "pullLive", "Live pull line", "Forces now + what the mobs in this pull give = forces after it.", UpdatePull)
+        o:AddCheckbox(cfg, "pullCombatOnly", "Only while something is pulled", nil, UpdatePull)
+        o:AddCheckbox(cfg, "pullCounts", "Counts instead of percentages", nil, UpdatePull)
+        o:AddCheckbox(cfg, "pullLocked", "Lock the pull line", "Locked, it lets clicks through.", UpdatePull)
+        o:AddSlider(cfg, "pullScale", "Pull line scale", 0.5, 2, 0.05, "%s: %.2f", UpdatePull)
+        o:AddChoice(cfg, "plateShow", "On the nameplate", {
+            { value = "percent", text = "Percentage" },
+            { value = "count", text = "Count" },
+            { value = "both", text = "Both" },
+        }, Plates)
+        o:AddColour(cfg, "plateColor", "Nameplate text", Plates)
+        o:AddSlider(cfg, "plateScale", "Nameplate text scale", 0.5, 2, 0.05, "%s: %.2f", Plates)
+        o:AddSlider(cfg, "plateX", "Nameplate text across", -100, 100, 1, "%s: %d", Plates)
+        o:AddSlider(cfg, "plateY", "Nameplate text up and down", -100, 100, 1, "%s: %d", Plates)
+        o:AddCheckbox(cfg, "tooltipCount", "Show the count in the tooltip too")
+        o:AddNote("A mob the game will not say is in the fight is left out of the pull. Preview the panel in the main options to place the line outside a key.")
+        pullWindow = o
+    end
+    pullWindow:Show()
 end
 
 -- The panel's look and the big number, in a window of their own: the main one is full.
@@ -910,7 +1152,7 @@ function RT:ShowOptions()
     local API = OxedHub.ModuleAPI
     if not (API and cfg) then return end
     if not optionsWindow then
-        local o = API:CreateOptionsWindow("MythicLooter: Run Tracker", 500, 660)
+        local o = API:CreateOptionsWindow("MythicLooter: Run Tracker", 500, 690)
         o:AddCheckbox(cfg, "enabled", "Show the enemy forces panel in a key", nil, Paint)
         o:AddCheckbox(cfg, "showBosses", "List the bosses under the bar", nil, Paint)
         o:AddCheckbox(cfg, "showPull", "Show what the pull in progress is worth", nil, Paint)
@@ -958,7 +1200,13 @@ function RT:ShowOptions()
         look:SetText("Look")
         look:SetScript("OnClick", function() RT:ShowLook() end)
 
-        o.cursorY = o.cursorY - 32
+        local pullOptions = CreateFrame("Button", nil, o, "UIPanelButtonTemplate")
+        pullOptions:SetSize(170, 22)
+        pullOptions:SetPoint("TOPLEFT", preview, "BOTTOMLEFT", 0, -4)
+        pullOptions:SetText("Pull and nameplates")
+        pullOptions:SetScript("OnClick", function() RT:ShowPullOptions() end)
+
+        o.cursorY = o.cursorY - 58
         o:AddNote("Targets are yours: a timed run's numbers, or what you set in a key. The last boss always wants 100%.")
         optionsWindow = o
     end
@@ -989,6 +1237,7 @@ local function Bind()
     if type(config.colorProgress) ~= "table" then config.colorProgress = { 1, 1, 1 } end
     if type(config.colorDone) ~= "table" then config.colorDone = { 0.25, 1, 0.25 } end
     if type(config.colorMissing) ~= "table" then config.colorMissing = { 1, 0.3, 0.25 } end
+    if type(config.plateColor) ~= "table" then config.plateColor = { 1, 0.82, 0 } end
     cfg = config
 end
 

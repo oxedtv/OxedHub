@@ -61,6 +61,16 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.55",
+        important = true,
+        lines = {
+            { "NEW", "MythicLooter: the new raid Kith'ix is on the Raids tab with all of its loot, and the latest enchants and Voidcore items are in." },
+            { "NEW", "MythicLooter Run Tracker: a live pull line shows your forces now, plus what the mobs you are fighting will give, and the total after the pull. Move it, lock it, scale it, or show counts instead of percentages. Find it under Pull and nameplates in the Run Tracker options." },
+            { "NEW", "Run Tracker's text on enemy nameplates can show the percentage, the count or both, in your own colour, size and position. The tooltip can show the count too." },
+            { "CHANGED", "Share all modules brings your favourite stars along. An import only adds stars, and Undo import takes the new ones away again." },
+        },
+    },
+    {
         version = "2.4.54",
         important = true,
         lines = {

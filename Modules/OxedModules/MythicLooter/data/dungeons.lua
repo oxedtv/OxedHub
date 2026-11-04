@@ -1,8 +1,8 @@
 local AddonName, OxedHub = ...; local KeystoneLoot = OxedHub.MythicLooter; AddonName = "MythicLooter";
 
 -- Generated automatically by KeystoneLoot Updater v2.0.4
--- Timestamp: 2026-09-26 20:15:35
--- WoW Build: 12.1.0 (69933)
+-- Timestamp: 2026-10-18 18:38:10
+-- WoW Build: 12.1.5 (70448)
 -- Season: 17
 -- WARNING: This file is auto-generated - manual changes will be overwritten!
 

@@ -1342,12 +1342,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.54)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.55)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.54")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.55")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
@@ -7540,6 +7540,10 @@ function UI:GetImportDetails(data)
             elseif scope == "modules" then
                 -- Only what would change, or the list runs to thousands of rows.
                 local API = OxedHub.ModuleAPI
+                local newStars = #API:NewSharedFavorites(p)
+                if newStars > 0 then
+                    table.insert(rows, { "|cffffd100" .. L["New favourites"] .. "|r", tostring(newStars) })
+                end
                 for _, entry in ipairs(API:DescribeSharedSwitches(p)) do
                     table.insert(rows, { "|cffff8800" .. entry.name .. "|r",
                         entry.on and L["switches on"] or L["switches off"] })

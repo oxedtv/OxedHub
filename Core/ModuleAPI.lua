@@ -873,7 +873,10 @@ function ModuleAPI:BuildShareAllPayload(includeEnabled)
         modules[id] = self:BuildSharePayload(id)
     end
     if not next(modules) then return nil end
-    local payload = { modules = modules }
+    local payload = { modules = modules, favorites = {} }
+    for _, mod in pairs(self.modules) do
+        if self:IsFavorite(mod) then payload.favorites[FavoriteKey(mod)] = true end
+    end
     if includeEnabled then
         payload.enabled = {}
         for id in pairs(self.modules) do
@@ -894,6 +897,19 @@ function ModuleAPI:DescribeSharedSwitches(payload)
         end
     end
     table.sort(out, function(a, b) return a.name < b.name end)
+    return out
+end
+
+-- The incoming stars this account does not have yet, as a list of module keys.
+-- Stars are only ever added: an import never takes one away.
+function ModuleAPI:NewSharedFavorites(payload)
+    local out = {}
+    if type(payload.favorites) ~= "table" then return out end
+    for _, mod in pairs(self.modules) do
+        if payload.favorites[FavoriteKey(mod)] == true and not self:IsFavorite(mod) then
+            out[#out + 1] = FavoriteKey(mod)
+        end
+    end
     return out
 end
 
@@ -920,6 +936,19 @@ function ModuleAPI:ApplyAllSharedSettings(payload)
         self:SetModuleEnabled(entry.id, entry.on)
     end
     self.switchingAll = false
+
+    local newStars = self:NewSharedFavorites(payload)
+    if #newStars > 0 then
+        OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+        local store = OxedHubDB.globalSettings.moduleFavorites
+        if type(store) ~= "table" then
+            store = {}
+            OxedHubDB.globalSettings.moduleFavorites = store
+        end
+        for _, key in ipairs(newStars) do store[key] = true end
+        undo.favorites = newStars
+    end
+
     OxedHubDB.moduleImportAll = undo
     self:RefreshModulesTab()
     return true, #undo.ids, skipped
@@ -941,6 +970,10 @@ function ModuleAPI:UndoAllSharedImport()
         if self.modules[id] then self:SetModuleEnabled(id, on) end
     end
     self.switchingAll = false
+    local store = OxedHubDB.globalSettings and OxedHubDB.globalSettings.moduleFavorites
+    if type(store) == "table" then
+        for _, key in ipairs(undo.favorites or {}) do store[key] = nil end
+    end
     OxedHubDB.moduleImportAll = nil
     self:RefreshModulesTab()
     return true

@@ -364,3 +364,4 @@ A new list worth sharing must be added there; never list anything naming players
 "Share all modules" on the Modules page opens the same window with no module and
 uses scope `modules`: the same filter per module, no chat button. On/off travels
 only if the exporter ticks it, and the confirmation lists every module it switches.
+Favourites travel with it too, and an import only adds stars, never removes one.
