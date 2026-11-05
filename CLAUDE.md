@@ -365,3 +365,18 @@ A new list worth sharing must be added there; never list anything naming players
 uses scope `modules`: the same filter per module, no chat button. On/off travels
 only if the exporter ticks it, and the confirmation lists every module it switches.
 Favourites travel with it too, and an import only adds stars, never removes one.
+
+## Two clients, one folder
+
+`_forever_\Interface\AddOns\OxedHub` is a junction to the retail folder, so WoW
+Forever (Interface 16001) runs these same files; editing here changes both, and
+deleting that folder from Explorer can follow the link. Saved settings stay apart in each client's `WTF`.
+The list of versions is on the `## Interface` line of the one `.toc`. Where the
+clients differ, test for the API (`if C_EncounterTimeline then`), not the version;
+the build number is `select(4, GetBuildInfo())`. A call to a missing API at file
+scope takes down every file after it, on that client only.
+
+A module that makes no sense off the main game goes in `MAINLINE_ONLY` in
+`CoreModuleAPI.lua`. That stops registration only: anything starting itself at
+load (XML frames, event frames) also needs `OxedHub.IsMainline`, as
+MythicLooter's `uiootstrap.lua` does.

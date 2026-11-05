@@ -1903,11 +1903,21 @@ local function CreateDisconnectedAssignmentTabs(panel)
 
     local tabNames = { "Toys", "Reactions", "Markers", "Items", "Mounts", "Spells", "Modules", "Settings" }
     local tabTypeByIndex = { "toy", "emote", "marker", "item", "mount", "spell", "module", "settings" }
-    local isRetail = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE)
-    local template = isRetail and "CharacterFrameTabTemplate" or "CharacterFrameTabButtonTemplate"
+    -- Template names differ between clients, and a missing one is an error.
+    local templates = { "CharacterFrameTabTemplate", "PanelTabButtonTemplate", "CharacterFrameTabButtonTemplate", "UIPanelButtonTemplate" }
+
+    local function CreateTabButton(i)
+        for _, template in ipairs(templates) do
+            local ok, button = pcall(CreateFrame, "Button", "$parentTab" .. i, panel, template)
+            if ok and button then return button end
+        end
+        local button = CreateFrame("Button", "$parentTab" .. i, panel)
+        button:SetSize(90, 22)
+        return button
+    end
 
     for i, name in ipairs(tabNames) do
-        local tab = CreateFrame("Button", "$parentTab" .. i, panel, template)
+        local tab = CreateTabButton(i)
         tab:SetID(i)
         tab:SetText(name)
         tab:SetScript("OnClick", function()

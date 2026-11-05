@@ -4598,11 +4598,14 @@ function lib:activate()
     local frame = CreateFrame("Frame")
     self.frame = frame
 
+    -- OxedHub: an event this client does not have is an error, and WoW Forever
+    -- matches none of the project checks here. Without pcall the rest of
+    -- activate() never runs.
     if not (isMidnight or isTBC) then
-      frame:RegisterEvent("LEARNED_SPELL_IN_TAB")
+      pcall(frame.RegisterEvent, frame, "LEARNED_SPELL_IN_TAB")
     end
-    frame:RegisterEvent("CHARACTER_POINTS_CHANGED")
-    frame:RegisterEvent("SPELLS_CHANGED")
+    pcall(frame.RegisterEvent, frame, "CHARACTER_POINTS_CHANGED")
+    pcall(frame.RegisterEvent, frame, "SPELLS_CHANGED")
 
     if isEra or isCata then
       frame:RegisterEvent("CVAR_UPDATE")

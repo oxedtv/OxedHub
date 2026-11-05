@@ -123,7 +123,7 @@ end
 
 local function AvailableRoles()
     local available = { tank = false, healer = false, dps = false }
-    for i = 1, (GetNumSpecializations and GetNumSpecializations() or 0) do
+    for i = 1, (GetSpecializationInfo and GetNumSpecializations and GetNumSpecializations() or 0) do
         local role = select(5, GetSpecializationInfo(i))
         if role == "TANK" then available.tank = true
         elseif role == "HEALER" then available.healer = true
@@ -1702,8 +1702,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "autoqueue",
         name     = "Auto Queue",
-        version  = "1.3.2",
-        updated  = 20261026.1,  -- hidden during pet battles
+        version  = "1.3.3",
+        updated  = 20261105.1,  -- no error on a client without spec info
         author   = "Oxed",
         category = "groups",
         keywords = { "queue", "lfg", "group finder", "role check", "ready check", "dungeon", "apply", "sign up", "eye", "movable eye" },

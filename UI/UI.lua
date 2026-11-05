@@ -1254,7 +1254,7 @@ function UI:CreateDashboardTab()
     sliderScroll:SetScrollChild(sliderContent)
 
     local cards = {}
-    local numCards = 6
+    local numCards = 7
     local activeCardIndex = 1
 
     -- Default inner dimensions (updated dynamically by OnSizeChanged)
@@ -1315,13 +1315,16 @@ function UI:CreateDashboardTab()
         table.insert(cards, card)
     end
 
-    -- The pack countdown comes first; the release notes and guides follow.
-    local packsCard = cards[1]
-    local card1 = cards[2]
-    local card2 = cards[3]
-    local card3 = cards[4]
-    local card4 = cards[5]
-    local card5 = cards[6]
+    -- The WoW Forever beta notice is first for now, then the pack countdown,
+    -- the release notes and the guides. To retire the notice: drop this card,
+    -- set numCards back to 6 and take 1 off every card number below.
+    local foreverCard = cards[1]
+    local packsCard = cards[2]
+    local card1 = cards[3]
+    local card2 = cards[4]
+    local card3 = cards[5]
+    local card4 = cards[6]
+    local card5 = cards[7]
 
     -- Responsive resizing of cards and content
     showcaseContainer:SetScript("OnSizeChanged", function(self, width, height)
@@ -1342,12 +1345,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.55)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.56)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.55")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.56")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
@@ -1361,6 +1364,10 @@ function UI:CreateDashboardTab()
     -- There are two of them now, and a second copy of the same twenty lines is
     -- how the two links end up disagreeing after somebody edits one of them.
     local PACKS = {
+        feedback = {
+            title = "OxedHub Discord",
+            url = "https://discord.gg/eJgvQUVxdR",
+        },
         meme = {
             title = "OxedHub Meme Pack",
             url = "https://www.curseforge.com/wow/addons/oxed-hub-meme-pack",
@@ -1425,11 +1432,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        L["•  New module: Item Tooltips. IDs, buff details and more on hover (/itt)."],
-        L["•  See how many of an item every alt holds, with the warband bank."],
-        L["•  Collected or not: mounts, toys, battle pets and appearances."],
-        L["•  Fixed: MemedOn spell Test sometimes did nothing."],
-        L["•  Durability uses far less memory."],
+        L["•  WoW Forever beta: OxedHub now runs there too."],
+        L["•  Leave feedback with the button on the first page."],
+        L["•  On Forever, modules for Mythic+ and world quests are hidden."],
+        L["•  Fixed errors at login and when opening a trigger on Forever."],
+        L["•  Your setup on the main game stays as it was."],
         L["•  Grab either pack from CurseForge:"],
     }
 
@@ -1501,6 +1508,11 @@ function UI:CreateDashboardTab()
                 GameTooltip:Show()
             end)
             kickSyncBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+            if not OxedHub.IsMainline then
+                mythicBtn:Hide()
+                kickSyncBtn:Hide()
+            end
         end
     end
 
@@ -1524,6 +1536,56 @@ function UI:CreateDashboardTab()
     end)
     packBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     packBtn:SetScript("OnClick", function() ShowPackLink("gaming") end)
+
+    -- ───────────────────────────────────────────────────────────────
+    -- WOW FOREVER BETA NOTICE
+    -- ───────────────────────────────────────────────────────────────
+    local foreverTitle = foreverCard:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
+    foreverTitle:SetPoint("TOP", foreverCard, "TOP", 0, -12)
+    foreverTitle:SetTextColor(1, 0.82, 0, 1)
+    foreverTitle:SetText(L["OxedHub for WoW Forever"])
+    local fName, fHeight, fFlags = foreverTitle:GetFont()
+    if fName then foreverTitle:SetFont(OxedHub:GetFont(fName), fHeight * 1.1, fFlags) end
+
+    local foreverSubtitle = foreverCard:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    foreverSubtitle:SetPoint("TOP", foreverTitle, "BOTTOM", 0, -4)
+    foreverSubtitle:SetTextColor(0.22, 0.18, 0.17, 1)
+    foreverSubtitle:SetText(L["Beta test. We need your feedback."])
+
+    local foreverLines = {
+        L["•  OxedHub now runs on WoW Forever. The beta test is open."],
+        L["•  Some things may not work yet, and you may see Lua errors."],
+        L["•  Modules that need Mythic+ or world quests are hidden on Forever."],
+        L["•  Found a problem? Send the full error text and what you were doing."],
+        L["•  Tell us what works, what breaks and what you would like to see:"],
+    }
+
+    local foreverList = CreateFrame("Frame", nil, foreverCard)
+    foreverList:SetSize(620, 200)
+    foreverList:SetPoint("TOPLEFT", foreverCard, "TOPLEFT", 45, -70)
+
+    for idx, lineText in ipairs(foreverLines) do
+        local lineFS = foreverList:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        lineFS:SetPoint("TOPLEFT", foreverList, "TOPLEFT", 10, -((idx - 1) * 32))
+        lineFS:SetPoint("RIGHT", foreverList, "RIGHT", -10, 0)
+        lineFS:SetJustifyH("LEFT")
+        lineFS:SetText(lineText)
+        lineFS:SetTextColor(0.1, 0.1, 0.1, 1)
+        lineFS:SetShadowOffset(0, 0)
+    end
+
+    local feedbackBtn = CreateFrame("Button", nil, foreverList, "UIPanelButtonTemplate")
+    feedbackBtn:SetSize(150, 22)
+    feedbackBtn:SetPoint("LEFT", foreverList, "TOPLEFT", 14, -(#foreverLines * 32) - 8)
+    feedbackBtn:SetText(L["Leave Feedback"])
+    feedbackBtn:SetNormalFontObject("GameFontNormalSmall")
+    if ApplyRedButtonStyle then ApplyRedButtonStyle(feedbackBtn) end
+    feedbackBtn:SetScript("OnClick", function() ShowPackLink("feedback") end)
+
+    local foreverLogo = foreverCard:CreateTexture(nil, "ARTWORK")
+    foreverLogo:SetSize(240, 240)
+    foreverLogo:SetPoint("RIGHT", foreverCard, "RIGHT", -50, -10)
+    foreverLogo:SetTexture("Interface\\AddOns\\OxedHub\\Media\\Textures\\logo\\WoWForever.tga")
 
     -- ───────────────────────────────────────────────────────────────
     -- CARD 0: SOUNDS AND ANIMATIONS MOVE TO THEIR OWN PACKS
@@ -1655,7 +1717,7 @@ function UI:CreateDashboardTab()
         OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
         OxedHubDB.globalSettings.packCardHidden = time()   -- when; it comes back after PACK_CARD_REST
         UI:ApplyPackCardOrder()
-        UI:SetDashboardCard(1, false)
+        UI:SetDashboardCard(2, false)
     end)
     hideBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -1677,9 +1739,9 @@ function UI:CreateDashboardTab()
         local at = OxedHubDB and OxedHubDB.globalSettings and OxedHubDB.globalSettings.packCardHidden
         local hidden = type(at) == "number" and (time() - at) < PACK_CARD_REST
         if hidden then
-            cards[1], cards[2] = card1, packsCard
+            cards[2], cards[3] = card1, packsCard
         else
-            cards[1], cards[2] = packsCard, card1
+            cards[2], cards[3] = packsCard, card1
         end
         hideBtn:SetShown(not hidden)
         local w = sliderScroll:GetWidth()
@@ -2555,7 +2617,7 @@ function UI:CreateDashboardTab()
         if idx < 1 or idx > numCards then return end
         activeCardIndex = idx
 
-        if idx == 5 and UI.UpdateActionHubCardState then
+        if idx == 6 and UI.UpdateActionHubCardState then
             UI:UpdateActionHubCardState()
         end
         
@@ -2593,7 +2655,7 @@ function UI:CreateDashboardTab()
         targetScroll = (idx - 1) * innerWidth
         
         -- If sliding back to Card 2 (Character Showcase), show model immediately so it slides in nicely
-        if idx == 3 then
+        if idx == 4 then
             modelFrame:Show()
         end
 
@@ -2605,7 +2667,7 @@ function UI:CreateDashboardTab()
                     self:SetHorizontalScroll(targetScroll)
                     self:SetScript("OnUpdate", nil)
                     -- If we completed slide away from Card 2, hide the 3D model frame to prevent clipping issues
-                    if activeCardIndex ~= 3 then
+                    if activeCardIndex ~= 4 then
                         modelFrame:Hide()
                     end
                 else
@@ -2615,7 +2677,7 @@ function UI:CreateDashboardTab()
         else
             sliderScroll:SetScript("OnUpdate", nil)
             sliderScroll:SetHorizontalScroll(targetScroll)
-            if idx ~= 3 then
+            if idx ~= 4 then
                 modelFrame:Hide()
             end
         end
@@ -10277,6 +10339,6 @@ SlashCmdList.OXEDHUBPACKS = function()
     OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
     OxedHubDB.globalSettings.packCardHidden = nil
     if UI.ApplyPackCardOrder then UI:ApplyPackCardOrder() end
-    if UI.SetDashboardCard then UI:SetDashboardCard(1, false) end
+    if UI.SetDashboardCard then UI:SetDashboardCard(2, false) end
     print(L["|cff00ff00OxedHub:|r the Sounds & Animations packs page is the first page again."])
 end

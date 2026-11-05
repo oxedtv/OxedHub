@@ -4,6 +4,9 @@
 
 local addonName, OxedHub = ...
 
+-- False on WoW Forever and any other client that is not the main game.
+OxedHub.IsMainline = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE)
+
 -- Every line OxedHub prints to chat starts with "OxedHub:". Files take it as
 -- `local print = OxedHub.Print or print`. A line that already names OxedHub
 -- (after colour codes) is left as it is; a secret first value gets the tag

@@ -1278,7 +1278,8 @@ end
 -- The specialisations this character actually has, in the game's own order.
 function Triggers:GetClassSpecs()
     local specs = {}
-    local count = GetNumSpecializations and GetNumSpecializations() or 0
+    -- WoW Forever has the count but not GetSpecializationInfo.
+    local count = GetSpecializationInfo and GetNumSpecializations and GetNumSpecializations() or 0
 
     for index = 1, count do
         local id, name, _, icon, role = GetSpecializationInfo(index)
@@ -1292,7 +1293,7 @@ end
 -- Read fresh every time, never cached: specs are swapped between pulls, and one
 -- decided at login would be wrong for the rest of the evening.
 function Triggers:GetCurrentSpecID()
-    if not GetSpecialization then return nil end
+    if not (GetSpecialization and GetSpecializationInfo) then return nil end
     local index = GetSpecialization()
     if not index then return nil end
     local id = GetSpecializationInfo(index)

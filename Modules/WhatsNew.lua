@@ -61,6 +61,15 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.56",
+        important = true,
+        lines = {
+            { "NEW", "OxedHub now runs on WoW Forever as a beta test. Leave feedback with the button on the first page of the main window." },
+            { "CHANGED", "On WoW Forever, modules that need what only the main game has (Mythic+, world quests, boss timers and others) are hidden." },
+            { "FIXED", "WoW Forever: fixed errors at login and when opening a trigger." },
+        },
+    },
+    {
         version = "2.4.55",
         important = true,
         lines = {

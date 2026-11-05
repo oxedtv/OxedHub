@@ -161,6 +161,7 @@ function Triggers:CreateZoneUI(frame, trigger)
     roleTitle:SetPoint("TOP", groupRow, "BOTTOM", 0, -16)
     roleTitle:SetText(L["ZONES_ONLY_PLAY_SPEC"] or "And only in these specialisations:")
     roleTitle:SetTextColor(1, 1, 1, 1)
+    roleTitle:SetShown(#specs > 0)   -- a client without specialisations has nothing to pick
 
     local roleRow = CreateFrame("Frame", nil, frame)
     roleRow:SetPoint("TOP", roleTitle, "BOTTOM", 0, -10)

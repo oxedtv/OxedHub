@@ -93,8 +93,19 @@ end
 
 local registerCount = 0
 
+-- Modules built on things only the main game has (Mythic+, world quests, the
+-- encounter timeline, gems). On any other client they do not register at all:
+-- no card, no OnEnable, and the saved settings are left alone.
+local MAINLINE_ONLY = {
+    mythiclooter = true, mythicjourney = true, bonusrollguard = true,
+    bosstimers = true, bossalerts = true, bosstrack = true, bosshealth = true,
+    trashtimers = true, goldwq = true, wqachievements = true, preyhunt = true,
+    currencytransfer = true, pvpprogress = true, missinggems = true,
+}
+
 function ModuleAPI:Register(moduleInfo)
     if not moduleInfo or not moduleInfo.id then return end
+    if MAINLINE_ONLY[moduleInfo.id] and not OxedHub.IsMainline then return end
 
     -- The order they arrive in is the order of the TOC, so the newest module
     -- is the one registered last. That is what "Newest first" sorts by.
@@ -184,6 +195,7 @@ end
 -- Whether a registered module is switched on. A module that has never been
 -- touched counts as on, which is what Register assumes as well.
 function ModuleAPI:IsModuleEnabled(id)
+    if MAINLINE_ONLY[id] and not OxedHub.IsMainline then return false end
     local config = OxedHubDB and OxedHubDB.modules and OxedHubDB.modules[id]
     return not config or config.enabled ~= false
 end

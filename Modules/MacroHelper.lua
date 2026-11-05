@@ -32,8 +32,8 @@ local INTERRUPT = {
     SHAMAN      = 57994,   -- Wind Shear
     WARLOCK     = 19647,   -- Spell Lock
     WARRIOR     = 6552,    -- Pummel
-    DRUID       = function() return GetSpecialization() == 1 and 78675 or 106839 end,
-    HUNTER      = function() return GetSpecialization() == 3 and 187707 or 147362 end,
+    DRUID       = function() return GetSpecialization and GetSpecialization() == 1 and 78675 or 106839 end,
+    HUNTER      = function() return GetSpecialization and GetSpecialization() == 3 and 187707 or 147362 end,
 }
 
 local DISPEL = {
