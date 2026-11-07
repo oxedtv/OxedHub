@@ -1345,12 +1345,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.57)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.58)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.57")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.58")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
@@ -1554,6 +1554,8 @@ function UI:CreateDashboardTab()
 
     local foreverLines = {
         L["•  OxedHub now runs on WoW Forever. The beta test is open."],
+        L["•  New, Forever only: Leveling Finds. Gear and quests for your level."],
+        L["•  New, Forever only: Hunter Pets. Pet box, feed reminders, bestiary."],
         L["•  Some things may not work yet, and you may see Lua errors."],
         L["•  Modules that need Mythic+ or world quests are hidden on Forever."],
         L["•  Found a problem? Send the full error text and what you were doing."],
@@ -1566,7 +1568,7 @@ function UI:CreateDashboardTab()
 
     for idx, lineText in ipairs(foreverLines) do
         local lineFS = foreverList:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        lineFS:SetPoint("TOPLEFT", foreverList, "TOPLEFT", 10, -((idx - 1) * 32))
+        lineFS:SetPoint("TOPLEFT", foreverList, "TOPLEFT", 10, -((idx - 1) * 26))
         lineFS:SetPoint("RIGHT", foreverList, "RIGHT", -10, 0)
         lineFS:SetJustifyH("LEFT")
         lineFS:SetText(lineText)
@@ -1576,7 +1578,7 @@ function UI:CreateDashboardTab()
 
     local feedbackBtn = CreateFrame("Button", nil, foreverList, "UIPanelButtonTemplate")
     feedbackBtn:SetSize(150, 22)
-    feedbackBtn:SetPoint("LEFT", foreverList, "TOPLEFT", 14, -(#foreverLines * 32) - 8)
+    feedbackBtn:SetPoint("LEFT", foreverList, "TOPLEFT", 14, -(#foreverLines * 26) - 8)
     feedbackBtn:SetText(L["Leave Feedback"])
     feedbackBtn:SetNormalFontObject("GameFontNormalSmall")
     if ApplyRedButtonStyle then ApplyRedButtonStyle(feedbackBtn) end

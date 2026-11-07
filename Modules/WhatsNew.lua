@@ -61,6 +61,12 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.58",
+        lines = {
+            { "CHANGED", "WoW Forever: the first page names the new Forever-only modules, Leveling Finds and Hunter Pets." },
+        },
+    },
+    {
         version = "2.4.57",
         important = true,
         lines = {
