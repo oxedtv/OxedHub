@@ -61,6 +61,14 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.57",
+        important = true,
+        lines = {
+            { "NEW", "WoW Forever: Leveling Finds shows quests and dungeons for your level with a map pin, and the gear quests give for your class, slot by slot. Tick several classes if you wear their gear too." },
+            { "NEW", "WoW Forever: Hunter Pets. A pet box you can place anywhere with happiness and loyalty, click it to feed. Reminders when the pet is hungry, dead or not out, and a bestiary of every tameable beast with what it teaches and where it lives." },
+        },
+    },
+    {
         version = "2.4.56",
         important = true,
         lines = {

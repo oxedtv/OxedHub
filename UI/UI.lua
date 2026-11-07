@@ -1345,12 +1345,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.56)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.57)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.56")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.57")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
@@ -1432,11 +1432,11 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        L["•  WoW Forever beta: OxedHub now runs there too."],
+        L["•  New on Forever: Leveling Finds, gear and quests for your level."],
+        L["•  Pick several classes to see all the gear you can wear."],
+        L["•  New on Forever: Hunter Pets, a pet box with feed reminders."],
+        L["•  Bestiary: every tameable beast, what it teaches and where."],
         L["•  Leave feedback with the button on the first page."],
-        L["•  On Forever, modules for Mythic+ and world quests are hidden."],
-        L["•  Fixed errors at login and when opening a trigger on Forever."],
-        L["•  Your setup on the main game stays as it was."],
         L["•  Grab either pack from CurseForge:"],
     }
 

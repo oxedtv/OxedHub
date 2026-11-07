@@ -377,6 +377,10 @@ the build number is `select(4, GetBuildInfo())`. A call to a missing API at file
 scope takes down every file after it, on that client only.
 
 A module that makes no sense off the main game goes in `MAINLINE_ONLY` in
-`CoreModuleAPI.lua`. That stops registration only: anything starting itself at
+`Core\ModuleAPI.lua`. That stops registration only: anything starting itself at
 load (XML frames, event frames) also needs `OxedHub.IsMainline`, as
-MythicLooter's `uiootstrap.lua` does.
+MythicLooter's `ui\bootstrap.lua` does.
+
+The four media packs (`OxedHub_GamingPack`, `_MemePack`, `_SoundsPack`,
+`_AnimationsPack`) are junctioned into Forever the same way and list 16001 in
+their own `.toc`. They are not in this repo.
