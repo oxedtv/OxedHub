@@ -1345,12 +1345,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.58)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.59)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.58")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.59")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
@@ -1432,10 +1432,10 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        L["•  New on Forever: Leveling Finds, gear and quests for your level."],
-        L["•  Pick several classes to see all the gear you can wear."],
-        L["•  New on Forever: Hunter Pets, a pet box with feed reminders."],
-        L["•  Bestiary: every tameable beast, what it teaches and where."],
+        L["•  New module: Mouseover Info, a small panel for the unit you point at."],
+        L["•  Export All Profiles to copy them to WoW Forever in one go."],
+        L["•  Leveling Finds: Shift-click a row for its Wowhead link."],
+        L["•  New on Forever: Leveling Finds and Hunter Pets."],
         L["•  Leave feedback with the button on the first page."],
         L["•  Grab either pack from CurseForge:"],
     }
@@ -6883,6 +6883,7 @@ end
 UI.EXPORT_SCOPES = {
     { key = "profile_current", scope = "profile", label = "Current Profile", desc = "Exports your active profile with all triggers, action hubs, rings, and toy mixes.", needs = nil },
     { key = "profile_specific", scope = "profiles", label = "Specific Profile", desc = "Choose any saved profile from your library to export.", needs = "profile" },
+    { key = "profiles_all", scope = "profiles", label = "All Profiles", desc = "Exports every saved profile at once. Paste it into Import on the other client (WoW Forever or the main game) to copy them all over.", needs = nil },
     { key = "triggers_all", scope = "triggers", label = "All Triggers", desc = "Exports all triggers belonging to the active profile.", needs = nil },
     { key = "triggers_selected", scope = "triggers", label = "Selected Triggers", desc = "Pick individual triggers from your active profile with checkboxes.", needs = "triggers" },
     { key = "oxedring", scope = "oxedring", label = "OxedRing", desc = "Exports OxedRing radial menu assignments and node configurations.", needs = nil },

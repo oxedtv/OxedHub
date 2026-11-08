@@ -61,6 +61,14 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.59",
+        lines = {
+            { "NEW", "Mouseover Info: a small panel for the unit under your cursor with name, level, guild, target and quest lines. Follows the cursor or stays where you put it." },
+            { "NEW", "Export has All Profiles: one string with every profile. Paste it into Import on WoW Forever (or the main game) to copy them all over." },
+            { "NEW", "Leveling Finds: Shift-click a row to get its Wowhead link." },
+        },
+    },
+    {
         version = "2.4.58",
         lines = {
             { "CHANGED", "WoW Forever: the first page names the new Forever-only modules, Leveling Finds and Hunter Pets." },

@@ -880,7 +880,25 @@ local function ShowTooltip(self)
         GameTooltip:AddLine(r.title, 1, 0.82, 0)
         GameTooltip:AddLine(r.line, 1, 1, 1)
     end
+    GameTooltip:AddLine(L["Shift-click: Wowhead link."], 0.5, 0.8, 1)
     GameTooltip:Show()
+end
+
+-- Wowhead's Forever pages. An addon cannot open a browser, so the link goes
+-- into OxedHub's copy box. Items by id; quests and dungeons by a search on
+-- the name, since the map data has no quest ids.
+local WOWHEAD = "https://www.wowhead.com/forever/"
+local function WowheadURL(r)
+    if r.itemID then return WOWHEAD .. "item=" .. r.itemID end
+    local name = r.entry and r.entry[1]
+    if type(name) ~= "string" or name == "" then return nil end
+    local q = name:gsub("[^%w ]", ""):gsub(" +", "+")
+    return WOWHEAD .. "search?q=" .. q
+end
+
+local function ShowWowhead(r)
+    local url = r and WowheadURL(r)
+    if url and OxedHub.ShowCopyURLDialog then OxedHub:ShowCopyURLDialog(url, L["Wowhead Link"]) end
 end
 
 local function MakeRow(parent, i)
@@ -927,6 +945,7 @@ local function MakeRow(parent, i)
     r:SetScript("OnLeave", function() GameTooltip:Hide() end)
     r:SetScript("OnMouseUp", function(self, button)
         local row = self.row
+        if button == "LeftButton" and IsShiftKeyDown() then ShowWowhead(row) return end
         if button ~= "RightButton" or not (row and row.itemID) then return end
         settings.wish = settings.wish or {}
         settings.wish[row.itemID] = (not settings.wish[row.itemID]) or nil
@@ -1594,8 +1613,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "levelingfinds",
         name     = "Leveling Finds",
-        version  = "2.6.0",
-        updated  = 20261107.995, -- pick several classes for gear
+        version  = "2.7.0",
+        updated  = 20261108.1,  -- Shift-click a row for its Wowhead link
         author   = "Oxed",
         category = "quests",
         keywords = { "leveling", "levelling", "quest", "dungeon", "loot", "map", "forever", "mapgenie", "find" },
