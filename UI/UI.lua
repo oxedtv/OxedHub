@@ -1345,12 +1345,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.59)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.60)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.59")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.60")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
@@ -1432,10 +1432,10 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        L["•  New module: Mouseover Info, a small panel for the unit you point at."],
-        L["•  Export All Profiles to copy them to WoW Forever in one go."],
-        L["•  Leveling Finds: Shift-click a row for its Wowhead link."],
-        L["•  New on Forever: Leveling Finds and Hunter Pets."],
+        L["•  Hunter Pets: a card for every beast with model and map."],
+        L["•  Star beasts for a wishlist, with alerts and minimap marks."],
+        L["•  Families and Abilities pages, sort by nearest or fastest."],
+        L["•  A warning when your pet is low on health in a fight."],
         L["•  Leave feedback with the button on the first page."],
         L["•  Grab either pack from CurseForge:"],
     }

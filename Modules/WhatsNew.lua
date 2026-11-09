@@ -61,6 +61,16 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.60",
+        lines = {
+            { "NEW", "Hunter Pets on WoW Forever: every beast has a card with a 3D model, what it teaches rank by rank and a map of where it lives." },
+            { "NEW", "Hunter Pets: star beasts for a wishlist. You get an alert when one is near and marks on the minimap." },
+            { "NEW", "Hunter Pets: new Families and Abilities pages, and sorting by nearest or fastest attack." },
+            { "NEW", "Hunter Pets: a warning when your pet is low on health in a fight." },
+            { "FIXED", "Hunter Pets no longer asks for food just after a meal or while the pet is being called or dismissed." },
+        },
+    },
+    {
         version = "2.4.59",
         lines = {
             { "NEW", "Mouseover Info: a small panel for the unit under your cursor with name, level, guild, target and quest lines. Follows the cursor or stays where you put it." },
