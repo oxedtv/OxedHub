@@ -37,6 +37,12 @@ local DEFAULTS = {
     showAll       = false,  -- false: only what fits the character's level
     below         = 4,      -- quests: how many levels under the character still listed
     ahead         = 3,      -- dungeons and loot: how many levels above
+    weights       = "auto", -- what "better" means: "auto" (by class), a role, or "ilvl"
+    tooltipLine   = true,   -- a line on item tooltips when the item is an upgrade
+    rewardMark    = true,   -- a mark on the best choice in the quest window
+    rewardChat    = true,   -- and a line in chat naming it, at hand-in
+    bisAlert      = true,   -- say when a new best item for a slot can be had at this level
+    bisSound      = "None", -- and play this with it
     point = "CENTER", x = 0, y = 0,
 }
 
@@ -530,7 +536,99 @@ local function EquippedLevel(slot)
     return (okI and type(ilvl) == "number") and ilvl or 0
 end
 
--- "bag", or the item level gained (a number above 0), or nil.
+-- ── Scoring by stats ────────────────────────────────────────────────────────
+-- Item level says how strong an item is, not whether its stats are yours: a
+-- cloth robe "of the Whale" outranks a mage's Intellect robe a level lower.
+-- So each item gets a score, its stats times what they are worth to a role,
+-- and the gain is the difference in score. The weights are rough leveling
+-- values, the same for every level; they rank items, they are not a sim.
+
+-- The game's stat keys (GetItemStats) -> the short names the weights use.
+local STAT_KEY = {
+    ITEM_MOD_STRENGTH_SHORT = "str", ITEM_MOD_AGILITY_SHORT = "agi", ITEM_MOD_STAMINA_SHORT = "sta",
+    ITEM_MOD_INTELLECT_SHORT = "int", ITEM_MOD_SPIRIT_SHORT = "spi",
+    ITEM_MOD_ATTACK_POWER_SHORT = "ap", ITEM_MOD_MELEE_ATTACK_POWER_SHORT = "ap",
+    ITEM_MOD_RANGED_ATTACK_POWER_SHORT = "ap",
+    ITEM_MOD_SPELL_POWER_SHORT = "sp", ITEM_MOD_SPELL_DAMAGE_DONE_SHORT = "sp",
+    ITEM_MOD_SPELL_HEALING_DONE_SHORT = "heal",
+    ITEM_MOD_ARCANE_DAMAGE_DONE_SHORT = "school", ITEM_MOD_FIRE_DAMAGE_DONE_SHORT = "school",
+    ITEM_MOD_FROST_DAMAGE_DONE_SHORT = "school", ITEM_MOD_HOLY_DAMAGE_DONE_SHORT = "school",
+    ITEM_MOD_NATURE_DAMAGE_DONE_SHORT = "school", ITEM_MOD_SHADOW_DAMAGE_DONE_SHORT = "school",
+    ITEM_MOD_CRIT_RATING_SHORT = "crit", ITEM_MOD_HIT_RATING_SHORT = "hit",
+    ITEM_MOD_EXPERTISE_RATING_SHORT = "hit", ITEM_MOD_HASTE_RATING_SHORT = "haste",
+    ITEM_MOD_MANA_REGENERATION_SHORT = "mp5",
+    ITEM_MOD_DEFENSE_SKILL_RATING_SHORT = "def", ITEM_MOD_DODGE_RATING_SHORT = "avoid",
+    ITEM_MOD_PARRY_RATING_SHORT = "avoid", ITEM_MOD_BLOCK_RATING_SHORT = "block",
+    ITEM_MOD_BLOCK_VALUE_SHORT = "block",
+    ITEM_MOD_DAMAGE_PER_SECOND_SHORT = "dps", RESISTANCE0_NAME = "armor",
+}
+
+local WEIGHTS = {
+    str    = { str = 1, agi = 0.5, sta = 0.6, ap = 0.5, crit = 0.6, hit = 0.6, haste = 0.4, dps = 4, armor = 0.02 },
+    agi    = { agi = 1, str = 0.5, sta = 0.6, ap = 0.5, crit = 0.6, hit = 0.6, haste = 0.4, dps = 4, armor = 0.02 },
+    caster = { int = 1, spi = 0.5, sta = 0.6, sp = 1, heal = 0.3, school = 0.5, crit = 0.5, hit = 0.6,
+               haste = 0.5, mp5 = 1.5, armor = 0.01 },
+    healer = { int = 1, spi = 0.8, sta = 0.5, sp = 0.5, heal = 1, crit = 0.4, haste = 0.5, mp5 = 2, armor = 0.01 },
+    tank   = { sta = 1, str = 0.6, agi = 0.5, ap = 0.25, hit = 0.4, def = 0.6, avoid = 0.6, block = 0.3,
+               dps = 2, armor = 0.08 },
+}
+-- "auto": what most characters of the class level as.
+local CLASS_ROLE = {
+    WARRIOR = "str", PALADIN = "str", DEATHKNIGHT = "str",
+    HUNTER = "agi", ROGUE = "agi", DRUID = "agi", SHAMAN = "agi", MONK = "agi", DEMONHUNTER = "agi",
+    MAGE = "caster", PRIEST = "caster", WARLOCK = "caster", EVOKER = "caster",
+}
+
+local function StatsFn() return (C_Item and C_Item.GetItemStats) or GetItemStats end
+
+-- The weights in use, or nil for "compare item levels".
+local function WeightSet()
+    if not StatsFn() then return nil end
+    local pick = settings and settings.weights or "auto"
+    if pick == "ilvl" then return nil end
+    if pick == "auto" then
+        local ok, _, cls = pcall(UnitClass, "player")
+        pick = (ok and not Secret(cls) and CLASS_ROLE[cls]) or "str"
+    end
+    return WEIGHTS[pick]
+end
+
+-- An item link's score under the weights, or nil when the game has no stats
+-- for it yet.
+local function ItemScore(link, weights)
+    if type(link) ~= "string" or Secret(link) then return nil end
+    local ok, stats = pcall(StatsFn(), link)
+    if not ok or type(stats) ~= "table" then return nil end
+    local score = 0
+    for key, amount in pairs(stats) do
+        local w = weights[STAT_KEY[key] or ""]
+        if w and type(amount) == "number" and not Secret(amount) then score = score + amount * w end
+    end
+    return score
+end
+
+-- The gain in score over the weakest item in the slots, or nil when a score
+-- is missing on either side.
+local function ScoreGain(itemID, slots, weights)
+    local fn = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    local ok, _, link = pcall(fn, itemID)
+    local new = ok and ItemScore(link, weights) or nil
+    if not new then return nil end
+    local worst
+    for _, s in ipairs(slots) do
+        local okL, worn = pcall(GetInventoryItemLink, "player", s)
+        local have = 0
+        if okL and worn then
+            have = ItemScore(worn, weights)
+            if not have then return nil end
+        end
+        if not worst or have < worst then worst = have end
+    end
+    return new - (worst or 0)
+end
+
+-- "bag", or the gain (a number above 0: in score, or in item levels when
+-- comparing those), or nil.
 local function Upgrade(itemID)
     local fn = (C_Item and C_Item.GetItemInfo) or GetItemInfo
     if not (fn and itemID) then return nil end
@@ -543,6 +641,11 @@ local function Upgrade(itemID)
     if level and type(req) == "number" and req > level + (settings.ahead or 3) then return nil end
     if not Usable(itemClass, sub, equipLoc, PlayerClass(), math.max(level or 1, type(req) == "number" and req or 0)) then
         return nil
+    end
+    local weights = WeightSet()
+    if weights then
+        local gain = ScoreGain(itemID, slots, weights)
+        return (gain and gain >= 0.1) and gain or nil
     end
     local worst
     for _, s in ipairs(slots) do
@@ -598,7 +701,11 @@ end
 
 local function UpgradeText(best, bag)
     local t = {}
-    if best then t[#t + 1] = ("|cff40ff40" .. L["Upgrade +%d item level"] .. "|r"):format(best) end
+    if best and WeightSet() then
+        t[#t + 1] = ("|cff40ff40" .. L["Upgrade +%s"] .. "|r"):format((best < 10 and "%.1f" or "%d"):format(best))
+    elseif best then
+        t[#t + 1] = ("|cff40ff40" .. L["Upgrade +%d item level"] .. "|r"):format(best)
+    end
     if bag then t[#t + 1] = "|cffffd100" .. L["Bag"] .. "|r" end
     return table.concat(t, "  ")
 end
@@ -689,7 +796,7 @@ local SLOT_LABEL = {
     head = "Head", neck = "Neck", shoulder = "Shoulder", back = "Back", chest = "Chest", wrist = "Wrist",
     hands = "Hands", waist = "Waist", legs = "Legs", feet = "Feet", finger = "Rings", trinket = "Trinkets",
     mainhand = "Main hand", offhand = "Off hand", ranged = "Ranged", bags = "Bags",
-    all = "Best for me", wish = "Wishlist",
+    all = "Best for me", wish = "Wishlist", bis = "Best now",
 }
 local CLASSES = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 
@@ -778,6 +885,9 @@ local function GearRows(level, faction, spot)
     local pick = settings.slot or "all"
     local wish = settings.wish or {}
     local out, counts = {}, {}
+    -- The best item per slot that can be had right now: an upgrade whose
+    -- quest and own requirement are at or under the character's level.
+    local bestBy = {}
     for _, src in ipairs(Sources(faction)) do
         local info = FullInfo(src.itemID)
         if info then
@@ -793,8 +903,14 @@ local function GearRows(level, faction, spot)
                 local gain = own and Upgrade(src.itemID) or nil
                 if gain == "bag" then gain = 0 end
                 if gain and group then counts[group] = (counts[group] or 0) + 1 end
+                local now = own and group and group ~= "bags" and level and need <= level
+                    and type(gain) == "number" and gain > 0
+                if now and (not bestBy[group] or gain > bestBy[group].gain) then
+                    bestBy[group] = { gain = gain, itemID = src.itemID }
+                end
                 local keep
                 if pick == "wish" then keep = wish[src.itemID]
+                elseif pick == "bis" then keep = now
                 elseif pick == "all" then keep = gain ~= nil or (not own)
                 else keep = group == pick end
                 if keep then
@@ -813,7 +929,7 @@ local function GearRows(level, faction, spot)
                         or (group == "bags" and ("  " .. UpgradeText(nil, true))) or ""
                     out[#out + 1] = {
                         kind = "gear", itemID = src.itemID, entry = src.quest or src.journal, journal = src.journal,
-                        level = need, ilvl = info.ilvl, gain = gain, loc = loc,
+                        level = need, ilvl = info.ilvl, gain = gain, loc = loc, group = group,
                         dist = Dist(spot, loc), icon = info.icon or "Interface\\Icons\\INV_Misc_QuestionMark",
                         title = QualityColour(info.quality) .. info.name .. "|r" .. star .. gainText,
                         line = line, place = place,
@@ -822,7 +938,45 @@ local function GearRows(level, faction, spot)
             end
         end
     end
-    return out, counts
+    local slots = 0
+    for _ in pairs(bestBy) do slots = slots + 1 end
+    counts.bis = slots
+    local kept = {}
+    for _, row in ipairs(out) do
+        local best = row.group and bestBy[row.group]
+        if best and best.itemID == row.itemID then
+            row.title = row.title .. "  |cffffd100" .. L["Best now"] .. "|r"
+            if pick == "bis" then
+                row.line = L[SLOT_LABEL[row.group] or row.group] .. ". " .. row.line
+            end
+            kept[#kept + 1] = row
+        elseif pick ~= "bis" then
+            kept[#kept + 1] = row
+        end
+    end
+    return kept, counts
+end
+
+-- The same answer without the window: slot -> the best item to be had now,
+-- for the character's own class.
+local function BestNow()
+    local level, faction = PlayerLevel(), PlayerFaction()
+    local best = {}
+    if not level then return best end
+    for _, src in ipairs(Sources(faction)) do
+        local info = FullInfo(src.itemID)
+        local group = info and GROUP_OF[info.equipLoc]
+        if group and group ~= "bags" then
+            local need = math.max(1, info.req, (src.quest and src.quest[2]) or 0)
+            if need <= level then
+                local gain = Upgrade(src.itemID)
+                if type(gain) == "number" and gain > 0 and (not best[group] or gain > best[group].gain) then
+                    best[group] = { gain = gain, itemID = src.itemID, src = src, name = info.name, quality = info.quality }
+                end
+            end
+        end
+    end
+    return best, level
 end
 
 local slotCounts = {}
@@ -1264,6 +1418,7 @@ local function BuildWindow()
     SlotButton("bags", 0, -282, nil, L["Bags"])
     SlotButton("all", 0, -304, nil, L["Best for me"])
     SlotButton("wish", 0, -326, nil, L["Wishlist"])
+    SlotButton("bis", 0, -348, nil, L["Best now"])
 
     f.status = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     f.status:SetPoint("TOPLEFT", f.summary, "BOTTOMLEFT", 0, -6)
@@ -1313,7 +1468,7 @@ ShowOptions = function()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
     if not optionsWindow then
-        local w = API:CreateOptionsWindow("Leveling Finds", 420, 380)
+        local w = API:CreateOptionsWindow("Leveling Finds", 420, 620)
         optionsWindow = w
 
         local open = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
@@ -1333,11 +1488,25 @@ ShowOptions = function()
         w:AddCheckbox(settings, "showAll", "List everything, not only what fits your level", nil, function() Refresh() end)
         w:AddSlider(settings, "below", "Quests: levels under yours still listed", 0, 15, 1, "%s: %d", function() Refresh() end)
         w:AddSlider(settings, "ahead", "Dungeons and loot: levels ahead", 0, 10, 1, "%s: %d", function() Refresh() end)
+        w:AddChoice(settings, "weights", "An upgrade is", {
+            { value = "auto",   text = "Better stats for your class" },
+            { value = "str",    text = "Better for Strength melee" },
+            { value = "agi",    text = "Better for Agility melee or ranged" },
+            { value = "caster", text = "Better for a damage caster" },
+            { value = "healer", text = "Better for a healer" },
+            { value = "tank",   text = "Better for a tank" },
+            { value = "ilvl",   text = "A higher item level" },
+        }, function() Refresh() end)
+        w:AddCheckbox(settings, "tooltipLine", "Say on an item's tooltip when it is an upgrade")
+        w:AddCheckbox(settings, "rewardMark", "Mark the best reward in the quest window")
+        w:AddCheckbox(settings, "rewardChat", "Name the best reward in chat at hand-in")
+        w:AddCheckbox(settings, "bisAlert", "Tell me when a new best item can be had at my level")
+        w:AddSoundPicker(settings, "bisSound", "Sound with that message")
         w:AddCheckbox(settings, "minimapButton", "Show minimap button", nil, function()
             local icon = MinimapIcon()
             if icon then icon:Apply(settings.enabled == true) end
         end)
-        w:AddNote("/oxfind opens the list. Map puts a pin on the spot.")
+        w:AddNote("/oxfind opens the list. Map puts a pin on the spot. With no upgrade among a quest's rewards, the mark goes on the one that sells for the most.")
     end
     optionsWindow:Show()
 end
@@ -1513,6 +1682,220 @@ SlashCmdList.OXEDLEVELFINDS = function(msg)
     else Toggle() end
 end
 
+-- ── Upgrades on item tooltips ───────────────────────────────────────────────
+-- One line under the game's own, only when the item beats what is worn. The
+-- hook cannot be taken back, so it is installed once and asks `running`.
+
+local function Wearing(itemID)
+    if not GetInventoryItemID then return false end
+    for slot = 1, 18 do
+        local ok, id = pcall(GetInventoryItemID, "player", slot)
+        if ok and not Secret(id) and id == itemID then return true end
+    end
+    return false
+end
+
+local function OnItemTooltip(tooltip, data)
+    if not running or not settings or not settings.tooltipLine then return end
+    if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
+    local id
+    if type(data) == "table" then id = data.id end
+    if Secret(id) then return end
+    if not id and tooltip.GetItem then
+        local _, link = tooltip:GetItem()
+        id = LinkID(link)
+    end
+    if type(id) ~= "number" or Wearing(id) then return end
+    local gain = Upgrade(id)
+    if type(gain) ~= "number" then return end
+    tooltip:AddLine("|cff33ff99" .. L["Leveling Finds"] .. ":|r " .. UpgradeText(gain, false))
+end
+
+local tooltipHooked = false
+local function HookTooltips()
+    if tooltipHooked then return end
+    tooltipHooked = true
+    -- A tooltip must never break because of us: every call is in pcall.
+    local itemType = Enum and Enum.TooltipDataType and Enum.TooltipDataType.Item
+    if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and itemType then
+        pcall(TooltipDataProcessor.AddTooltipPostCall, itemType, function(tooltip, data)
+            pcall(OnItemTooltip, tooltip, data)
+        end)
+        return
+    end
+    for _, tooltip in ipairs({ GameTooltip, ItemRefTooltip }) do
+        if tooltip and tooltip.HookScript then
+            pcall(tooltip.HookScript, tooltip, "OnTooltipSetItem", function(self)
+                pcall(OnItemTooltip, self)
+            end)
+        end
+    end
+end
+
+-- ── The best reward in the quest window ─────────────────────────────────────
+-- Among a quest's choices: the biggest upgrade, in green; with no upgrade at
+-- all, the one a vendor pays the most for, in gold.
+
+local pickMark
+local pickSaid       -- the quest already named in chat, so a retry stays quiet
+local pickTries = 0
+
+local function RewardButton(i)
+    if QuestInfo_GetRewardButton and QuestInfoFrame and QuestInfoFrame.rewardsFrame then
+        local ok, button = pcall(QuestInfo_GetRewardButton, QuestInfoFrame.rewardsFrame, i)
+        if ok and button then return button end
+    end
+    return _G["QuestInfoRewardsFrameQuestInfoItem" .. i] or _G["QuestInfoItem" .. i]
+end
+
+local function HidePick()
+    if pickMark then pickMark:Hide() end
+end
+
+local function ShowPick(button, r, g, b, icon)
+    if not pickMark then
+        pickMark = CreateFrame("Frame")
+        pickMark.edges = {}
+        for i = 1, 4 do pickMark.edges[i] = pickMark:CreateTexture(nil, "OVERLAY") end
+        local e = pickMark.edges
+        e[1]:SetPoint("TOPLEFT") e[1]:SetPoint("TOPRIGHT") e[1]:SetHeight(2)
+        e[2]:SetPoint("BOTTOMLEFT") e[2]:SetPoint("BOTTOMRIGHT") e[2]:SetHeight(2)
+        e[3]:SetPoint("TOPLEFT") e[3]:SetPoint("BOTTOMLEFT") e[3]:SetWidth(2)
+        e[4]:SetPoint("TOPRIGHT") e[4]:SetPoint("BOTTOMRIGHT") e[4]:SetWidth(2)
+        pickMark.icon = pickMark:CreateTexture(nil, "OVERLAY")
+        pickMark.icon:SetSize(16, 16)
+        pickMark.icon:SetPoint("TOPRIGHT", -2, -2)
+    end
+    pickMark:SetParent(button)
+    pickMark:ClearAllPoints()
+    pickMark:SetAllPoints(button)
+    pickMark:SetFrameLevel(button:GetFrameLevel() + 5)
+    for _, edge in ipairs(pickMark.edges) do edge:SetColorTexture(r, g, b, 0.9) end
+    pickMark.icon:SetTexture(icon)
+    pickMark:Show()
+end
+
+local MarkBestReward
+MarkBestReward = function(event)
+    HidePick()
+    if not running or not (settings.rewardMark or settings.rewardChat) then return end
+    if not (GetNumQuestChoices and GetQuestItemLink) then return end
+    local okN, n = pcall(GetNumQuestChoices)
+    if not okN or type(n) ~= "number" or n < 2 then return end
+    local info = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+
+    local bestGain, gainIndex, bestPrice, priceIndex
+    local links, missing = {}, false
+    for i = 1, n do
+        local okL, link = pcall(GetQuestItemLink, "choice", i)
+        local id = okL and LinkID(link)
+        if not id then
+            missing = true
+        else
+            links[i] = link
+            local gain = Upgrade(id)
+            if type(gain) == "number" and (not bestGain or gain > bestGain) then bestGain, gainIndex = gain, i end
+            local okP, price = pcall(function() return (select(11, info(id))) end)
+            if okP and type(price) == "number" and price > 0 and (not bestPrice or price > bestPrice) then
+                bestPrice, priceIndex = price, i
+            end
+        end
+    end
+    -- The window can open before the game has the items: look again shortly.
+    if missing and pickTries < 3 then
+        pickTries = pickTries + 1
+        C_Timer.After(0.5, function() pcall(MarkBestReward, event) end)
+        return
+    end
+
+    local index = gainIndex or priceIndex
+    if not index then return end
+    if settings.rewardMark then
+        local button = RewardButton(index)
+        if button and button.IsVisible and button:IsVisible() then
+            if gainIndex then
+                ShowPick(button, 0.25, 1, 0.25, "Interface\\Buttons\\UI-MicroStream-Green")
+            else
+                ShowPick(button, 1, 0.82, 0, "Interface\\MoneyFrame\\UI-GoldIcon")
+            end
+        end
+    end
+    if settings.rewardChat and event == "QUEST_COMPLETE" then
+        local okT, title = pcall(GetTitleText)
+        local key = (okT and type(title) == "string" and not Secret(title)) and title or "?"
+        if pickSaid ~= key then
+            pickSaid = key
+            if gainIndex then
+                print(PREFIX .. (L["Best reward: %s (%s)"]):format(links[index], UpgradeText(bestGain, false)))
+            else
+                print(PREFIX .. (L["No upgrade among the rewards. %s sells for the most."]):format(links[index]))
+            end
+        end
+    end
+end
+
+-- ── A new best item for the level ───────────────────────────────────────────
+-- At login and on every level: the best item per slot that can be had now.
+-- A slot whose answer changed since it was last announced is said once, in
+-- chat and across the screen. settings.bisSeen[character][slot] = itemID,
+-- made after binding, never in DEFAULTS.
+
+local BIS_LINES = 4      -- more than this many at once are summed up in one line
+
+local function CharKey()
+    local okN, name = pcall(UnitName, "player")
+    local okR, realm = pcall(GetRealmName)
+    if not okN or Secret(name) or type(name) ~= "string" then return "?" end
+    return name .. "-" .. ((okR and type(realm) == "string" and not Secret(realm)) and realm or "?")
+end
+
+-- quiet: only ask the game for the items, so the real pass finds them loaded.
+local function CheckBis(quiet)
+    if not running or not settings or not settings.bisAlert then return end
+    local best, level = BestNow()
+    if quiet or not level then return end
+    if type(settings.bisSeen) ~= "table" then settings.bisSeen = {} end
+    local key = CharKey()
+    local seen = settings.bisSeen[key]
+    if type(seen) ~= "table" then
+        seen = {}
+        settings.bisSeen[key] = seen
+    end
+    local fresh = {}
+    for group, b in pairs(best) do
+        if seen[group] ~= b.itemID then fresh[#fresh + 1] = { group = group, best = b } end
+    end
+    if #fresh == 0 then return end
+    table.sort(fresh, function(a, b) return a.best.gain > b.best.gain end)
+
+    local fn = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    for i, item in ipairs(fresh) do
+        seen[item.group] = item.best.itemID
+        if i <= BIS_LINES then
+            local b = item.best
+            local ok, _, link = pcall(fn, b.itemID)
+            local shown = (ok and type(link) == "string") and link or (QualityColour(b.quality) .. b.name .. "|r")
+            local from
+            if b.src.quest then
+                from = (L["Quest: %s"]):format(b.src.quest[1])
+            else
+                from = (L["%s, in %s"]):format(b.src.journal.boss or "?", b.src.journal.dungeon or "?")
+            end
+            print(PREFIX .. (L["Best %s at level %d: %s  %s  %s"]):format(
+                L[SLOT_LABEL[item.group] or item.group], level, shown, UpgradeText(b.gain, false), from))
+        end
+    end
+    if #fresh > BIS_LINES then
+        print(PREFIX .. (L["And %d more slots. Type /oxfind and press Best now."]):format(#fresh - BIS_LINES))
+    end
+    if UIErrorsFrame and UIErrorsFrame.AddMessage then
+        UIErrorsFrame:AddMessage((L["Leveling Finds: %d new best items for level %d"]):format(#fresh, level), 1, 0.82, 0)
+    end
+    if settings.bisSound and settings.bisSound ~= "None" and OxedHub.ModuleAPI and OxedHub.ModuleAPI.PlaySound then
+        OxedHub.ModuleAPI:PlaySound(settings.bisSound)
+    end
+end
+
 -- ── Events ──────────────────────────────────────────────────────────────────
 
 local refreshQueued = false
@@ -1541,8 +1924,20 @@ events:SetScript("OnEvent", function(_, event, a1, a2)
         if scan.on and a1 == scan.waiting then ScanDone(a1, a2 and true or false) end
         return
     end
+    if event == "QUEST_FINISHED" then
+        HidePick()
+        pickSaid = nil
+        return
+    end
+    if event == "PLAYER_LEVEL_UP" then
+        -- The new level reaches UnitLevel a moment after the event.
+        C_Timer.After(3, function() pcall(CheckBis) end)
+    end
     if event == "QUEST_DETAIL" or event == "QUEST_COMPLETE" then
         CaptureGossipQuest()
+        pickTries = 0
+        -- The window lays its reward buttons out after the event.
+        C_Timer.After(0.1, function() pcall(MarkBestReward, event) end)
     elseif event == "QUEST_ACCEPTED" or event == "PLAYER_ENTERING_WORLD" then
         QueueLogCapture()
     end
@@ -1551,7 +1946,7 @@ end)
 
 local EVENTS = { "GET_ITEM_INFO_RECEIVED", "PLAYER_LEVEL_UP", "ZONE_CHANGED_NEW_AREA", "QUEST_DETAIL",
                  "QUEST_COMPLETE", "QUEST_ACCEPTED", "PLAYER_ENTERING_WORLD", "PLAYER_EQUIPMENT_CHANGED",
-                 "QUEST_DATA_LOAD_RESULT" }
+                 "QUEST_DATA_LOAD_RESULT", "QUEST_FINISHED" }
 
 -- Distances change as the player moves: re-sort every few seconds while open.
 local ticker
@@ -1559,6 +1954,10 @@ local function Start()
     if running then return end
     running = true
     for _, e in ipairs(EVENTS) do pcall(events.RegisterEvent, events, e) end
+    HookTooltips()
+    -- Once to make the game load the items, once more to say what is new.
+    C_Timer.After(6, function() pcall(CheckBis, true) end)
+    C_Timer.After(14, function() pcall(CheckBis) end)
     if C_Timer.NewTicker then
         ticker = C_Timer.NewTicker(5, function() QueueRefresh(0) end)
     end
@@ -1569,6 +1968,7 @@ local function Stop()
     running = false
     events:UnregisterAllEvents()
     if ticker then ticker:Cancel() ticker = nil end
+    HidePick()
     if window then window:Hide() end
 end
 
@@ -1606,6 +2006,7 @@ loginFrame:SetScript("OnEvent", function(self)
     if type(config.rewards) ~= "table" then config.rewards = {} end
     if type(config.wish) ~= "table" then config.wish = {} end
     if type(config.planClasses) ~= "table" then config.planClasses = {} end
+    if type(config.bisSeen) ~= "table" then config.bisSeen = {} end
     if config.mode ~= "gear" and config.mode ~= "quests" and config.mode ~= "dungeons" then config.mode = "gear" end
     settings = config
 
@@ -1613,8 +2014,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "levelingfinds",
         name     = "Leveling Finds",
-        version  = "2.7.0",
-        updated  = 20261108.1,  -- Shift-click a row for its Wowhead link
+        version  = "2.9.0",
+        updated  = 20261110.4,  -- Best now: the best item per slot for the level, with an alert
         author   = "Oxed",
         category = "quests",
         keywords = { "leveling", "levelling", "quest", "dungeon", "loot", "map", "forever", "mapgenie", "find" },

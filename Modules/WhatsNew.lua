@@ -61,6 +61,16 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.61",
+        lines = {
+            { "NEW", "Quest Mobs: a quest icon and your progress (4/7) on the nameplate of every mob your quests need, so you see them from afar. Count left, quest name, health bar colour and a sound when an objective is done are in its options." },
+            { "NEW", "Leveling Finds: Best now shows the best item you can get for each slot at your level, and tells you in chat when a new one opens up." },
+            { "NEW", "Leveling Finds: upgrades are judged by stats for your class, not only item level. Item tooltips say when something is an upgrade." },
+            { "NEW", "Leveling Finds: the best reward in the quest window gets a green outline, or gold for the one that sells for most, and is named in chat at hand-in." },
+            { "NEW", "New and updated modules are tagged on their cards and shown first, and the Modules button says NEW until you look." },
+        },
+    },
+    {
         version = "2.4.60",
         lines = {
             { "NEW", "Hunter Pets on WoW Forever: every beast has a card with a 3D model, what it teaches rank by rank and a map of where it lives." },

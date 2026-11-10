@@ -708,6 +708,10 @@ function UI:CreateSidebar()
         end)
         btn.tabName = tabName
         sidebar[tabName .. "Btn"] = btn
+        -- "NEW" on the button while a module is new or changed and unseen.
+        if tabName == "Modules" and OxedHub.ModuleAPI and OxedHub.ModuleAPI.AttachNavBadge then
+            pcall(OxedHub.ModuleAPI.AttachNavBadge, OxedHub.ModuleAPI, btn)
+        end
         
         -- Activate Dashboard button by default since it starts selected
         if tabName == "Dashboard" then
@@ -1345,12 +1349,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.60)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.61)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.60")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.61")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
@@ -1432,10 +1436,10 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        L["•  Hunter Pets: a card for every beast with model and map."],
-        L["•  Star beasts for a wishlist, with alerts and minimap marks."],
-        L["•  Families and Abilities pages, sort by nearest or fastest."],
-        L["•  A warning when your pet is low on health in a fight."],
+        L["•  New module: Quest Mobs, quest progress on nameplates."],
+        L["•  Leveling Finds: best item per slot for your level, with alerts."],
+        L["•  Leveling Finds: upgrades by stats, best quest reward marked."],
+        L["•  New and updated modules are tagged and shown first."],
         L["•  Leave feedback with the button on the first page."],
         L["•  Grab either pack from CurseForge:"],
     }

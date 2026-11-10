@@ -1353,6 +1353,116 @@ function ModuleAPI:RebuildCategoryTabs(tab, allModules, selected)
     end
 end
 
+-- ── New and updated modules ─────────────────────────────────────────────────
+-- A module the player has not seen since it was added or changed gets a NEW
+-- or UPDATED tag on its card, sits above every other card whatever the sort,
+-- and lights "NEW" on the Modules button in the sidebar.
+--
+-- OxedHubDB.globalSettings.modulesSeen[id] = the module's `updated` stamp the
+-- last time the Modules page was open. Opening the page marks everything
+-- seen at once, which puts the sidebar light out, but the tags and the place
+-- at the top stay until the next reload (sessionFresh): the player came to
+-- look at them, they must not vanish on the first refresh.
+--
+-- "new" needs the module to say when it first shipped: added = YYYYMMDD in
+-- ModuleAPI:Register. Without it a module never seen before is new, and one
+-- seen before is only ever "updated".
+
+-- Players who had OxedHub before these marks existed have no record at all.
+-- Their first record calls everything seen, except what changed from this
+-- day on, so the marks have something to show without flagging 50 modules.
+local FRESH_BASELINE = 20261110
+
+local sessionFresh = {}
+local navBadge
+
+local function SeenTable()
+    if type(OxedHubDB) ~= "table" then return nil end
+    OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+    local global = OxedHubDB.globalSettings
+    if type(global.modulesSeen) ~= "table" then
+        global.modulesSeen = {}
+        for id, mod in pairs(ModuleAPI.modules) do
+            local stamp = tonumber(mod.updated) or 0
+            global.modulesSeen[id] = stamp >= FRESH_BASELINE and 0 or stamp
+        end
+    end
+    return global.modulesSeen
+end
+
+-- "new", "updated" or nil, by the saved record.
+local function UnseenState(mod, seen)
+    local last = seen[mod.id]
+    if last == nil then return "new" end
+    last = tonumber(last) or 0
+    if (tonumber(mod.added) or 0) > last then return "new" end
+    if (tonumber(mod.updated) or 0) > last then return "updated" end
+    return nil
+end
+
+function ModuleAPI:CountFresh()
+    local seen = SeenTable()
+    if not seen then return 0 end
+    local count = 0
+    for _, mod in pairs(self.modules) do
+        if mod.id and UnseenState(mod, seen) then count = count + 1 end
+    end
+    return count
+end
+
+-- "new", "updated" or nil, for the tags: what was unseen when the page was
+-- opened this session.
+function ModuleAPI:FreshState(mod)
+    return mod and mod.id and sessionFresh[mod.id] or nil
+end
+
+function ModuleAPI:UpdateNavBadge()
+    if not navBadge then return end
+    if self:CountFresh() > 0 then
+        navBadge:Show()
+        if navBadge.pulse and not navBadge.pulse:IsPlaying() then navBadge.pulse:Play() end
+    else
+        if navBadge.pulse then navBadge.pulse:Stop() end
+        navBadge:Hide()
+    end
+end
+
+-- The page is open: remember what was unseen for the tags, then call it seen.
+function ModuleAPI:BeginVisit()
+    local seen = SeenTable()
+    if not seen then return end
+    for _, mod in pairs(self.modules) do
+        if mod.id then
+            local state = UnseenState(mod, seen)
+            if state then sessionFresh[mod.id] = state end
+            seen[mod.id] = math.max(tonumber(mod.updated) or 0, tonumber(mod.added) or 0)
+        end
+    end
+    self:UpdateNavBadge()
+end
+
+-- Called by the sidebar for its Modules button.
+function ModuleAPI:AttachNavBadge(button)
+    if navBadge or not button then return end
+    local text = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    text:SetPoint("RIGHT", button, "RIGHT", -10, 0)
+    text:SetText("|cff40ff40" .. L["NEW"] .. "|r")
+    text:Hide()
+    local ok, pulse = pcall(text.CreateAnimationGroup, text)
+    if ok and pulse then
+        pulse:SetLooping("BOUNCE")
+        local fade = pulse:CreateAnimation("Alpha")
+        fade:SetFromAlpha(1)
+        fade:SetToAlpha(0.35)
+        fade:SetDuration(0.7)
+        text.pulse = pulse
+    end
+    navBadge = text
+    -- Each time the window opens: a module may have registered since.
+    button:HookScript("OnShow", function() ModuleAPI:UpdateNavBadge() end)
+    self:UpdateNavBadge()
+end
+
 -- ── Sorting ─────────────────────────────────────────────────────────────────
 -- How the cards are ordered. A viewing preference, kept account-wide next to
 -- the open tab rather than in a profile.
@@ -1454,6 +1564,10 @@ function ModuleAPI:RefreshModulesTab()
     local scrollChild = tab.scrollChild
     if not scrollChild then return end
     
+    -- Only while the page is really on screen: a refresh behind another page
+    -- must not call the new modules seen.
+    if tab.IsVisible and tab:IsVisible() then self:BeginVisit() end
+
     -- Clear existing cards
     if not tab.cards then tab.cards = {} end
     for _, card in ipairs(tab.cards) do
@@ -1489,6 +1603,7 @@ function ModuleAPI:RefreshModulesTab()
             allModules[lowerId]._registered = true
             allModules[lowerId]._order = mod._order
             allModules[lowerId].updated = mod.updated
+            allModules[lowerId].added = mod.added
         end
     end
 
@@ -1563,6 +1678,13 @@ function ModuleAPI:RefreshModulesTab()
     end
     local sortKey = self:GetSort()
     table.sort(sortedModules, function(a, b)
+        -- New and updated modules first, under every order, newest on top.
+        local na, nb = self:FreshState(a), self:FreshState(b)
+        if (na ~= nil) ~= (nb ~= nil) then return na ~= nil end
+        if na and nb then
+            local ua, ub = tonumber(a.updated) or 0, tonumber(b.updated) or 0
+            if ua ~= ub then return ua > ub end
+        end
         -- Only the favourites order pins them; the others are what they say.
         if sortKey == "favorites" then
             local fa, fb = self:IsFavorite(a), self:IsFavorite(b)
@@ -1692,6 +1814,18 @@ function ModuleAPI:RefreshModulesTab()
             shareBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             card.shareBtn = shareBtn
 
+            -- NEW / UPDATED, sitting on the card's top edge.
+            local fresh = CreateFrame("Frame", nil, card)
+            fresh:SetFrameLevel(card:GetFrameLevel() + 6)
+            fresh:SetHeight(16)
+            fresh:SetPoint("BOTTOMLEFT", card, "TOPLEFT", 12, -8)
+            fresh.bg = fresh:CreateTexture(nil, "BACKGROUND")
+            fresh.bg:SetAllPoints()
+            fresh.text = fresh:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            fresh.text:SetPoint("CENTER")
+            fresh:Hide()
+            card.fresh = fresh
+
             tab.cards[cardIndex] = card
         end
         
@@ -1732,6 +1866,23 @@ function ModuleAPI:RefreshModulesTab()
             card.icon:SetDesaturated(true)
         end
         
+        local state = self:FreshState(mod)
+        if state then
+            local new = state == "new"
+            card.fresh.text:SetText(new and L["NEW"] or L["UPDATED"])
+            card.fresh:SetWidth((card.fresh.text:GetStringWidth() or 30) + 14)
+            if new then
+                card.fresh.bg:SetColorTexture(0.1, 0.55, 0.1, 0.95)
+                card:SetBackdropBorderColor(0.25, 1, 0.25, 1)
+            else
+                card.fresh.bg:SetColorTexture(0.65, 0.45, 0, 0.95)
+                card:SetBackdropBorderColor(1, 0.82, 0, 1)
+            end
+            card.fresh:Show()
+        else
+            card.fresh:Hide()
+        end
+
         -- ⚠ The card has a fixed height and no ellipsis handling, so a long
         -- desc is cut off mid-word with no sign that anything is missing. Keep
         -- desc in ModuleAPI:Register to roughly 100 characters; anything longer

@@ -196,6 +196,9 @@ Follow the existing ones (`AutoVendor`, `AutoBanker`, `CopyChat`, `Attributes`):
 - `PLAYER_LOGIN` binds settings, then registers. Never touch `OxedHubDB` earlier.
 - Settings live in `OxedHubDB.modules.<id>`; defaults are copied key by key, so
   a key added in a later version reaches players who already have saved data.
+- A new module sets `added = YYYYMMDD` beside `updated`: that is what tags its
+  card NEW rather than UPDATED and lights "NEW" on the Modules button until the
+  page is opened (`modulesSeen`, "New and updated modules" in `Core\ModuleAPI.lua`).
 - `OnEnable` / `OnDisable` must actually start and stop the work — the module
   card toggles them live, with no reload.
 - `category` must be one of the keys in `ModuleAPI.CATEGORIES`; anything else
