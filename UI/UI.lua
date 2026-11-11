@@ -1349,12 +1349,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.61)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.62)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.61")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.62")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
@@ -1436,10 +1436,10 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        L["•  New module: Quest Mobs, quest progress on nameplates."],
-        L["•  Leveling Finds: best item per slot for your level, with alerts."],
-        L["•  Leveling Finds: upgrades by stats, best quest reward marked."],
-        L["•  New and updated modules are tagged and shown first."],
+        L["•  New module: Training Reminder, new spells at your trainer."],
+        L["•  New module: Group Finder, groups from the finder and chat."],
+        L["•  Leveling Finds: new best items come up as cards on screen."],
+        L["•  Fixed an error from the Gold World Quests minimap button."],
         L["•  Leave feedback with the button on the first page."],
         L["•  Grab either pack from CurseForge:"],
     }

@@ -61,6 +61,16 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.62",
+        lines = {
+            { "NEW", "Training Reminder: a card when your trainer has new spells for you, and again later if you forget. Talents, profession ranks and weapon skills too. /oxtrain" },
+            { "NEW", "Group Finder (in development): the game's group listings and group posts from chat in one list, with filters. /oxlfg" },
+            { "NEW", "Leveling Finds: each new best item comes up as a card on screen that stays until you close it. Click one to see the list." },
+            { "CHANGED", "Modules still in development carry an IN DEVELOPMENT tag on their card." },
+            { "FIXED", "Gold World Quests: the minimap button no longer raises an error." },
+        },
+    },
+    {
         version = "2.4.61",
         lines = {
             { "NEW", "Quest Mobs: a quest icon and your progress (4/7) on the nameplate of every mob your quests need, so you see them from afar. Count left, quest name, health bar colour and a sound when an objective is done are in its options." },

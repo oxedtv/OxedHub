@@ -1466,15 +1466,18 @@ local function CreateMinimapButton()
     local DBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
     if LDB and DBIcon then
         local obj = LDB:NewDataObject("OxedHub_GoldWQ", {
-            type = "launcher", label = "GoldWQ", icon = MM_ICON,
+            type = "data source", label = "GoldWQ", icon = MM_ICON,
             OnClick = MMClick, OnTooltipShow = MMTooltip,
         }) or LDB:GetDataObjectByName("OxedHub_GoldWQ")
-        DBIcon:Register("OxedHub_GoldWQ", obj, settings.minimap)
-        dbicon = DBIcon
-        if settings.minimap.hide or not settings.minimapButton then
-            DBIcon:Hide("OxedHub_GoldWQ")
+        -- OxedHub's bundled LibDBIcon only accepts "data source" objects;
+        -- if registration still fails, fall back to the plain button below.
+        if obj and pcall(DBIcon.Register, DBIcon, "OxedHub_GoldWQ", obj, settings.minimap) then
+            dbicon = DBIcon
+            if settings.minimap.hide or not settings.minimapButton then
+                DBIcon:Hide("OxedHub_GoldWQ")
+            end
+            return
         end
-        return
     end
 
     local b = CreateFrame("Button", "LibDBIcon10_OxedHub_GoldWQ", Minimap)
@@ -1793,8 +1796,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "goldwq",
         name     = "Gold World Quests",
-        version  = "1.2.0",
-        updated  = 20261102.1,  -- Gold Stock moved out into its own module
+        version  = "1.2.1",
+        updated  = 20261111.1,  -- minimap button registers without an error
         author   = "Marcus / Oxed",
         category = "quests",
         keywords = { "gold", "wq", "world quest", "caches", "special assignment", "tomtom", "route" },

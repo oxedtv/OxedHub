@@ -1396,7 +1396,14 @@ local function UnseenState(mod, seen)
     if last == nil then return "new" end
     last = tonumber(last) or 0
     if (tonumber(mod.added) or 0) > last then return "new" end
-    if (tonumber(mod.updated) or 0) > last then return "updated" end
+    local updated = tonumber(mod.updated) or 0
+    if updated > last then
+        -- Changes made on the day the module was added (updated = added.n)
+        -- are still part of it being new, not an update to it.
+        local added = tonumber(mod.added) or 0
+        if added > 0 and math.floor(updated) <= added then return "new" end
+        return "updated"
+    end
     return nil
 end
 
@@ -1604,6 +1611,7 @@ function ModuleAPI:RefreshModulesTab()
             allModules[lowerId]._order = mod._order
             allModules[lowerId].updated = mod.updated
             allModules[lowerId].added = mod.added
+            allModules[lowerId].inDevelopment = mod.inDevelopment
         end
     end
 
@@ -1866,8 +1874,16 @@ function ModuleAPI:RefreshModulesTab()
             card.icon:SetDesaturated(true)
         end
         
+        -- A module marked inDevelopment keeps its tag and border for good:
+        -- unlike NEW / UPDATED, opening the page does not clear it.
         local state = self:FreshState(mod)
-        if state then
+        if mod.inDevelopment then
+            card.fresh.text:SetText(L["IN DEVELOPMENT"])
+            card.fresh:SetWidth((card.fresh.text:GetStringWidth() or 80) + 14)
+            card.fresh.bg:SetColorTexture(0.45, 0.2, 0.7, 0.95)
+            card:SetBackdropBorderColor(0.7, 0.4, 1, 1)
+            card.fresh:Show()
+        elseif state then
             local new = state == "new"
             card.fresh.text:SetText(new and L["NEW"] or L["UPDATED"])
             card.fresh:SetWidth((card.fresh.text:GetStringWidth() or 30) + 14)

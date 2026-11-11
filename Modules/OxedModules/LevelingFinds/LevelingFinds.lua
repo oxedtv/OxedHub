@@ -43,12 +43,14 @@ local DEFAULTS = {
     rewardChat    = true,   -- and a line in chat naming it, at hand-in
     bisAlert      = true,   -- say when a new best item for a slot can be had at this level
     bisSound      = "None", -- and play this with it
+    bisToasts     = true,   -- and a card on screen that stays until closed
     point = "CENTER", x = 0, y = 0,
 }
 
 local settings
 local running = false
 local window, optionsWindow
+local HideToasts            -- set with the notifications, used by the options above them
 local minimapIcon, MinimapIcon, ShowOptions, Refresh
 local events = CreateFrame("Frame")
 
@@ -1468,7 +1470,7 @@ ShowOptions = function()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
     if not optionsWindow then
-        local w = API:CreateOptionsWindow("Leveling Finds", 420, 620)
+        local w = API:CreateOptionsWindow("Leveling Finds", 420, 650)
         optionsWindow = w
 
         local open = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
@@ -1502,6 +1504,9 @@ ShowOptions = function()
         w:AddCheckbox(settings, "rewardChat", "Name the best reward in chat at hand-in")
         w:AddCheckbox(settings, "bisAlert", "Tell me when a new best item can be had at my level")
         w:AddSoundPicker(settings, "bisSound", "Sound with that message")
+        w:AddCheckbox(settings, "bisToasts", "Show it as a card on screen until I close it", nil, function()
+            if not settings.bisToasts then HideToasts() end
+        end)
         w:AddCheckbox(settings, "minimapButton", "Show minimap button", nil, function()
             local icon = MinimapIcon()
             if icon then icon:Apply(settings.enabled == true) end
@@ -1778,6 +1783,7 @@ end
 local MarkBestReward
 MarkBestReward = function(event)
     HidePick()
+    HideToasts()
     if not running or not (settings.rewardMark or settings.rewardChat) then return end
     if not (GetNumQuestChoices and GetQuestItemLink) then return end
     local okN, n = pcall(GetNumQuestChoices)
@@ -1849,6 +1855,218 @@ local function CharKey()
     return name .. "-" .. ((okR and type(realm) == "string" and not Secret(realm)) and realm or "?")
 end
 
+-- ── Notifications on screen ─────────────────────────────────────────────────
+-- A card per new best item, stacked like a phone's notifications: newest on
+-- top, each staying until it is closed. Click one: the list on Best now.
+-- The heading above the stack drags it and clears it all. Only for this
+-- session; the chat lines stay as the record.
+--   Leveling Finds  3            [Clear all]
+--   [icon] Best Chest, level 24           x
+--          Robe of Evocation  +12.4
+--          Quest: The Defias Brotherhood
+
+local TOAST_W, TOAST_H, TOAST_GAP = 300, 54, 4
+local TOAST_SHOWN = 5        -- cards drawn; the rest wait under "and N more"
+
+local toastHolder
+local toastCards = {}        -- frames, reused
+local toastList = {}         -- what is waiting, newest first
+
+local LayoutToasts
+
+local function OpenBestNow()
+    settings.mode = "gear"
+    settings.slot = "bis"
+    if window and window:IsShown() then Refresh() else Toggle() end
+end
+
+local function DismissToast(entry)
+    for i, e in ipairs(toastList) do
+        if e == entry then
+            table.remove(toastList, i)
+            break
+        end
+    end
+    LayoutToasts()
+end
+
+local function SaveToastPlace()
+    local point, _, rel, x, y = toastHolder:GetPoint()
+    settings.toastPoint, settings.toastRel = point, rel
+    settings.toastX, settings.toastY = x, y
+end
+
+local function BuildToastHolder()
+    if toastHolder then return end
+    local h = CreateFrame("Frame", "OxedHubLevelingToasts", UIParent)
+    h:SetSize(TOAST_W, 20)
+    h:SetFrameStrata("HIGH")
+    h:SetClampedToScreen(true)
+    h:SetMovable(true)
+    h:EnableMouse(true)
+    h:RegisterForDrag("LeftButton")
+    h:SetScript("OnDragStart", h.StartMoving)
+    h:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        SaveToastPlace()
+    end)
+    h:SetPoint(settings.toastPoint or "TOPRIGHT", UIParent, settings.toastRel or "TOPRIGHT",
+        settings.toastX or -220, settings.toastY or -180)
+
+    h.title = h:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    h.title:SetPoint("LEFT", 4, 0)
+
+    local clear = CreateFrame("Button", nil, h)
+    clear:SetSize(70, 18)
+    clear:SetPoint("RIGHT", -2, 0)
+    clear.text = clear:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    clear.text:SetAllPoints()
+    clear.text:SetText(L["Clear all"])
+    clear:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    clear:SetScript("OnClick", function()
+        wipe(toastList)
+        LayoutToasts()
+    end)
+
+    h.more = h:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    h:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine(L["Leveling Finds"])
+        GameTooltip:AddLine(L["Drag to move. Click a card for the list, x or right-click to close it."], 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    h:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    h:Hide()
+    toastHolder = h
+end
+
+local function ToastCard(i)
+    local card = toastCards[i]
+    if card then return card end
+    card = CreateFrame("Button", nil, toastHolder, "BackdropTemplate")
+    card:SetSize(TOAST_W, TOAST_H)
+    card:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    card:SetBackdropColor(0.06, 0.06, 0.08, 0.92)
+    card:SetBackdropBorderColor(0.25, 0.9, 0.35, 1)
+    card:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+
+    card.icon = card:CreateTexture(nil, "ARTWORK")
+    card.icon:SetSize(36, 36)
+    card.icon:SetPoint("LEFT", 9, 0)
+    card.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+    card.head = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    card.head:SetPoint("TOPLEFT", card.icon, "TOPRIGHT", 8, 1)
+    card.head:SetPoint("RIGHT", -24, 0)
+    card.head:SetJustifyH("LEFT")
+    card.item = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    card.item:SetPoint("TOPLEFT", card.head, "BOTTOMLEFT", 0, -2)
+    card.item:SetPoint("RIGHT", -10, 0)
+    card.item:SetJustifyH("LEFT")
+    card.item:SetWordWrap(false)
+    card.from = card:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    card.from:SetPoint("TOPLEFT", card.item, "BOTTOMLEFT", 0, -2)
+    card.from:SetPoint("RIGHT", -10, 0)
+    card.from:SetJustifyH("LEFT")
+    card.from:SetWordWrap(false)
+
+    local close = CreateFrame("Button", nil, card, "UIPanelCloseButton")
+    close:SetSize(22, 22)
+    close:SetPoint("TOPRIGHT", 1, 1)
+    close:SetScript("OnClick", function() if card.entry then DismissToast(card.entry) end end)
+
+    -- In from the side, like a phone's banner. Only the card's own position
+    -- moves, nothing secret is shown here.
+    card.slide = card:CreateAnimationGroup()
+    local move = card.slide:CreateAnimation("Translation")
+    move:SetOffset(-40, 0)
+    move:SetDuration(0)
+    move:SetOrder(1)
+    local back = card.slide:CreateAnimation("Translation")
+    back:SetOffset(40, 0)
+    back:SetDuration(0.25)
+    back:SetSmoothing("OUT")
+    back:SetOrder(2)
+
+    card:SetScript("OnClick", function(self, button)
+        local entry = self.entry
+        if not entry then return end
+        if button == "LeftButton" then OpenBestNow() end
+        DismissToast(entry)
+    end)
+    card:SetScript("OnEnter", function(self)
+        if not (self.entry and self.entry.itemID) then return end
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        pcall(GameTooltip.SetItemByID, GameTooltip, self.entry.itemID)
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(L["Click: the list. Right-click: close."], 0.5, 0.8, 1)
+        GameTooltip:Show()
+    end)
+    card:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    toastCards[i] = card
+    return card
+end
+
+LayoutToasts = function()
+    if not toastHolder then return end
+    local total = #toastList
+    if total == 0 or not running then
+        toastHolder:Hide()
+        return
+    end
+    toastHolder.title:SetText(("%s  |cffffffff%d|r"):format(L["Leveling Finds"], total))
+    local shown = math.min(total, TOAST_SHOWN)
+    for i = 1, shown do
+        local entry = toastList[i]
+        local card = ToastCard(i)
+        local fresh = card.entry ~= entry
+        card.entry = entry
+        card.icon:SetTexture(entry.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+        card.head:SetText(entry.head)
+        card.item:SetText(entry.item)
+        card.from:SetText(entry.from)
+        card:ClearAllPoints()
+        card:SetPoint("TOPLEFT", toastHolder, "BOTTOMLEFT", 0, -2 - (i - 1) * (TOAST_H + TOAST_GAP))
+        card:Show()
+        if fresh and entry.isNew then
+            entry.isNew = nil
+            card.slide:Stop()
+            card.slide:Play()
+        end
+    end
+    for i = shown + 1, #toastCards do
+        toastCards[i].entry = nil
+        toastCards[i]:Hide()
+    end
+    local more = toastHolder.more
+    if total > shown then
+        more:ClearAllPoints()
+        more:SetPoint("TOP", toastCards[shown], "BOTTOM", 0, -4)
+        more:SetText((L["and %d more"]):format(total - shown))
+        more:Show()
+    else
+        more:Hide()
+    end
+    toastHolder:Show()
+end
+
+-- One card: what, for which slot, from where.
+local function PushToast(entry)
+    if not (settings and settings.bisToasts) then return end
+    BuildToastHolder()
+    entry.isNew = true
+    table.insert(toastList, 1, entry)
+    LayoutToasts()
+end
+
+HideToasts = function()
+    wipe(toastList)
+    LayoutToasts()
+end
+
 -- quiet: only ask the game for the items, so the real pass finds them loaded.
 local function CheckBis(quiet)
     if not running or not settings or not settings.bisAlert then return end
@@ -1869,30 +2087,104 @@ local function CheckBis(quiet)
     table.sort(fresh, function(a, b) return a.best.gain > b.best.gain end)
 
     local fn = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-    for i, item in ipairs(fresh) do
+    -- Oldest first, so the biggest gain ends up on top of the stack.
+    for i = #fresh, 1, -1 do
+        local item = fresh[i]
         seen[item.group] = item.best.itemID
-        if i <= BIS_LINES then
-            local b = item.best
-            local ok, _, link = pcall(fn, b.itemID)
-            local shown = (ok and type(link) == "string") and link or (QualityColour(b.quality) .. b.name .. "|r")
-            local from
-            if b.src.quest then
-                from = (L["Quest: %s"]):format(b.src.quest[1])
-            else
-                from = (L["%s, in %s"]):format(b.src.journal.boss or "?", b.src.journal.dungeon or "?")
-            end
-            print(PREFIX .. (L["Best %s at level %d: %s  %s  %s"]):format(
-                L[SLOT_LABEL[item.group] or item.group], level, shown, UpgradeText(b.gain, false), from))
+        local b = item.best
+        local ok, _, link, _, _, _, _, _, _, _, icon = pcall(fn, b.itemID)
+        local shown = (ok and type(link) == "string") and link or (QualityColour(b.quality) .. b.name .. "|r")
+        local from
+        if b.src.quest then
+            from = (L["Quest: %s"]):format(b.src.quest[1])
+        else
+            from = (L["%s, in %s"]):format(b.src.journal.boss or "?", b.src.journal.dungeon or "?")
         end
+        local slot = L[SLOT_LABEL[item.group] or item.group]
+        if i <= BIS_LINES then
+            print(PREFIX .. (L["Best %s at level %d: %s  %s  %s"]):format(
+                slot, level, shown, UpgradeText(b.gain, false), from))
+        end
+        PushToast({
+            itemID = b.itemID, icon = ok and icon or nil,
+            head = (L["Best %s, level %d"]):format(slot, level),
+            item = shown .. "  " .. UpgradeText(b.gain, false),
+            from = from,
+        })
     end
     if #fresh > BIS_LINES then
         print(PREFIX .. (L["And %d more slots. Type /oxfind and press Best now."]):format(#fresh - BIS_LINES))
     end
-    if UIErrorsFrame and UIErrorsFrame.AddMessage then
+    -- The cards say it already; the line across the screen is for those
+    -- who switched them off.
+    if not settings.bisToasts and UIErrorsFrame and UIErrorsFrame.AddMessage then
         UIErrorsFrame:AddMessage((L["Leveling Finds: %d new best items for level %d"]):format(#fresh, level), 1, 0.82, 0)
     end
     if settings.bisSound and settings.bisSound ~= "None" and OxedHub.ModuleAPI and OxedHub.ModuleAPI.PlaySound then
         OxedHub.ModuleAPI:PlaySound(settings.bisSound)
+    end
+end
+
+-- ── Trying the notifications ────────────────────────────────────────────────
+-- /oxfind test: three sample cards, from the items you wear, marked as a test.
+-- /oxfind bisreset: forget what was announced for this character and look
+-- again, so the real cards for your level come up at once.
+
+local function TestToasts()
+    if not settings.bisToasts then
+        print(PREFIX .. L["Cards are switched off in the options."])
+        return
+    end
+    local fn = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    local made = 0
+    for _, slot in ipairs({ 5, 16, 1, 7, 3, 10 }) do
+        if made >= 3 then break end
+        local okID, id = pcall(GetInventoryItemID, "player", slot)
+        if okID and type(id) == "number" and not Secret(id) then
+            local ok, _, link, _, _, _, _, _, _, _, icon = pcall(fn, id)
+            if ok and type(link) == "string" then
+                made = made + 1
+                PushToast({
+                    itemID = id, icon = icon,
+                    head = L["Test notification"],
+                    item = link .. "  " .. UpgradeText(made * 5, false),
+                    from = L["Not a real upgrade. Click or close it."],
+                })
+            end
+        end
+    end
+    if made == 0 then
+        PushToast({
+            head = L["Test notification"], item = L["Leveling Finds"],
+            from = L["Not a real upgrade. Click or close it."],
+        })
+    end
+end
+
+local function ResetBis()
+    if type(settings.bisSeen) == "table" then settings.bisSeen[CharKey()] = nil end
+    if not settings.bisAlert then
+        print(PREFIX .. L["The best item alert is switched off in the options."])
+        return
+    end
+    print(PREFIX .. L["Looking again for the best items at your level..."])
+    -- Twice, as at login: the first pass makes the game load the items.
+    pcall(CheckBis, true)
+    C_Timer.After(3, function()
+        local before = #toastList
+        pcall(CheckBis)
+        if #toastList == before then print(PREFIX .. L["Nothing better than what you wear at your level."]) end
+    end)
+end
+
+do
+    local base = SlashCmdList.OXEDLEVELFINDS
+    SlashCmdList.OXEDLEVELFINDS = function(msg)
+        local cmd = (msg or ""):lower():match("^%s*(.-)%s*$")
+        if not running then return base(msg) end
+        if cmd == "test" then TestToasts()
+        elseif cmd == "bisreset" then ResetBis()
+        else base(msg) end
     end
 end
 
@@ -2014,8 +2306,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "levelingfinds",
         name     = "Leveling Finds",
-        version  = "2.9.0",
-        updated  = 20261110.4,  -- Best now: the best item per slot for the level, with an alert
+        version  = "2.10.0",
+        updated  = 20261110.6,  -- best item alerts as cards on screen that stack until closed
         author   = "Oxed",
         category = "quests",
         keywords = { "leveling", "levelling", "quest", "dungeon", "loot", "map", "forever", "mapgenie", "find" },
