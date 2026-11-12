@@ -14,164 +14,191 @@ if not LibDBIcon then return end
 local LDB = LibStub("LibDataBroker-1.1", true)
 if not LDB then return end
 
-local ICON_TYPE = "data source"
+-- Minimap icons are LDB "launcher" objects; "data source" objects with an
+-- icon are accepted too. Anything else is refused.
+local ICON_TYPES = { ["launcher"] = true, ["data source"] = true }
 local DEFAULT_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
-LibDBIcon.objects = LibDBIcon.objects or {}
-LibDBIcon.notCreated = LibDBIcon.notCreated or {}
+LibDBIcon.objects = LibDBIcon.objects or {}      -- name -> button
+LibDBIcon.notCreated = LibDBIcon.notCreated or {} -- name -> { object, db }
 LibDBIcon.callbacks = LibDBIcon.callbacks or LibStub("CallbackHandler-1.0"):New(LibDBIcon)
 
 local function getObjectName(name)
 	return "LibDBIcon10_"..name
 end
 
-local function onEnter(self)
-	if self.obj.OnTooltipShow then
-		self.obj.OnTooltipShow(self.tooltip)
-	elseif self.obj.OnEnter then
-		self.obj.OnEnter(self)
+local function updatePosition(button)
+	local db = button.db
+	local angle = math.rad((db and db.minimapPos) or 225)
+	local x, y = math.cos(angle), math.sin(angle)
+	local rw = Minimap:GetWidth() / 2 + 5
+	local rh = Minimap:GetHeight() / 2 + 5
+	if GetMinimapShape and GetMinimapShape() == "SQUARE" then
+		x = math.max(-rw, math.min(x * rw * 1.4142, rw))
+		y = math.max(-rh, math.min(y * rh * 1.4142, rh))
+	else
+		x, y = x * rw, y * rh
 	end
-	self.tooltip:Show()
+	button:ClearAllPoints()
+	button:SetPoint("CENTER", Minimap, "CENTER", x, y)
+end
+
+local function onEnter(self)
+	if self.isMoving then return end
+	local obj = self.dataObject
+	if obj.OnTooltipShow then
+		GameTooltip:SetOwner(self, "ANCHOR_NONE")
+		GameTooltip:SetPoint("TOPRIGHT", self, "BOTTOMLEFT")
+		obj.OnTooltipShow(GameTooltip)
+		GameTooltip:Show()
+	elseif obj.OnEnter then
+		obj.OnEnter(self)
+	end
 end
 
 local function onLeave(self)
-	self.tooltip:Hide()
-	if self.obj.OnLeave then
-		self.obj.OnLeave(self)
-	end
+	GameTooltip:Hide()
+	local obj = self.dataObject
+	if obj.OnLeave then obj.OnLeave(self) end
 end
 
 local function onClick(self, button)
-	if self.obj.OnClick then
-		self.obj.OnClick(self, button)
-	end
+	local obj = self.dataObject
+	if obj.OnClick then obj.OnClick(self, button) end
 end
 
-local function createButton(name, object, data)
+local function onDragUpdate(self)
+	local mx, my = Minimap:GetCenter()
+	local px, py = GetCursorPosition()
+	local scale = Minimap:GetEffectiveScale()
+	px, py = px / scale, py / scale
+	local pos = math.deg(math.atan2(py - my, px - mx)) % 360
+	if self.db then self.db.minimapPos = pos end
+	updatePosition(self)
+end
+
+local function onDragStart(self)
+	if self.db and self.db.lock then return end
+	self.isMoving = true
+	GameTooltip:Hide()
+	self:SetScript("OnUpdate", onDragUpdate)
+end
+
+local function onDragStop(self)
+	self:SetScript("OnUpdate", nil)
+	self.isMoving = nil
+end
+
+local function createButton(name, object, db)
 	local button = CreateFrame("Button", getObjectName(name), Minimap)
+	button:SetFrameStrata("MEDIUM")
+	button:SetFrameLevel(8)
 	button:SetSize(31, 31)
-	button:SetFrameStrata("LOW")
-	button:SetPoint("CENTER", Minimap, "CENTER")
-	button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
-
-	local icon = button:CreateTexture()
-	icon:SetAllPoints(button)
-	icon:SetTexture(data.icon or object.icon or DEFAULT_ICON)
-	button.icon = icon
-
-	local overlay = button:CreateTexture()
-	overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-	overlay:SetAllPoints(button)
-	overlay:SetTexCoord(0, 0.6, 0, 0.6)
-	button.overlay = overlay
-
-	button:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
-		onEnter(self)
-	end)
-	button:SetScript("OnLeave", onLeave)
-	button:SetScript("OnClick", onClick)
-
 	button:RegisterForClicks("anyUp")
 	button:RegisterForDrag("LeftButton")
-	button:SetScript("OnDragStart", function(self)
-		self:StartMoving()
-	end)
-	button:SetScript("OnDragStop", function(self)
-		self:StopMovingOrSizing()
-		local x, y = self:GetCenter()
-		local scale = Minimap:GetScale()
-		x, y = x / scale, y / scale
-		local cx, cy = Minimap:GetCenter()
-		local angle = math.atan2(y - cy, x - cx)
-		local radius = math.sqrt((x - cx)^2 + (y - cy)^2)
-		local position = math.deg(angle)
-		if position < 0 then position = position + 360 end
-		data.minimapPos = position
-		data.radius = radius
-		LibDBIcon:Refresh(name)
-	end)
+	button:SetHighlightTexture("Interface\Minimap\UI-Minimap-ZoomButton-Highlight")
 
-	button.obj = object
-	button.data = data
-	button.tooltip = GameTooltip
+	local overlay = button:CreateTexture(nil, "OVERLAY")
+	overlay:SetSize(53, 53)
+	overlay:SetTexture("Interface\Minimap\MiniMap-TrackingBorder")
+	overlay:SetPoint("TOPLEFT")
 
+	local background = button:CreateTexture(nil, "BACKGROUND")
+	background:SetSize(20, 20)
+	background:SetTexture("Interface\Minimap\UI-Minimap-Background")
+	background:SetPoint("TOPLEFT", 7, -5)
+
+	local icon = button:CreateTexture(nil, "ARTWORK")
+	icon:SetSize(17, 17)
+	icon:SetPoint("TOPLEFT", 7, -6)
+	icon:SetTexture(object.icon or DEFAULT_ICON)
+	button.icon = icon
+
+	button.dataObject = object
+	button.db = db
+
+	button:SetScript("OnEnter", onEnter)
+	button:SetScript("OnLeave", onLeave)
+	button:SetScript("OnClick", onClick)
+	button:SetScript("OnDragStart", onDragStart)
+	button:SetScript("OnDragStop", onDragStop)
+
+	LibDBIcon.objects[name] = button
+	LibDBIcon.notCreated[name] = nil
+	updatePosition(button)
+	LibDBIcon.callbacks:Fire("LibDBIcon_IconCreated", button, name)
 	return button
 end
 
-function LibDBIcon:Register(name, object, icon)
-	if not object or not object.type then
-		error("Invalid data object")
-	end
+-- Builds a button registered hidden, the first time it is wanted.
+local function check(name)
+	local pending = LibDBIcon.notCreated[name]
+	if pending then createButton(name, pending[1], pending[2]) end
+end
 
-	if object.type ~= ICON_TYPE then
+-- db is the icon's own saved table: hide, minimapPos, lock.
+function LibDBIcon:Register(name, object, db)
+	if type(object) ~= "table" or not ICON_TYPES[object.type] then
 		error("Unsupported data object type")
 	end
+	if LibDBIcon.objects[name] or LibDBIcon.notCreated[name] then return end
+	if type(db) ~= "table" then db = nil end
 
-	LibDBIcon.objects[name] = object
-	LibDBIcon.notCreated[name] = icon or object.icon or DEFAULT_ICON
-
+	if db and db.hide then
+		LibDBIcon.notCreated[name] = { object, db }
+	else
+		createButton(name, object, db)
+	end
 	LibDBIcon.callbacks:Fire("LibDBIcon_Register", name, object)
 end
 
 function LibDBIcon:Show(name)
-	if not LibDBIcon.objects[name] then return end
-
-	local data = LibDBIcon.db and LibDBIcon.db[name]
-	if not data or not data.hide then
-		if not _G[getObjectName(name)] then
-			local button = createButton(name, LibDBIcon.objects[name], data or {})
-			LibDBIcon.notCreated[name] = nil
-		end
+	check(name)
+	local button = LibDBIcon.objects[name]
+	if button then
+		button:Show()
+		updatePosition(button)
 	end
 end
 
 function LibDBIcon:Hide(name)
-	if _G[getObjectName(name)] then
-		_G[getObjectName(name)]:Hide()
-	end
+	local button = LibDBIcon.objects[name]
+	if button then button:Hide() end
 end
 
 function LibDBIcon:IsRegistered(name)
-	return LibDBIcon.objects[name] ~= nil
+	return (LibDBIcon.objects[name] or LibDBIcon.notCreated[name]) and true or false
 end
 
-function LibDBIcon:Refresh(name, data)
-	if not LibDBIcon.objects[name] then return end
+function LibDBIcon:GetMinimapButton(name)
+	return LibDBIcon.objects[name]
+end
 
-	local button = _G[getObjectName(name)]
+function LibDBIcon:GetButtonList()
+	local list = {}
+	for name in pairs(LibDBIcon.objects) do list[#list + 1] = name end
+	return list
+end
+
+function LibDBIcon:Lock(name)
+	local button = LibDBIcon.objects[name]
+	if button and button.db then button.db.lock = true end
+end
+
+function LibDBIcon:Unlock(name)
+	local button = LibDBIcon.objects[name]
+	if button and button.db then button.db.lock = nil end
+end
+
+function LibDBIcon:Refresh(name, db)
+	check(name)
+	local button = LibDBIcon.objects[name]
 	if not button then return end
-
-	if data then
-		button.data = data
-	end
-
-	if button.data and button.data.minimapPos then
-		local angle = math.rad(button.data.minimapPos)
-		local radius = button.data.radius or 80
-		local cx, cy = Minimap:GetCenter()
-		local x = cx + math.cos(angle) * radius
-		local y = cy + math.sin(angle) * radius
-		button:SetPoint("CENTER", Minimap, "CENTER", x - cx, y - cy)
-	else
-		button:SetPoint("CENTER", Minimap, "CENTER")
-	end
-
-	if button.data and button.data.hide then
+	if type(db) == "table" then button.db = db end
+	updatePosition(button)
+	if button.db and button.db.hide then
 		button:Hide()
 	else
 		button:Show()
-	end
-end
-
-function LibDBIcon:NewDatabase(db, name)
-	LibDBIcon.db = db
-	LibDBIcon.name = name
-
-	for n, object in pairs(LibDBIcon.objects) do
-		if not db[n] then
-			db[n] = { hide = false, minimapPos = math.random(0, 360) }
-		end
-		LibDBIcon:Show(n)
 	end
 end

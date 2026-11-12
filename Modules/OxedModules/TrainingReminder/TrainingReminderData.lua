@@ -8,6 +8,9 @@
 --   later one counts as knowing the earlier ones.
 -- Data.questSpells[spellId] = { { races, level, area or areas, quests }, ... }:
 --   spells a class quest teaches.
+-- Data.petAbilityIds[spellId] = true: a hunter's pet abilities.
+-- Data.tomesByLevel / Data.tomeTaughtSpells: a warlock's demon tomes.
+-- Data.trainerFactions: which city reputations give a trainer discount.
 -- Only the player's own class is built; the other blocks are skipped.
 --
 -- The spell tables in this file are used under the MIT License:
@@ -66,10 +69,12 @@ local ravage = {6785, 6787, 9866, 9867}
 local pounce = {9005, 9823, 9827}
 local prowl = {5215, 6783, 9913}
 local primalBite = {407995, 1238069, 1238070}
+local lacerate = {414647, 1328617, 1328616, 414644, 1235826, 1235827} -- Both rank 1 IDs, then ranks 2-5
+local bearForm = {5487, 9634} -- Bear Form is replaced when Dire Bear Form is learned
 
 class.overriddenGroups = {
-	{5487, 9634}, -- Bear Form is replaced when Dire Bear Form is learned
-	{414647, 1328617}, -- Lacerate rank 1's replacement also satisfies rank 2's prerequisite
+	bearForm,
+	lacerate,
 	demoralizingRoar,
 	bash,
 	swipe,
@@ -2262,3 +2267,305 @@ local QuestSpells = {
 }
 Data.questSpells = PLAYER_CLASS and QuestSpells[PLAYER_CLASS] or nil
 end
+
+-- Hunter: abilities a pet learns. They are never in the hunter's spellbook,
+-- so the module learns which the pet has from Beast Training.
+if PLAYER_CLASS == "HUNTER" then
+Data.petAbilityIds = {
+	[4187] = true,
+	[24545] = true,
+	[4188] = true,
+	[24549] = true,
+	[4189] = true,
+	[24550] = true,
+	[24493] = true,
+	[23992] = true,
+	[24446] = true,
+	[14917] = true,
+	[24492] = true,
+	[24488] = true,
+	[4190] = true,
+	[24551] = true,
+	[24497] = true,
+	[24439] = true,
+	[24447] = true,
+	[4191] = true,
+	[14918] = true,
+	[24552] = true,
+	[24502] = true,
+	[24505] = true,
+	[4192] = true,
+	[24553] = true,
+	[24500] = true,
+	[24444] = true,
+	[24448] = true,
+	[14919] = true,
+	[24503] = true,
+	[24506] = true,
+	[4193] = true,
+	[24554] = true,
+	[4194] = true,
+	[24555] = true,
+	[24501] = true,
+	[24445] = true,
+	[24449] = true,
+	[14920] = true,
+	[24504] = true,
+	[24507] = true,
+	[5041] = true,
+	[24629] = true,
+	[5042] = true,
+	[14921] = true,
+	[24630] = true,
+}
+end
+
+-- Warlock: demon tomes by level (cost in copper, family of demon), and the
+-- pet spell each tome teaches, by the tome's item id.
+if PLAYER_CLASS == "WARLOCK" then
+Data.tomesByLevel = {
+	[4] = {{itemId = 16321, cost = 100, family = "Imp"}},
+	[8] = {{itemId = 16302, cost = 100, family = "Imp"}},
+	[12] = {{itemId = 16331, cost = 600, family = "Imp"}},
+	[14] = {{itemId = 16322, cost = 900, family = "Imp"}, {itemId = 16326, cost = 900, family = "Imp"}},
+	[16] = {{itemId = 16351, cost = 1200, family = "Voidwalker"}},
+	[18] = {{itemId = 16316, cost = 1500, family = "Imp"}, {itemId = 16357, cost = 1500, family = "Voidwalker"}},
+	[20] = {{itemId = 16346, cost = 2000, family = "Voidwalker"}},
+	[22] = {
+		{id = "SUC:16375", itemId = 16375, cost = 2500, family = "Succubus"},
+		{id = "INC:16375", itemId = 16375, cost = 2500, family = "Incubus"},
+	},
+	[24] = {
+		{itemId = 16327, cost = 3000, family = "Imp"},
+		{itemId = 16352, cost = 3000, family = "Voidwalker"},
+		{itemId = 16363, cost = 3000, family = "Voidwalker"},
+	},
+	[26] = {
+		{itemId = 16323, cost = 4000, family = "Imp"},
+		{itemId = 16358, cost = 4000, family = "Voidwalker"},
+		{id = "SUC:16379", itemId = 16379, cost = 4000, family = "Succubus"},
+		{id = "INC:16379", itemId = 16379, cost = 4000, family = "Incubus"},
+	},
+	[28] = {
+		{itemId = 16317, cost = 5000, family = "Imp"},
+		{id = "SUC:16368", itemId = 16368, cost = 5000, family = "Succubus"},
+		{id = "INC:16368", itemId = 16368, cost = 5000, family = "Incubus"},
+	},
+	[30] = {{itemId = 16347, cost = 6000, family = "Voidwalker"}},
+	[32] = {
+		{itemId = 16353, cost = 7000, family = "Voidwalker"},
+		{id = "SUC:16380", itemId = 16380, cost = 7000, family = "Succubus"},
+		{id = "INC:16380", itemId = 16380, cost = 7000, family = "Incubus"},
+		{itemId = 16384, cost = 7000, family = "Felhunter"},
+	},
+	[34] = {
+		{itemId = 16328, cost = 8000, family = "Imp"},
+		{itemId = 16359, cost = 8000, family = "Voidwalker"},
+		{id = "SUC:16376", itemId = 16376, cost = 8000, family = "Succubus"},
+		{id = "INC:16376", itemId = 16376, cost = 8000, family = "Incubus"},
+	},
+	[36] = {
+		{itemId = 16364, cost = 9000, family = "Voidwalker"},
+		{id = "SUC:16371", itemId = 16371, cost = 9000, family = "Succubus"},
+		{id = "INC:16371", itemId = 16371, cost = 9000, family = "Incubus"},
+		{itemId = 16388, cost = 9000, family = "Felhunter"},
+	},
+	[38] = {
+		{itemId = 16318, cost = 10000, family = "Imp"},
+		{itemId = 16324, cost = 10000, family = "Imp"},
+		{itemId = 16381, cost = 10000, family = "Felhunter"},
+	},
+	[40] = {
+		{itemId = 16348, cost = 11000, family = "Voidwalker"},
+		{itemId = 16354, cost = 11000, family = "Voidwalker"},
+		{itemId = 16385, cost = 11000, family = "Felhunter"},
+	},
+	[42] = {
+		{itemId = 16360, cost = 11000, family = "Voidwalker"},
+		{itemId = 16390, cost = 11000, family = "Felhunter"},
+	},
+	[44] = {
+		{itemId = 16329, cost = 12000, family = "Imp"},
+		{id = "SUC:16372", itemId = 16372, cost = 12000, family = "Succubus"},
+		{id = "INC:16372", itemId = 16372, cost = 12000, family = "Incubus"},
+	},
+	[46] = {
+		{id = "SUC:16377", itemId = 16377, cost = 13000, family = "Succubus"},
+		{id = "INC:16377", itemId = 16377, cost = 13000, family = "Incubus"},
+		{itemId = 16382, cost = 13000, family = "Felhunter"},
+	},
+	[48] = {
+		{itemId = 16319, cost = 14000, family = "Imp"},
+		{itemId = 16355, cost = 14000, family = "Voidwalker"},
+		{itemId = 16365, cost = 14000, family = "Voidwalker"},
+		{itemId = 16386, cost = 14000, family = "Felhunter"},
+	},
+	[50] = {
+		{itemId = 16325, cost = 15000, family = "Imp"},
+		{itemId = 16349, cost = 15000, family = "Voidwalker"},
+		{itemId = 16361, cost = 15000, family = "Voidwalker"},
+	},
+	[52] = {
+		{id = "SUC:16373", itemId = 16373, cost = 18000, family = "Succubus"},
+		{id = "INC:16373", itemId = 16373, cost = 18000, family = "Incubus"},
+		{itemId = 16389, cost = 18000, family = "Felhunter"},
+	},
+	[54] = {{itemId = 16330, cost = 20000, family = "Imp"}, {itemId = 16383, cost = 20000, family = "Felhunter"}},
+	[56] = {
+		{itemId = 16356, cost = 22000, family = "Voidwalker"},
+		{itemId = 16387, cost = 22000, family = "Felhunter"},
+	},
+	[58] = {
+		{itemId = 16320, cost = 24000, family = "Imp"},
+		{itemId = 16362, cost = 24000, family = "Voidwalker"},
+		{id = "SUC:16378", itemId = 16378, cost = 24000, family = "Succubus"},
+		{id = "INC:16378", itemId = 16378, cost = 24000, family = "Incubus"},
+	},
+	[60] = {
+		{itemId = 16350, cost = 26000, family = "Voidwalker"},
+		{itemId = 16366, cost = 26000, family = "Voidwalker"},
+		{id = "SUC:16374", itemId = 16374, cost = 26000, family = "Succubus"},
+		{id = "INC:16374", itemId = 16374, cost = 26000, family = "Incubus"},
+	},
+}
+Data.tomeTaughtSpells = {
+	[16321] = 6307,
+	[16302] = 7799,
+	[16331] = 4511,
+	[16322] = 7804,
+	[16326] = 2947,
+	[16351] = 7812,
+	[16316] = 7800,
+	[16357] = 17767,
+	[16346] = 7809,
+	[16375] = 6360,
+	[16327] = 8316,
+	[16352] = 19438,
+	[16363] = 17735,
+	[16323] = 7805,
+	[16358] = 17850,
+	[16379] = 6358,
+	[16317] = 7801,
+	[16368] = 7815,
+	[16347] = 7810,
+	[16353] = 19440,
+	[16380] = 7870,
+	[16384] = 19478,
+	[16328] = 8317,
+	[16359] = 17851,
+	[16376] = 7813,
+	[16364] = 17750,
+	[16371] = 7816,
+	[16388] = 19244,
+	[16318] = 7802,
+	[16324] = 11766,
+	[16381] = 19731,
+	[16348] = 7811,
+	[16354] = 19441,
+	[16385] = 19655,
+	[16360] = 17852,
+	[16390] = 19480,
+	[16329] = 11770,
+	[16372] = 11778,
+	[16377] = 11784,
+	[16382] = 19734,
+	[16319] = 11762,
+	[16355] = 19442,
+	[16365] = 17751,
+	[16386] = 19656,
+	[16325] = 11767,
+	[16349] = 11774,
+	[16361] = 17853,
+	[16373] = 11779,
+	[16389] = 19647,
+	[16330] = 11771,
+	[16383] = 19736,
+	[16356] = 19443,
+	[16387] = 19660,
+	[16320] = 11763,
+	[16362] = 17854,
+	[16378] = 11785,
+	[16350] = 11775,
+	[16374] = 11780,
+	[16366] = 17752,
+}
+end
+
+-- Trainer reputation: factions[id].side (1 Alliance, 2 Horde, 0 both),
+-- roles[<CLASS or PET>][<faction>] = the factions whose trainers teach it.
+-- Honored with one takes 10% off at its trainers.
+Data.trainerFactions = {
+	factions = {
+		[21] = { side = 0 },
+		[47] = { side = 1, city = true },
+		[54] = { side = 1, city = true },
+		[68] = { side = 2, city = true },
+		[69] = { side = 1, city = true },
+		[72] = { side = 1, city = true },
+		[76] = { side = 2, city = true },
+		[81] = { side = 2, city = true },
+		[349] = { side = 0 },
+		[530] = { side = 2, city = true },
+		[609] = { side = 0 },
+		[2740] = { side = 1 },
+		[2787] = { side = 2 },
+	},
+	roles = {
+		DRUID = {
+			Alliance = { 69, 72, 609, 2740 },
+			Horde = { 81, 609, 2787 },
+		},
+		-- Forever's tome vendors charge full price at every standing (Era discounts them, so this is
+		-- probably a Forever bug). No GRIMOIRE role means Pricing shows only the base cost for tomes.
+		-- GRIMOIRE = {
+		-- 	Alliance = { 54, 72 },
+		-- 	Horde = { 68, 76 },
+		-- },
+		HUNTER = {
+			Alliance = { 47, 69, 72 },
+			Horde = { 76, 81, 530 },
+		},
+		MAGE = {
+			Alliance = { 47, 54, 69, 72, 2740 },
+			Horde = { 68, 76, 530 },
+		},
+		PALADIN = {
+			Alliance = { 47, 72 },
+			Horde = { 68 },
+		},
+		PET = {
+			Alliance = { 47, 69, 72 },
+			Horde = { 76, 81 },
+		},
+		PRIEST = {
+			Alliance = { 47, 54, 69, 72 },
+			Horde = { 68, 76, 530 },
+		},
+		ROGUE = {
+			Alliance = { 21, 47, 54, 69, 72, 349 },
+			Horde = { 21, 68, 76, 81, 349, 530 },
+		},
+		SHAMAN = {
+			Alliance = { 47 },
+			Horde = { 76, 81, 2787 },
+		},
+		WARLOCK = {
+			Alliance = { 47, 54, 72 },
+			Horde = { 68, 76 },
+		},
+		WARRIOR = {
+			Alliance = { 47, 54, 69, 72 },
+			Horde = { 68, 76, 81 },
+		},
+	},
+	npcs = {
+		[2704] = 530,
+		[11865] = 47,
+		[11866] = 69,
+		[11867] = 72,
+		[11868] = 76,
+		[11869] = 81,
+		[11870] = 68,
+		[13084] = 47,
+	},
+}

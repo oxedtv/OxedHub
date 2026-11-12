@@ -61,6 +61,18 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.63",
+        lines = {
+            { "NEW", "Training Reminder: hunter pet abilities, warlock demon tomes, prices with your reputation discount, and an optional Train All button at the class trainer." },
+            { "NEW", "Training Reminder: a panel beside the spellbook shows what to learn for the page you have open, then the other pages." },
+            { "CHANGED", "Training Reminder: a new window with tabs (All, Ready to learn, Coming soon, Other, Ignored), larger icons and the source of each spell." },
+            { "CHANGED", "Hunter Pets and Training Reminder use the game's own tab buttons and scroll bar." },
+            { "FIXED", "Training Reminder: the card no longer comes back on every level up, login or reload. The same list waits for your interval; new spells still show at once." },
+            { "FIXED", "Training Reminder: a hunter's pet abilities no longer always show as unlearned, and druid Lacerate and Bear Form ranks are read right." },
+            { "FIXED", "Options windows opened from another one, such as Hunter Pets' Box look, no longer pile up on top of each other or raise an error." },
+        },
+    },
+    {
         version = "2.4.62",
         lines = {
             { "NEW", "Training Reminder: a card when your trainer has new spells for you, and again later if you forget. Talents, profession ranks and weapon skills too. /oxtrain" },

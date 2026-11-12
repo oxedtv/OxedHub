@@ -19,10 +19,15 @@ local addonName, OxedHub = ...
 local print = OxedHub.Print or print
 local L = OxedHub.L
 local T = function(s) return OxedHub.T and OxedHub.T(s) or s end
+-- Buttons are the shared OxedHub tab button: the game's own tab look when
+-- this client has it (UI\Components\Button.lua).
+local function Tab(parent, width, text, onClick, height)
+    return OxedHub.UIComponents.Button.CreateTab(parent, width, text, onClick, height)
+end
 local C_Timer = OxedHub.Profiler and OxedHub.Profiler:TimerProxy() or C_Timer  -- timers named in /oxprofile
 
 local PREFIX = "|cff33ff99OxedHub Hunter Pets:|r "
-local W, H, ROW_H = 640, 560, 42
+local W, H, ROW_H = 640, 576, 42
 local ICON = "Interface\\Icons\\Ability_Hunter_BeastTaming"
 
 local DEFAULTS = {
@@ -998,7 +1003,7 @@ end
 
 -- ── The bestiary window ─────────────────────────────────────────────────────
 
-local LIST_TOP = -120  -- where the first row starts
+local LIST_TOP = -136  -- where the first row starts
 local STAR = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1"
 local DISC = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 local search = ""
@@ -1116,7 +1121,7 @@ local function BuildTrainerList()
     table.sort(list, function(a, b) return (a.trainer.zone or "") < (b.trainer.zone or "") end)
 end
 
-local function VisibleRows() return math.floor((H - 178) / ROW_H) end
+local function VisibleRows() return math.floor((H - 194) / ROW_H) end
 
 local function PaintStar(btn, on)
     btn.tex:SetDesaturated(not on)
@@ -1212,7 +1217,7 @@ Refresh = function()
     window.search:SetShown(searchable)
     window.hint:SetShown(searchable)
     if not searchable then window.search:ClearFocus() end
-    for _, tab in ipairs(window.tabs) do tab.mark:SetShown(tab.key == mode) end
+    for _, tab in ipairs(window.tabs) do tab:SetActive(tab.key == mode) end
     window.family:SetText(settings.family == "any" and T("Any family") or settings.family)
     local ab = Abilities()[settings.ability]
     window.ability:SetText(ab and ab.name or T("Any ability"))
@@ -1229,14 +1234,7 @@ Refresh = function()
         window.empty:Hide()
         window.summary:SetText(string.format(T("%d-%d of %d"), offset + 1, math.min(#list, offset + n), #list))
     end
-    if window.bar then
-        local top = math.max(0, #list - n)
-        window.syncing = true
-        window.bar:SetMinMaxValues(0, top)
-        window.bar:SetValue(offset)
-        window.syncing = false
-        window.bar:SetShown(top > 0)
-    end
+    if window.bar then window.bar:Sync(offset, math.max(0, #list - n), n, #list) end
 end
 
 local function Step(choices, current, back)
@@ -1288,11 +1286,8 @@ local function BuildWindow()
     tinsert(UISpecialFrames, "OxedHubHunterPetsWindow")
 
     local function Button(w, onClick)
-        local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        b:SetSize(w, 22)
+        local b = Tab(f, w, "", function(_, mouse) onClick(mouse == "RightButton") end, 26)
         b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        b:SetScript("OnClick", function(self, mouse) onClick(mouse == "RightButton") end)
-        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(b) end
         return b
     end
     local function Changed() offset = 0 Refresh() end
@@ -1307,17 +1302,18 @@ local function BuildWindow()
         b:SetText(T(tab.label))
         b:SetPoint("TOPLEFT", 18 + (i - 1) * 104, -36)
         b.key = tab.key
-        b.mark = b:CreateTexture(nil, "OVERLAY")
-        b.mark:SetColorTexture(1, 0.82, 0.2, 1)
-        b.mark:SetHeight(2)
-        b.mark:SetPoint("BOTTOMLEFT", 4, -1)
-        b.mark:SetPoint("BOTTOMRIGHT", -4, -1)
-        b.mark:Hide()
         f.tabs[i] = b
     end
 
     f.family = Button(110, function(back) settings.family = Step(FamilyChoices(), settings.family, back) Changed() end)
-    f.family:SetPoint("TOPLEFT", 18, -64)
+    -- The chosen tab's glow hangs below it: the filters sit lower, under a
+    -- thin line, so the two rows never run into each other.
+    local divider = f:CreateTexture(nil, "ARTWORK")
+    divider:SetColorTexture(1, 1, 1, 0.12)
+    divider:SetHeight(1)
+    divider:SetPoint("TOPLEFT", 18, -72)
+    divider:SetPoint("TOPRIGHT", -18, -72)
+    f.family:SetPoint("TOPLEFT", 18, -80)
     f.ability = Button(130, function(back) settings.ability = Step(AbilityChoices(), settings.ability, back) Changed() end)
     f.ability:SetPoint("LEFT", f.family, "RIGHT", 6, 0)
     f.scope = Button(84, function() settings.scope = settings.scope == "level" and "all" or "level" Changed() end)
@@ -1328,12 +1324,12 @@ local function BuildWindow()
     f.sort:SetPoint("LEFT", f.zone, "RIGHT", 6, 0)
     local opt = Button(70, function() ShowOptions() end)
     opt:SetText(L["Options"])
-    opt:SetPoint("TOPRIGHT", -26, -92)
+    opt:SetPoint("TOPRIGHT", -26, -108)
 
     local box = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
     box:SetAutoFocus(false)  -- never steal the keyboard
     box:SetSize(180, 20)
-    box:SetPoint("TOPLEFT", 24, -94)
+    box:SetPoint("TOPLEFT", 24, -110)
     box:SetScript("OnTextChanged", function(self)
         search = self:GetText() or ""
         Changed()
@@ -1353,28 +1349,13 @@ local function BuildWindow()
     f.empty:SetPoint("TOP", 0, LIST_TOP - 60)
     f.empty:Hide()
 
-    -- A plain scroll bar beside the rows; the mouse wheel moves it too.
-    local bar = CreateFrame("Slider", nil, f)
-    bar:SetOrientation("VERTICAL")
-    bar:SetWidth(4)
-    bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, LIST_TOP)
-    bar:SetHeight(VisibleRows() * ROW_H - 2)
-    local track = bar:CreateTexture(nil, "BACKGROUND")
-    track:SetAllPoints()
-    track:SetColorTexture(1, 1, 1, 0.03)
-    local thumb = bar:CreateTexture(nil, "OVERLAY")
-    thumb:SetColorTexture(1, 0.82, 0.4, 0.45)
-    thumb:SetSize(4, 36)
-    bar:SetThumbTexture(thumb)
-    bar:SetMinMaxValues(0, 0)
-    bar:SetValueStep(1)
-    bar:SetObeyStepOnDrag(true)
-    bar:SetValue(0)
-    bar:SetScript("OnValueChanged", function(_, v)
-        v = math.floor(v + 0.5)
-        if v ~= offset and not f.syncing then offset = v Refresh() end
-    end)
-    f.bar = bar
+    -- The game's minimal scroll bar beside the rows; the mouse wheel moves it too.
+    f.bar = OxedHub.UIComponents.Scroll.CreateMinimalBar(f, LIST_TOP, VisibleRows() * ROW_H - 2, function(v)
+        if v ~= offset then
+            offset = v
+            Refresh()
+        end
+    end, -8)
 
     local function Wheel(_, delta)
         local n = VisibleRows()
@@ -1425,10 +1406,8 @@ local function BuildWindow()
         r.icon = r:CreateTexture(nil, "ARTWORK")
         r.icon:SetSize(32, 32)
         r.icon:SetPoint("LEFT", 4, 0)
-        r.map = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
-        r.map:SetSize(56, 22)
+        r.map = Tab(r, 56, T("Map"), nil, 22)
         r.map:SetPoint("RIGHT", -4, 0)
-        r.map:SetText(T("Map"))
         r.map:SetScript("OnClick", function()
             local e = r.entry
             if not e then return end
@@ -1553,7 +1532,7 @@ local function DrawCardMap(id, npc, mapID)
         PlaceDot(c, n, px, py, 1, 1, 1, 9)
     end
     for i = n + 1, #c.dots do c.dots[i]:Hide() end
-    for _, b in ipairs(card.zones) do b.mark:SetShown(b.mapID == mapID) end
+    for _, b in ipairs(card.zones) do b:SetActive(b.mapID == mapID) end
     c.msg:SetShown(mapID == nil)
 end
 
@@ -1638,7 +1617,7 @@ local function BuildCard()
     if card then return end
     local c = CreateFrame("Frame", nil, window)
     card = c
-    c:SetPoint("TOPLEFT", window, "TOPLEFT", 14, -62)
+    c:SetPoint("TOPLEFT", window, "TOPLEFT", 14, -74)
     c:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -14, 12)
     c:SetFrameLevel(window:GetFrameLevel() + 30)
     c:EnableMouse(true)  -- nothing underneath may take a click
@@ -1655,12 +1634,8 @@ local function BuildCard()
     c.modelHint:SetPoint("TOP", c.modelBox, "BOTTOM", 0, -2)
     c.modelHint:SetText(T("Drag to rotate. Wheel to zoom."))
 
-    local back = CreateFrame("Button", nil, c, "UIPanelButtonTemplate")
-    back:SetSize(70, 22)
+    local back = Tab(c, 70, T("Back"), function() c:Hide() end, 24)
     back:SetPoint("TOPRIGHT", -8, -8)
-    back:SetText(T("Back"))
-    back:SetScript("OnClick", function() c:Hide() end)
-    if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(back) end
 
     c.star = CreateFrame("Button", nil, c)
     c.star:SetSize(22, 22)
@@ -1686,15 +1661,11 @@ local function BuildCard()
     c.info:SetJustifyV("TOP")
     c.info:SetSpacing(2)
 
-    c.pin = CreateFrame("Button", nil, c, "UIPanelButtonTemplate")
-    c.pin:SetSize(130, 22)
-    c.pin:SetPoint("TOPLEFT", 228, -212)
-    c.pin:SetText(T("Pin the nearest"))
-    c.pin:SetScript("OnClick", function()
+    c.pin = Tab(c, 130, T("Pin the nearest"), function()
         local mapID, p = BestSpot(c.npc)
         SetPin(mapID, p and p.x, p and p.y, c.npc.name)
-    end)
-    if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(c.pin) end
+    end, 24)
+    c.pin:SetPoint("TOPLEFT", 228, -212)
 
     local map = CreateFrame("Button", nil, c)
     c.canvas = map
@@ -1739,18 +1710,9 @@ local function BuildCard()
 
     c.zones = {}
     for i = 1, CARD_ZONES do
-        local b = CreateFrame("Button", nil, c, "UIPanelButtonTemplate")
-        b:SetHeight(22)
+        local b = Tab(c, 100, "", function(self) DrawCardMap(c.id, c.npc, self.mapID) end, 22)
         b:SetPoint("TOPLEFT", 361, -266 - (i - 1) * 24)
         b:SetPoint("TOPRIGHT", -8, -266 - (i - 1) * 24)
-        b:SetScript("OnClick", function(self) DrawCardMap(c.id, c.npc, self.mapID) end)
-        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(b) end
-        b.mark = b:CreateTexture(nil, "OVERLAY")
-        b.mark:SetColorTexture(1, 0.82, 0.2, 1)
-        b.mark:SetWidth(3)
-        b.mark:SetPoint("TOPLEFT", 2, -3)
-        b.mark:SetPoint("BOTTOMLEFT", 2, 3)
-        b.mark:Hide()
         b:Hide()
         c.zones[i] = b
     end
@@ -1897,15 +1859,11 @@ ShowOptions = function()
         local w = API:CreateOptionsWindow("Hunter Pets", 440, 640)
         optionsWindow = w
 
-        local open = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
-        open:SetSize(170, 24)
-        open:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        open:SetText(T("Open the bestiary"))
-        open:SetScript("OnClick", function()
+        local open = Tab(w, 170, T("Open the bestiary"), function()
             w:Hide()
             if not (window and window:IsShown()) then Toggle() end
-        end)
-        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(open) end
+        end, 24)
+        open:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
         local cmd = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         cmd:SetPoint("LEFT", open, "RIGHT", 10, 0)
         cmd:SetText(T("or type /oxpets"))
@@ -1919,18 +1877,10 @@ ShowOptions = function()
         w:AddCheckbox(settings, "locked", "Lock the pet box", nil, Ind)
         w:AddCheckbox(settings, "hideHappy", "Fade the box while the pet is happy", nil, Ind)
         w:AddSlider(settings, "scale", "Box size", 0.6, 2, 0.05, "%s: %.2f", Ind)
-        local styleBtn = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
-        styleBtn:SetSize(170, 22)
+        local styleBtn = Tab(w, 170, T("Box look"), function() ShowLookOptions() end, 24)
         styleBtn:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 2)
-        styleBtn:SetText(T("Box look"))
-        styleBtn:SetScript("OnClick", function() ShowLookOptions() end)
-        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(styleBtn) end
-        local wishBtn = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
-        wishBtn:SetSize(190, 22)
+        local wishBtn = Tab(w, 190, T("Bestiary and wishlist"), function() ShowBestiaryOptions() end, 24)
         wishBtn:SetPoint("LEFT", styleBtn, "RIGHT", 10, 0)
-        wishBtn:SetText(T("Bestiary and wishlist"))
-        wishBtn:SetScript("OnClick", function() ShowBestiaryOptions() end)
-        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then OxedHub.UI:ApplyRedButtonStyle(wishBtn) end
         w.cursorY = w.cursorY - 32
         w:AddChoice(settings, "remindAt", "Remind me to feed when", {
             { value = 2, text = "Content or worse" },
@@ -2080,8 +2030,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "hunterpets",
         name     = "Hunter Pets",
-        version  = "1.2.2",
-        updated  = 20261109.3, -- low health warning that works on secret health
+        version  = "1.2.4",
+        updated  = 20261112.8, -- the game's own tab buttons and scroll bar
         author   = "Oxed",
         category = "character",
         keywords = { "hunter", "pet", "tame", "beast", "feed", "happiness", "bestiary", "forever", "stable", "wishlist", "family", "ability" },

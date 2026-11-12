@@ -349,17 +349,32 @@ local function PlaceWindow(f)
         f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", old:GetLeft() or 0, old:GetTop() or 0)
         return
     end
-    local other
+    -- Only a window that is really on screen with a place of its own counts.
+    local other, left, right, top
     for _, w in ipairs(optionWindows) do
-        if w ~= f and w:IsShown() and (not other or w == lastShownWindow) then other = w end
+        if w ~= f and w:IsVisible() then
+            local l, r, t = w:GetLeft(), w:GetRight(), w:GetTop()
+            if l and r and t and (not other or w == lastShownWindow) then
+                other, left, right, top = w, l, r, t
+            end
+        end
     end
-    if not other or not other:GetRight() then return end
+    if not other then
+        if f:GetNumPoints() == 0 then f:SetPoint("CENTER") end
+        return
+    end
+    -- The other window's place is read before this one lets go of its own,
+    -- and this one is pinned to the screen, never to the other window: a
+    -- window placed against this one earlier would lose its place (GetRight
+    -- nil, an error) the moment this one cleared its points.
+    local width = f:GetWidth()
+    local roomRight = UIParent:GetWidth() - right - 8
+    local roomLeft = left - 8
     f:ClearAllPoints()
-    local roomRight = UIParent:GetWidth() - other:GetRight()
-    if roomRight >= f:GetWidth() + 8 then
-        f:SetPoint("TOPLEFT", other, "TOPRIGHT", 8, 0)
+    if roomRight >= width or roomRight >= roomLeft then
+        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", right + 8, top)
     else
-        f:SetPoint("TOPRIGHT", other, "TOPLEFT", -8, 0)
+        f:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", left - 8, top)
     end
 end
 
