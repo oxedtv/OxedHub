@@ -2,7 +2,7 @@
 ## Title: Oxed Hub
 ## Notes: Unified interface for sounds, animations, emotes, chat messages, and toys based on in-game events
 ## Author: https://customwowaddon.com/
-## Version: 2.4.63
+## Version: 2.4.64
 ## SavedVariables: OxedHubDB, OxMythicLooterDB
 ## SavedVariablesPerCharacter: OxMythicLooterCharDB
 ## OptionalDeps: OxedHub_MemePack, OxedHub_GamingPack, OxedHub_CustomMedia
@@ -44,6 +44,7 @@ Core\BuiltInProfiles.lua
 Modules\GeneratedSoundCatalog.lua
 Core\BlizzardSettings.lua
 Core\Core.lua
+Core\Sections.lua
 Core\ModuleAPI.lua
 Core\PetBattleHide.lua
 Modules\ErrorJournal.lua
@@ -207,6 +208,8 @@ Modules\OxedModules\HunterPets\HunterPetsData.lua
 Modules\OxedModules\HunterPets\HunterPets.lua
 Modules\OxedModules\MouseoverInfo\MouseoverInfo.lua
 Modules\OxedModules\QuestMobs\QuestMobs.lua
+Modules\OxedModules\ObjectGlow\ObjectGlow.lua
+Modules\OxedModules\RollAdvisor\RollAdvisor.lua
 Modules\OxedModules\GroupFinder\GroupFinder.lua
 Modules\OxedModules\TrainingReminder\TrainingReminderData.lua
 Modules\OxedModules\TrainingReminder\TrainingReminder.lua
@@ -319,6 +322,7 @@ UI\Components\Scroll.lua
 UI\Components\Navigation.lua
 UI\Components\Search.lua
 UI\UI.lua
+UI\Wizard.lua
 
 # Media folders
 # OxedHub_CustomMedia/ - Place custom .ogg/.ogg files here

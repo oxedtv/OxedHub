@@ -220,10 +220,30 @@ function OxedHub.MemedOn:RunTriggerEffect(effectName, force)
     RunAlertEffect(effectName, settings.intensity)
 end
 
--- ── Original Feature: Animated Meme Toast HUD Banner ───────────────────────
+-- ── Meme Toast: the card on screen when something matches ──────────────────
+-- A dark card with a neutral edge and a coloured strip down its left side
+-- (purple for chat, blue for a spell, red for a kill), a big emoji that pops
+-- in, the match in large white text, a small "OxMemes · source" line and a
+-- bar along the bottom that runs down until the card fades out.
+-- Nothing animates the card's own alpha while a secret could drive it: the
+-- card only ever shows plain text, so the fade is safe here.
+
+local EMOJI = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Emojis\\"
+local TOAST_ICONS = {
+    chat  = EMOJI .. "Tears of joy.png",
+    spell = EMOJI .. "Star eyes.png",
+    death = EMOJI .. "Skull.png",
+}
+local TOAST_COLOURS = {
+    chat  = { 0.68, 0.45, 0.95 },
+    spell = { 0.35, 0.65, 1.00 },
+    death = { 1.00, 0.35, 0.35 },
+}
+local TOAST_HOLD = 3.0       -- seconds on screen before the fade
+local TOAST_FADE = 0.5
 
 local toastFrame = CreateFrame("Frame", "OxedHubMemedOnToast", UIParent, "BackdropTemplate")
-toastFrame:SetSize(320, 50)
+toastFrame:SetSize(340, 62)
 toastFrame:SetPoint("TOP", UIParent, "TOP", 0, -115)
 toastFrame:SetFrameStrata("FULLSCREEN_DIALOG")
 toastFrame:SetClampedToScreen(true)
@@ -234,55 +254,152 @@ toastFrame:SetScript("OnDragStart", toastFrame.StartMoving)
 toastFrame:SetScript("OnDragStop", toastFrame.StopMovingOrSizing)
 toastFrame:SetBackdrop({
     bgFile = "Interface\\Buttons\\WHITE8X8",
-    edgeFile = "Interface\\Buttons\\WHITE8X8",
-    edgeSize = 2,
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    edgeSize = 12,
+    insets = { left = 3, right = 3, top = 3, bottom = 3 },
 })
-toastFrame:SetBackdropColor(0.06, 0.06, 0.09, 0.94)
-toastFrame:SetBackdropBorderColor(1, 0.72, 0.1, 1)
+toastFrame:SetBackdropColor(0.06, 0.06, 0.08, 0.95)
+toastFrame:SetBackdropBorderColor(0.38, 0.38, 0.42, 1)
 toastFrame:Hide()
 
-toastFrame.icon = toastFrame:CreateTexture(nil, "ARTWORK")
-toastFrame.icon:SetSize(36, 36)
-toastFrame.icon:SetPoint("LEFT", toastFrame, "LEFT", 7, 0)
-toastFrame.icon:SetTexture("Interface\\Icons\\Achievement_Halloween_Ghost_01")
-toastFrame.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+-- A soft light across the top half, so the card is not one flat colour.
+toastFrame.shine = toastFrame:CreateTexture(nil, "BORDER")
+toastFrame.shine:SetPoint("TOPLEFT", 4, -4)
+toastFrame.shine:SetPoint("TOPRIGHT", -4, -4)
+toastFrame.shine:SetHeight(26)
+toastFrame.shine:SetColorTexture(1, 1, 1, 0.04)
 
-toastFrame.title = toastFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-toastFrame.title:SetPoint("TOPLEFT", toastFrame.icon, "TOPRIGHT", 8, -2)
-toastFrame.title:SetPoint("RIGHT", toastFrame, "RIGHT", -8, 0)
-toastFrame.title:SetJustifyH("LEFT")
-toastFrame.title:SetTextColor(1, 0.85, 0.2)
+-- The coloured strip down the left edge.
+toastFrame.accent = toastFrame:CreateTexture(nil, "ARTWORK")
+toastFrame.accent:SetPoint("TOPLEFT", 4, -4)
+toastFrame.accent:SetPoint("BOTTOMLEFT", 4, 4)
+toastFrame.accent:SetWidth(3)
 
-toastFrame.sub = toastFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-toastFrame.sub:SetPoint("BOTTOMLEFT", toastFrame.icon, "BOTTOMRIGHT", 8, 3)
-toastFrame.sub:SetPoint("RIGHT", toastFrame, "RIGHT", -8, 0)
-toastFrame.sub:SetJustifyH("LEFT")
-toastFrame.sub:SetTextColor(0.8, 0.8, 0.8)
+-- The emoji, and a faint glow of the accent colour behind it.
+toastFrame.glow = toastFrame:CreateTexture(nil, "ARTWORK", nil, 1)
+toastFrame.glow:SetSize(58, 58)
+toastFrame.glow:SetPoint("LEFT", toastFrame, "LEFT", 4, 0)
+toastFrame.glow:SetTexture("Interface\\Cooldown\\star4")
+toastFrame.glow:SetBlendMode("ADD")
+toastFrame.glow:SetAlpha(0.35)
 
-local toastTimer = nil
-local function ShowMemeToast(title, subtitle, icon)
-    if not settings or not settings.showMemeToast then return end
-    toastFrame.title:SetText(title or L["Meme Alert"])
-    toastFrame.sub:SetText(subtitle or "")
-    if icon then toastFrame.icon:SetTexture(icon) end
-    toastFrame:SetAlpha(1)
-    toastFrame:Show()
+toastFrame.icon = toastFrame:CreateTexture(nil, "ARTWORK", nil, 2)
+toastFrame.icon:SetSize(46, 46)
+toastFrame.icon:SetPoint("CENTER", toastFrame.glow, "CENTER", 0, 0)
+toastFrame.icon:SetTexture(TOAST_ICONS.chat)
 
-    if toastTimer then toastTimer:Cancel() end
-    toastTimer = C_Timer.NewTimer(3.0, function()
-        local fadeStep = 0
-        local fadeTicker
-        fadeTicker = C_Timer.NewTicker(0.03, function()
-            fadeStep = fadeStep + 0.06
-            if fadeStep >= 1 then
-                fadeTicker:Cancel()
-                toastFrame:Hide()
-                toastFrame:SetAlpha(1)
-            else
-                toastFrame:SetAlpha(1 - fadeStep)
-            end
-        end)
+-- The emoji pops: a quick grow past full size and back.
+do
+    local pop = toastFrame.icon:CreateAnimationGroup()
+    local grow = pop:CreateAnimation("Scale")
+    local settle = pop:CreateAnimation("Scale")
+    local ok = pcall(function()
+        grow:SetScaleFrom(0.4, 0.4)
+        grow:SetScaleTo(1.15, 1.15)
+        settle:SetScaleFrom(1.15, 1.15)
+        settle:SetScaleTo(1, 1)
     end)
+    if not ok then
+        pcall(grow.SetScale, grow, 1.15, 1.15)
+        pcall(settle.SetScale, settle, 0.87, 0.87)
+    end
+    grow:SetDuration(0.18)
+    grow:SetOrder(1)
+    grow:SetSmoothing("OUT")
+    settle:SetDuration(0.12)
+    settle:SetOrder(2)
+    settle:SetSmoothing("IN_OUT")
+    toastFrame.pop = pop
+end
+
+toastFrame.caption = toastFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+toastFrame.caption:SetPoint("TOPLEFT", toastFrame, "TOPLEFT", 66, -10)
+toastFrame.caption:SetPoint("RIGHT", toastFrame, "RIGHT", -12, 0)
+toastFrame.caption:SetJustifyH("LEFT")
+
+toastFrame.title = toastFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+toastFrame.title:SetPoint("TOPLEFT", toastFrame.caption, "BOTTOMLEFT", 0, -3)
+toastFrame.title:SetPoint("RIGHT", toastFrame, "RIGHT", -12, 0)
+toastFrame.title:SetJustifyH("LEFT")
+toastFrame.title:SetTextColor(1, 1, 1)
+if toastFrame.title.SetWordWrap then toastFrame.title:SetWordWrap(false) end
+
+-- Kept for older callers; the source now rides in the caption.
+toastFrame.sub = toastFrame.caption
+
+-- The bar that runs down while the card is up.
+toastFrame.timer = toastFrame:CreateTexture(nil, "OVERLAY")
+toastFrame.timer:SetPoint("BOTTOMLEFT", toastFrame, "BOTTOMLEFT", 7, 5)
+toastFrame.timer:SetHeight(2)
+toastFrame.timerTrack = toastFrame:CreateTexture(nil, "ARTWORK")
+toastFrame.timerTrack:SetPoint("BOTTOMLEFT", toastFrame, "BOTTOMLEFT", 7, 5)
+toastFrame.timerTrack:SetPoint("BOTTOMRIGHT", toastFrame, "BOTTOMRIGHT", -7, 5)
+toastFrame.timerTrack:SetHeight(2)
+toastFrame.timerTrack:SetColorTexture(1, 1, 1, 0.08)
+
+-- Slides down a little and fades in, holds, then fades out.
+local toastShownAt = 0
+local toastFull = 0
+toastFrame:SetScript("OnUpdate", function(self)
+    local age = GetTime() - toastShownAt
+    if age < 0.2 then
+        local t = age / 0.2
+        self:SetAlpha(t)
+        self.slide = 10 * (1 - t)
+    elseif age < TOAST_HOLD then
+        self:SetAlpha(1)
+        self.slide = 0
+    elseif age < TOAST_HOLD + TOAST_FADE then
+        self:SetAlpha(1 - (age - TOAST_HOLD) / TOAST_FADE)
+    else
+        self:Hide()
+        self:SetAlpha(1)
+        return
+    end
+    local left = math.max(0, 1 - age / TOAST_HOLD)
+    self.timer:SetWidth(math.max(0.01, toastFull * left))
+    if self.slide ~= self.lastSlide then
+        self.lastSlide = self.slide
+        if self.home then
+            self:ClearAllPoints()
+            self:SetPoint(self.home[1], UIParent, self.home[3], self.home[4], self.home[5] + (self.slide or 0))
+        end
+    end
+end)
+
+-- kind: "chat", "spell" or "death"; icon overrides the emoji.
+local function ShowMemeToast(title, subtitle, icon, kind)
+    if not settings or not settings.showMemeToast then return end
+    kind = TOAST_COLOURS[kind] and kind or "chat"
+    local colour = TOAST_COLOURS[kind]
+    toastFrame.accent:SetColorTexture(colour[1], colour[2], colour[3], 1)
+    toastFrame.timer:SetColorTexture(colour[1], colour[2], colour[3], 0.9)
+    toastFrame.glow:SetVertexColor(colour[1], colour[2], colour[3])
+    toastFrame.caption:SetTextColor(colour[1], colour[2], colour[3])
+    toastFrame.icon:SetTexture(icon or TOAST_ICONS[kind])
+
+    -- A caster name can be a secret in a fight: then the line says less.
+    local source = subtitle
+    if issecretvalue and issecretvalue(source) then source = nil end
+    if type(source) == "string" and source ~= "" then
+        toastFrame.caption:SetText("OxMemes  |cff9a9aa0·|r  |cffd0d0d8" .. source .. "|r")
+    else
+        toastFrame.caption:SetText("OxMemes")
+    end
+    toastFrame.title:SetText(title or L["Meme Alert"])
+
+    -- Where the player left it (dragged or not): the slide starts from there.
+    if not toastFrame:IsShown() then
+        local point, _, relPoint, x, y = toastFrame:GetPoint(1)
+        toastFrame.home = { point or "TOP", nil, relPoint or "TOP", x or 0, y or -115 }
+        toastFrame.lastSlide = nil
+    end
+    toastFull = toastFrame:GetWidth() - 14
+    toastShownAt = GetTime()
+    toastFrame:SetAlpha(0)
+    toastFrame:Show()
+    toastFrame.pop:Stop()
+    toastFrame.pop:Play()
 end
 
 -- ── Keyword Matching Logic ──────────────────────────────────────────────────
@@ -338,7 +455,9 @@ local function TriggerAlert(matchedWord, categoryName, kwConfig)
     -- Execute sound, physical effect and Meme Toast!
     PlayAlertSound(soundID, SOUNDKIT and SOUNDKIT.RAID_WARNING)
     RunAlertEffect(effectName, intensity)
-    ShowMemeToast(('"%s"'):format(tostring(matchedWord)), (L["Source: %s"]):format(categoryName or "Chat"), "Interface\\Icons\\Achievement_Halloween_Ghost_01")
+    local source = tostring(categoryName or "chat")
+    source = OxedHub.T(source:sub(1, 1):upper() .. source:sub(2))
+    ShowMemeToast(('"%s"'):format(tostring(matchedWord)), source, nil, "chat")
 
     if settings.showMatchMessage then
         print(PREFIX .. ('Matched |cffffd100"%s"|r (|cffaaaaaa%s|r) -> Effect: |cff00ff00%s|r'):format(tostring(matchedWord), categoryName or "chat", effectName))
@@ -417,7 +536,15 @@ local function TriggerSpellAlert(spellName, cfg, casterUnit, force)
 
     PlayAlertSound(soundID, SOUNDKIT and SOUNDKIT.READY_CHECK)
     RunAlertEffect(effectName, settings.intensity)
-    ShowMemeToast(spellName, (L["Spell Cast by %s"]):format(UnitName(casterUnit) or "unit"), "Interface\\Icons\\Spell_Holy_AshesToAshes")
+    -- The spell's own icon when the game gives it, the emoji otherwise.
+    local spellIcon
+    if C_Spell and C_Spell.GetSpellTexture then
+        local ok, tex = pcall(C_Spell.GetSpellTexture, spellName)
+        if ok and tex and not (issecretvalue and issecretvalue(tex)) then spellIcon = tex end
+    end
+    local caster = UnitName(casterUnit)
+    if caster == nil or (issecretvalue and issecretvalue(caster)) then caster = "unit" end
+    ShowMemeToast(spellName, (L["Spell Cast by %s"]):format(caster), spellIcon, "spell")
 
     if settings.showMatchMessage then
         print(PREFIX .. ('Spell Trigger: |cffffd100%s|r (|cffaaaaaa%s|r)'):format(spellName, UnitName(casterUnit) or "unit"))
@@ -528,7 +655,7 @@ local function CheckUnitDeath(unit)
         if not lastDead[key] or (now - lastDead[key]) > 5 then
             lastDead[key] = now
             PlayAlertSound(settings.deathBellSound, 12867)
-            ShowMemeToast(L["Enemy Down!"], displayName or key, "Interface\\Icons\\Ability_DualWield")
+            ShowMemeToast(L["Enemy Down!"], displayName or key, nil, "death")
             if settings.showMatchMessage then
                 print(PREFIX .. (L["|cffff2020Enemy down:|r %s"]):format(displayName or key))
             end
@@ -1182,13 +1309,13 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "memedon",
         name     = "OxMemes",   -- renamed from MemedOn; id and saved settings unchanged
-        version  = "4.4.0",
-        updated  = 20261026.3,  -- effects as a trigger action; "69" preset removed
+        version  = "4.5.0",
+        updated  = 20261113.1,  -- a new meme card on screen, emoji icons
         author   = "Oxed",
         category = "chat",
         keywords = { "meme", "memedon", "sound", "chat", "trigger", "wobble", "explosion", "blackhole", "death", "bell" },
         desc     = "Scans chat, NPC dialogue and spells for keywords to trigger physical screen effects and sounds.",
-        icon     = "Interface\\Icons\\Achievement_Halloween_Ghost_01",
+        icon     = "Interface\\AddOns\\OxedHub\\Media\\Textures\\Emojis\\Tears of joy.png",
 
         defaults = DEFAULTS,
 

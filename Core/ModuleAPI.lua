@@ -89,6 +89,52 @@ local function NormalizeCategory(value, moduleId)
     return known or DEFAULT_CATEGORY
 end
 
+-- The tab a module is filed under, for anything outside the Modules page that
+-- groups them the same way (the setup wizard does).
+function ModuleAPI:CategoryOf(mod)
+    return NormalizeCategory(mod and mod.category, mod and mod.id)
+end
+
+-- ── The player's pick of modules ────────────────────────────────────────────
+-- The setup wizard lets a player pick the modules they want at all. Once a
+-- pick exists (OxedHubDB.globalSettings.pickedModules, by lower-case id) the
+-- Modules page lists only those; the rest are switched off and out of sight
+-- until the player adds them with the page's "Add modules" button, which
+-- opens the wizard's list again. No pick, which is every player who skipped
+-- or never ran the wizard, means the page shows everything as it always did.
+-- Addons the page only found on disk are not part of this and always show.
+
+local function PickStore()
+    local gs = type(OxedHubDB) == "table" and OxedHubDB.globalSettings
+    local store = type(gs) == "table" and gs.pickedModules
+    return type(store) == "table" and store or nil
+end
+
+function ModuleAPI:HasModulePicks()
+    return PickStore() ~= nil
+end
+
+function ModuleAPI:IsModulePicked(id)
+    local store = PickStore()
+    if not store then return true end
+    return store[tostring(id or ""):lower()] == true
+end
+
+-- picks: module id -> boolean. Nil forgets the pick, so every module shows.
+function ModuleAPI:SetModulePicks(picks)
+    if type(OxedHubDB) ~= "table" then return end
+    OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+    if type(picks) ~= "table" then
+        OxedHubDB.globalSettings.pickedModules = nil
+        return
+    end
+    local store = {}
+    for id, on in pairs(picks) do
+        if on then store[tostring(id):lower()] = true end
+    end
+    OxedHubDB.globalSettings.pickedModules = store
+end
+
 -- ── Registry ───────────────────────────────────────────────────────────────
 
 local registerCount = 0
@@ -165,7 +211,12 @@ function ModuleAPI:Register(moduleInfo)
     moduleInfo._registered = true
     moduleInfo._api = api
 
-    if config.enabled ~= false and moduleInfo.OnEnable then
+    -- Modules left out in the setup wizard (CoreSections.lua): every module
+    -- still registers, so its settings and its card are intact, but none is
+    -- started. Each one's own on/off is left exactly as the player set it.
+    local sectionOn = not OxedHub.Sections or OxedHub.Sections:IsActive("Modules")
+
+    if sectionOn and config.enabled ~= false and moduleInfo.OnEnable then
         -- Run safe
         local ok, err = pcall(moduleInfo.OnEnable, moduleInfo, config, api)
         if not ok then
@@ -223,6 +274,11 @@ function ModuleAPI:SetModuleEnabled(id, on)
     config.defaultOffSeen = true
 
     local handler = on and mod.OnEnable or mod.OnDisable
+    -- With the Modules section left out nothing may start; the tick is still
+    -- saved, so the module comes on when the section does.
+    if on and OxedHub.Sections and not OxedHub.Sections:IsActive("Modules") then
+        handler = nil
+    end
     if handler then
         local ok, err = pcall(handler, mod, config, mod._api)
         if not ok then
@@ -1305,9 +1361,16 @@ function ModuleAPI:RebuildCategoryTabs(tab, allModules, selected)
         ModuleAPI:AddTabLine(host, under, 0, 0)
     end
 
+    -- ⚠ A retired tab keeps its parent. The template's OnShow and OnEvent read
+    -- self:GetParent().tabPadding, so a tab with no parent is an error the
+    -- moment either runs, and OnShow can run late: when the page is shown from
+    -- inside another frame's OnHide (the setup wizard closing does that), the
+    -- game holds the tabs' OnShow back until that Hide has finished, by which
+    -- time this function has already retired them. Hidden and deaf to events
+    -- is enough; never SetParent(nil) here.
     for _, button in ipairs(tab.categoryTabs or {}) do
         button:Hide()
-        button:SetParent(nil)
+        button:UnregisterAllEvents()
     end
     tab.categoryTabs = {}
 
@@ -1633,6 +1696,15 @@ function ModuleAPI:RefreshModulesTab()
     -- Every module ends up with a valid category, whichever route it came by.
     for id, mod in pairs(allModules) do
         mod.category = NormalizeCategory(mod.category, mod.id or id)
+    end
+
+    -- Modules the player left out in the setup wizard are not listed at all.
+    if self:HasModulePicks() then
+        for id, mod in pairs(allModules) do
+            if mod._registered and not self:IsModulePicked(mod.id or id) then
+                allModules[id] = nil
+            end
+        end
     end
 
     -- Narrow to what the search box asks for, before anything is counted: the

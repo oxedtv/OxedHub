@@ -981,6 +981,82 @@ local function BestNow()
     return best, level
 end
 
+-- ── For other modules ───────────────────────────────────────────────────────
+-- Roll Advisor asks the same questions about an item on a Need/Greed roll.
+-- Only functions are handed out. They work on the main game too, where this
+-- module never binds its settings: everything here reads `settings` with care.
+
+-- What an item is to this character, from its link (a link, not an id: a
+-- random "of the Bear" suffix is part of the link). Nil while the game has
+-- not loaded the item yet. Fields: kind ("gear", "bag", "other", "unknown"),
+-- usable, req, tooHigh, byStats, new, worn, gain, wornLink, sell, bind, ilvl.
+local function CompareLink(link)
+    local fn = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    if not fn or type(link) ~= "string" or Secret(link) then return nil end
+    local ok, _, itemLink, quality, ilvl, req, _, _, _, equipLoc, _, sell, itemClass, sub, bind = pcall(fn, link)
+    if not ok or type(ilvl) ~= "number" then return nil end
+    local out = { ilvl = ilvl, req = type(req) == "number" and req or 0, sell = sell, bind = bind,
+                  quality = quality, kind = "gear" }
+    if equipLoc == "INVTYPE_BAG" then out.kind = "bag" return out end
+    local slots = INVSLOTS[equipLoc]
+    if not slots then out.kind = "other" return out end
+
+    local level = PlayerLevel()
+    out.tooHigh = (level ~= nil and out.req > level)
+    out.usable = Usable(itemClass, sub, equipLoc, PlayerClass(), math.max(level or 1, out.req)) and true or false
+
+    local weights = WeightSet()
+    local new
+    if weights then new = ItemScore(link, weights) else new = ilvl end
+    if not new then out.kind = "unknown" return out end
+
+    -- Against the weakest thing worn in the slots it could go in.
+    local worst, worstLink
+    for _, s in ipairs(slots) do
+        local okL, worn = pcall(GetInventoryItemLink, "player", s)
+        if not okL or Secret(worn) then worn = nil end
+        local have = 0
+        if weights then
+            if worn then
+                have = ItemScore(worn, weights)
+                if not have then out.kind = "unknown" return out end
+            end
+        else
+            have = EquippedLevel(s)
+        end
+        if not worst or have < worst then worst, worstLink = have, worn end
+    end
+    out.byStats = weights ~= nil
+    out.new, out.worn, out.wornLink = new, worst or 0, worstLink
+    out.gain = new - (worst or 0)
+    return out
+end
+
+-- Is this the best item for its slot that can be had at this level, or on
+-- the wishlist? Forever only; false elsewhere. The search is not cheap, so
+-- its answer is kept for half a minute.
+local bestIDs, bestAt = nil, 0
+local function IsBestNow(itemID)
+    if not settings or OxedHub.IsMainline or type(itemID) ~= "number" then return false end
+    local now = GetTime()
+    if not bestIDs or now - bestAt > 30 then
+        bestIDs, bestAt = {}, now
+        local ok, best = pcall(BestNow)
+        if ok and type(best) == "table" then
+            for _, entry in pairs(best) do
+                if entry.itemID then bestIDs[entry.itemID] = true end
+            end
+        end
+    end
+    return bestIDs[itemID] == true
+end
+
+local function IsWished(itemID)
+    return settings ~= nil and type(settings.wish) == "table" and settings.wish[itemID] ~= nil
+end
+
+OxedHub.GearAdvice = { CompareLink = CompareLink, IsBestNow = IsBestNow, IsWished = IsWished }
+
 local slotCounts = {}
 
 local function BuildRows()
@@ -2306,8 +2382,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "levelingfinds",
         name     = "Leveling Finds",
-        version  = "2.10.0",
-        updated  = 20261110.6,  -- best item alerts as cards on screen that stack until closed
+        version  = "2.10.1",
+        updated  = 20261113.1,  -- item comparison shared with Roll Advisor
         author   = "Oxed",
         category = "quests",
         keywords = { "leveling", "levelling", "quest", "dungeon", "loot", "map", "forever", "mapgenie", "find" },

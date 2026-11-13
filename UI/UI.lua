@@ -384,6 +384,7 @@ function UI:Init()
     self:CreateSettingsTab()
     self:CreateAboutTab()
     self:CreateExperimentalTab()
+    self:ApplySections()
     self:ShowTab("Dashboard")
     
     self:ApplyGlobalTextSize()
@@ -696,6 +697,7 @@ function UI:CreateSidebar()
     -- once, and a permanent row in the sidebar gave it the same weight as the
     -- pages people actually work in.
     local tabs = { "Dashboard", "Triggers", "Reactions", "Toys", "OxedRing", "ActionHub", "Modules", "Settings" } -- , "Experimental", "About"
+    sidebar.tabOrder = tabs
     local yOffset = 0
     
     for i, tabName in ipairs(tabs) do
@@ -1103,6 +1105,40 @@ function UI:CreateDashboardTab()
         UI:ShowTab("Settings")
     end)
 
+    -- UI:ApplySections hides the shortcut of a section that is off and moves
+    -- the others up. Settings is not a section, so it is always in the row.
+    UI.heroButtonsParent = hero
+    UI.heroButtons = {
+        { button = triggersBtn,  section = "Triggers" },
+        { button = reactionsBtn, section = "Reactions" },
+        { button = toysBtn,      section = "Toys" },
+        { button = settingsBtn,  section = "Settings" },
+    }
+
+    -- Opens the setup wizard again. Hidden until the wizard has been finished
+    -- once (UI:ApplySections decides).
+    do
+    local systemBtn = CreateFrame("Button", nil, hero, "UIPanelButtonTemplate")
+    ApplyRedButtonStyle(systemBtn)
+    systemBtn:SetSize(90, 24)
+    systemBtn:SetPoint("BOTTOMRIGHT", hero, "BOTTOMRIGHT", -14, 12)
+    systemBtn:SetText(L["System"])
+    systemBtn:SetScript("OnClick", function()
+        if OxedHub.Wizard then
+            OxedHub.Wizard:Show()
+        end
+    end)
+    systemBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText(L["System"])
+        GameTooltip:AddLine(L["Choose which parts of Oxed Hub you use."], 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    systemBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    systemBtn:Hide()
+    UI.systemBtn = systemBtn
+    end
+
     local animSwitch = CreateFrame("CheckButton", nil, hero, "UICheckButtonTemplate")
     animSwitch:SetPoint("LEFT", settingsBtn, "RIGHT", 15, 0)
     animSwitch:SetSize(26, 26)
@@ -1349,12 +1385,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.63)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.64)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.63")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.64")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
@@ -1436,10 +1472,10 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        L["•  Training Reminder: pet abilities, demon tomes, Train All."],
-        L["•  Training Reminder: new window and a panel by the spellbook."],
-        L["•  Training Reminder: the card no longer comes back too often."],
-        L["•  Hunter Pets: the game's own tab buttons and scroll bar."],
+        L["•  New: Object Glow. Sparks and beacons on herbs, ore, quest items."],
+        L["•  New: Roll Advisor. Need or Greed, and how big the upgrade is."],
+        L["•  Object Glow: a counter of the beasts left to skin."],
+        L["•  OxMemes: a new card on screen with emoji icons."],
         L["•  Leave feedback with the button on the first page."],
         L["•  Grab either pack from CurseForge:"],
     }
@@ -3802,6 +3838,30 @@ function UI:CreateModulesTab()
     shareAll:SetScript("OnClick", function()
         if OxedHub.Share then OxedHub.Share:ShowModuleShare(nil) end
     end)
+
+    -- Only for a player who picked their modules in the setup wizard: the page
+    -- lists just those, and this opens the wizard's list to add or drop some.
+    -- UI:ApplySections shows and hides it.
+    do
+    local addModules = CreateFrame("Button", nil, header, "UIPanelButtonTemplate")
+    addModules:SetSize(150, 24)
+    addModules:SetPoint("RIGHT", shareAll, "LEFT", -8, 0)
+    addModules:SetText(L["Add modules"])
+    addModules:SetScript("OnClick", function()
+        if OxedHub.Wizard and OxedHub.Wizard.ShowModules then
+            OxedHub.Wizard:ShowModules()
+        end
+    end)
+    addModules:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(L["Add modules"])
+        GameTooltip:AddLine(L["This page lists only the modules you picked. Open the full list to add or remove some."], 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    addModules:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    addModules:Hide()
+    UI.addModulesBtn = addModules
+    end
     
     tab.scrollFrame = scrollFrame
     tab.scrollChild = scrollChild
@@ -6154,8 +6214,114 @@ end
 
 
 
+-- Lays the window out for the sections the player chose (Core\Sections.lua):
+-- sidebar buttons of the others are hidden and the rest close the gap, the
+-- Dashboard's shortcut buttons follow, and a page that was switched off while
+-- open gives way to the Dashboard. Until a choice exists everything is on.
+function UI:ApplySections()
+    local S = OxedHub.Sections
+    if sidebar and sidebar.tabOrder then
+        local yOffset = 0
+        for _, tabName in ipairs(sidebar.tabOrder) do
+            local btn = sidebar[tabName .. "Btn"]
+            if btn then
+                local on = (not S) or S:IsEnabled(tabName)
+                btn:SetShown(on)
+                if on then
+                    btn:ClearAllPoints()
+                    btn:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 5, -yOffset)
+                    yOffset = yOffset + 34
+                end
+            end
+        end
+    end
+
+    if self.heroButtons and self.heroButtonsParent then
+        local previous = nil
+        for _, entry in ipairs(self.heroButtons) do
+            local on = (not S) or S:IsEnabled(entry.section)
+            entry.button:SetShown(on)
+            if on then
+                entry.button:ClearAllPoints()
+                if previous then
+                    entry.button:SetPoint("LEFT", previous, "RIGHT", 8, 0)
+                else
+                    entry.button:SetPoint("BOTTOMLEFT", self.heroButtonsParent, "BOTTOMLEFT", 14, 12)
+                end
+                previous = entry.button
+            end
+        end
+    end
+
+    -- The button appears once the wizard has been finished or skipped: until
+    -- then the wizard offers itself, and there is nothing to come back to.
+    if self.systemBtn then
+        self.systemBtn:SetShown(S ~= nil and S:HasChosen())
+    end
+    if self.addModulesBtn then
+        local API = OxedHub.ModuleAPI
+        self.addModulesBtn:SetShown(API ~= nil and API.HasModulePicks ~= nil and API:HasModulePicks())
+    end
+
+    if S and contentArea and sidebar and not S:IsEnabled(currentTab) then
+        self:ShowTab("Dashboard")
+    end
+end
+
+-- The setup wizard (UI\Wizard.lua) runs inside this window, in the place of
+-- the Dashboard. While it does, the sidebar is greyed and does nothing, and
+-- no route may switch page underneath it: ShowTab refuses until it is over.
+function UI:SetWizardMode(on)
+    if not sidebar or not contentArea then return end
+    on = on and true or false
+
+    if on then
+        self:ShowTab("Dashboard")
+        self.wizardMode = true
+        if contentArea.Dashboard then
+            contentArea.Dashboard:Hide()
+        end
+    end
+
+    for _, tabName in ipairs(sidebar.tabOrder or {}) do
+        local btn = sidebar[tabName .. "Btn"]
+        if btn then
+            btn:SetEnabled(not on)
+            btn:SetAlpha(on and 0.45 or 1)
+            if btn.customBg then btn.customBg:SetDesaturated(on) end
+            if btn.icon then btn.icon:SetDesaturated(on) end
+            if on then
+                btn:UnlockHighlight()
+                btn.text:SetTextColor(0.55, 0.55, 0.55, 1)
+            end
+        end
+    end
+
+    if not on then
+        self.wizardMode = nil
+        -- Puts the Dashboard back and gives the buttons their own colours.
+        self:ShowTab("Dashboard")
+    end
+end
+
+-- Where the wizard is drawn: the content area, with the same margins the
+-- pages keep inside their ornate background.
+function UI:GetWizardHost()
+    return contentArea, THEMED_FRAME_INSETS
+end
+
 -- Show tab
 function UI:ShowTab(tabName)
+
+    if self.wizardMode then
+        return
+    end
+
+    -- Search, the toy dock, trigger history and old shortcuts all come through
+    -- here, so one check keeps every route out of a section that is off.
+    if OxedHub.Sections and not OxedHub.Sections:IsEnabled(tabName) then
+        tabName = "Dashboard"
+    end
 
     currentTab = tabName
 
@@ -6519,6 +6685,11 @@ function UI:ShowMainWindow()
             mainFrame:Show()
         end
         OxedHub.db.profile.settings.mainWindowVisible = true
+        -- First time in for a player who has not chosen their sections: the
+        -- setup wizard takes the Dashboard's place, once.
+        if OxedHub.Wizard and OxedHub.Wizard.OfferFirstRun then
+            OxedHub.Wizard:OfferFirstRun()
+        end
     end
 end
 

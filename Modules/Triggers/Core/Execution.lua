@@ -83,6 +83,9 @@ function Triggers:CanRunTriggerEffects(trigger, actions, soundKey, animKey, icon
 end
 
 function Triggers:ExecuteTrigger(trigger, eventData, skipChat)
+    -- Aura polls and rule macros come straight here, past ProcessEvent, so the
+    -- "Triggers is off" check is needed in both places.
+    if OxedHub.Sections and not OxedHub.Sections:IsActive("Triggers") then return end
     if OxedHub.debug then print("[OxedHub-Debug] ExecuteTrigger called for trigger:", trigger.name or trigger.id, "event:", trigger.event) end
     local actions = trigger.actions
     if not actions then return end

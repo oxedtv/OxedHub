@@ -3231,6 +3231,23 @@ function Core:HandleSlashCommand(msg)
         if OxedHub.WhatsNew then
             OxedHub.WhatsNew:Show(true)
         end
+    elseif command == "wizard" or command == "wizzard" or command == "setup" then
+        -- Opens the setup wizard by hand, from its first step.
+        -- "reset" forgets the choice, so every section is back.
+        if rest == "reset" then
+            if OxedHub.Sections then
+                OxedHub.Sections:Reset()
+            end
+            if OxedHub.UI and OxedHub.UI.ApplySections then
+                OxedHub.UI:ApplySections()
+            end
+            print(L["|cff00ff00Oxed Hub:|r every section is switched on again."])
+            if OxedHub.Wizard and OxedHub.Wizard.OfferReload then
+                OxedHub.Wizard:OfferReload()
+            end
+        elseif OxedHub.Wizard then
+            OxedHub.Wizard:Show(1)
+        end
     elseif command == "reload" or command == "rl" then
         ReloadUI()
     elseif command == "trigger" then

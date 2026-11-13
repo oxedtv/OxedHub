@@ -203,8 +203,11 @@ function OxedRing:Init()
     self:CreateRingFrame()
 
     -- Apply saved keybind on startup (from our own DB, not WoW's binding system)
+    -- With OxedRing left out in the setup wizard the key is not taken at all,
+    -- so it stays free for whatever the game has on it. The saved key is kept.
+    local ringOff = OxedHub.Sections and not OxedHub.Sections:IsActive("OxedRing")
     local savedBinding = OxedHub.GetRingDB().oxedRingBinding
-    if savedBinding and savedBinding ~= "" then
+    if savedBinding and savedBinding ~= "" and not ringOff then
         self:ApplyRingBinding(savedBinding)
     end
 
@@ -213,7 +216,7 @@ function OxedRing:Init()
     bindFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     bindFrame:SetScript("OnEvent", function()
         local key = OxedHub.GetRingDB().oxedRingBinding
-        if key and key ~= "" and OxedRing.hotkeyBtn then
+        if key and key ~= "" and OxedRing.hotkeyBtn and not ringOff then
             ClearOverrideBindings(OxedRing.hotkeyBtn)
             SetOverrideBindingClick(OxedRing.hotkeyBtn, true, key, "OxedRingHotkeyButton")
         end
@@ -845,6 +848,7 @@ end
 
 function OxedRing:ShowRing()
     if isRingOpen then return end
+    if OxedHub.Sections and not OxedHub.Sections:IsActive("OxedRing") then return end
     isRingOpen = true
     self.isClosing = false
     self.openTime = GetTime()

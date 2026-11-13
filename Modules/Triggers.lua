@@ -934,6 +934,8 @@ local function SpellNameOf(spellID)
 end
 
 function Triggers:ProcessEvent(eventType, eventData)
+    -- The player left Triggers out in the setup wizard: no rule fires.
+    if OxedHub.Sections and not OxedHub.Sections:IsActive("Triggers") then return end
     local profile = OxedHub.db.profile
     
     if eventType == "UNIT_AURA" and eventData and eventData.isLost then

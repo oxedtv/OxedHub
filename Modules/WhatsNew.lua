@@ -61,6 +61,17 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.64",
+        lines = {
+            { "NEW", "Object Glow: sparks around the pointer on herbs, ore, quest objects and corpses you can skin, each in its own style. It can also switch on the game's own sparkle for things to pick up." },
+            { "NEW", "Object Glow: a beacon of light stays where the mouse found something, so one sweep across the screen lights up every find. Its size, height, colour and parts are yours to set." },
+            { "NEW", "Object Glow: sparks fly toward the game's own marks and toward places where you gathered before, and a counter shows the beasts left to skin." },
+            { "NEW", "Roll Advisor: on a Need/Greed roll a panel says whether the item is an upgrade, by how much and what it replaces, and suggests a button. It never rolls for you." },
+            { "NEW", "Roll Advisor on WoW Forever: it also says when the item is the best for its slot right now or is on your Leveling Finds wishlist." },
+            { "CHANGED", "OxMemes: a new card on screen when something matches, with emoji icons." },
+        },
+    },
+    {
         version = "2.4.63",
         lines = {
             { "NEW", "Training Reminder: hunter pet abilities, warlock demon tomes, prices with your reputation discount, and an optional Train All button at the class trainer." },

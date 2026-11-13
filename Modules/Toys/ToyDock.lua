@@ -1652,6 +1652,9 @@ function Toys:GetOrCreateToyboxFrame()
 end
 
 function Toys:ToggleToyDock(boxId)
+    -- Toys left out in the setup wizard: the dock does not open, from the key,
+    -- the slash command or anywhere else. Its saved state is left as it was.
+    if OxedHub.Sections and not OxedHub.Sections:IsActive("Toys") then return false end
     local f = self:GetOrCreateToyboxFrame()
     if boxId and boxId ~= "" then
         selectedToyboxId = boxId
@@ -1703,6 +1706,7 @@ dockEventFrame:SetScript("OnEvent", function(self, event)
     C_Timer.After(0.5, function()
         local profile = OxedHub.db and OxedHub.db.profile
         if not profile then return end
+        if OxedHub.Sections and not OxedHub.Sections:IsActive("Toys") then return end
         local state = profile.toyBoxDockState
         local cfg = profile.toyBoxSettings or {}
         if state == "expanded" or (state == nil and cfg.showOnScreenDock == true) then

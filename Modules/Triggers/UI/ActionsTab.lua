@@ -555,7 +555,7 @@ function Triggers:CreateActionsUI(frame, trigger)
 
     -- OxMemes effect: shakes or tilts the screen with one of OxMemes' effects.
     -- A click steps through them; the effect name is the stored value.
-    local memeIcon = CreateActionIcon(frame, "Interface\\Icons\\Achievement_Halloween_Ghost_01")
+    local memeIcon = CreateActionIcon(frame, "Interface\\AddOns\\OxedHub\\Media\\Textures\\Emojis\\Tears of joy.png")
     frame.memeIcon = memeIcon
     local memeLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     memeLabel:SetPoint("LEFT", memeIcon, "RIGHT", 8, 0)

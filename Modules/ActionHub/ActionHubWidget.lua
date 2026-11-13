@@ -2194,6 +2194,14 @@ function ActionHub:RefreshWidgetForHub(hubIndex)
     if not w then return end
     w.hubIndex = hubIndex
 
+    -- ActionHub left out in the setup wizard: the hub stays hidden and empty,
+    -- so no button is built and no key is bound. Past the combat check above,
+    -- so hiding is allowed here.
+    if OxedHub.Sections and not OxedHub.Sections:IsActive("ActionHub") then
+        w:Hide()
+        return
+    end
+
     local db = EnsureHubData(self:GetHubDB(hubIndex), hubIndex)
     if not db then w:Hide() return end
     local moveMode = self:IsMinimizedMoveMode(hubIndex) or (ActionHub.pickerDialog and ActionHub.pickerDialog.moveNodeMode and self:GetActiveHubIndex() == hubIndex)
