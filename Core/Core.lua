@@ -3685,14 +3685,27 @@ local function ApplyFontToTooltip(self)
     end
 end
 
-if GameTooltip then
-    GameTooltip:HookScript("OnShow", ApplyFontToTooltip)
-    GameTooltip:HookScript("OnUpdate", ApplyFontToTooltip)
-end
-if ItemRefTooltip then
-    ItemRefTooltip:HookScript("OnShow", ApplyFontToTooltip)
-    ItemRefTooltip:HookScript("OnUpdate", ApplyFontToTooltip)
-end
+-- ⚠ Hooked only when Arabic is the chosen language. On 12.0 a hook of ours on
+-- GameTooltip's OnShow / OnUpdate taints the game's own unit tooltip: its
+-- health bar then compares a secret number "while execution tainted by
+-- 'OxedHub'" (HealthBar.lua:8), over a thousand times a session, for every
+-- player, even though the hook did nothing outside Arabic. The language only
+-- changes with a reload, so deciding once at login is enough.
+local tooltipFontFrame = CreateFrame("Frame")
+tooltipFontFrame:RegisterEvent("PLAYER_LOGIN")
+tooltipFontFrame:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_LOGIN")
+    C_Timer.After(0, function()
+        local s = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.settings
+        if not (s and s.language == "arAR") then return end
+        for _, tooltip in ipairs({ GameTooltip, ItemRefTooltip }) do
+            if tooltip and tooltip.HookScript then
+                tooltip:HookScript("OnShow", ApplyFontToTooltip)
+                tooltip:HookScript("OnUpdate", ApplyFontToTooltip)
+            end
+        end
+    end)
+end)
 
 -- Deprecated (replaced by TraverseFrameAndApplyFont)
 local function TraverseMenuAndApplyFont(frame, font)

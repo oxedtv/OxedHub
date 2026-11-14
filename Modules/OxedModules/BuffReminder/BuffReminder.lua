@@ -1190,6 +1190,13 @@ local function EvaluateStance(entry, specID, out)
     Add(out, entry, { texture = SpellTexture(want), spell = want })
 end
 
+-- ⚠ The class warnings live in a do block: the file had hit Lua's limit of 200
+-- locals in the main chunk ("main function has more than 200 local variables"),
+-- and a file that does not compile takes the whole module with it. Only these
+-- two leave the block.
+local EvaluateAspect, AspectWatch
+do
+
 -- ── Hunter aspects ──────────────────────────────────────────────────────────
 
 local function AnySpellName(spellID)
@@ -1259,7 +1266,7 @@ local function ActiveAspect()
     return false
 end
 
-local function EvaluateAspect(entry, out)
+EvaluateAspect = function(entry, out)
     local want = WantedAspect()
     if not want then return end
     -- Out of combat any aspect is fine (Cheetah to run): only "none" is shown.
@@ -1475,7 +1482,7 @@ aspectWatch:SetScript("OnEvent", function(_, event, unit)
     C_Timer.After(0.5, CheckAspectInCombat)
 end)
 
-local function AspectWatch(on)
+AspectWatch = function(on)
     aspectWatch:UnregisterAllEvents()
     if not on then return end
     local _, class = UnitClass("player")
@@ -1486,6 +1493,7 @@ local function AspectWatch(on)
     pcall(aspectWatch.RegisterEvent, aspectWatch, "UPDATE_SHAPESHIFT_FORM")
 end
 
+end   -- the do block above: its locals stay inside, Lua allows only 200 in the main chunk
 local function EvaluateFelguard(entry, out)
     if not UnitExists("pet") or UnitIsDead("pet") then return end
     local ok, _, family = pcall(UnitCreatureFamily, "pet")

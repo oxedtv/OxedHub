@@ -61,6 +61,13 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.66",
+        lines = {
+            { "FIXED", "Buff Reminder did not load in 2.4.65. It works again, with the new combat warnings." },
+            { "FIXED", "On the main game, the health bar in unit tooltips no longer throws errors blamed on OxedHub." },
+        },
+    },
+    {
         version = "2.4.65",
         lines = {
             { "NEW", "Thanks for the Buff: when a stranger buffs you, an emote at them and a line in your chat. Big spells from your group, like Power Infusion or a Soulstone, are noted too. /oxthanks thanks your target." },
