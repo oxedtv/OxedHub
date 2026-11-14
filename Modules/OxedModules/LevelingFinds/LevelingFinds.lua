@@ -38,6 +38,7 @@ local DEFAULTS = {
     below         = 4,      -- quests: how many levels under the character still listed
     ahead         = 3,      -- dungeons and loot: how many levels above
     weights       = "auto", -- what "better" means: "auto" (by class), a role, or "ilvl"
+    weapons       = "any",  -- weapons suggested: "any", "two" (two-handers) or "dual" (one hand + off hand)
     tooltipLine   = true,   -- a line on item tooltips when the item is an upgrade
     rewardMark    = true,   -- a mark on the best choice in the quest window
     rewardChat    = true,   -- and a line in chat naming it, at hand-in
@@ -609,24 +610,110 @@ local function ItemScore(link, weights)
     return score
 end
 
--- The gain in score over the weakest item in the slots, or nil when a score
--- is missing on either side.
-local function ScoreGain(itemID, slots, weights)
+-- ── What is worn, hands counted together ────────────────────────────────────
+-- A two-hander replaces both hands, so it is only better when it beats the
+-- main hand and the off hand added up. And with a two-hander worn, an off-hand
+-- item is never an upgrade on its own: the empty off hand is not a free slot.
+
+local OFFHAND_LOC = { INVTYPE_WEAPONOFFHAND = true, INVTYPE_SHIELD = true, INVTYPE_HOLDABLE = true }
+local ONEHAND_LOC = { INVTYPE_WEAPON = true, INVTYPE_WEAPONMAINHAND = true,
+                      INVTYPE_WEAPONOFFHAND = true, INVTYPE_SHIELD = true, INVTYPE_HOLDABLE = true }
+
+local function WornLink(slot)
+    local ok, worn = pcall(GetInventoryItemLink, "player", slot)
+    if not ok or not worn or Secret(worn) then return nil end
+    return worn
+end
+
+local function EquipLocOf(link)
+    local fn = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if not (fn and link) then return nil end
+    local ok, _, _, _, loc = pcall(fn, link)
+    return ok and loc or nil
+end
+
+-- The value worn in one slot (score, or item level), nil when unknown.
+local function SlotValue(slot, weights)
+    local worn = WornLink(slot)
+    if weights then
+        if not worn then return 0, nil end
+        return ItemScore(worn, weights), worn
+    end
+    return EquippedLevel(slot), worn
+end
+
+-- What a new item in `equipLoc` would replace: its value and link. False when
+-- it can never be an upgrade there, nil when a value is not known yet.
+local function WornValue(slots, equipLoc, weights)
+    local mhLink = WornLink(16)
+    local twoHandWorn = EquipLocOf(mhLink) == "INVTYPE_2HWEAPON"
+    if equipLoc == "INVTYPE_2HWEAPON" and not twoHandWorn then
+        local mh = SlotValue(16, weights)
+        local oh = SlotValue(17, weights)
+        if mh == nil or oh == nil then return nil end
+        if weights then return mh + oh, mhLink end
+        return math.max(mh, oh), mhLink      -- item levels do not add up
+    end
+    if twoHandWorn then
+        if OFFHAND_LOC[equipLoc] then return false end
+        if equipLoc == "INVTYPE_WEAPON" then slots = { 16 } end
+    end
+    local worst, worstLink
+    for _, s in ipairs(slots) do
+        local have, link = SlotValue(s, weights)
+        if have == nil then return nil end
+        if not worst or have < worst then worst, worstLink = have, link end
+    end
+    return worst or 0, worstLink
+end
+
+-- The gain in score over what it would replace, or nil when a score is
+-- missing on either side or it can never be an upgrade.
+local function ScoreGain(itemID, slots, weights, equipLoc)
     local fn = (C_Item and C_Item.GetItemInfo) or GetItemInfo
     local ok, _, link = pcall(fn, itemID)
     local new = ok and ItemScore(link, weights) or nil
     if not new then return nil end
-    local worst
-    for _, s in ipairs(slots) do
-        local okL, worn = pcall(GetInventoryItemLink, "player", s)
-        local have = 0
-        if okL and worn then
-            have = ItemScore(worn, weights)
-            if not have then return nil end
+    local have = WornValue(slots, equipLoc, weights)
+    if not have then return nil end
+    return new - have
+end
+
+-- The weapons the player wants suggested: "any", "two" (two-handers only) or
+-- "dual" (one-handers, off hands and shields only).
+local function WeaponWanted(equipLoc)
+    local pick = settings and settings.weapons or "any"
+    if pick == "two" then return not ONEHAND_LOC[equipLoc] end
+    if pick == "dual" then return equipLoc ~= "INVTYPE_2HWEAPON" end
+    return true
+end
+
+-- Why the character cannot use an item yet, read from the game's own tooltip:
+-- the lines it paints red (armor not learned, reputation, profession, class).
+-- The level line is left out, the list shows levels itself. Kept per refresh.
+local blockerCache = {}
+-- "Requires Level %d" as a pattern, in the client's own language.
+local LEVEL_LINE = type(ITEM_MIN_LEVEL) == "string"
+    and ("^" .. ITEM_MIN_LEVEL:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1"):gsub("%%d", "%%d+") .. "$") or nil
+local function Blocker(itemID)
+    if blockerCache[itemID] ~= nil then return blockerCache[itemID] or nil end
+    if not (C_TooltipInfo and C_TooltipInfo.GetItemByID) then return nil end
+    local ok, data = pcall(C_TooltipInfo.GetItemByID, itemID)
+    if not ok or type(data) ~= "table" or type(data.lines) ~= "table" or #data.lines < 2 then return nil end
+    local found = {}
+    for i = 2, #data.lines do
+        local line = data.lines[i]
+        local text, c = line.leftText, line.leftColor
+        if type(text) == "string" and not Secret(text) and text ~= "" and type(c) == "table"
+            and type(c.r) == "number" and not Secret(c.r)
+            and c.r > 0.9 and (c.g or 1) < 0.3 and (c.b or 1) < 0.3
+            and not (LEVEL_LINE and text:find(LEVEL_LINE)) and #found < 2 then
+            found[#found + 1] = text
         end
-        if not worst or have < worst then worst = have end
     end
-    return new - (worst or 0)
+    local text = #found > 0 and table.concat(found, ", ") or false
+    blockerCache[itemID] = text
+    return text or nil
 end
 
 -- "bag", or the gain (a number above 0: in score, or in item levels when
@@ -644,17 +731,15 @@ local function Upgrade(itemID)
     if not Usable(itemClass, sub, equipLoc, PlayerClass(), math.max(level or 1, type(req) == "number" and req or 0)) then
         return nil
     end
+    if not WeaponWanted(equipLoc) then return nil end
     local weights = WeightSet()
     if weights then
-        local gain = ScoreGain(itemID, slots, weights)
+        local gain = ScoreGain(itemID, slots, weights, equipLoc)
         return (gain and gain >= 0.1) and gain or nil
     end
-    local worst
-    for _, s in ipairs(slots) do
-        local have = EquippedLevel(s)
-        if not worst or have < worst then worst = have end
-    end
-    local gain = ilvl - (worst or 0)
+    local have = WornValue(slots, equipLoc, nil)
+    if not have then return nil end
+    local gain = ilvl - have
     return gain > 0 and gain or nil
 end
 
@@ -926,6 +1011,16 @@ local function GearRows(level, faction, spot)
                         line = (L["%s, in %s"]):format(src.journal.boss or "?", src.journal.dungeon or "?")
                         place = L["Loot from the dungeon journal"]
                     end
+                    -- Why it cannot be had or worn yet, for the character's own class.
+                    if own and group ~= "bags" then
+                        local why = {}
+                        if level and need > level then
+                            why[#why + 1] = "|cffff9933" .. (L["Usable at level %d"]):format(need) .. "|r"
+                        end
+                        local block = Blocker(src.itemID)
+                        if block then why[#why + 1] = "|cffff5555" .. (L["Needs: %s"]):format(block) .. "|r" end
+                        if #why > 0 then line = table.concat(why, "  ") .. "   " .. line end
+                    end
                     local star = wish[src.itemID] and " |TInterface\\COMMON\\FavoritesIcon:14:14|t" or ""
                     local gainText = (gain and gain > 0) and ("  " .. UpgradeText(gain, false))
                         or (group == "bags" and ("  " .. UpgradeText(nil, true))) or ""
@@ -1010,21 +1105,14 @@ local function CompareLink(link)
     if weights then new = ItemScore(link, weights) else new = ilvl end
     if not new then out.kind = "unknown" return out end
 
-    -- Against the weakest thing worn in the slots it could go in.
-    local worst, worstLink
-    for _, s in ipairs(slots) do
-        local okL, worn = pcall(GetInventoryItemLink, "player", s)
-        if not okL or Secret(worn) then worn = nil end
-        local have = 0
-        if weights then
-            if worn then
-                have = ItemScore(worn, weights)
-                if not have then out.kind = "unknown" return out end
-            end
-        else
-            have = EquippedLevel(s)
-        end
-        if not worst or have < worst then worst, worstLink = have, worn end
+    -- Against what it would replace: the weakest thing worn in the slots it
+    -- could go in, or both hands for a two-hander.
+    local worst, worstLink = WornValue(slots, equipLoc, weights)
+    if worst == nil then out.kind = "unknown" return out end
+    if worst == false then
+        -- An off hand beside a worn two-hander: it would also cost the two-hander.
+        worst, worstLink = SlotValue(16, weights)
+        if worst == nil then out.kind = "unknown" return out end
     end
     out.byStats = weights ~= nil
     out.new, out.worn, out.wornLink = new, worst or 0, worstLink
@@ -1063,6 +1151,7 @@ local function BuildRows()
     local level, faction = PlayerLevel(), PlayerFaction()
     local mode = settings.mode
     local spot = PlayerSpot()
+    wipe(blockerCache)     -- reputation, skills and armor can change between refreshes
     local rows
     if mode == "dungeons" then rows = DungeonRows(level, spot)
     elseif mode == "quests" then rows = QuestRows(level, faction, spot)
@@ -1575,6 +1664,11 @@ ShowOptions = function()
             { value = "tank",   text = "Better for a tank" },
             { value = "ilvl",   text = "A higher item level" },
         }, function() Refresh() end)
+        w:AddChoice(settings, "weapons", "Weapons", {
+            { value = "any",  text = "Any weapon" },
+            { value = "two",  text = "Two-handers only" },
+            { value = "dual", text = "One-hand and off hand only" },
+        }, function() Refresh() end)
         w:AddCheckbox(settings, "tooltipLine", "Say on an item's tooltip when it is an upgrade")
         w:AddCheckbox(settings, "rewardMark", "Mark the best reward in the quest window")
         w:AddCheckbox(settings, "rewardChat", "Name the best reward in chat at hand-in")
@@ -1786,10 +1880,26 @@ local function OnItemTooltip(tooltip, data)
         local _, link = tooltip:GetItem()
         id = LinkID(link)
     end
-    if type(id) ~= "number" or Wearing(id) then return end
+    if type(id) ~= "number" then return end
+    if Wearing(id) then return end
     local gain = Upgrade(id)
-    if type(gain) ~= "number" then return end
-    tooltip:AddLine("|cff33ff99" .. L["Leveling Finds"] .. ":|r " .. UpgradeText(gain, false))
+    local best = IsBestNow(id)
+    local wished = IsWished(id)
+    if type(gain) ~= "number" and not best and not wished then return end
+    local parts = {}
+    if type(gain) == "number" then parts[#parts + 1] = UpgradeText(gain, false) end
+    if best then parts[#parts + 1] = "|cffffd100" .. L["Best now for your level"] .. "|r" end
+    if wished then parts[#parts + 1] = "|TInterface\\COMMON\\FavoritesIcon:14:14|t" .. L["On your wishlist"] end
+    if GetItemCount then
+        local okC, bags = pcall(GetItemCount, id)
+        local okB, all = pcall(GetItemCount, id, true)
+        if okC and type(bags) == "number" and bags > 0 then
+            parts[#parts + 1] = "|cff88cc88" .. L["In your bags"] .. "|r"
+        elseif okB and type(all) == "number" and all > 0 then
+            parts[#parts + 1] = "|cff88cc88" .. L["In your bank"] .. "|r"
+        end
+    end
+    tooltip:AddLine("|cff33ff99" .. L["Leveling Finds"] .. ":|r " .. table.concat(parts, "  "), 1, 1, 1, true)
 end
 
 local tooltipHooked = false
@@ -2382,8 +2492,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "levelingfinds",
         name     = "Leveling Finds",
-        version  = "2.10.1",
-        updated  = 20261113.1,  -- item comparison shared with Roll Advisor
+        version  = "2.11.0",
+        updated  = 20261114.1,  -- two-handers against both hands, why not yet, weapons choice, richer tooltip
         author   = "Oxed",
         category = "quests",
         keywords = { "leveling", "levelling", "quest", "dungeon", "loot", "map", "forever", "mapgenie", "find" },

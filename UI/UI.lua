@@ -1385,12 +1385,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.64)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.65)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.64")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.65")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
@@ -1472,10 +1472,10 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        L["•  New: Object Glow. Sparks and beacons on herbs, ore, quest items."],
-        L["•  New: Roll Advisor. Need or Greed, and how big the upgrade is."],
-        L["•  Object Glow: a counter of the beasts left to skin."],
-        L["•  OxMemes: a new card on screen with emoji icons."],
+        L["•  New: Thanks for the Buff. An emote and thanks for buffs."],
+        L["•  Buff Reminder: warns in combat about wrong aspect, seal, armor."],
+        L["•  Roll Advisor: a window of who rolled what."],
+        L["•  Group Finder: Post LFG, Decline, whispers lit up."],
         L["•  Leave feedback with the button on the first page."],
         L["•  Grab either pack from CurseForge:"],
     }

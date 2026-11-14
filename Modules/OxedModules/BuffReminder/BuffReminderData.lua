@@ -69,6 +69,11 @@ Data.SELF = {
     -- Priest: Shadowform (a stance, so it reads correctly anywhere)
     { key = "shadowform", group = "self", class = "PRIEST", specs = { [258] = true }, known = 232698, form = true },
 
+    -- Hunter aspects (Forever). Out of combat with no aspect on: an icon for
+    -- Hawk (or Monkey before Hawk is learned). In combat, where the bar is
+    -- hidden, Cheetah or Pack on gives a warning on screen instead.
+    { key = "hunterAspect", group = "self", class = "HUNTER", check = "aspect" },
+
     -- Mage
     { key = "arcaneFamiliar", group = "self", class = "MAGE", known = 205022, auras = { 210126 } },
 
@@ -141,6 +146,70 @@ Data.DRUID_TRAVEL_FORMS = { [3] = true, [4] = true, [27] = true }
 Data.WARRIOR_STANCE = { [71] = { 386164 }, [72] = { 386164, 386196 }, [73] = { 386208 } }
 Data.BERSERKER_STANCE = 386196
 
+-- Hunter aspects, every rank, lowest first. Matched by name too, so a rank
+-- missing here still counts.
+Data.ASPECTS = {
+    hawk    = { 13165, 14318, 14319, 14320, 14321, 14322, 25296, 27044 },
+    monkey  = { 13163 },
+    cheetah = { 5118 },
+    pack    = { 13159 },
+    beast   = { 13161 },
+    wild    = { 20043, 20190, 27045 },
+    viper   = { 34074 },
+}
+-- Aspects that are wrong in a fight: they daze you when you are hit.
+Data.ASPECT_NOT_IN_COMBAT = { cheetah = true, pack = true }
+Data.ASPECT_WARN_GAP = 10    -- seconds between two warnings (every class)
+
+-- Paladin seals, every rank, lowest first (Forever).
+Data.SEALS = {
+    righteousness = { 21084, 20287, 20288, 20289, 20290, 20291, 20292, 20293, 27155 },
+    command       = { 20375, 20915, 20918, 20919, 20920, 27170 },
+    crusader      = { 21082, 20162, 20305, 20306, 20307, 20308, 27158 },
+    light         = { 20165, 20347, 20348, 20349, 27160 },
+    wisdom        = { 20166, 20356, 20357, 27166 },
+    justice       = { 20164, 31895 },
+    vengeance     = { 31801 },
+    blood         = { 31892 },
+}
+Data.CRUSADER_AURA = 32223
+Data.DEVOTION_AURA = { 465, 10290, 643, 10291, 1032, 10292, 10293, 27149 }
+Data.RETRIBUTION_AURA = { 7294, 10298, 10299, 10300, 10301, 27150 }
+
+-- Druid forms that are wrong in a fight, by spell, and the ones to switch to
+-- (lowest first: the last one known wins).
+Data.DRUID_TRAVEL_SPELLS = { 783, 1066, 33943, 40120 }
+Data.DRUID_FIGHT_FORMS = { 5487, 768, 9634 }
+
+-- Shaman weapon imbues, every rank, lowest first, and Ghost Wolf (Forever).
+Data.SHAMAN_IMBUES = {
+    rockbiter   = { 8017, 8018, 8019, 10399, 16314, 16315, 16316, 25479, 25485 },
+    flametongue = { 8024, 8027, 8030, 16339, 16341, 16342, 25489 },
+    windfury    = { 8232, 8235, 10486, 16362, 25505 },
+}
+Data.GHOST_WOLF = 2645
+
+-- Warrior Battle Shout, every rank, lowest first.
+Data.BATTLE_SHOUT = { 6673, 5242, 6192, 11549, 11550, 11551, 25289, 2048 }
+
+-- Mage armors, every rank, lowest first (Forever).
+Data.MAGE_ARMORS = {
+    frost  = { 168, 7300, 7301 },
+    ice    = { 7302, 7320, 10219, 10220, 27124 },
+    mage   = { 6117, 22782, 22783, 27125 },
+    molten = { 30482 },
+}
+-- Priest Inner Fire, every rank, lowest first.
+Data.INNER_FIRE = { 588, 7128, 602, 1006, 10951, 10952, 25431 }
+-- Warlock armors, every rank, lowest first (Forever).
+Data.WARLOCK_ARMORS = {
+    demonSkin  = { 687, 696 },
+    demonArmor = { 706, 1086, 11733, 11734, 11735, 27260 },
+    fel        = { 28176, 28189 },
+}
+-- Rogue: the Poisons skill, learned at level 20.
+Data.ROGUE_POISONS = 2842
+
 Data.PET = {
     { key = "hunterPet",  group = "pet", class = "HUNTER",  known = 883, check = "pet" },
     { key = "warlockPet", group = "pet", class = "WARLOCK", known = 688, check = "pet", notAura = 196099 },
@@ -192,7 +261,7 @@ Data.LABELS = {
     soulwell = "Soulwell", refreshment = "Refreshment Table",
     shamanShieldEO = "Water or Lightning Shield", earthShieldSelf = "Earth Shield on you",
     grimoireOfSacrifice = "Grimoire of Sacrifice", burningRush = "Burning Rush left on",
-    druidForm = "Wrong druid form", warriorStance = "Wrong warrior stance",
+    druidForm = "Wrong druid form", warriorStance = "Wrong warrior stance", hunterAspect = "Hunter aspect",
     beaconOfLight = "Beacon of Light", beaconOfFaith = "Beacon of Faith",
     earthShieldOthers = "Earth Shield on an ally", blisteringScales = "Blistering Scales",
     timelessness = "Timelessness", sourceOfMagic = "Source of Magic", weyrnstone = "Weyrnstone",

@@ -61,6 +61,17 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.65",
+        lines = {
+            { "NEW", "Thanks for the Buff: when a stranger buffs you, an emote at them and a line in your chat. Big spells from your group, like Power Infusion or a Soulstone, are noted too. /oxthanks thanks your target." },
+            { "NEW", "Buff Reminder: a warning in combat for every class on WoW Forever. Cheetah or no aspect, no seal, travel form, no weapon imbue, no Battle Shout, no armor, no Inner Fire, no poison." },
+            { "NEW", "Buff Reminder: hunters get an icon for Aspect of the Hawk when no aspect is on." },
+            { "NEW", "Roll Advisor: a window shows who pressed Need, Greed or Pass on each item, their roll and who won." },
+            { "NEW", "Group Finder: a Post LFG button makes a post from your picked dungeons and roles. Decline sends a polite no, and players who whispered you are lit up in the list." },
+            { "CHANGED", "Leveling Finds: a two-hander now has to beat both hands together, and each item says why you cannot use it yet. A choice of weapons, and more on the item tooltip." },
+        },
+    },
+    {
         version = "2.4.64",
         lines = {
             { "NEW", "Object Glow: sparks around the pointer on herbs, ore, quest objects and corpses you can skin, each in its own style. It can also switch on the game's own sparkle for things to pick up." },

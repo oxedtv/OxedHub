@@ -104,6 +104,18 @@ local DEFAULTS = {
     delveFoodTimer = true,  -- the delve food reminder gives up after 30 seconds
     withoutItemsReadyCheck = false, -- items you do not carry are shown only on a ready check
     felDomination = false,  -- warlock: a demon click casts Fel Domination first
+    aspectCombat  = true,   -- hunter: warn in combat about Cheetah / Pack or no aspect
+    aspectSound   = "",     -- and play this with it (also the paladin and druid warnings)
+    paladinCombat = true,   -- paladin: warn in combat about Crusader Aura or no seal
+    paladinSeal   = true,   -- paladin: the "no seal" half of that
+    druidCombat   = true,   -- druid: warn in combat about Travel / Aquatic / Flight Form
+    shamanCombat  = true,   -- shaman: warn in combat about Ghost Wolf
+    shamanImbue   = true,   -- shaman: and about no imbue on the main-hand weapon
+    warriorCombat = true,   -- warrior: warn in combat when Battle Shout is not on
+    mageCombat    = true,   -- mage: warn in combat when no armor spell is on
+    priestCombat  = true,   -- priest: warn in combat when Inner Fire is not on
+    rogueCombat   = true,   -- rogue: warn in combat when neither weapon has poison
+    warlockCombat = true,   -- warlock: warn in combat when no armor spell is on
     soulstoneTarget = "",   -- warlock: Soulstone always goes on this player ("" = whoever had it)
     minimapButton = true,   -- its own icon on the minimap while switched on
     -- Lists (customBuffs, lastTargets, lastUsed, loadouts, gearSets, demons_*)
@@ -1178,6 +1190,302 @@ local function EvaluateStance(entry, specID, out)
     Add(out, entry, { texture = SpellTexture(want), spell = want })
 end
 
+-- ── Hunter aspects ──────────────────────────────────────────────────────────
+
+local function AnySpellName(spellID)
+    local name = SpellName(spellID)
+    if not name and GetSpellInfo then
+        local ok, n = pcall(GetSpellInfo, spellID)
+        if ok and type(n) == "string" and not IsSecret(n) then name = n end
+    end
+    return name
+end
+
+local aspectNames    -- spell name -> kind ("hawk", "cheetah"...)
+local function AspectNames()
+    if aspectNames then return aspectNames end
+    aspectNames = {}
+    for kind, ids in pairs(Data.ASPECTS or {}) do
+        for _, id in ipairs(ids) do
+            local name = AnySpellName(id)
+            if name then aspectNames[name] = kind end
+        end
+    end
+    return aspectNames
+end
+
+-- The highest known rank of an aspect, or nil.
+local function HighestKnown(ids)
+    if not ids then return nil end
+    for i = #ids, 1, -1 do
+        if Known(ids[i]) then return ids[i] end
+    end
+    return nil
+end
+
+-- The aspect to be in for a fight: Hawk, or Monkey before Hawk.
+local function WantedAspect()
+    local hawk = HighestKnown(Data.ASPECTS.hawk)
+    if hawk then return hawk end
+    return HighestKnown(Data.ASPECTS.monkey)
+end
+
+-- The aspect on you: its kind, false for none, nil when the game will not say.
+local function ActiveAspect()
+    local names = AspectNames()
+    local form = ActiveFormSpell()
+    if type(form) == "number" and form ~= 0 then
+        local n = AnySpellName(form)
+        if n and names[n] then return names[n] end
+    end
+    for i = 1, 40 do
+        local name
+        if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+            local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
+            if not ok or IsSecret(aura) then return nil end
+            if not aura then break end
+            name = aura.name
+        elseif UnitBuff then
+            local ok, n = pcall(UnitBuff, "player", i)
+            if not ok then return nil end
+            if not n then break end
+            name = n
+        else
+            return nil
+        end
+        if IsSecret(name) then return nil end
+        if name and names[name] then return names[name] end
+    end
+    return false
+end
+
+local function EvaluateAspect(entry, out)
+    local want = WantedAspect()
+    if not want then return end
+    -- Out of combat any aspect is fine (Cheetah to run): only "none" is shown.
+    if ActiveAspect() ~= false then return end
+    Add(out, entry, { texture = SpellTexture(want), spell = want })
+end
+
+-- In combat the bar is hidden, so a wrong aspect is said on screen.
+local aspectWatch = CreateFrame("Frame")
+local aspectWarnedAt, aspectWarned = 0, nil
+local aspectQueued = false
+
+-- Paladin and druid get the same kind of warning (see CombatWarning below).
+
+-- The names of every buff on you, or nil when the game will not say.
+local function PlayerBuffNames()
+    local set = {}
+    for i = 1, 40 do
+        local name
+        if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+            local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
+            if not ok or IsSecret(aura) then return nil end
+            if not aura then break end
+            name = aura.name
+        elseif UnitBuff then
+            local ok, n = pcall(UnitBuff, "player", i)
+            if not ok then return nil end
+            if not n then break end
+            name = n
+        else
+            return nil
+        end
+        if IsSecret(name) then return nil end
+        if name then set[name] = true end
+    end
+    return set
+end
+
+-- Is any spell of `ids` (any rank, by name) among `names`?
+local function AnyOn(names, ids)
+    for _, id in ipairs(ids or {}) do
+        local n = AnySpellName(id)
+        if n and names[n] then return true end
+    end
+    return false
+end
+
+local function HunterWarning()
+    if settings.aspectCombat == false or settings.hide_hunterAspect == true then return nil end
+    local want = WantedAspect()
+    if not want then return nil end
+    local kind = ActiveAspect()
+    if kind and Data.ASPECT_NOT_IN_COMBAT[kind] then
+        local current = AnySpellName(Data.ASPECTS[kind][1]) or kind
+        return (L["%s in combat. Switch to %s."]):format(current, AnySpellName(want) or "?")
+    elseif kind == false then
+        return (L["No aspect in combat. Use %s."]):format(AnySpellName(want) or "?")
+    end
+end
+
+-- Paladin: no seal in a fight, or Crusader Aura (the riding aura) left on.
+local function PaladinWarning()
+    if settings.paladinCombat == false then return nil end
+    local names = PlayerBuffNames()
+    if not names then return nil end
+    local crusader = Data.CRUSADER_AURA and AnySpellName(Data.CRUSADER_AURA)
+    if crusader and names[crusader] then
+        local aura = HighestKnown(Data.DEVOTION_AURA) or HighestKnown(Data.RETRIBUTION_AURA)
+        if aura then return (L["%s in combat. Switch to %s."]):format(crusader, AnySpellName(aura) or "?") end
+    end
+    if settings.paladinSeal == false then return nil end
+    for _, ids in pairs(Data.SEALS) do
+        if AnyOn(names, ids) then return nil end
+    end
+    local want = HighestKnown(Data.SEALS.command) or HighestKnown(Data.SEALS.righteousness)
+    if want then return (L["No seal in combat. Use %s."]):format(AnySpellName(want) or "?") end
+end
+
+-- Druid: Travel, Aquatic or Flight Form in a fight.
+local function DruidWarning()
+    if settings.druidCombat == false then return nil end
+    local form = ActiveFormSpell()
+    if type(form) ~= "number" or form == 0 then return nil end
+    local travel = false
+    for _, id in ipairs(Data.DRUID_TRAVEL_SPELLS) do
+        if id == form then travel = true end
+    end
+    if not travel and GetShapeshiftFormID then
+        local ok, formID = pcall(GetShapeshiftFormID)
+        travel = ok and type(formID) == "number" and Data.DRUID_TRAVEL_FORMS[formID] == true
+    end
+    if not travel then return nil end
+    local want = HighestKnown(Data.DRUID_FIGHT_FORMS)
+    local current = AnySpellName(form) or "?"
+    if want then return (L["%s in combat. Switch to %s."]):format(current, AnySpellName(want) or "?") end
+    return (L["%s in combat. Switch to a fighting form."]):format(current)
+end
+
+-- Shaman: Ghost Wolf in a fight, or no imbue on the main-hand weapon.
+local function ShamanWarning()
+    if settings.shamanCombat == false then return nil end
+    local wolf = AnySpellName(Data.GHOST_WOLF)
+    local form = ActiveFormSpell()
+    local names = PlayerBuffNames()
+    if wolf and ((type(form) == "number" and form ~= 0 and AnySpellName(form) == wolf) or (names and names[wolf])) then
+        return (L["%s in combat. Switch to a fighting form."]):format(wolf)
+    end
+    if settings.shamanImbue == false or not GetWeaponEnchantInfo then return nil end
+    local okW, weapon = pcall(GetInventoryItemLink, "player", 16)
+    if not okW or not weapon then return nil end         -- no weapon, nothing to imbue
+    local ok, hasMain = pcall(GetWeaponEnchantInfo)
+    if not ok or IsSecret(hasMain) or hasMain then return nil end
+    local want = HighestKnown(Data.SHAMAN_IMBUES.windfury) or HighestKnown(Data.SHAMAN_IMBUES.flametongue)
+        or HighestKnown(Data.SHAMAN_IMBUES.rockbiter)
+    if want then return (L["No weapon imbue in combat. Use %s."]):format(AnySpellName(want) or "?") end
+end
+
+-- Warrior: Battle Shout not on you in a fight.
+local function WarriorWarning()
+    if settings.warriorCombat == false then return nil end
+    local want = HighestKnown(Data.BATTLE_SHOUT)
+    if not want then return nil end
+    local names = PlayerBuffNames()
+    if not names or AnyOn(names, Data.BATTLE_SHOUT) then return nil end
+    return (L["No %s in combat."]):format(AnySpellName(want) or "?")
+end
+
+-- Mage: no armor spell on you in a fight.
+local function MageWarning()
+    if settings.mageCombat == false then return nil end
+    local want = HighestKnown(Data.MAGE_ARMORS.molten) or HighestKnown(Data.MAGE_ARMORS.ice)
+        or HighestKnown(Data.MAGE_ARMORS.frost)
+    if not want then return nil end
+    local names = PlayerBuffNames()
+    if not names then return nil end
+    for _, ids in pairs(Data.MAGE_ARMORS) do
+        if AnyOn(names, ids) then return nil end
+    end
+    return (L["No armor in combat. Use %s."]):format(AnySpellName(want) or "?")
+end
+
+-- Priest: Inner Fire not on you in a fight.
+local function PriestWarning()
+    if settings.priestCombat == false then return nil end
+    local want = HighestKnown(Data.INNER_FIRE)
+    if not want then return nil end
+    local names = PlayerBuffNames()
+    if not names or AnyOn(names, Data.INNER_FIRE) then return nil end
+    return (L["No %s in combat."]):format(AnySpellName(want) or "?")
+end
+
+-- Rogue: poisons learned, a weapon in hand, and no poison on either hand.
+local function RogueWarning()
+    if settings.rogueCombat == false or not GetWeaponEnchantInfo then return nil end
+    if not Known(Data.ROGUE_POISONS) then return nil end
+    local okW, weapon = pcall(GetInventoryItemLink, "player", 16)
+    if not okW or not weapon then return nil end
+    local ok, hasMain, _, _, _, hasOff = pcall(GetWeaponEnchantInfo)
+    if not ok or IsSecret(hasMain) or IsSecret(hasOff) or hasMain or hasOff then return nil end
+    return L["No poison on your weapons in combat."]
+end
+
+-- Warlock: no Demon Skin, Demon Armor or Fel Armor on you in a fight.
+local function WarlockWarning()
+    if settings.warlockCombat == false then return nil end
+    local want = HighestKnown(Data.WARLOCK_ARMORS.fel) or HighestKnown(Data.WARLOCK_ARMORS.demonArmor)
+        or HighestKnown(Data.WARLOCK_ARMORS.demonSkin)
+    if not want then return nil end
+    local names = PlayerBuffNames()
+    if not names then return nil end
+    for _, ids in pairs(Data.WARLOCK_ARMORS) do
+        if AnyOn(names, ids) then return nil end
+    end
+    return (L["No armor in combat. Use %s."]):format(AnySpellName(want) or "?")
+end
+
+local CombatWarning = { HUNTER = HunterWarning, PALADIN = PaladinWarning, DRUID = DruidWarning,
+                        SHAMAN = ShamanWarning, WARRIOR = WarriorWarning, MAGE = MageWarning,
+                        PRIEST = PriestWarning, ROGUE = RogueWarning, WARLOCK = WarlockWarning }
+
+local function CheckAspectInCombat()
+    aspectQueued = false
+    if not settings or settings.enabled ~= true or not InCombatLockdown() then return end
+    local _, class = UnitClass("player")
+    local check = CombatWarning[class]
+    if not check then return end
+    local ok, text = pcall(check)
+    if not ok then text = nil end
+    if not text then
+        aspectWarned = nil
+        return
+    end
+    local now = GetTime()
+    if aspectWarned == text and now - aspectWarnedAt < Data.ASPECT_WARN_GAP then return end
+    aspectWarned, aspectWarnedAt = text, now
+    local shown = false
+    if RaidNotice_AddMessage and RaidWarningFrame and ChatTypeInfo then
+        shown = pcall(RaidNotice_AddMessage, RaidWarningFrame, text, ChatTypeInfo["RAID_WARNING"])
+    end
+    if not shown and UIErrorsFrame then UIErrorsFrame:AddMessage(text, 1, 0.3, 0.3) end
+    local sound = settings.aspectSound
+    if sound and sound ~= "" and sound ~= "None" and OxedHub.ModuleAPI and OxedHub.ModuleAPI.PlaySound then
+        pcall(OxedHub.ModuleAPI.PlaySound, OxedHub.ModuleAPI, sound)
+    end
+end
+
+aspectWatch:SetScript("OnEvent", function(_, event, unit)
+    if event == "UNIT_AURA" and unit ~= "player" then return end
+    if event == "PLAYER_REGEN_ENABLED" then aspectWarned = nil return end
+    -- Auras change in bursts: one look per half second.
+    if aspectQueued then return end
+    aspectQueued = true
+    C_Timer.After(0.5, CheckAspectInCombat)
+end)
+
+local function AspectWatch(on)
+    aspectWatch:UnregisterAllEvents()
+    if not on then return end
+    local _, class = UnitClass("player")
+    if not CombatWarning[class] then return end
+    aspectWatch:RegisterEvent("PLAYER_REGEN_DISABLED")
+    aspectWatch:RegisterEvent("PLAYER_REGEN_ENABLED")
+    aspectWatch:RegisterUnitEvent("UNIT_AURA", "player")
+    pcall(aspectWatch.RegisterEvent, aspectWatch, "UPDATE_SHAPESHIFT_FORM")
+end
+
 local function EvaluateFelguard(entry, out)
     if not UnitExists("pet") or UnitIsDead("pet") then return end
     local ok, _, family = pcall(UnitCreatureFamily, "pet")
@@ -1337,6 +1645,7 @@ local function Evaluate(entry, specID, inInstance, forced, out)
     if entry.check == "runeforge" then return EvaluateRuneforge(entry, specID, out) end
     if entry.check == "druidForm" then return EvaluateDruidForm(entry, specID, out) end
     if entry.check == "stance" then return EvaluateStance(entry, specID, out) end
+    if entry.check == "aspect" then return EvaluateAspect(entry, out) end
     if entry.check == "delveFood" then
         if not InDelve() then delveFoodSince = nil return end
         -- Asked for once on the way in, then left alone.
@@ -2035,11 +2344,13 @@ local function Start()
         RegisterStateDriver(bar, "visibility", "[combat][petbattle] hide; show")
     end
     if not ticker then ticker = C_Timer.NewTicker(TICK, MarkDirty) end
+    AspectWatch(true)
     MarkDirty()
 end
 
 local function Stop()
     watcher:UnregisterAllEvents()
+    AspectWatch(false)
     if ticker then ticker:Cancel() ticker = nil end
     if bar and not InCombatLockdown() then
         UnregisterStateDriver(bar, "visibility")
@@ -2450,6 +2761,15 @@ local function BuildClass(API, class)
         w:AddChoice(settings, "prefLethal", "Lethal", SpellChoices(Data.LETHAL_POISONS, L["Best you know"]), MarkDirty)
         w:AddChoice(settings, "prefNonLethal", "Non-lethal", SpellChoices(Data.NONLETHAL_POISONS, L["Best you know"]), MarkDirty)
         w:AddNote("With Dragon-Tempered Blades two of each kind are needed; the icon shows how many are on.")
+        w:AddCheckbox(settings, "rogueCombat", "Warn in combat when neither weapon has poison")
+        w:AddSoundPicker(settings, "aspectSound", "Sound with that warning", "None")
+    elseif class == "MAGE" then
+        w:AddCheckbox(settings, "mageCombat", "Warn in combat when no armor spell is on")
+        w:AddSoundPicker(settings, "aspectSound", "Sound with that warning", "None")
+        w:AddNote("Any armor counts. The one it names is Molten Armor when you know it, else Ice Armor, else Frost Armor.")
+    elseif class == "PRIEST" then
+        w:AddCheckbox(settings, "priestCombat", "Warn in combat when Inner Fire is not on")
+        w:AddSoundPicker(settings, "aspectSound", "Sound with that warning", "None")
     elseif class == "DEATHKNIGHT" then
         Heading(w, L["Rune each spec should have"])
         local choices = { { value = 0, text = L["Any rune"] } }
@@ -2460,10 +2780,30 @@ local function BuildClass(API, class)
         w:AddNote("A weapon with a different rune shows the one you want; a click opens Runeforging.")
     elseif class == "DRUID" then
         w:AddCheckbox(settings, "ignoreTravelForm", "No wrong-form reminder while travelling or mounted", nil, MarkDirty)
+        w:AddCheckbox(settings, "druidCombat", "Warn in combat about Travel, Aquatic or Flight Form")
+        w:AddSoundPicker(settings, "aspectSound", "Sound with that warning", "None")
         w:AddNote("Turn on \"Wrong druid form\" in Reminders: Balance wants Moonkin Form, Feral wants Cat Form.")
     elseif class == "WARRIOR" then
         w:AddNote("Turn on \"Wrong warrior stance\" in Reminders: Arms wants Battle Stance, Fury Battle or Berserker, Protection Defensive.")
+        w:AddCheckbox(settings, "warriorCombat", "Warn in combat when Battle Shout is not on")
+        w:AddSoundPicker(settings, "aspectSound", "Sound with that warning", "None")
+    elseif class == "SHAMAN" then
+        w:AddCheckbox(settings, "shamanCombat", "Warn in combat about Ghost Wolf")
+        w:AddCheckbox(settings, "shamanImbue", "Also warn when the weapon has no imbue in combat")
+        w:AddSoundPicker(settings, "aspectSound", "Sound with that warning", "None")
+        w:AddNote("The imbue it names is Windfury when you know it, else Flametongue, else Rockbiter. The warning shows in the middle of the screen, since the bar is hidden in combat.")
+    elseif class == "HUNTER" then
+        w:AddCheckbox(settings, "aspectCombat", "Warn in combat about Cheetah or Pack, or no aspect")
+        w:AddSoundPicker(settings, "aspectSound", "Sound with that warning", "None")
+        w:AddNote("Out of combat an icon shows when no aspect is on: Hawk, or Monkey before you learn Hawk. In combat the bar is hidden, so a wrong aspect is said in the middle of the screen.")
+    elseif class == "PALADIN" then
+        w:AddCheckbox(settings, "paladinCombat", "Warn in combat about Crusader Aura left on")
+        w:AddCheckbox(settings, "paladinSeal", "Also warn when no seal is on in combat")
+        w:AddSoundPicker(settings, "aspectSound", "Sound with that warning", "None")
+        w:AddNote("The seal it names is Command when you know it, else Righteousness. The warning shows in the middle of the screen, since the bar is hidden in combat.")
     elseif class == "WARLOCK" then
+        w:AddCheckbox(settings, "warlockCombat", "Warn in combat when no armor spell is on")
+        w:AddSoundPicker(settings, "aspectSound", "Sound with that warning", "None")
         Heading(w, L["Demons wanted, per content"])
         -- A row of boxes per content: any number of demons can be wanted.
         local boxes = {}
@@ -2889,7 +3229,8 @@ local function ShowOptions()
             { "Talents and gear", function() ToggleSub("loadouts", function() return BuildLoadouts(API) end) end },
             { "Smarter choices", function() ToggleSub("smarter", function() return BuildSmarter(API) end) end },
         }
-        if class == "ROGUE" or class == "DEATHKNIGHT" or class == "DRUID" or class == "WARRIOR" or class == "WARLOCK" then
+        if class == "ROGUE" or class == "DEATHKNIGHT" or class == "DRUID" or class == "WARRIOR" or class == "WARLOCK"
+            or class == "HUNTER" or class == "PALADIN" or class == "SHAMAN" or class == "MAGE" or class == "PRIEST" then
             items[#items + 1] = { "Class choices", function() ToggleSub("class", function() return BuildClass(API, class) end) end }
         end
         AddButtonRow(w, items)
@@ -2987,8 +3328,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "buffreminder",
         name     = "Buff Reminder",
-        version  = "1.8.2",
-        updated  = 20261028.1,  -- keeps working in Mythic+ while the game hides auras
+        version  = "1.13.0",
+        updated  = 20261114.7,  -- combat warning for warlock (armor): every Forever class has one now
         author   = "Oxed",
         category = "combat",
         keywords = { "buff", "missing", "food", "flask", "rune", "oil", "pet", "poison", "consumables",

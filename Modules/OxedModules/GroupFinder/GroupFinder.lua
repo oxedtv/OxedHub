@@ -50,6 +50,8 @@ local DEFAULTS = {
     alertChat     = true,    -- a chat line for a new post about a picked dungeon
     alertSound    = "None",
     network       = true,    -- the hidden channel that carries posts to every zone
+    declineText   = "Sorry, the group is full. Good luck!",   -- whispered by Decline
+    whisperSound  = "None",  -- played when a whisper arrives
     -- picks, hidden, hiddenClasses, posts and postChannels are tables, made at login
 }
 
@@ -92,6 +94,8 @@ local display = {}           -- what the list shows: headers and entries
 local leaders = {}           -- leader name -> { entry, at }, for the invite card
 local requested = {}         -- leader name -> true, asked to join
 local declined = {}          -- leader name -> true, they said no
+local whisperedBy = {}       -- short name -> time of their last whisper, lights their row
+local WHISPER_GLOW = 600     -- a row stays lit this long after a whisper
 local searching, searchFailed, searchToken, lastSearch = false, false, 0, nil
 local sawSecret = false
 local hiddenCount = 0
@@ -107,6 +111,7 @@ local events = CreateFrame("Frame")
 
 -- Defined further down, used above their definitions.
 local Refresh, RefreshSoon, ShowOptions, MinimapIcon, UpdatePostPage, UpdateTop
+local QuickPost, QuickPostText     -- set with the Post page, used by the Browse page above it
 
 -- ── Small helpers ───────────────────────────────────────────────────────────
 
@@ -967,6 +972,20 @@ local function Whisper(name)
     end
 end
 
+-- A polite no: a whisper with the player's own text, and the player's row
+-- and whisper go quiet. Sending a whisper needs no click, unlike channels.
+local declinedByMe = {}      -- short name -> true, told no this session
+local function Decline(name)
+    if not name or IsSecret(name) then return end
+    local text = (settings.declineText or ""):gsub("|", "/"):gsub("^%s+", ""):gsub("%s+$", "")
+    if text == "" then text = DEFAULTS.declineText end
+    local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
+    if send then pcall(send, text, "WHISPER", nil, name) end
+    declinedByMe[ShortName(name)] = true
+    whisperedBy[ShortName(name)] = nil
+    Say(L["Declined %s."]:format(ShortName(name)))
+end
+
 -- From a member who is not the leader, the game passes this on to the leader
 -- as a suggestion, the same as Invite on a player's own menu.
 local function Invite(name)
@@ -1014,6 +1033,7 @@ local function RowAction(entry)
     if entry.hasSelf then return L["You"], nil end
     if not name then return "", nil end
     if entry.isSolo then
+        if declinedByMe[ShortName(name)] then return L["Turned down"], nil end
         if GroupIsFull() then return L["Full"], nil end
         return CanInvite() and L["Invite"] or L["Suggest"], function() Invite(name) end
     end
@@ -1036,6 +1056,17 @@ local function RowMenu(owner, entry)
             root:CreateButton(L["Request to join"], function() RequestJoin(name) end)
         end
         root:CreateButton(L["Who"], function() Who(name) end)
+        if declinedByMe[ShortName(name)] then
+            root:CreateButton(L["Undo decline"], function()
+                declinedByMe[ShortName(name)] = nil
+                Refresh()
+            end)
+        else
+            root:CreateButton(L["Decline"], function()
+                Decline(name)
+                Refresh()
+            end)
+        end
         if declined[name] then
             root:CreateButton(L["Forget that they declined"], function()
                 declined[name] = nil
@@ -1219,6 +1250,7 @@ local function UpdateRows()
             row.age:SetText("")
             row.action:Hide()
             row.stripe:Hide()
+            row.glow:Hide()
             row:Show()
         else
             row.entry = item
@@ -1226,6 +1258,11 @@ local function UpdateRows()
             row.stripe:SetShown((i + scroll) % 2 == 0)
             local name = ClassColoured(ShortName(item.name or "?"), item.classFile)
             if item.delisted then name = "|cff777777" .. ShortName(item.name or "?") .. "|r" end
+            -- Lit when this player whispered you lately: the answer to your post.
+            local said = item.name and whisperedBy[ShortName(item.name)]
+            local lit = said and now - said < WHISPER_GLOW
+            row.glow:SetShown(lit and true or false)
+            if lit then name = "|TInterface\\ChatFrame\\UI-ChatWhisperIcon:12:12|t " .. name end
             row.name:SetText(name)
             row.level:SetText((item.level and tostring(item.level) or "") .. (item.isSolo and (" " .. ClassIcon(item.classFile)) or ""))
             row.roles:SetText(RolesText(item))
@@ -1517,8 +1554,18 @@ local function BuildBrowse(page)
     f.dungeons:SetPoint("LEFT", f.category, "RIGHT", 4, 0)
     f.searchButton = NewButton(page, L["Search"], 90, 22, function() Search() end)
     f.searchButton:SetPoint("LEFT", f.dungeons, "RIGHT", 4, 0)
+    f.postLFG = NewButton(page, L["Post LFG"], 90, 22, function() QuickPost() end)
+    f.postLFG:SetPoint("LEFT", f.searchButton, "RIGHT", 4, 0)
+    f.postLFG:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:AddLine(L["Post LFG"], 1, 0.82, 0)
+        GameTooltip:AddLine((QuickPostText()), 1, 1, 1, true)
+        GameTooltip:AddLine(L["Made from the picked dungeons and your roles. Goes to the channels ticked on the Post page."], 0.7, 0.7, 0.7, true)
+        GameTooltip:Show()
+    end)
+    f.postLFG:HookScript("OnLeave", function() GameTooltip:Hide() end)
     f.status = NewText(page, "GameFontHighlightSmall")
-    f.status:SetPoint("LEFT", f.searchButton, "RIGHT", 8, 0)
+    f.status:SetPoint("LEFT", f.postLFG, "RIGHT", 8, 0)
     f.status:SetPoint("RIGHT", page, "RIGHT", -4, 0)
     f.status:SetTextColor(0.8, 0.8, 0.8)
 
@@ -1632,6 +1679,10 @@ local function BuildBrowse(page)
         local hover = row:CreateTexture(nil, "HIGHLIGHT")
         hover:SetAllPoints()
         hover:SetColorTexture(1, 1, 1, 0.08)
+        row.glow = row:CreateTexture(nil, "BORDER")
+        row.glow:SetAllPoints()
+        row.glow:SetColorTexture(1, 0.5, 1, 0.16)    -- whisper pink
+        row.glow:Hide()
 
         row.header = NewText(row, "GameFontNormal")
         row.header:SetPoint("LEFT", 6, 0)
@@ -1695,8 +1746,8 @@ local function ChannelList()
     return list
 end
 
-local function SendPost()
-    local text = window.post:GetText() or ""
+local function SendPost(given)
+    local text = given or window.post:GetText() or ""
     text = text:gsub("|", "/")          -- a | in chat text is refused by the game
     text = text:gsub("^%s+", ""):gsub("%s+$", "")
     if text == "" then
@@ -1725,6 +1776,52 @@ local function SendPost()
     end
     lastSend = now
     lastSent = (lastSent == text) and nil or text
+    return true
+end
+
+-- One click from the Browse page: a post made from the dungeons picked there
+-- and your roles. Alone: "LFG <dungeons> <my roles>". In a party: "LFM
+-- <dungeons> need <roles still missing>". Goes to the channels ticked on the
+-- Post page, and is put in the Post box so it can be changed and sent again.
+local POST_ROLE = { TANK = "Tank", HEALER = "Healer", DAMAGER = "DPS" }
+QuickPostText = function()
+    local names = {}
+    for i, id in ipairs(settings.picks) do
+        if i > 3 then break end
+        names[#names + 1] = ActivityName(id, true)
+    end
+    local where = #names > 0 and table.concat(names, " / ") or nil
+    local roles = {}
+    if InGroup() then
+        local need = MissingRoles()
+        if need then
+            for _, role in ipairs(ROLES) do
+                if need[role] then roles[#roles + 1] = POST_ROLE[role] end
+            end
+        end
+        local text = "LFM" .. (where and (" " .. where) or "")
+        if #roles > 0 then text = text .. " need " .. table.concat(roles, ", ") end
+        return text, where ~= nil
+    end
+    local mine = RolesFrom(Call(C_LFGListRoles and C_LFGListRoles.GetRoles)) or {}
+    for _, role in ipairs(ROLES) do
+        if mine[role] then roles[#roles + 1] = POST_ROLE[role] end
+    end
+    local text = "LFG" .. (where and (" " .. where) or "")
+    if #roles > 0 then text = text .. " " .. table.concat(roles, "/") end
+    local level = MyLevel()
+    if level and level > 0 then text = text .. ", level " .. level end
+    return text, where ~= nil
+end
+
+QuickPost = function()
+    local text, hasDungeon = QuickPostText()
+    if not hasDungeon then
+        Say(L["Pick at least one dungeon on the Browse page first."])
+        return
+    end
+    if window.post then window.post:SetText(text) end
+    if SendPost(text) then Say(L["Posted: %s"]:format(text)) end
 end
 
 local function AppendWord(word)
@@ -2017,7 +2114,7 @@ local unseen = 0
 local function UpdateWhispers()
     if not window then return end
     local label = L["Whispers"]
-    if unseen > 0 then label = label .. " (" .. unseen .. ")" end
+    if unseen > 0 then label = "|cffff80ff" .. label .. " (" .. unseen .. ")|r" end
     window.whisperTab:SetText(Toggled(window.page == "whispers", label))
     if not window:IsShown() or window.page ~= "whispers" then return end
     local now = GetTime()
@@ -2030,6 +2127,10 @@ local function UpdateWhispers()
             row.age:SetText(AgeText(now - item.at))
             row.invite:SetText(GroupIsFull() and L["Full"] or (CanInvite() and L["Invite"] or L["Suggest"]))
             row.invite:SetEnabled(not GroupIsFull())
+            -- New ones lit until read, the rest lit faintly while recent.
+            local recent = now - item.at < WHISPER_GLOW
+            row.glow:SetShown(item.isNew or recent)
+            row.glow:SetAlpha(item.isNew and 1 or 0.45)
             row:Show()
         else
             row:Hide()
@@ -2056,12 +2157,27 @@ local function BuildWhispers(page)
             stripe:SetAllPoints()
             stripe:SetColorTexture(1, 1, 1, 0.04)
         end
+        row.glow = row:CreateTexture(nil, "BORDER")
+        row.glow:SetAllPoints()
+        row.glow:SetColorTexture(1, 0.5, 1, 0.18)    -- whisper pink
+        row.glow:Hide()
         row.name = NewText(row, "GameFontHighlightSmall", 150)
         row.name:SetPoint("LEFT", 6, 0)
+        row.decline = NewButton(row, L["Decline"], 76, 20, function()
+            local item = row.item
+            if not item then return end
+            Decline(item.name)
+            for i = #whispers, 1, -1 do
+                if whispers[i].name == item.name then table.remove(whispers, i) end
+            end
+            UpdateWhispers()
+            if Refresh then Refresh() end
+        end)
+        row.decline:SetPoint("RIGHT", -2, 0)
         row.reply = NewButton(row, L["Reply"], 76, 20, function()
             if row.item then Whisper(row.item.name) end
         end)
-        row.reply:SetPoint("RIGHT", -2, 0)
+        row.reply:SetPoint("RIGHT", row.decline, "LEFT", -2, 0)
         row.invite = NewButton(row, L["Invite"], 84, 20, function()
             if row.item then Invite(row.item.name) end
         end)
@@ -2084,7 +2200,14 @@ local function ShowPage(name)
     window.whisperPage:SetShown(name == "whispers")
     window.browseTab:SetText(Toggled(name == "browse", L["Browse"]))
     window.postTab:SetText(Toggled(name == "post", L["Post"]))
-    if name == "whispers" then unseen = 0 end
+    if name == "whispers" then
+        unseen = 0
+        -- Read now: they stay lit while this page is open, and dim next time.
+        C_Timer.After(4, function()
+            for _, item in ipairs(whispers) do item.isNew = nil end
+            UpdateWhispers()
+        end)
+    end
     UpdateWhispers()
     if name == "browse" then
         UpdateTop()
@@ -2428,7 +2551,13 @@ end
 local function OnWhisper(text, author, guid)
     if IsSecret(text) or IsSecret(author) then return end
     if type(text) ~= "string" or type(author) ~= "string" or author == "" then return end
-    local item = { name = author, text = StripCodes(text), at = GetTime() }
+    local item = { name = author, text = StripCodes(text), at = GetTime(), isNew = true }
+    whisperedBy[ShortName(author)] = item.at
+    declinedByMe[ShortName(author)] = nil       -- they asked again
+    if settings.whisperSound and settings.whisperSound ~= "None" and OxedHub.ModuleAPI and OxedHub.ModuleAPI.PlaySound then
+        pcall(OxedHub.ModuleAPI.PlaySound, OxedHub.ModuleAPI, settings.whisperSound)
+    end
+    if Refresh then Refresh() end
     if guid and not IsSecret(guid) and GetPlayerInfoByGUID then
         local ok, _, classFile = pcall(GetPlayerInfoByGUID, guid)
         if ok and type(classFile) == "string" and not IsSecret(classFile) then item.classFile = classFile end
@@ -2512,6 +2641,7 @@ ShowOptions = function()
         w:AddCheckbox(settings, "inviteCard", "Show the group's details when a listed player invites me")
         w:AddCheckbox(settings, "alertChat", "Tell me in chat about a new post for a picked dungeon")
         w:AddSoundPicker(settings, "alertSound", "Sound for that post")
+        w:AddSoundPicker(settings, "whisperSound", "Sound when someone whispers me")
         w:AddCheckbox(settings, "zoneNotice", "Tell me in chat when a zone I enter has groups for its dungeon",
             "Counts the groups and players already known from your last search and from chat. It never searches by itself.")
         w:AddCheckbox(settings, "network", "Join the Group Finder network",
@@ -2593,8 +2723,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "groupfinder",
         name     = "Group Finder",
-        version  = "1.4.0",
-        updated  = 20261111.5,
+        version  = "1.5.0",
+        updated  = 20261114.1,  -- Post LFG, Decline, whispers lit
         added    = 20261111,
         inDevelopment = true,
         author   = "Oxed",
