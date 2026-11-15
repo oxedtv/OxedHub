@@ -48,7 +48,6 @@ local optionsWindow
 local minimapIcon, MinimapIcon, ShowOptions
 local OnLootLine, LogRollStart, ToggleLog, HideLog   -- the "who rolled what" window, further down
 local panels = {}        -- [index] = our panel on GroupLootFrame<index>
-local testPanel
 local announced = {}     -- [rollID] = true once its chat line is out
 local announcedCount = 0
 
@@ -498,7 +497,6 @@ local function HidePanels()
             p:Hide()
         end
     end
-    if testPanel then testPanel:Hide() end
 end
 
 local function Start()
@@ -908,32 +906,6 @@ HideLog = function()
     if logWindow then logWindow:Hide() end
 end
 
--- ── A sample, to see the panel without waiting for a roll ───────────────────
-
-local function ShowTest()
-    if not settings then return end
-    if not testPanel then
-        testPanel = MakePanel(UIParent, "OxedHubRollAdvisorTest")
-        testPanel:SetPoint("CENTER", UIParent, "CENTER", -330, 60)
-    end
-    testPanel:SetScale(tonumber(settings.scale) or 1)
-    local worn
-    local ok, link = pcall(GetInventoryItemLink, "player", 5)   -- the chest piece, if any
-    if ok and PlainString(link) then worn = link end
-    Fill(testPanel, {
-        tone = "great", title = T("Big upgrade"),
-        meter = 0.7, meterText = T("+%d%% by stats (+%s)"):format(28, "6.4"),
-        worn = worn or false,
-        lines = {
-            "|cffffd100" .. T("Best for this slot right now") .. "|r",
-            T("Sells for %s"):format(Money(1234) or "12"),
-        },
-        suggest = "need",
-    })
-    testPanel:Show()
-    C_Timer.After(8, function() if testPanel then testPanel:Hide() end end)
-end
-
 -- ── Options ─────────────────────────────────────────────────────────────────
 
 ShowOptions = function()
@@ -949,7 +921,6 @@ ShowOptions = function()
         }, Watch)
         w:AddSlider(settings, "scale", "Size", 0.7, 1.6, 0.05, "%s: %.2f", function()
             Watch()
-            if testPanel and testPanel:IsShown() then ShowTest() end
         end)
         w:AddCheckbox(settings, "highlight", "Glow on the suggested button", nil, Watch)
         w:AddCheckbox(settings, "chat", "A line in chat for every roll")
@@ -961,14 +932,9 @@ ShowOptions = function()
             if icon then icon:Apply(settings.enabled == true) end
         end)
 
-        local test = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
-        test:SetSize(200, 22)
-        test:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 6)
-        test:SetText(T("Show a sample"))
-        test:SetScript("OnClick", ShowTest)
         local log = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
         log:SetSize(180, 22)
-        log:SetPoint("LEFT", test, "RIGHT", 6, 0)
+        log:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 6)
         log:SetText(T("Who rolled what"))
         log:SetScript("OnClick", function() ToggleLog(true) end)
         w.cursorY = w.cursorY - 34
@@ -1014,10 +980,10 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "rolladvisor",
         name     = "Roll Advisor",
-        version  = "1.1.0",
+        version  = "1.1.1",
         added    = 20261113,
         inDevelopment = true,
-        updated  = 20261114.2,  -- a window of who rolled what in the group
+        updated  = 20261115.3,  -- the sample button is gone; the who-rolled-what button stays
         author   = "Oxed",
         category = "groups",
         keywords = { "need", "greed", "roll", "loot", "upgrade", "bis", "dungeon", "advice" },

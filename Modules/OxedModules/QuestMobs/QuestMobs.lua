@@ -124,8 +124,44 @@ local function GroupNames()
     return names
 end
 
+-- ⚠ C_TooltipInfo.GetUnit first: SetUnit on a GameTooltipTemplate tooltip of
+-- our own runs the game's tooltip health bar from our code, and on 12.0 that
+-- bar compares a secret number "while execution tainted by 'OxedHub'"
+-- (HealthBar.lua:8). The scan tooltip is only for a client without it.
+local function InfoLines(unit)
+    if not (C_TooltipInfo and C_TooltipInfo.GetUnit) then return nil end
+    local ok, data = pcall(C_TooltipInfo.GetUnit, unit)
+    if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then return false end
+    local texts = {}
+    for i, line in ipairs(data.lines) do
+        local text = line.leftText
+        texts[i] = (type(text) == "string" and not IsSecret(text)) and text or nil
+    end
+    return texts, #data.lines
+end
+
 local function PlainLines(unit)
-    if scanTipFailed then return nil end
+    local texts, count = InfoLines(unit)
+    if texts == false then return nil end
+    if texts then
+        local me = UnitName("player")
+        local group = GroupNames()
+        local out = {}
+        for i = 2, count do
+            local text = texts[i]
+            if text then
+                local kind = "title"
+                if text:match("%d+%s*/%s*%d+") then
+                    kind = "objective"
+                elseif text == me or group[text] then
+                    kind = "player"
+                end
+                out[#out + 1] = { text = text, kind = kind }
+            end
+        end
+        return out
+    end
+    if OxedHub.IsMainline or scanTipFailed then return nil end   -- never the scan tooltip on 12.0
     if not scanTip then
         local ok, tip = pcall(CreateFrame, "GameTooltip", "OxedHubQuestMobsScan", nil, "GameTooltipTemplate")
         if not ok or not tip then
@@ -602,8 +638,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "questmobs",
         name     = "Quest Mobs",
-        version  = "1.1.1",
-        updated  = 20261110.5,
+        version  = "1.1.2",
+        updated  = 20261115.1,  -- mob lines read without a tooltip of our own (no tooltip health bar errors)
         added    = 20261110,
         author   = "Oxed",
         category = "quests",

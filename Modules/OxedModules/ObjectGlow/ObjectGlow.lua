@@ -349,6 +349,42 @@ local function ScanTip()
     return scanTip
 end
 
+-- A unit's tooltip lines as plain text (line 1 is its name).
+-- ⚠ Read from C_TooltipInfo.GetUnit when the client has it. SetUnit on a
+-- GameTooltipTemplate tooltip of our own runs the game's tooltip health bar
+-- from our code, and on 12.0 that bar then compares a secret number "while
+-- execution tainted by 'OxedHub'" (HealthBar.lua:8), many times a second
+-- while the mouse rests on a corpse. The scan tooltip is only the fallback.
+local unitLines = {}
+local function UnitLines(unit)
+    wipe(unitLines)
+    if C_TooltipInfo and C_TooltipInfo.GetUnit then
+        local ok, data = pcall(C_TooltipInfo.GetUnit, unit)
+        if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then return nil end
+        for index, line in ipairs(data.lines) do
+            local text = line.leftText
+            unitLines[index] = PlainString(text) and text or ""
+        end
+        return unitLines
+    end
+    if OxedHub.IsMainline then return nil end   -- never the scan tooltip on 12.0
+    local scan = ScanTip()
+    if not scan then return nil end
+    scan:SetOwner(WorldFrame, "ANCHOR_NONE")
+    scan:SetUnit(unit)
+    for index = 1, scan:NumLines() do
+        local fs = _G["OxedHubObjectGlowScanTextLeft" .. index]
+        local text = fs and fs:GetText()
+        unitLines[index] = PlainString(text) and text or ""
+    end
+    scan:Hide()
+    return unitLines
+end
+
+-- The same corpse is asked about 20 times a second while the mouse rests on
+-- it: the answer is kept per unit until the mouse moves to another.
+local lastUnitKey, lastUnitAnswer, lastUnitAt = nil, nil, 0
+
 -- The kind of world object the tooltip is describing, and its name. Nil when
 -- the tooltip is for a unit, a button, or is not there.
 local function ReadHover()
@@ -361,33 +397,37 @@ local function ReadHover()
     if isUnit == nil then return nil end
     if isUnit then
         if not settings.skin or Known(UnitIsDead, "mouseover") ~= true then return nil end
-        local scan = ScanTip()
-        if not scan then return nil end
-        scan:SetOwner(WorldFrame, "ANCHOR_NONE")
-        scan:SetUnit("mouseover")
         -- Each corpse is its own thing to the beacon; without a readable id
         -- every wolf would share one.
         local okGuid, guid = pcall(UnitGUID, "mouseover")
         local unitKey = okGuid and PlainString(guid) and guid or "corpse"
-        for index = 2, scan:NumLines() do
-            local fs = _G["OxedHubObjectGlowScanTextLeft" .. index]
-            local text = fs and fs:GetText()
-            if PlainString(text) then
-                if text == UNIT_SKINNABLE_HERB then return "herb", text, unitKey end
-                if text == UNIT_SKINNABLE_ROCK then return "ore", text, unitKey end
-                if text == UNIT_SKINNABLE_LEATHER or text == UNIT_SKINNABLE_BOLTS then
-                    -- Its name is remembered: the counter then knows this
-                    -- kind of creature leaves a hide, in any language.
-                    local first = _G["OxedHubObjectGlowScanTextLeft1"]
-                    local unitName = first and first:GetText()
-                    if text == UNIT_SKINNABLE_LEATHER and PlainString(unitName) and settings.skinNames then
-                        settings.skinNames[unitName] = true
-                    end
-                    return "skin", unitName, unitKey
+        -- Kept a second at most: a corpse turns skinnable once it is looted.
+        if unitKey ~= "corpse" and unitKey == lastUnitKey and lastUnitAnswer and GetTime() - lastUnitAt < 1 then
+            local a = lastUnitAnswer
+            return a[1], a[2], unitKey
+        end
+        local lines = UnitLines("mouseover")
+        if not lines then return nil end
+        local kind, label
+        for index = 2, #lines do
+            local text = lines[index]
+            if text == UNIT_SKINNABLE_HERB then kind, label = "herb", text break end
+            if text == UNIT_SKINNABLE_ROCK then kind, label = "ore", text break end
+            if text == UNIT_SKINNABLE_LEATHER or text == UNIT_SKINNABLE_BOLTS then
+                -- Its name is remembered: the counter then knows this kind
+                -- of creature leaves a hide, in any language.
+                local unitName = lines[1] ~= "" and lines[1] or nil
+                if text == UNIT_SKINNABLE_LEATHER and unitName and settings.skinNames then
+                    settings.skinNames[unitName] = true
                 end
+                kind, label = "skin", unitName
+                break
             end
         end
-        return nil
+        lastUnitKey, lastUnitAt = unitKey, GetTime()
+        lastUnitAnswer = kind and { kind, label } or { false }
+        if not kind then return nil end
+        return kind, label, unitKey
     end
 
     -- Forever and Midnight describe the object under the mouse themselves,
@@ -1269,7 +1309,7 @@ events:SetScript("OnEvent", function(_, event, ...)
         if Known(UnitIsDead, "target") ~= false then TargetDied() end
     elseif event == "PLAYER_REGEN_ENABLED" then
         if glowPending then ApplyGameGlow() end
-        if not running then events:UnregisterEvent("PLAYER_REGEN_ENABLED") end
+        if not running and not glowPending then events:UnregisterEvent("PLAYER_REGEN_ENABLED") end
     elseif event == "PLAYER_ENTERING_WORLD" then
         -- A graphics preset may have switched outlines back on.
         ApplyGameGlow()
@@ -1477,14 +1517,26 @@ loginFrame:SetScript("OnEvent", function(self)
     end
     settings = config
 
+    -- ⚠ The game's sparkle and outline settings went back only through Stop.
+    -- A module switched off any other way (the Modules page turning it off
+    -- for a player who never switched it on, a reload in a fight, the game's
+    -- Options window open at the time) left them changed for good: the game
+    -- kept drawing its sparkle with the module off. So at every login a
+    -- module that is not running hands back whatever it still holds.
+    C_Timer.After(3, function()
+        if running or next(settings.savedCvars) == nil then return end
+        ApplyGameGlow()
+        if glowPending then events:RegisterEvent("PLAYER_REGEN_ENABLED") end   -- in a fight: after it
+    end)
+
     if not OxedHub.ModuleAPI then return end
     OxedHub.ModuleAPI:Register({
         id       = "objectglow",
         name     = "Object Glow",
-        version  = "1.4.0",
+        version  = "1.4.1",
         added    = 20261113,
         inDevelopment = true,
-        updated  = 20261113.5,  -- beacon settings: size, height, colour, parts
+        updated  = 20261115.2,  -- the game sparkle goes away when off, lighter on corpses
         author   = "Oxed",
         category = "quests",
         keywords = { "herb", "ore", "mining", "herbalism", "quest", "object", "glow", "sparkle", "outline", "gather" },

@@ -61,6 +61,14 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.67",
+        lines = {
+            { "FIXED", "Object Glow: the game's own sparkle on things to pick up goes away when the module is off, and the outlines come back." },
+            { "FIXED", "Object Glow and Quest Mobs no longer cause tooltip health bar errors on the main game, and Object Glow is lighter while the mouse rests on a corpse." },
+            { "CHANGED", "Roll Advisor: the Show a sample button is gone. Who rolled what opens from its options or the minimap button." },
+        },
+    },
+    {
         version = "2.4.66",
         lines = {
             { "FIXED", "Buff Reminder did not load in 2.4.65. It works again, with the new combat warnings." },
