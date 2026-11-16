@@ -585,8 +585,16 @@ local function LootPatterns()
     for _, def in ipairs(LOOT_LINES) do
         local pattern, order = ToPattern(_G[def[1]])
         if pattern then
+            -- ⚠ Current clients put a loot history link in front of every line
+            -- ("|HlootHistory:%d|h[Loot]|h: %s won: %s"), so the line has one
+            -- argument more than the list above says. Read by position alone,
+            -- the history number became the player and the player the item.
+            -- Whatever comes before the expected arguments is skipped ("h").
+            local args = def[3]
+            local extra = #order - #args
+            if extra > 0 then args = ("h"):rep(extra) .. args end
             lootPatterns[#lootPatterns + 1] = { pattern = pattern, order = order, what = def[2],
-                                                args = def[3], self = def[4] }
+                                                args = args, self = def[4] }
         end
     end
     return lootPatterns
@@ -609,7 +617,9 @@ local function PlainName(name)
 end
 
 local function ItemKey(link)
-    return PlainString(link) and (link:match("|Hitem:([%-%d:]+)") or link) or nil
+    -- The item's number alone: the rest of the link (level, spec) is written
+    -- differently by the roll window and by the chat line for the same item.
+    return PlainString(link) and (link:match("|Hitem:(%d+)") or link) or nil
 end
 
 -- The open entry for this item: the newest without a winner, from lately.
@@ -681,24 +691,31 @@ OnLootLine = function(text)
                 local role = p.args:sub(k, k)
                 if role == "p" then player = args[k]
                 elseif role == "i" then item = args[k]
-                else number = tonumber(args[k]) end
+                elseif role == "n" then number = tonumber(args[k]) end
             end
             if p.self then player = MyName() end
             player = PlainName(player)
-            local e = EntryFor(item, p.what ~= "won" and p.what ~= "allpass")
-            if not e then return end
-            if p.what == "won" then
-                e.winner, e.done = player, true
-            elseif p.what == "allpass" then
-                e.done = true
-            elseif p.what:sub(1, 4) == "roll" then
-                Mark(e, player, "choice", p.what:sub(5))
-                Mark(e, player, "roll", number)
-            else
-                Mark(e, player, "choice", p.what)
+            -- Not a roll line after all, or one in a shape this does not
+            -- know: better nothing than a row of nonsense. The next pattern
+            -- gets its turn.
+            local sound = PlainString(item) and item:find("|Hitem:", 1, true)
+                and (player or p.what == "allpass")
+            if sound then
+                local e = EntryFor(item, p.what ~= "won" and p.what ~= "allpass")
+                if not e then return end
+                if p.what == "won" then
+                    e.winner, e.done = player, true
+                elseif p.what == "allpass" then
+                    e.done = true
+                elseif p.what:sub(1, 4) == "roll" then
+                    Mark(e, player, "choice", p.what:sub(5))
+                    Mark(e, player, "roll", number)
+                else
+                    Mark(e, player, "choice", p.what)
+                end
+                RefreshLog()
+                return
             end
-            RefreshLog()
-            return
         end
     end
 end
@@ -814,9 +831,11 @@ RefreshLog = function()
                 name = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:12:12|t " .. name
             end
             row.text:SetText("    " .. name)
-            row.text:SetPoint("RIGHT", -70, 0)
             local choiceText = ("|cff%02x%02x%02x%s|r"):format(c.r * 255, c.g * 255, c.b * 255, T(c.text))
             row.right:SetText(r.roll and (choiceText .. "  |cffffffff" .. r.roll .. "|r") or choiceText)
+            -- The name ends where the choice begins, however long that is.
+            row.right:SetWidth(0)
+            row.text:SetPoint("RIGHT", row.right, "LEFT", -6, 0)
             if line.e.winner == line.name then
                 row.bg:SetColorTexture(1, 0.82, 0, 0.18)
             else
@@ -980,10 +999,10 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "rolladvisor",
         name     = "Roll Advisor",
-        version  = "1.1.1",
+        version  = "1.1.2",
         added    = 20261113,
         inDevelopment = true,
-        updated  = 20261115.3,  -- the sample button is gone; the who-rolled-what button stays
+        updated  = 20261115.5,  -- who rolled what: names, items and rolls no longer mixed up or overlapping
         author   = "Oxed",
         category = "groups",
         keywords = { "need", "greed", "roll", "loot", "upgrade", "bis", "dungeon", "advice" },

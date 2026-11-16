@@ -566,7 +566,6 @@ local lastShadowX, lastShadowY, lastShadowAlpha
 local lastSteerX, lastSteerY, lastSteerSize
 local sparkStepAccum = 0
 local SPARK_STEP = 0.020   -- 50 Hz particle simulation step; pointer itself stays at native FPS
-
 local function RefreshDisplayMetrics()
     local h = ScreenHeightPx()
     cachedScreenHeight = (h and h > 0) and h or 768
@@ -1173,9 +1172,13 @@ local function OnUpdate(_, elapsed)
     -- sparks, fade and colours advance at 50 Hz. A moving mouse used to run
     -- everything on every frame, 150-200 times a second in combat. lastX/lastY
     -- stay put, so the next full frame lays sparks along the whole distance.
+    -- A mouse that has rested for half a second steps at 30 Hz: what is left
+    -- to draw then (a flicker, a swirl, sparks dying out) does not need 50.
+    -- (0.033 is written out: this function is two short of Lua's 60 upvalues.)
+    local step = (not moved and now - lastMoveAt > 0.5) and 0.033 or SPARK_STEP
     sparkStepAccum = sparkStepAccum + elapsed
     pendingElapsed = pendingElapsed + elapsed
-    if sparkStepAccum < SPARK_STEP and now >= flareUntil
+    if sparkStepAccum < step and now >= flareUntil
         and mouselooking == lastMouselooking then
         if moved and (lastRootAlpha or 1) > 0 then
             if settings.halo and (x ~= lastHaloX or y ~= lastHaloY) then
@@ -1245,7 +1248,7 @@ local function OnUpdate(_, elapsed)
         return
     end
 
-    local doStep = sparkStepAccum >= SPARK_STEP
+    local doStep = sparkStepAccum >= step
     local stepDt = sparkStepAccum
     if doStep then sparkStepAccum = 0 end
 
@@ -2008,8 +2011,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "cursor",
         name     = "Cursor",
-        version  = "1.2.1",
-        updated  = 20261026.1,  -- hidden during pet battles
+        version  = "1.2.2",
+        updated  = 20261115.3,  -- lighter while the mouse rests (30 Hz instead of 50)
         author   = "Oxed",
         category = "character",
         keywords = { "cursor", "mouse", "pointer", "trail", "windows 95", "retro", "glow", "halo", "steering", "mouselook", "find", "fire", "frost", "meteor", "lightning", "void", "fel", "blood", "bubbles", "fairy" },

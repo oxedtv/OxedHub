@@ -51,12 +51,14 @@ local REFRESH_DELAY = 0.3    -- quest events come in bursts; one pass serves the
 local SETTLE_DELAY = 0.6     -- a new plate's tooltip data can arrive a moment late
 local RECHECK = 2            -- and sometimes later still: every plate is looked at again this often
 local MAX_PLATES = 40        -- nameplate1 .. nameplate40
+local FULL_EVERY = 5         -- every fifth pass asks about all forty tokens
 
 local settings
 local running = false
 local optionsWindow
 local minimapIcon, MinimapIcon
 local badges = {}            -- unit token -> badge frame
+local present = {}           -- unit tokens that have a nameplate right now
 local spare = {}             -- badges waiting for a plate
 local refreshQueued = false
 local recheck                -- the ticker that looks at every plate again
@@ -250,7 +252,14 @@ end
 local function QuestSnapshot()
     if not (C_QuestLog and C_QuestLog.GetQuestObjectives) then return nil end
     local ids = {}
-    if C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo then
+    if C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetQuestIDForLogIndex then
+        -- The id alone: GetInfo builds a large table for every entry.
+        -- A header has no objectives, so it adds nothing below.
+        for i = 1, C_QuestLog.GetNumQuestLogEntries() do
+            local id = C_QuestLog.GetQuestIDForLogIndex(i)
+            if type(id) == "number" and not IsSecret(id) and id > 0 then ids[#ids + 1] = id end
+        end
+    elseif C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo then
         for i = 1, C_QuestLog.GetNumQuestLogEntries() do
             local info = C_QuestLog.GetInfo(i)
             if info and not info.isHeader and info.questID then ids[#ids + 1] = info.questID end
@@ -278,6 +287,13 @@ end
 -- The sound for an objective that was unfinished last time and is done now.
 -- A quest just taken has no "last time", so it is silent.
 local function CheckFinished()
+    -- The picture only serves the sound. With no sound chosen it is not
+    -- taken at all: it was 200 KB of garbage on every quest update.
+    if not settings or not settings.doneSound or settings.doneSound == "None" then
+        lastSnapshot = nil
+        snapshotMissing = false
+        return
+    end
     local ok, snapshot = pcall(QuestSnapshot)
     if not ok then return end       -- a bad read: keep the old picture
     if not snapshot then
@@ -442,6 +458,7 @@ local function UpdateUnit(unit)
         local ok, found = pcall(C_NamePlate.GetNamePlateForUnit, unit)
         plate = ok and found or nil
     end
+    present[unit] = plate and true or nil
     if not plate or (plate.IsForbidden and plate:IsForbidden())
         or (settings.hideInInstances and InInstance()) then
         Release(unit)
@@ -491,23 +508,43 @@ local function UpdateUnit(unit)
     badge:Show()
 end
 
-local function RefreshAll()
+-- By token, not by a field of the plate: where the plate does not carry
+-- its unit's name, every badge used to be taken down here and none put
+-- back. UpdateUnit releases the badge of a token that has no plate.
+--
+-- Only the tokens that have a plate are looked at (UpdateUnit keeps the
+-- list), not all forty. A full pass, `full == true`, asks about every token:
+-- when switching on, after a loading screen, and every few rechecks in case a
+-- plate appeared without its event.
+local sweeps = 0
+local function RefreshAll(full)
     refreshQueued = false
     if not running then return end
-    -- By token, not by a field of the plate: where the plate does not carry
-    -- its unit's name, every badge used to be taken down here and none put
-    -- back. UpdateUnit releases the badge of a token that has no plate.
-    for i = 1, MAX_PLATES do
-        UpdateUnit("nameplate" .. i)
+    sweeps = sweeps + 1
+    if full == true or sweeps >= FULL_EVERY then
+        sweeps = 0
+        for i = 1, MAX_PLATES do
+            UpdateUnit("nameplate" .. i)
+        end
+        return
+    end
+    -- UpdateUnit only ever clears the entry it was called for, which is safe
+    -- while walking the table.
+    for unit in pairs(present) do
+        UpdateUnit(unit)
     end
 end
 
-local function QueueRefresh()
+local fullQueued = false
+local function QueueRefresh(full)
+    if full then fullQueued = true end
     if refreshQueued then return end
     refreshQueued = true
     C_Timer.After(REFRESH_DELAY, function()
         if running then CheckFinished() end
-        RefreshAll()
+        local all = fullQueued
+        fullQueued = false
+        RefreshAll(all)
     end)
 end
 
@@ -523,9 +560,12 @@ events:SetScript("OnEvent", function(_, event, unit)
         UpdateUnit(unit)
         C_Timer.After(SETTLE_DELAY, function() UpdateUnit(unit) end)
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
-        if type(unit) == "string" then Release(unit) end
+        if type(unit) == "string" then
+            present[unit] = nil
+            Release(unit)
+        end
     else
-        QueueRefresh()
+        QueueRefresh(event == "PLAYER_ENTERING_WORLD")
     end
 end)
 
@@ -638,8 +678,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "questmobs",
         name     = "Quest Mobs",
-        version  = "1.1.2",
-        updated  = 20261115.1,  -- mob lines read without a tooltip of our own (no tooltip health bar errors)
+        version  = "1.1.3",
+        updated  = 20261115.3,  -- less memory churn: quest log read only for the sound, only plates on screen rechecked
         added    = 20261110,
         author   = "Oxed",
         category = "quests",
@@ -661,7 +701,7 @@ loginFrame:SetScript("OnEvent", function(self)
             -- The picture to compare the next quest update against.
             lastSnapshot = nil
             CheckFinished()
-            RefreshAll()
+            RefreshAll(true)
             if not recheck and C_Timer.NewTicker then
                 recheck = C_Timer.NewTicker(RECHECK, RefreshAll)
             end
@@ -676,6 +716,7 @@ loginFrame:SetScript("OnEvent", function(self)
             if minimapIcon then minimapIcon:Apply(false) end
             events:UnregisterAllEvents()
             for unit in pairs(badges) do Release(unit) end
+            wipe(present)
         end,
     })
 end)

@@ -9,6 +9,8 @@
 --               other world object, sparks in a matching style play around
 --               the pointer: leaves for a herb, embers for ore, and so on
 --   pointer     sparks fly from your character toward something close by
+--   near you    sparks on a herb, a vein or a quest object close by, pinned
+--               to the nameplate the game gives it; no mouse needed
 --
 -- What the pointer can and cannot know. The game does not tell addons where
 -- a herb or a vein is: there is no position for it anywhere in the API. It
@@ -65,10 +67,15 @@ local DEFAULTS = {
     point         = true,
     pointMarks    = true,   -- the game's own marks
     pointSpots    = true,   -- where the player gathered before
+    spotCard      = false,  -- and a card naming the nearest of them; off unless asked for
     markStyle     = "arcane",
     pointRange    = 120,    -- yards
     pointRadius   = 110,    -- how far from the character the sparks start
     pointSize     = 1,
+
+    nearby        = true,   -- sparks on the node itself, through its nameplate
+    nearbyNames   = false,
+    nearbySize    = 1,
 }
 
 local settings
@@ -308,6 +315,11 @@ local function HasWord(text, list)
     return false
 end
 
+-- ⚠ The quest log is read only when a hovered object's line has to be checked
+-- against it. Reading it on every QUEST_LOG_UPDATE made 155 KB of garbage a
+-- time (C_QuestLog.GetInfo builds a large table per quest), 59 MB a session.
+local questsDirty = true
+
 local function RebuildQuests()
     wipe(questTitles)
     if C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo then
@@ -325,6 +337,14 @@ local function RebuildQuests()
             if not isHeader and PlainString(title) then questTitles[title] = true end
         end
     end
+end
+
+local function IsQuestTitle(text)
+    if questsDirty then
+        questsDirty = false
+        pcall(RebuildQuests)
+    end
+    return questTitles[text] == true
 end
 
 local function MouseOverWorld()
@@ -459,7 +479,7 @@ local function ReadHover()
                     elseif QT and lineType == QT then
                         title = true
                     elseif not found and PlainString(line.leftText) then
-                        if questTitles[line.leftText] then title = true
+                        if IsQuestTitle(line.leftText) then title = true
                         elseif HasWord(line.leftText, herbWords) then found = "herb"
                         elseif HasWord(line.leftText, oreWords) then found = "ore" end
                     end
@@ -492,7 +512,7 @@ local function ReadHover()
         elseif index == 1 then
             name = text
         elseif not kind then
-            if questTitles[text] then kind = "quest"
+            if IsQuestTitle(text) then kind = "quest"
             elseif HasWord(text, herbWords) then kind = "herb"
             elseif HasWord(text, oreWords) then kind = "ore" end
         end
@@ -570,7 +590,9 @@ local SPOT_REST = 300       -- seconds a spot keeps quiet after a visit
 local SPOT_ARRIVE = 7       -- yards: standing on it counts as a visit
 local resting = {}          -- [spot table] = time it may speak again
 
-local function RememberSpot(kind)
+-- A spot is { north, west, kind, name }; the name is the node's, when the
+-- cast gave one, and is what the spot card shows.
+local function RememberSpot(kind, name)
     local ok, continent, north, west = pcall(PlayerWorld)
     if not ok or not continent then return end
     settings.spots = settings.spots or {}
@@ -584,11 +606,12 @@ local function RememberSpot(kind)
         local dn, dw = spot[1] - north, spot[2] - west
         if dn * dn + dw * dw < SPOT_MERGE * SPOT_MERGE then
             spot[3] = kind
+            if name then spot[4] = name end
             resting[spot] = now + SPOT_REST
             return
         end
     end
-    local spot = { math.floor(north * 10 + 0.5) / 10, math.floor(west * 10 + 0.5) / 10, kind }
+    local spot = { math.floor(north * 10 + 0.5) / 10, math.floor(west * 10 + 0.5) / 10, kind, name }
     list[#list + 1] = spot
     resting[spot] = now + SPOT_REST
     if #list > SPOT_CAP then table.remove(list, 1) end
@@ -609,14 +632,14 @@ local function OnCastSent(unit, target, _, spellID)
         settings.names = settings.names or {}
         settings.names[target] = kind
     end
-    RememberSpot(kind)
+    RememberSpot(kind, PlainString(target) and target or nil)
 end
 
 -- Up to MAX_TARGETS nearest things worth pointing at: { bearing, dist, kind }.
 local targets = {}
 local targetCount = 0
 
-local function Offer(bearing, dist, kind)
+local function Offer(bearing, dist, kind, spot)
     -- Kept sorted by distance; the list is three long, so a plain insert.
     local at = targetCount + 1
     for index = 1, targetCount do
@@ -626,7 +649,7 @@ local function Offer(bearing, dist, kind)
     local last = math.min(targetCount + 1, MAX_TARGETS)
     local spare = targets[last] or {}
     for index = last, at + 1, -1 do targets[index] = targets[index - 1] end
-    spare.bearing, spare.dist, spare.kind = bearing, dist, kind
+    spare.bearing, spare.dist, spare.kind, spare.spot = bearing, dist, kind, spot
     targets[at] = spare
     targetCount = last
 end
@@ -649,7 +672,7 @@ local function FindTargets()
                 if dist < SPOT_ARRIVE then
                     resting[spot] = now + SPOT_REST
                 elseif dist <= range and (resting[spot] or 0) < now then
-                    Offer(atan2(dw, dn), dist, spot[3] == "ore" and "ore" or "herb")
+                    Offer(atan2(dw, dn), dist, spot[3] == "ore" and "ore" or "herb", spot)
                 end
             end
         end
@@ -756,6 +779,120 @@ local function DrawPointer(dt)
         end
     end
     for index = shown + 1, MAX_TARGETS do heads[index]:Hide() end
+end
+
+-- ── The spot card ───────────────────────────────────────────────────────────
+-- The sparks say "that way"; the card says what and how far: an arrow, the
+-- node's name and the distance to the nearest place where you gathered
+-- before. It is a memory, not a sighting: the vein may not have come back.
+-- Right-click sends that spot to rest for a few minutes and the next nearest
+-- takes its place. Drag to move.
+
+local spotCard
+local cardSpot, cardBearing
+local cardText
+
+local function EnsureSpotCard()
+    if spotCard then return spotCard end
+    local f = CreateFrame("Button", "OxedHubObjectGlowSpot", UIParent, "BackdropTemplate")
+    spotCard = f
+    f:SetSize(250, 60)
+    f:SetPoint(settings.cardPoint or "TOP", UIParent, settings.cardPoint or "TOP",
+        settings.cardX or 0, settings.cardY or -150)
+    f:SetFrameStrata("MEDIUM")
+    f:SetClampedToScreen(true)
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:RegisterForClicks("RightButtonUp")
+    f:Hide()
+
+    local Panel = OxedHub.UIComponents and OxedHub.UIComponents.Panel
+    local ornate = Panel and Panel.ApplyOrnateFrame and pcall(Panel.ApplyOrnateFrame, f, T("Gathered here before"), 0.9)
+    if not ornate then
+        f:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        f:SetBackdropColor(0.06, 0.06, 0.08, 0.9)
+        f:SetBackdropBorderColor(0.6, 0.5, 0.3, 1)
+    end
+
+    f.arrow = f:CreateTexture(nil, "ARTWORK")
+    f.arrow:SetTexture("Interface\\Minimap\\MiniMap-QuestArrow")
+    f.arrow:SetSize(40, 40)
+    f.arrow:SetPoint("LEFT", 10, -4)
+
+    f.name = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    f.name:SetPoint("TOPLEFT", f.arrow, "TOPRIGHT", 8, -2)
+    f.name:SetPoint("RIGHT", f, "RIGHT", -10, 0)
+    f.name:SetJustifyH("LEFT")
+    f.name:SetWordWrap(false)
+
+    f.dist = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    f.dist:SetPoint("TOPLEFT", f.name, "BOTTOMLEFT", 0, -4)
+    f.dist:SetJustifyH("LEFT")
+
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local point, _, _, x, y = self:GetPoint(1)
+        settings.cardPoint, settings.cardX, settings.cardY = point, x, y
+    end)
+    f:SetScript("OnClick", function(self)
+        if cardSpot then resting[cardSpot] = GetTime() + SPOT_REST end
+        cardSpot = nil
+        self:Hide()
+        GameTooltip:Hide()
+    end)
+    f:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText(T("Gathered here before"))
+        GameTooltip:AddLine(T("A place where you gathered before, not a sighting: it may not have come back yet. Right-click to skip it for a few minutes. Drag to move."), 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    return f
+end
+
+-- After each look for targets: the nearest remembered spot, or none.
+local function RefreshSpotCard()
+    local found
+    if running and settings.spotCard and settings.point then
+        for index = 1, targetCount do
+            if targets[index].spot then found = targets[index] break end
+        end
+    end
+    if not found then
+        cardSpot = nil
+        if spotCard then spotCard:Hide() end
+        return
+    end
+    local f = EnsureSpotCard()
+    local spot = found.spot
+    cardBearing = found.bearing
+    if cardSpot ~= spot then
+        cardSpot = spot
+        cardText = nil
+        local style = StyleOf(KIND_STYLE[found.kind])
+        local glow = style.glow
+        f.arrow:SetVertexColor(glow[1], glow[2], glow[3])
+        f.name:SetText(type(spot[4]) == "string" and spot[4] or T(found.kind == "ore" and "Ore" or "Herbs"))
+    end
+    -- A new string only when the figure shown changes.
+    local yards = math.floor(found.dist + 0.5)
+    if cardText ~= yards then
+        cardText = yards
+        f.dist:SetText(string.format(T("About %d yards"), yards))
+    end
+    f:Show()
+end
+
+-- The arrow turns with the character between looks. Up means ahead.
+local function TurnSpotCard()
+    if not (spotCard and cardSpot and spotCard:IsShown()) then return end
+    local facing = Facing()
+    if facing then spotCard.arrow:SetRotation(cardBearing - facing) end
 end
 
 -- ── Beacons ─────────────────────────────────────────────────────────────────
@@ -1026,23 +1163,366 @@ local function EnsureRoot()
     root:SetScript("OnUpdate", OnRootUpdate)
 end
 
+-- ── Nodes near you ──────────────────────────────────────────────────────────
+-- The mouse is not needed for this one. With the game's "interact" settings
+-- switched on (see the soft target settings further down) the client gives a
+-- nameplate to herbs, veins and quest objects close by, and a nameplate is a
+-- frame: something can be pinned to it, so the sparks sit on the node itself
+-- and follow it as the camera moves.
+--
+-- What a plate belongs to is asked of the game, never guessed from a name:
+--   is it an object at all             UnitIsGameObject
+--   which pointer would the game show  SetUnitCursorTexture on a texture of
+--                                      our own (herb, pick, quest cog, knife)
+--   does a quest of yours need it      C_QuestLog.UnitIsRelatedToActiveQuest
+-- A herb or vein the pointer names is remembered by name (settings.names, the
+-- same list the gathering casts fill), so it is known next time even where
+-- the pointer cannot be read.
+--
+-- Every answer can be a secret in a fight. "Cannot tell" keeps whatever the
+-- plate shows; only a clear no takes a mark down.
+--
+-- The client decides how far away a plate appears; an addon cannot widen it
+-- past what the settings ask for. No mark means no plate.
+
+local NEARBY_OK = UnitIsGameObject ~= nil and C_NamePlate ~= nil and C_NamePlate.GetNamePlateForUnit ~= nil
+local MARK_SPARKS = 6
+local MAX_PLATE_TOKENS = 40
+local marks = {}          -- plate frame -> the mark on it
+local spareMarks = {}
+local seenPlates = {}     -- reused by every scan
+local plateUnits = {}     -- nameplate tokens that have a plate right now
+local markCount = 0
+
+local cursorProbe, cursorFiles
+local probeAtlas, probeTexture     -- what the last look read, for /oxglow debug
+
+local function WordKind(value)
+    if not PlainString(value) then return nil end
+    value = value:lower()
+    if value:find("herb", 1, true) then return "herb" end
+    if value:find("mine", 1, true) or value:find("mining", 1, true) then return "ore" end
+    if value:find("skin", 1, true) then return "skin" end
+    if value:find("quest", 1, true) then return "quest" end
+    return nil
+end
+
+-- The pointer may come back as a file number instead of a path: the numbers
+-- of the game's own pointer files are looked up once.
+local function CursorFiles()
+    if cursorFiles then return cursorFiles end
+    cursorFiles = {}
+    if not GetFileIDFromPath then return cursorFiles end
+    local names = { Herb = "herb", HerbError = "herb", Mine = "ore", MineError = "ore", Mining = "ore",
+                    Skin = "skin", SkinError = "skin", Quest = "quest", QuestError = "quest" }
+    for name, kind in pairs(names) do
+        for _, folder in ipairs({ "Interface\\Cursor\\", "Interface\\Cursor\\Crosshair\\" }) do
+            local ok, id = pcall(GetFileIDFromPath, folder .. name .. ".blp")
+            if ok and PlainNumber(id) and id > 0 then cursorFiles[id] = kind end
+        end
+    end
+    return cursorFiles
+end
+
+-- herb, ore, skin, quest, or nil when the game shows no such pointer for it.
+local function CursorKind(unit)
+    if not SetUnitCursorTexture then return nil end
+    if not cursorProbe then
+        -- A hidden texture on UIParent, where the game's own plates keep theirs.
+        cursorProbe = UIParent:CreateTexture(nil, "BACKGROUND")
+        cursorProbe:Hide()
+    end
+    -- Emptied first: the last unit's pointer must not answer for this one.
+    cursorProbe:SetTexture(nil)
+    probeAtlas, probeTexture = nil, nil
+    local ok, has = pcall(SetUnitCursorTexture, cursorProbe, unit, nil, true, true)
+    if not ok or Secret(has) or not has then return nil end
+    local okAtlas, atlas = pcall(cursorProbe.GetAtlas, cursorProbe)
+    if okAtlas and not Secret(atlas) then probeAtlas = atlas end
+    local kind = okAtlas and WordKind(atlas) or nil
+    if kind then return kind end
+    local okTexture, texture = pcall(cursorProbe.GetTexture, cursorProbe)
+    if not okTexture or Secret(texture) then return nil end
+    probeTexture = texture
+    if type(texture) == "number" then return CursorFiles()[texture] end
+    return WordKind(texture)
+end
+
+-- A kind, false for "nothing to mark", or nil for "cannot tell".
+local function NearbyKind(unit)
+    local isObject = Known(UnitIsGameObject, unit)
+    if isObject == nil then return nil end
+    if not isObject then
+        if settings.skin and Known(UnitIsDead, unit) == true and CursorKind(unit) == "skin" then
+            return "skin"
+        end
+        return false
+    end
+    if UnitIsInteractable and Known(UnitIsInteractable, unit) == false then return false end
+
+    local cursor = CursorKind(unit)
+    local okName, name = pcall(UnitName, unit)
+    if not (okName and PlainString(name)) then name = nil end
+    if cursor == "herb" or cursor == "ore" then
+        if name and settings.names then settings.names[name] = cursor end
+        return cursor
+    end
+    local learned = name and settings.names and settings.names[name]
+    if learned == "herb" or learned == "ore" then return learned end
+    if cursor == "quest" then return "quest" end
+    if C_QuestLog and C_QuestLog.UnitIsRelatedToActiveQuest then
+        local related = Known(C_QuestLog.UnitIsRelatedToActiveQuest, unit)
+        if related == true then return "quest" end
+        if related == nil then return nil end
+    end
+    return false
+end
+
+local function NewMark()
+    local mark = CreateFrame("Frame")
+    mark:SetSize(1, 1)
+    mark.halo = mark:CreateTexture(nil, "BACKGROUND")
+    mark.halo:SetTexture(MEDIA .. "glow")
+    mark.halo:SetBlendMode("ADD")
+    mark.halo:SetPoint("CENTER")
+    mark.ring = mark:CreateTexture(nil, "BORDER")
+    mark.ring:SetTexture(MEDIA .. "ring")
+    mark.ring:SetBlendMode("ADD")
+    mark.ring:SetPoint("CENTER", mark, "CENTER", 0, -12)
+    mark.sparks = {}
+    for index = 1, MARK_SPARKS do
+        mark.sparks[index] = mark:CreateTexture(nil, "ARTWORK")
+    end
+    mark.label = mark:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    mark.label:SetPoint("TOP", mark, "CENTER", 0, -24)
+    mark.phase = random() * 10
+    return mark
+end
+
+local function ReleaseMark(plate)
+    local mark = marks[plate]
+    if not mark then return end
+    marks[plate] = nil
+    markCount = markCount - 1
+    mark:Hide()
+    mark:ClearAllPoints()
+    mark:SetParent(UIParent)
+    mark.style = nil
+    spareMarks[#spareMarks + 1] = mark
+end
+
+local function ReleaseAllMarks()
+    for plate in pairs(marks) do ReleaseMark(plate) end
+end
+
+local function ShowMark(plate, kind, unit)
+    local mark = marks[plate]
+    if not mark then
+        mark = table.remove(spareMarks) or NewMark()
+        marks[plate] = mark
+        markCount = markCount + 1
+        mark:SetParent(plate)
+        mark:ClearAllPoints()
+        mark:SetPoint("CENTER", plate, "CENTER", 0, 0)
+        local ok, level = pcall(plate.GetFrameLevel, plate)
+        if ok and PlainNumber(level) then mark:SetFrameLevel(level + 15) end
+        mark:Show()
+    end
+    -- Dressed again when the kind or the style chosen for it has changed.
+    local style = StyleOf(KIND_STYLE[kind])
+    if mark.style ~= style then
+        mark.style = style
+        local layer = style.layers[2] or style.layers[1]
+        mark.layer = layer
+        for index = 1, MARK_SPARKS do
+            local spark = mark.sparks[index]
+            spark:SetTexture(MEDIA .. layer.tex)
+            spark:SetBlendMode(layer.blend or "ADD")
+        end
+        local glow = style.glow
+        mark.label:SetTextColor(glow[1], glow[2], glow[3])
+    end
+    if settings.nearbyNames then
+        -- The name may be a secret: handed to SetText as it is, never tested.
+        local ok, name = pcall(UnitName, unit)
+        if ok then
+            mark.label:SetText(name)
+            mark.label:Show()
+        end
+    else
+        mark.label:Hide()
+    end
+end
+
+-- Motes turning around the node and climbing through it, a soft light under
+-- them and a ring spreading on the ground. No tables are made here.
+local function AnimateMarks(now)
+    local size = tonumber(settings.nearbySize) or 1
+    for _, mark in pairs(marks) do
+        local style, layer = mark.style, mark.layer
+        if style and layer then
+            local glow = style.glow
+            local t = now + mark.phase
+            mark.halo:SetSize(72 * size, 72 * size)
+            mark.halo:SetVertexColor(glow[1], glow[2], glow[3], 0.3 + 0.12 * sin(t * 3))
+            local pulse = (t * 0.7) % 1
+            local width = (26 + 52 * pulse) * size
+            mark.ring:SetSize(width, width * 0.4)
+            mark.ring:SetVertexColor(glow[1], glow[2], glow[3], (1 - pulse) * 0.6)
+
+            local a, b = layer.c0, layer.c1
+            local base = math.max(9, layer.size or 9) * size
+            for index = 1, MARK_SPARKS do
+                local spark = mark.sparks[index]
+                local age = (t * 0.5 + index / MARK_SPARKS) % 1
+                local angle = index * 1.047 + t * 0.9
+                local swell = sin(age * 3.1416)
+                spark:SetPoint("CENTER", mark, "CENTER",
+                    cos(angle) * 20 * size, (sin(angle) * 7 + (age - 0.5) * 34) * size)
+                spark:SetSize(base * (0.7 + 0.5 * swell), base * (0.7 + 0.5 * swell))
+                spark:SetVertexColor(a[1] + (b[1] - a[1]) * age, a[2] + (b[2] - a[2]) * age,
+                    a[3] + (b[3] - a[3]) * age, swell * (layer.alpha or 0.9))
+            end
+        end
+    end
+end
+
+local function ConsiderPlate(unit)
+    local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
+    if not ok or type(plate) ~= "table" or seenPlates[plate] then return end
+    if plate.IsForbidden and plate:IsForbidden() then return end
+    local kind = NearbyKind(unit)
+    if kind then
+        seenPlates[plate] = true
+        ShowMark(plate, kind, unit)
+    elseif kind == nil and marks[plate] then
+        seenPlates[plate] = true     -- cannot tell: what is shown stays
+    end
+end
+
+-- ⚠ The plate the game gives an object does not always come with a
+-- NAME_PLATE_UNIT_ADDED: the first version waited for that event and so
+-- never looked at all. Once a second the game's own list of plates is read
+-- and every token found on it is added to the ones the events gave.
+local sweepAt = 0
+local function SweepPlates()
+    if not C_NamePlate.GetNamePlates then return end
+    local ok, plates = pcall(C_NamePlate.GetNamePlates)
+    if not ok or type(plates) ~= "table" then return end
+    for index = 1, #plates do
+        local plate = plates[index]
+        if type(plate) == "table" and not (plate.IsForbidden and plate:IsForbidden()) then
+            local unit = plate.namePlateUnitToken
+            if not PlainString(unit) then
+                local unitFrame = plate.UnitFrame
+                unit = type(unitFrame) == "table" and unitFrame.unit or nil
+            end
+            if PlainString(unit) and unit:find("^nameplate%d+$") then plateUnits[unit] = true end
+        end
+    end
+end
+
+local function ScanNearby()
+    wipe(seenPlates)
+    if NEARBY_OK and settings.nearby then
+        local now = GetTime()
+        if now >= sweepAt then
+            sweepAt = now + 1
+            pcall(SweepPlates)
+        end
+        -- The interact target first, then whatever the mouse and the target
+        -- are on, then every plate.
+        ConsiderPlate("softinteract")
+        ConsiderPlate("mouseover")
+        ConsiderPlate("target")
+        for unit in pairs(plateUnits) do ConsiderPlate(unit) end
+    end
+    -- Clearing an entry while walking the table is allowed.
+    for plate in pairs(marks) do
+        if not seenPlates[plate] then ReleaseMark(plate) end
+    end
+end
+
+-- A plate is reused for the next thing that needs one: whatever it showed
+-- belonged to something else.
+local function OnPlateAdded(unit)
+    if type(unit) ~= "string" then return end
+    plateUnits[unit] = true
+    local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
+    if ok and type(plate) == "table" then ReleaseMark(plate) end
+end
+
+local function OnPlateRemoved(unit)
+    if type(unit) ~= "string" then return end
+    plateUnits[unit] = nil
+    local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
+    if ok and type(plate) == "table" then ReleaseMark(plate) end
+end
+
+-- Plates that were already up when the module was switched on.
+local function FindPlates()
+    wipe(plateUnits)
+    if not NEARBY_OK then return end
+    for index = 1, MAX_PLATE_TOKENS do
+        local unit = "nameplate" .. index
+        local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
+        if ok and type(plate) == "table" then plateUnits[unit] = true end
+    end
+end
+
 -- The watcher looks a few times a second; the root only runs while there is
 -- something to draw.
 local watcher = CreateFrame("Frame")
 local hoverTimer, pointTimer = 0, 0
+local nearTimer, markTimer = 0, 0
+local cardTimer = 0
+local scanX, scanY
 
+-- ⚠ A scan asks the game what is under the mouse, and each answer is a fresh
+-- table: 20 a second all session made 218 MB of garbage. That pace is kept
+-- only while the mouse moves or rests on a find; a still mouse on nothing is
+-- asked about three times a second, enough to catch the world moving under it.
 local function OnWatch(_, dt)
     hoverTimer = hoverTimer + dt
     pointTimer = pointTimer + dt
     if hoverTimer >= 0.05 then
-        hoverTimer = 0
-        ScanHover()
+        local cx, cy = GetCursorPosition()
+        if hoverKey or cx ~= scanX or cy ~= scanY or hoverTimer >= 0.3 then
+            scanX, scanY = cx, cy
+            hoverTimer = 0
+            ScanHover()
+        end
     end
     if pointTimer >= 0.3 then
         pointTimer = 0
         if not pcall(FindTargets) then targetCount = 0 end
+        pcall(RefreshSpotCard)
+    end
+    if cardSpot then
+        cardTimer = cardTimer + dt
+        if cardTimer >= 0.05 then
+            cardTimer = 0
+            TurnSpotCard()
+        end
     end
     if (hoverKind or targetCount > 0) and root and not root:IsShown() then root:Show() end
+
+    -- Nodes near you: asked about four times a second while any plate is up,
+    -- drawn thirty times a second while any mark is.
+    nearTimer = nearTimer + dt
+    if nearTimer >= 0.25 then
+        nearTimer = 0
+        if markCount > 0 or settings.nearby then
+            if not pcall(ScanNearby) then ReleaseAllMarks() end
+        end
+    end
+    if markCount > 0 then
+        markTimer = markTimer + dt
+        if markTimer >= 0.033 then
+            markTimer = 0
+            AnimateMarks(GetTime())
+        end
+    end
 end
 
 -- ── The game's own sparkle ──────────────────────────────────────────────────
@@ -1087,6 +1567,64 @@ local function ReleaseCVar(name, value)
     settings.savedCvars[name] = nil
 end
 
+-- ── The soft target settings ────────────────────────────────────────────────
+-- What "Nodes near you" needs from the game: the interact target switched on
+-- for everything, its icon and its nameplate shown for objects, and the
+-- widest reach the client will take. They are the game's own Interact Key
+-- settings, so they also change what the interact key picks up.
+--
+-- Each is written once and never fought over. What it was, and what the
+-- client actually took (it may clamp a range), are kept in settings.softCvars;
+-- the old value goes back when the option or the module is switched off,
+-- unless the player has changed the setting since.
+
+local SOFT_CVARS = {
+    { "SoftTargetInteract", "3" },
+    { "SoftTargetIconGameObject", "1" },
+    { "SoftTargetNameplateInteract", "1" },
+    { "SoftTargetInteractArc", "2" },
+    { "SoftTargetInteractRange", "60" },
+    { "SoftTargetInteractOnlyInRange", "0" },
+    { "nameplateGameObjectMaxDistance", "60" },
+}
+
+local function SameValue(a, b)
+    if a == b then return true end
+    local x, y = tonumber(a), tonumber(b)
+    return x ~= nil and x == y
+end
+
+-- ⚠ Not CVarLocked: that one also refuses a "secure" setting, and the
+-- interact settings may be marked so. Secure only means "not in a fight",
+-- and nothing here is written in one (ApplyGameGlow waits for the end).
+local function SoftLocked(name)
+    if not (C_CVar and C_CVar.GetCVarInfo) then return false end
+    local ok, _, _, _, _, isLocked, _, isReadOnly = pcall(C_CVar.GetCVarInfo, name)
+    return ok and (isLocked or isReadOnly) and true or false
+end
+
+local function ApplySoftCVars(want)
+    if type(settings.softCvars) ~= "table" then settings.softCvars = {} end
+    local saved = settings.softCvars
+    for _, pair in ipairs(SOFT_CVARS) do
+        local name, value = pair[1], pair[2]
+        local entry = saved[name]
+        local current = ReadCVar(name)
+        if want then
+            if not entry and current ~= nil and not SameValue(current, value) and not SoftLocked(name) then
+                pcall(SetCVar, name, value)
+                saved[name] = { old = current, set = ReadCVar(name) or value }
+            end
+        elseif entry then
+            if type(entry) == "table" and type(entry.old) == "string"
+                and current ~= nil and SameValue(current, entry.set) then
+                pcall(SetCVar, name, entry.old)
+            end
+            saved[name] = nil
+        end
+    end
+end
+
 local function ApplyGameGlow()
     if not settings or not (GetCVar and SetCVar) then return end
     if type(settings.savedCvars) ~= "table" then settings.savedCvars = {} end
@@ -1112,6 +1650,9 @@ local function ApplyGameGlow()
     for _, name in ipairs(OUTLINE_CVARS) do
         if noOutline then WantCVar(name, "0") else ReleaseCVar(name, "0") end
     end
+
+    ApplySoftCVars(running and settings.nearby and NEARBY_OK)
+    if not (running and settings.nearby) then ReleaseAllMarks() end
 end
 
 -- ── Left to skin ────────────────────────────────────────────────────────────
@@ -1313,8 +1854,13 @@ events:SetScript("OnEvent", function(_, event, ...)
     elseif event == "PLAYER_ENTERING_WORLD" then
         -- A graphics preset may have switched outlines back on.
         ApplyGameGlow()
+        FindPlates()
+    elseif event == "NAME_PLATE_UNIT_ADDED" then
+        OnPlateAdded(...)
+    elseif event == "NAME_PLATE_UNIT_REMOVED" then
+        OnPlateRemoved(...)
     else
-        pcall(RebuildQuests)
+        questsDirty = true      -- QUEST_LOG_UPDATE: read again when next needed
     end
 end)
 
@@ -1323,7 +1869,7 @@ local function Start()
     running = true
     EnsureRoot()
     BuildWords()
-    pcall(RebuildQuests)
+    questsDirty = true
     events:RegisterEvent("UNIT_SPELLCAST_SENT")
     events:RegisterEvent("PLAYER_REGEN_ENABLED")
     events:RegisterEvent("QUEST_LOG_UPDATE")
@@ -1333,6 +1879,10 @@ local function Start()
     events:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
     -- Not every client has this event, and asking for a missing one is an error.
     pcall(events.RegisterEvent, events, "PARTY_KILL")
+    pcall(events.RegisterEvent, events, "NAME_PLATE_UNIT_ADDED")
+    pcall(events.RegisterEvent, events, "NAME_PLATE_UNIT_REMOVED")
+    FindPlates()
+    nearTimer, markTimer = 0, 0
     BuildSkinWords()
     local okName, name = pcall(UnitName, "player")
     if okName and PlainString(name) then
@@ -1350,6 +1900,10 @@ local function Stop()
     watcher:SetScript("OnUpdate", nil)
     hoverKind, hoverName, hoverKey, targetCount = nil, nil, nil, 0
     wipe(corpses)
+    ReleaseAllMarks()
+    wipe(plateUnits)
+    cardSpot = nil
+    if spotCard then spotCard:Hide() end
     if skinFrame then skinFrame:Hide() end
     if root then
         ClearParticles()
@@ -1361,6 +1915,41 @@ local function Stop()
     ApplyGameGlow()
     -- Still in combat: the old value goes back when the fight ends.
     if glowPending then events:RegisterEvent("PLAYER_REGEN_ENABLED") end
+end
+
+-- ── /oxglow debug ───────────────────────────────────────────────────────────
+-- What "Nodes near you" sees right now: the settings it asked the game for,
+-- and for the interact target, the mouse and the target what each question
+-- answered. Stand by a node that has no sparks and run it.
+
+local function Say(text)
+    print("|cff66ccffObject Glow:|r " .. text)
+end
+
+local function DebugNearby()
+    Say(("on %s, nearby %s, api %s, plates known %d, marks %d"):format(
+        tostring(running), tostring(settings.nearby), tostring(NEARBY_OK),
+        (function() local n = 0 for _ in pairs(plateUnits) do n = n + 1 end return n end)(), markCount))
+    for _, pair in ipairs(SOFT_CVARS) do
+        local name = pair[1]
+        local entry = type(settings.softCvars) == "table" and settings.softCvars[name] or nil
+        Say(("  %s = %s (wanted %s, was %s, locked %s)"):format(name, tostring(ReadCVar(name)), pair[2],
+            type(entry) == "table" and tostring(entry.old) or "-", tostring(SoftLocked(name))))
+    end
+    for _, unit in ipairs({ "softinteract", "mouseover", "target" }) do
+        local okName, name = pcall(UnitName, unit)
+        if not okName or Secret(name) then name = "?" end
+        local okPlate, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
+        local cursor = CursorKind(unit)
+        local okKind, kind = pcall(NearbyKind, unit)
+        Say(("  %s: %s, object %s, usable %s, cursor %s (atlas %s, texture %s), quest %s, plate %s, mark %s"):format(
+            unit, tostring(name), tostring(Known(UnitIsGameObject, unit)),
+            tostring(UnitIsInteractable and Known(UnitIsInteractable, unit)),
+            tostring(cursor), tostring(probeAtlas), tostring(probeTexture),
+            tostring(C_QuestLog and C_QuestLog.UnitIsRelatedToActiveQuest
+                and Known(C_QuestLog.UnitIsRelatedToActiveQuest, unit)),
+            tostring(okPlate and type(plate) == "table"), tostring(okKind and kind)))
+    end
 end
 
 -- ── Options ─────────────────────────────────────────────────────────────────
@@ -1379,10 +1968,12 @@ local function ShowPointerOptions()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
     if not pointerWindow then
-        local w = API:CreateOptionsWindow("Object Glow: pointer and counter", 460, 440)
+        local w = API:CreateOptionsWindow("Object Glow: pointer and counter", 460, 470)
         pointerWindow = w
         w:AddCheckbox(settings, "point", "Sparks fly toward something close by")
         w:AddCheckbox(settings, "pointSpots", "Toward places where you gathered before")
+        w:AddCheckbox(settings, "spotCard", "A card with the nearest remembered spot: arrow, name, distance",
+            "Needs the two options above. Right-click the card to skip that spot for a few minutes. Drag it to move.")
         w:AddCheckbox(settings, "pointMarks", "Toward the game's own marks (rares, chests)")
         w:AddChoice(settings, "markStyle", "Marks", StyleChoices())
         w:AddSlider(settings, "pointRange", "How far it looks, in yards", 30, 300, 10, "%s: %d")
@@ -1393,6 +1984,22 @@ local function ShowPointerOptions()
         w:AddNote("The counter starts after you skin something once. It counts beasts you had targeted when they died. Drag it to move, right-click to clear.")
     end
     pointerWindow:Show()
+end
+
+local nearbyWindow
+local function ShowNearbyOptions()
+    local API = OxedHub.ModuleAPI
+    if not API or not settings then return end
+    if not nearbyWindow then
+        local w = API:CreateOptionsWindow("Object Glow: nodes near you", 460, 360)
+        nearbyWindow = w
+        w:AddCheckbox(settings, "nearby", "Sparks on herbs, ore and quest objects near you",
+            "No mouse needed: the sparks sit on the node itself. This switches on the game's Interact Key settings, which also changes what the interact key picks up. Your own settings come back when you switch this off.", ApplyGameGlow)
+        w:AddCheckbox(settings, "nearbyNames", "Show its name under the sparks")
+        w:AddSlider(settings, "nearbySize", "Size", 0.5, 2, 0.05, "%s: %.2f")
+        w:AddNote("The game decides how close you must be before a node gets its sparks, and it shows them only for what is in front of you. The colours are the ones chosen for herbs, ore, quest objects and skinning in the main window.")
+    end
+    nearbyWindow:Show()
 end
 
 -- A beacon lit to the left of the options, so a change is seen at once.
@@ -1441,7 +2048,7 @@ ShowOptions = function()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
     if not optionsWindow then
-        local w = API:CreateOptionsWindow("Object Glow", 460, 560)
+        local w = API:CreateOptionsWindow("Object Glow", 460, 590)
         optionsWindow = w
         w:AddCheckbox(settings, "gameGlow", "Switch on the game's own sparkle for herbs, ore and quest objects", nil, ApplyGameGlow)
         w:AddCheckbox(settings, "outlineOff", "Switch the game's outlines off (the sparkle needs it)",
@@ -1471,9 +2078,24 @@ ShowOptions = function()
         more:SetPoint("LEFT", beaconButton, "RIGHT", 10, 0)
         more:SetText(T("Pointer and counter"))
         more:SetScript("OnClick", ShowPointerOptions)
-        w.cursorY = w.cursorY - 34
+
+        local near = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+        near:SetSize(200, 22)
+        near:SetPoint("TOPLEFT", beaconButton, "BOTTOMLEFT", 0, -6)
+        near:SetText(T("Nodes near you"))
+        near:SetScript("OnClick", ShowNearbyOptions)
+        w.cursorY = w.cursorY - 62
     end
     optionsWindow:Show()
+end
+
+SLASH_OXEDHUBOBJECTGLOW1 = "/oxglow"
+SlashCmdList.OXEDHUBOBJECTGLOW = function(msg)
+    msg = (msg or ""):lower():match("^%s*(.-)%s*$")
+    if msg ~= "debug" then return ShowOptions() end
+    if not settings then return end
+    local ok, err = pcall(DebugNearby)
+    if not ok then Say("debug failed: " .. tostring(err)) end
 end
 
 -- ── Login ───────────────────────────────────────────────────────────────────
@@ -1510,6 +2132,12 @@ loginFrame:SetScript("OnEvent", function(self)
     if type(config.skinners) ~= "table" then config.skinners = {} end
     if type(config.savedCvars) ~= "table" then config.savedCvars = {} end
     if type(config.markOwn) ~= "table" then config.markOwn = { 1, 0.8, 0.2 } end
+    -- 1.6.0 switched the spot card on for everyone; it is off by default now.
+    -- Done once, so a player who ticks it afterwards keeps it.
+    if not config.spotCardOffOnce then
+        config.spotCardOffOnce = true
+        config.spotCard = false
+    end
     -- 1.0 kept the one game setting it changed under a key of its own.
     if config.savedGlow ~= nil then
         if config.savedCvars[CVAR] == nil then config.savedCvars[CVAR] = tostring(config.savedGlow) end
@@ -1524,7 +2152,9 @@ loginFrame:SetScript("OnEvent", function(self)
     -- kept drawing its sparkle with the module off. So at every login a
     -- module that is not running hands back whatever it still holds.
     C_Timer.After(3, function()
-        if running or next(settings.savedCvars) == nil then return end
+        local held = next(settings.savedCvars) ~= nil
+            or (type(settings.softCvars) == "table" and next(settings.softCvars) ~= nil)
+        if running or not held then return end
         ApplyGameGlow()
         if glowPending then events:RegisterEvent("PLAYER_REGEN_ENABLED") end   -- in a fight: after it
     end)
@@ -1533,10 +2163,10 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "objectglow",
         name     = "Object Glow",
-        version  = "1.4.1",
+        version  = "1.6.2",
         added    = 20261113,
         inDevelopment = true,
-        updated  = 20261115.2,  -- the game sparkle goes away when off, lighter on corpses
+        updated  = 20261116.3,  -- nodes near you looks at every plate the game has; /oxglow debug says what it sees
         author   = "Oxed",
         category = "quests",
         keywords = { "herb", "ore", "mining", "herbalism", "quest", "object", "glow", "sparkle", "outline", "gather" },

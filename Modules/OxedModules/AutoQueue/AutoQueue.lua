@@ -807,10 +807,17 @@ local function PlainText(value)
 end
 
 -- "45s", "12m", "1h 05m": short enough that a row's details fit on one line.
+-- Set when a time on the queue list is shown in seconds: only then does the
+-- list need filling every second. FillQueuePanel clears it before each fill.
+local queueSeconds = false
+
 local function Duration(seconds)
     if type(seconds) ~= "number" or seconds <= 0 then return nil end
     seconds = math.floor(seconds)
-    if seconds < 60 then return seconds .. "s" end
+    if seconds < 60 then
+        queueSeconds = true
+        return seconds .. "s"
+    end
     if seconds < 3600 then return math.floor(seconds / 60) .. "m" end
     return ("%dh %02dm"):format(math.floor(seconds / 3600), math.floor(seconds % 3600 / 60))
 end
@@ -1169,6 +1176,7 @@ end
 
 local function FillQueuePanel()
     local rows = {}
+    queueSeconds = false
     CollectQueues(rows)
     if #rows == 0 and queuePreview then rows = SampleRows() end
     if #rows == 0 and not eyeTestMode then queuePanel:Hide() return end
@@ -1286,13 +1294,21 @@ local function BuildQueuePanel()
     end
 
     -- Times waited tick on: while the mouse stays on the eye, or always when pinned.
-    local sinceFill = 0
+    -- ⚠ A fill builds every row again from new tables and strings; once a
+    -- second while pinned was 20 MB a session. Times past a minute are shown
+    -- in whole minutes, so then one fill in five seconds is enough. Queue
+    -- events still refresh the list at once (RequestPinnedRefresh).
+    local sinceCheck, sinceFill = 0, 0
     queuePanel:SetScript("OnUpdate", function(_, elapsed)
-        sinceFill = sinceFill + elapsed
-        if sinceFill < 1 then return end
-        sinceFill = 0
+        sinceCheck = sinceCheck + elapsed
+        if sinceCheck < 1 then return end
+        sinceFill = sinceFill + sinceCheck
+        sinceCheck = 0
         if not Pinned() and (not queueOwner or not queueOwner:IsMouseOver()) then HideQueuePanel() return end
-        FillQueuePanel()
+        if queueSeconds or sinceFill >= 5 then
+            sinceFill = 0
+            FillQueuePanel()
+        end
     end)
 end
 
@@ -1702,8 +1718,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "autoqueue",
         name     = "Auto Queue",
-        version  = "1.3.3",
-        updated  = 20261105.1,  -- no error on a client without spec info
+        version  = "1.3.4",
+        updated  = 20261115.3,  -- pinned queue list refills only as often as its times change
         author   = "Oxed",
         category = "groups",
         keywords = { "queue", "lfg", "group finder", "role check", "ready check", "dungeon", "apply", "sign up", "eye", "movable eye" },

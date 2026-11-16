@@ -61,6 +61,15 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.68",
+        lines = {
+            { "ADDED", "Object Glow: sparks on herbs, ore and quest objects near you, on the node itself, no mouse needed. In Options, Nodes near you." },
+            { "ADDED", "Object Glow: an optional card with an arrow, the name and the distance to the nearest place where you gathered before. In Options, Pointer and counter." },
+            { "FIXED", "Roll Advisor: Who rolled what no longer mixes up names, items and rolls, and long lines no longer overlap." },
+            { "CHANGED", "Object Glow, Quest Mobs, Cursor and Auto Queue use less memory and processor time." },
+        },
+    },
+    {
         version = "2.4.67",
         lines = {
             { "FIXED", "Object Glow: the game's own sparkle on things to pick up goes away when the module is off, and the outlines come back." },
