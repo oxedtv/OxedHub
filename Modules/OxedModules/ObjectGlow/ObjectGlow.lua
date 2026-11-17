@@ -64,9 +64,10 @@ local DEFAULTS = {
     otherStyle    = "frost",
     showOther     = true,   -- chests, levers and anything else with a name
 
-    point         = true,
+    point         = false,  -- sparks from the character toward a spot; off unless asked for
     pointMarks    = true,   -- the game's own marks
     pointSpots    = true,   -- where the player gathered before
+    spotRest      = 10,     -- minutes a spot keeps quiet after you gathered there
     spotCard      = false,  -- and a card naming the nearest of them; off unless asked for
     markStyle     = "arcane",
     pointRange    = 120,    -- yards
@@ -586,9 +587,28 @@ end
 -- Remembered gathering spots: settings.spots[continent] = { {north, west, kind}, ... }
 local SPOT_MERGE = 12       -- yards: closer than this is the same node
 local SPOT_CAP = 500        -- per continent; the oldest goes first
-local SPOT_REST = 300       -- seconds a spot keeps quiet after a visit
 local SPOT_ARRIVE = 7       -- yards: standing on it counts as a visit
-local resting = {}          -- [spot table] = time it may speak again
+local resting = {}          -- [spot table] = time it may speak again (a skipped spot)
+
+-- ⚠ How long a spot keeps quiet after you gathered there or stood on it.
+-- This used to live only in `resting`, which a reload or a relog empties:
+-- every spot, the one just gathered included, was pointed at again the
+-- moment the interface came back. The hour of the visit is now kept in the
+-- spot itself (spot[5], from time()), and the wait is the player's to set.
+local function RestSeconds()
+    return math.max(1, tonumber(settings.spotRest) or 10) * 60
+end
+
+local function Visited(spot)
+    if spot[4] == nil then spot[4] = false end   -- no hole before the fifth place
+    spot[5] = time()
+end
+
+local function StillResting(spot, now, epoch, rest)
+    if (resting[spot] or 0) > now then return true end
+    local seen = spot[5]
+    return type(seen) == "number" and epoch >= seen and epoch - seen < rest
+end
 
 -- A spot is { north, west, kind, name }; the name is the node's, when the
 -- cast gave one, and is what the spot card shows.
@@ -607,13 +627,13 @@ local function RememberSpot(kind, name)
         if dn * dn + dw * dw < SPOT_MERGE * SPOT_MERGE then
             spot[3] = kind
             if name then spot[4] = name end
-            resting[spot] = now + SPOT_REST
+            Visited(spot)
             return
         end
     end
-    local spot = { math.floor(north * 10 + 0.5) / 10, math.floor(west * 10 + 0.5) / 10, kind, name }
+    local spot = { math.floor(north * 10 + 0.5) / 10, math.floor(west * 10 + 0.5) / 10, kind, name or false }
     list[#list + 1] = spot
-    resting[spot] = now + SPOT_REST
+    Visited(spot)
     if #list > SPOT_CAP then table.remove(list, 1) end
 end
 
@@ -661,6 +681,7 @@ local function FindTargets()
     if not continent then return end
     local range = tonumber(settings.pointRange) or 120
     local now = GetTime()
+    local epoch, rest = time(), RestSeconds()
     local atan2 = math.atan2
 
     if settings.pointSpots and settings.spots then
@@ -670,8 +691,8 @@ local function FindTargets()
                 local dn, dw = spot[1] - north, spot[2] - west
                 local dist = sqrt(dn * dn + dw * dw)
                 if dist < SPOT_ARRIVE then
-                    resting[spot] = now + SPOT_REST
-                elseif dist <= range and (resting[spot] or 0) < now then
+                    Visited(spot)
+                elseif dist <= range and not StillResting(spot, now, epoch, rest) then
                     Offer(atan2(dw, dn), dist, spot[3] == "ore" and "ore" or "herb", spot)
                 end
             end
@@ -840,7 +861,7 @@ local function EnsureSpotCard()
         settings.cardPoint, settings.cardX, settings.cardY = point, x, y
     end)
     f:SetScript("OnClick", function(self)
-        if cardSpot then resting[cardSpot] = GetTime() + SPOT_REST end
+        if cardSpot then resting[cardSpot] = GetTime() + RestSeconds() end
         cardSpot = nil
         self:Hide()
         GameTooltip:Hide()
@@ -1936,7 +1957,12 @@ local function DebugNearby()
         Say(("  %s = %s (wanted %s, was %s, locked %s)"):format(name, tostring(ReadCVar(name)), pair[2],
             type(entry) == "table" and tostring(entry.old) or "-", tostring(SoftLocked(name))))
     end
-    for _, unit in ipairs({ "softinteract", "mouseover", "target" }) do
+    -- Every plate the module knows of, not only the three named units: a node
+    -- a step to the side is on one of these, never on "softinteract".
+    pcall(SweepPlates)
+    local units = { "softinteract", "mouseover", "target" }
+    for unit in pairs(plateUnits) do units[#units + 1] = unit end
+    for _, unit in ipairs(units) do
         local okName, name = pcall(UnitName, unit)
         if not okName or Secret(name) then name = "?" end
         local okPlate, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
@@ -1968,11 +1994,12 @@ local function ShowPointerOptions()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
     if not pointerWindow then
-        local w = API:CreateOptionsWindow("Object Glow: pointer and counter", 460, 470)
+        local w = API:CreateOptionsWindow("Object Glow: pointer and counter", 460, 510)
         pointerWindow = w
         w:AddCheckbox(settings, "point", "Sparks fly toward something close by")
         w:AddCheckbox(settings, "pointSpots", "Toward places where you gathered before")
-        w:AddCheckbox(settings, "spotCard", "A card with the nearest remembered spot: arrow, name, distance",
+        w:AddSlider(settings, "spotRest", "Minutes a spot keeps quiet after you gathered there", 1, 60, 1, "%s: %d")
+        w:AddCheckbox(settings, "spotCard","A card with the nearest remembered spot: arrow, name, distance",
             "Needs the two options above. Right-click the card to skip that spot for a few minutes. Drag it to move.")
         w:AddCheckbox(settings, "pointMarks", "Toward the game's own marks (rares, chests)")
         w:AddChoice(settings, "markStyle", "Marks", StyleChoices())
@@ -2138,6 +2165,13 @@ loginFrame:SetScript("OnEvent", function(self)
         config.spotCardOffOnce = true
         config.spotCard = false
     end
+    -- The sparks flying from the character toward old spots and the game's
+    -- marks read as a stray light on the screen to players who never asked
+    -- for them. Off once for everyone; ticking it again keeps it.
+    if not config.pointOffOnce then
+        config.pointOffOnce = true
+        config.point = false
+    end
     -- 1.0 kept the one game setting it changed under a key of its own.
     if config.savedGlow ~= nil then
         if config.savedCvars[CVAR] == nil then config.savedCvars[CVAR] = tostring(config.savedGlow) end
@@ -2163,10 +2197,10 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "objectglow",
         name     = "Object Glow",
-        version  = "1.6.2",
+        version  = "1.6.4",
         added    = 20261113,
         inDevelopment = true,
-        updated  = 20261116.3,  -- nodes near you looks at every plate the game has; /oxglow debug says what it sees
+        updated  = 20261117.1,  -- the sparks flying from the character are off by default
         author   = "Oxed",
         category = "quests",
         keywords = { "herb", "ore", "mining", "herbalism", "quest", "object", "glow", "sparkle", "outline", "gather" },

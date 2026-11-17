@@ -61,6 +61,14 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.69",
+        lines = {
+            { "FIXED", "Quest Mobs: no icon on the NPC a quest is handed in to, only on what you kill or loot." },
+            { "FIXED", "Object Glow: a place you just gathered is no longer pointed at again after a reload. How long it keeps quiet is set in Pointer and counter." },
+            { "CHANGED", "Object Glow: the sparks flying from your character toward old spots and marks are off by default. Switch them back on in Pointer and counter." },
+        },
+    },
+    {
         version = "2.4.68",
         lines = {
             { "ADDED", "Object Glow: sparks on herbs, ore and quest objects near you, on the node itself, no mouse needed. In Options, Nodes near you." },

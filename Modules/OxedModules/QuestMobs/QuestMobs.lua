@@ -326,6 +326,22 @@ local function RelatedToQuest(unit)
     return value and true or false
 end
 
+-- ⚠ "Related to a quest" is also true of the NPC a quest is handed in to, and
+-- of the one that gives the next step: the icon alone then sat on quest
+-- givers. The icon without an objective line is only for something you can
+-- attack. True, false, or nil for "cannot tell" (a secret in a fight), and
+-- only a clear no takes the icon away.
+local function CanAttack(unit)
+    if not UnitCanAttack then return nil end
+    local ok, value = pcall(UnitCanAttack, "player", unit)
+    if not ok or IsSecret(value) then return nil end
+    return value and true or false
+end
+
+local function QuestTarget(unit)
+    return RelatedToQuest(unit) and CanAttack(unit) ~= false
+end
+
 -- ── The badge on a plate ────────────────────────────────────────────────────
 
 local function NewBadge()
@@ -470,14 +486,14 @@ local function UpdateUnit(unit)
         -- A secret got in the way: keep what is shown. A plate that shows
         -- nothing yet (the mob came into view mid-fight) gets the icon alone
         -- when the game says the mob belongs to a quest.
-        if badges[unit] or not RelatedToQuest(unit) then return end
+        if badges[unit] or not QuestTarget(unit) then return end
         found, entries = false, {}
     end
 
     if #entries == 0 then
         -- No objective lines at all, yet the game says the mob matters to a
         -- quest: show the icon alone. Lines that are all finished mean no.
-        if not found and RelatedToQuest(unit) then
+        if not found and QuestTarget(unit) then
             entries = { { loot = false } }
         else
             -- Where the quest log cannot be read, a mob whose count just
@@ -678,8 +694,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "questmobs",
         name     = "Quest Mobs",
-        version  = "1.1.3",
-        updated  = 20261115.3,  -- less memory churn: quest log read only for the sound, only plates on screen rechecked
+        version  = "1.1.4",
+        updated  = 20261116.5,  -- no icon on the NPC a quest is handed in to; only on what you kill or loot
         added    = 20261110,
         author   = "Oxed",
         category = "quests",
