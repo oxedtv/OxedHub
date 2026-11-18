@@ -1599,6 +1599,7 @@ local function BuildPicker()
 
     local close = CreateFrame("Button", nil, picker, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", 2, 2)
+    close:SetScript("OnClick", function() picker:Hide() end)   -- the template's own close is blocked in combat
 
     local function Toggle(id)
         return function() return settings.hudStats[id] end,
@@ -1856,7 +1857,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "attributes",
         name     = "Attributes",
-        version  = "1.1.0",
+        version  = "1.1.1",
+        updated  = 20261118.2,  -- close button works in combat
         author   = "Oxed",
         category = "character",
         keywords = { "stats", "haste", "crit", "mastery", "versatility", "speed", "item level", "ilvl", "diminishing returns", "targets", "leech", "avoidance" },

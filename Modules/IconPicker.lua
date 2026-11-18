@@ -363,6 +363,7 @@ function IconPicker:EnsureFrame()
 
     local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
+    closeButton:SetScript("OnClick", function() frame:Hide() end)   -- the template's own close is blocked in combat
 
     local previewBorder = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     previewBorder:SetSize(44, 44)

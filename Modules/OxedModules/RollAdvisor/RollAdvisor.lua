@@ -40,6 +40,9 @@ local DEFAULTS = {
     showSell      = true,
     sound         = "",     -- played when the roll is an upgrade
     logAuto       = true,   -- open "who rolled what" when a roll starts
+    logShowAll    = true,   -- list passes and players who never rolled
+    logRows       = 14,     -- the most lines the window shows before it scrolls
+    logScale      = 1,
 }
 
 local settings
@@ -47,6 +50,7 @@ local running = false
 local optionsWindow
 local minimapIcon, MinimapIcon, ShowOptions
 local OnLootLine, LogRollStart, ToggleLog, HideLog   -- the "who rolled what" window, further down
+local NoteBoss, RedrawLog
 local panels = {}        -- [index] = our panel on GroupLootFrame<index>
 local announced = {}     -- [rollID] = true once its chat line is out
 local announcedCount = 0
@@ -477,9 +481,18 @@ local function Watch()
 end
 
 local events = CreateFrame("Frame")
-events:SetScript("OnEvent", function(_, event, rollID)
+events:SetScript("OnEvent", function(_, event, rollID, arg2, _, _, arg5)
     if event == "CHAT_MSG_LOOT" then
         pcall(OnLootLine, rollID)   -- here the first argument is the chat text
+        return
+    end
+    -- A boss down: the loot that follows is grouped under its name.
+    if event == "ENCOUNTER_END" then
+        if PlainNumber(arg5) and arg5 == 1 then pcall(NoteBoss, arg2) end
+        return
+    end
+    if event == "BOSS_KILL" then
+        pcall(NoteBoss, arg2)
         return
     end
     if event == "START_LOOT_ROLL" and PlainNumber(rollID) then
@@ -505,6 +518,8 @@ local function Start()
     events:RegisterEvent("START_LOOT_ROLL")
     pcall(events.RegisterEvent, events, "CANCEL_LOOT_ROLL")
     pcall(events.RegisterEvent, events, "CHAT_MSG_LOOT")
+    pcall(events.RegisterEvent, events, "ENCOUNTER_END")
+    pcall(events.RegisterEvent, events, "BOSS_KILL")
     Watch()   -- a roll may already be on screen
 end
 
@@ -522,11 +537,21 @@ end
 -- Need for: [Item]", "Need Roll - 54 for [Item] by Ana", "Ana won: [Item]").
 -- The patterns are made from the game's own format strings, so they work in
 -- any client language. Kept for the session only, never saved.
+--
+-- Items are grouped by where they came from: a boss killed lately, else one
+-- running group of trash for the zone. Older items and groups fold down to a
+-- single line with the winner; a click opens them again.
 
-local LOG_KEEP = 25        -- items remembered
-local LOG_W, LOG_H = 380, 440
+local LOG_KEEP = 40        -- items remembered
+local LOG_W = 380
 local LINE_H = 20
+local MAX_ROWS = 30        -- rows made; settings.logRows says how many show
+local MIN_ROWS = 4
+local TOP_PAD, BOTTOM_PAD = 30, 40
 local SAME_ROLL = 300      -- the same item linked again within this long is the same roll
+local SAME_BOSS = 300      -- more loot from the same boss this soon joins its group
+local SAME_TRASH = 1200    -- trash loot this soon after the last joins the trash group
+local BOSS_FRESH = 180     -- a boss killed this long ago is still where loot comes from
 
 -- Argument order of each line: "p" player, "i" item, "n" roll number.
 local LOOT_LINES = {
@@ -600,20 +625,49 @@ local function LootPatterns()
     return lootPatterns
 end
 
-local rollLog = {}         -- newest first: { link, at, rolls = { [name] = { choice, roll } }, names = {}, winner }
-local logWindow
+-- rollLog: every item, newest first:
+--   { key, link, rollID, at, rolls = { [name] = { choice, roll } }, names = {},
+--     winner, done, group, open }
+-- groups: newest first: { title, boss, zone, clock, last, entries = { newest first }, open }
+local rollLog = {}
+local groups = {}
+local fullNames = {}       -- [name] = the name with the surname chat shows after it (Forever)
+local lastBoss             -- { name, at }
+local logWindow, logScroll = nil, 0
 
 local function MyName()
     local ok, name = pcall(UnitName, "player")
     return (ok and PlainString(name)) and name or "?"
 end
 
--- A name as chat gives it, maybe a player link: just the name.
+-- A value from the game, or nil when it fails or is secret.
+local function Ask(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, value = pcall(fn, ...)
+    if not ok or Secret(value) then return nil end
+    return value
+end
+
+-- A name as chat gives it, maybe a player link, maybe with a surname: the
+-- character's name alone, the way the group list has it.
+--
+-- ⚠ On Forever chat shows a surname after the name ("Myrae Thistlemane")
+-- while UnitName and the "You ..." lines give "Myrae". Kept apart, one
+-- player became two rows: one with the roll, one waiting for ever. A
+-- character name never has a space, so the first word is the name.
 local function PlainName(name)
     if not PlainString(name) then return nil end
-    name = name:gsub("|Hplayer:[^|]*|h", ""):gsub("|h", ""):gsub("[%[%]]", "")
-    name = name:gsub("%-.*$", "")     -- the realm
-    return name ~= "" and name or nil
+    local linked = name:match("|Hplayer:([^:|]+)")
+    local shown = name:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cn[^:|]*:", ""):gsub("|r", "")
+    shown = shown:gsub("|H.-|h", ""):gsub("|h", ""):gsub("[%[%]]", "")
+    shown = shown:gsub("^%s+", ""):gsub("%s+$", "")
+    local base = (linked or shown):gsub("%-.*$", "")   -- the realm
+    base = base:match("^(%S+)")
+    if not base then return nil end
+    if shown:find(" ", 1, true) and shown:sub(1, #base) == base then
+        fullNames[base] = shown:gsub("%-%S*", "")
+    end
+    return base
 end
 
 local function ItemKey(link)
@@ -622,19 +676,120 @@ local function ItemKey(link)
     return PlainString(link) and (link:match("|Hitem:(%d+)") or link) or nil
 end
 
--- The open entry for this item: the newest without a winner, from lately.
-local function EntryFor(link, make)
+-- ── Where the loot came from ──
+
+NoteBoss = function(name)
+    if PlainString(name) then lastBoss = { name = name, at = GetTime() } end
+end
+
+local SOURCE_UNITS = { "target", "mouseover" }
+
+-- The corpse being looted when it is targeted, and whether it is a boss.
+local function LootSource()
+    for _, unit in ipairs(SOURCE_UNITS) do
+        if Ask(UnitIsDead, unit) == true and Ask(UnitIsPlayer, unit) ~= true then
+            local name = Ask(UnitName, unit)
+            if PlainString(name) then
+                local boss = (lastBoss and lastBoss.name == name)
+                    or Ask(UnitClassification, unit) == "worldboss"
+                    or Ask(UnitLevel, unit) == -1
+                return name, boss and true or false
+            end
+        end
+    end
+    if lastBoss and GetTime() - lastBoss.at < BOSS_FRESH then return lastBoss.name, true end
+    return nil, false
+end
+
+local function GroupFor(now)
+    local source, boss = LootSource()
+    local zone = Ask(GetRealZoneText)
+    if not PlainString(zone) then zone = nil end
+    local g = groups[1]
+    if g then
+        if boss and g.boss and g.title == source and now - g.last < SAME_BOSS then
+            g.last = now
+            return g, source
+        end
+        if not boss and not g.boss and g.zone == zone and now - g.last < SAME_TRASH then
+            g.last = now
+            return g, source
+        end
+    end
+    g = {
+        boss = boss,
+        zone = zone,
+        title = boss and source or (zone and T("Trash, %s"):format(zone)) or T("Trash"),
+        clock = date("%H:%M"),
+        last = now,
+        entries = {},
+    }
+    table.insert(groups, 1, g)
+    return g, source
+end
+
+local function Trim()
+    while #rollLog > LOG_KEEP do
+        local old = table.remove(rollLog)
+        local g = old.group
+        if g then
+            for i = #g.entries, 1, -1 do
+                if g.entries[i] == old then table.remove(g.entries, i) end
+            end
+            if #g.entries == 0 then
+                for i = #groups, 1, -1 do
+                    if groups[i] == g then table.remove(groups, i) end
+                end
+            end
+        end
+    end
+end
+
+local function NewEntry(link, rollID)
+    local now = GetTime()
+    local g, source = GroupFor(now)
+    local e = { key = ItemKey(link), link = link, rollID = rollID, at = now,
+                rolls = {}, names = {}, group = g, source = source }
+    table.insert(rollLog, 1, e)
+    table.insert(g.entries, 1, e)
+    Trim()
+    return e
+end
+
+-- The entries still open for this item, oldest first. Two copies of one item
+-- can be rolled at once; each line goes to the copy it fits.
+local function OpenEntries(key)
+    local list, now = {}, GetTime()
+    for i = #rollLog, 1, -1 do
+        local e = rollLog[i]
+        if e.key == key and not e.done and now - e.at < SAME_ROLL then list[#list + 1] = e end
+    end
+    return list
+end
+
+local function Pick(list, test)
+    for _, e in ipairs(list) do
+        if test(e) then return e end
+    end
+end
+
+local function EntryForLine(link, player, what)
     local key = ItemKey(link)
     if not key then return nil end
-    local now = GetTime()
-    for _, e in ipairs(rollLog) do
-        if e.key == key and not e.done and now - e.at < SAME_ROLL then return e end
+    local open = OpenEntries(key)
+    local pick
+    if what == "won" then
+        pick = Pick(open, function(e) local r = e.rolls[player]; return r and r.roll ~= nil end)
+    elseif what == "allpass" then
+        pick = open[1]
+        return pick
+    elseif what:sub(1, 4) == "roll" then
+        pick = Pick(open, function(e) local r = e.rolls[player]; return r and r.choice ~= "wait" and r.roll == nil end)
+            or Pick(open, function(e) local r = e.rolls[player]; return not r or r.roll == nil end)
+    else
+        pick = Pick(open, function(e) local r = e.rolls[player]; return not r or r.choice == "wait" end)
     end
-    if not make then return nil end
-    local e = { key = key, link = link, at = now, rolls = {}, names = {} }
-    table.insert(rollLog, 1, e)
-    while #rollLog > LOG_KEEP do table.remove(rollLog) end
-    return e
+    return pick or open[1] or NewEntry(link)
 end
 
 local function Mark(e, name, field, value)
@@ -656,10 +811,9 @@ local function GroupNames()
     if okR and raid == true then prefix, count = "raid", 40 end
     for i = 1, count do
         local unit = prefix .. i
-        local okE, exists = pcall(UnitExists, unit)
-        if okE and exists == true then
-            local okN, name = pcall(UnitName, unit)
-            if okN and PlainString(name) and name ~= list[1] then list[#list + 1] = name end
+        if Ask(UnitExists, unit) == true then
+            local name = PlainName(Ask(UnitName, unit))
+            if name and name ~= list[1] then list[#list + 1] = name end
         end
     end
     return list
@@ -671,7 +825,17 @@ LogRollStart = function(rollID)
     if not GetLootRollItemLink then return end
     local ok, link = pcall(GetLootRollItemLink, rollID)
     if not ok or not PlainString(link) then return end
-    local e = EntryFor(link, true)
+    local e
+    for _, x in ipairs(rollLog) do
+        if x.rollID == rollID and not x.done then e = x break end
+    end
+    if not e then
+        -- A chat line may have come first and opened one with no roll number.
+        e = Pick(OpenEntries(ItemKey(link)), function(x) return not x.rollID end)
+        if e then e.rollID = rollID end
+    end
+    e = e or NewEntry(link, rollID)
+    e.link = link   -- the roll window's link is the full one
     for _, name in ipairs(GroupNames()) do
         if not e.rolls[name] then Mark(e, name, "choice", "wait") end
     end
@@ -701,7 +865,7 @@ OnLootLine = function(text)
             local sound = PlainString(item) and item:find("|Hitem:", 1, true)
                 and (player or p.what == "allpass")
             if sound then
-                local e = EntryFor(item, p.what ~= "won" and p.what ~= "allpass")
+                local e = EntryForLine(item, player, p.what)
                 if not e then return end
                 if p.what == "won" then
                     e.winner, e.done = player, true
@@ -728,7 +892,29 @@ local CHOICE = {
     de    = { icon = "Interface\\Buttons\\UI-GroupLoot-DE-Up",    text = "Disenchant", r = 0.7, g = 0.5, b = 1, rank = 3 },
     pass  = { icon = "Interface\\Buttons\\UI-GroupLoot-Pass-Up",  text = "Pass",  r = 0.6, g = 0.6, b = 0.6, rank = 4 },
     wait  = { icon = "Interface\\COMMON\\StreamCircle",           text = "Waiting", r = 0.5, g = 0.5, b = 0.5, rank = 5 },
+    none  = { icon = "Interface\\COMMON\\StreamCircle",           text = "No roll", r = 0.4, g = 0.4, b = 0.4, rank = 6 },
 }
+local PLUS  = "Interface\\Buttons\\UI-PlusButton-Up"
+local MINUS = "Interface\\Buttons\\UI-MinusButton-Up"
+local BOSS_ICON  = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
+local TRASH_ICON = "Interface\\Icons\\INV_Misc_Bag_08"
+
+-- A choice as shown: someone still "waiting" once the roll is over did not roll.
+local function ChoiceOf(e, r)
+    local c = r and r.choice or "wait"
+    if c == "wait" and e.done then c = "none" end
+    return CHOICE[c] or CHOICE.wait
+end
+
+local function Tint(c, text)
+    return ("|cff%02x%02x%02x%s|r"):format(c.r * 255, c.g * 255, c.b * 255, text)
+end
+
+local function ChoiceText(e, r)
+    local text = Tint(ChoiceOf(e, r), T(ChoiceOf(e, r).text))
+    if r and r.roll then text = text .. "  |cffffffff" .. r.roll .. "|r" end
+    return text
+end
 
 local function ClassColour(name)
     local ok, _, cls = pcall(UnitClass, name)
@@ -739,116 +925,308 @@ local function ClassColour(name)
     return name
 end
 
-local logScroll = 0
+-- The name in its class colour, the surname after it in grey.
+local function ShownName(name)
+    local full = fullNames[name]
+    local text = ClassColour(name)
+    if full and #full > #name and full:sub(1, #name) == name then
+        text = text .. "|cff8a8a8a" .. full:sub(#name + 1) .. "|r"
+    end
+    return text
+end
 
--- Flat lines: a header per item, then one per player, best choice first.
+local function EntryOpen(e)
+    if e.open ~= nil then return e.open end
+    return not e.done or e == rollLog[1]
+end
+
+local function GroupOpen(g)
+    if g.open ~= nil then return g.open end
+    return g == groups[1]
+end
+
+local function SortedNames(e)
+    local names = {}
+    for _, n in ipairs(e.names) do names[#names + 1] = n end
+    table.sort(names, function(a, b)
+        if a == e.winner then return b ~= e.winner end
+        if b == e.winner then return false end
+        local ra, rb = e.rolls[a], e.rolls[b]
+        local ca, cb = ChoiceOf(e, ra), ChoiceOf(e, rb)
+        if ca.rank ~= cb.rank then return ca.rank < cb.rank end
+        if (ra.roll or -1) ~= (rb.roll or -1) then return (ra.roll or -1) > (rb.roll or -1) end
+        return a < b
+    end)
+    return names
+end
+
+-- Passes and players who never rolled can be left out.
+local function Hidden(e, r)
+    if settings.logShowAll ~= false then return false end
+    local c = ChoiceOf(e, r)
+    return c == CHOICE.pass or c == CHOICE.none
+end
+
+-- Flat lines: a header per group, then per item, then one per player.
 local function LogLines()
     local lines = {}
-    for _, e in ipairs(rollLog) do
-        lines[#lines + 1] = { header = true, e = e }
-        local names = {}
-        for _, n in ipairs(e.names) do names[#names + 1] = n end
-        table.sort(names, function(a, b)
-            local ra, rb = e.rolls[a], e.rolls[b]
-            local ca, cb = CHOICE[ra.choice or "wait"] or CHOICE.wait, CHOICE[rb.choice or "wait"] or CHOICE.wait
-            if ca.rank ~= cb.rank then return ca.rank < cb.rank end
-            if (ra.roll or -1) ~= (rb.roll or -1) then return (ra.roll or -1) > (rb.roll or -1) end
-            return a < b
-        end)
-        for _, n in ipairs(names) do lines[#lines + 1] = { e = e, name = n } end
+    for _, g in ipairs(groups) do
+        lines[#lines + 1] = { group = g }
+        if GroupOpen(g) then
+            for _, e in ipairs(g.entries) do
+                lines[#lines + 1] = { header = true, e = e }
+                if EntryOpen(e) then
+                    for _, n in ipairs(SortedNames(e)) do
+                        if not Hidden(e, e.rolls[n]) then lines[#lines + 1] = { e = e, name = n } end
+                    end
+                end
+            end
+        end
     end
     return lines
 end
 
+-- What an item's header says on its right: who won, or how far the roll is.
+local function EntryState(e)
+    if e.winner then
+        local text = "|cffffd100" .. T("Won by %s"):format(e.winner) .. "|r"
+        local r = e.rolls[e.winner]
+        if r and r.roll and not EntryOpen(e) then text = text .. "  " .. ChoiceText(e, r) end
+        return text
+    elseif e.done then
+        return "|cff999999" .. T("Everyone passed") .. "|r"
+    end
+    local decided = 0
+    for _, n in ipairs(e.names) do
+        if (e.rolls[n].choice or "wait") ~= "wait" then decided = decided + 1 end
+    end
+    return "|cff66ccff" .. T("Rolling %d/%d"):format(decided, #e.names) .. "|r"
+end
+
+local function ShowRowTooltip(row)
+    GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+    if row.kind == "item" then
+        pcall(GameTooltip.SetHyperlink, GameTooltip, row.target.link)
+        if row.target.source then
+            GameTooltip:AddLine(T("Dropped by %s"):format(row.target.source), 0.8, 0.8, 0.8)
+        end
+        GameTooltip:AddLine(T("Shift-click: link the item in chat. Click: show or hide the rolls."), 0.6, 0.6, 0.6, true)
+    elseif row.kind == "group" then
+        local g = row.target
+        GameTooltip:SetText(g.title, 1, 0.82, 0)
+        if g.zone and g.boss then GameTooltip:AddLine(g.zone, 0.8, 0.8, 0.8) end
+        GameTooltip:AddLine(T("Click: show or hide this loot."), 0.6, 0.6, 0.6, true)
+    elseif row.kind == "player" then
+        local e, name = row.target, row.name
+        GameTooltip:SetText(fullNames[name] or name, 1, 1, 1)
+        GameTooltip:AddLine(ChoiceText(e, e.rolls[name]))
+        if e.winner == name then GameTooltip:AddLine(T("Won by %s"):format(name), 1, 0.82, 0) end
+    else
+        return
+    end
+    GameTooltip:Show()
+end
+
 local function MakeLine(parent, i)
-    local row = CreateFrame("Frame", nil, parent)
+    local row = CreateFrame("Button", nil, parent)
     row:SetHeight(LINE_H)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(i - 1) * LINE_H)
-    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -(i - 1) * LINE_H)
-    row:EnableMouse(true)
+    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -8, -(i - 1) * LINE_H)
+    row:RegisterForClicks("LeftButtonUp")
     row.bg = row:CreateTexture(nil, "BACKGROUND")
     row.bg:SetAllPoints()
+    row.hl = row:CreateTexture(nil, "HIGHLIGHT")
+    row.hl:SetAllPoints()
+    row.hl:SetColorTexture(1, 1, 1, 0.07)
+    row.toggle = row:CreateTexture(nil, "ARTWORK")
+    row.toggle:SetSize(12, 12)
     row.icon = row:CreateTexture(nil, "ARTWORK")
-    row.icon:SetSize(18, 18)
-    row.icon:SetPoint("LEFT", 4, 0)
+    row.icon:SetSize(16, 16)
+    row.right = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.right:SetPoint("RIGHT", -4, 0)
+    row.right:SetJustifyH("RIGHT")
     row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.text:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
-    row.text:SetPoint("RIGHT", -70, 0)
+    row.text:SetPoint("RIGHT", row.right, "LEFT", -6, 0)
     row.text:SetJustifyH("LEFT")
     row.text:SetWordWrap(false)
-    row.right = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.right:SetPoint("RIGHT", -6, 0)
-    row.right:SetJustifyH("RIGHT")
-    row:SetScript("OnEnter", function(self)
-        if self.link then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
-            GameTooltip:Show()
-        end
-    end)
+    row:SetScript("OnEnter", ShowRowTooltip)
     row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row:SetScript("OnClick", function(self)
+        local t = self.target
+        if not t then return end
+        if self.kind == "item" and IsModifiedClick and IsModifiedClick("CHATLINK") and ChatEdit_InsertLink then
+            pcall(ChatEdit_InsertLink, t.link)
+            return
+        end
+        if self.kind == "group" then
+            t.open = not GroupOpen(t)
+        elseif self.kind == "item" then
+            t.open = not EntryOpen(t)
+        else
+            return
+        end
+        RefreshLog()
+    end)
     return row
+end
+
+local function Place(row, indent, iconSize, toggle)
+    row.toggle:ClearAllPoints()
+    row.toggle:SetPoint("LEFT", indent, 0)
+    if toggle then
+        row.toggle:SetTexture(toggle)
+        row.toggle:Show()
+    else
+        row.toggle:Hide()
+    end
+    row.icon:ClearAllPoints()
+    row.icon:SetPoint("LEFT", indent + 15, 0)
+    row.icon:SetSize(iconSize, iconSize)
+end
+
+local function DrawGroup(row, g)
+    row.kind, row.target = "group", g
+    Place(row, 2, 16, GroupOpen(g) and MINUS or PLUS)
+    row.icon:SetTexture(g.boss and BOSS_ICON or TRASH_ICON)
+    if g.boss then row.icon:SetTexCoord(0, 1, 0, 1) else row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+    row.text:SetFontObject(GameFontNormal)
+    row.text:SetText(g.title)
+    local n = #g.entries
+    local count = n == 1 and T("1 item") or T("%d items"):format(n)
+    row.right:SetText("|cffa0a0a0" .. count .. ", " .. g.clock .. "|r")
+    row.bg:SetColorTexture(0.45, 0.32, 0.06, 0.45)
+end
+
+local function DrawItem(row, e)
+    row.kind, row.target = "item", e
+    Place(row, 12, 16, EntryOpen(e) and MINUS or PLUS)
+    local icon = Ask(GetItemIcon, e.link)
+    if not icon then
+        local okI, _, _, _, _, _, _, _, _, _, tex = pcall(GetItemInfo, e.link)
+        icon = okI and tex or nil
+    end
+    row.icon:SetTexture(icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+    row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    row.text:SetFontObject(GameFontHighlightSmall)
+    row.text:SetText(e.link)
+    row.right:SetText(EntryState(e))
+    row.bg:SetColorTexture(1, 1, 1, EntryOpen(e) and 0.07 or 0.035)
+end
+
+local function DrawPlayer(row, e, name, index, me)
+    row.kind, row.target, row.name = "player", e, name
+    local r = e.rolls[name] or {}
+    local c = ChoiceOf(e, r)
+    Place(row, 26, 15, nil)
+    row.icon:SetTexture(c.icon)
+    row.icon:SetTexCoord(0, 1, 0, 1)
+    row.text:SetFontObject(GameFontHighlightSmall)
+    local text = ShownName(name)
+    if e.winner == name then
+        text = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:12:12|t " .. text
+    end
+    if c.rank >= 5 then text = "|cff9a9a9a" .. text .. "|r" end
+    row.text:SetText(text)
+    row.right:SetText(ChoiceText(e, r))
+    if e.winner == name then
+        row.bg:SetColorTexture(1, 0.82, 0, 0.18)
+    elseif name == me then
+        row.bg:SetColorTexture(0.3, 0.6, 1, 0.10)
+    else
+        row.bg:SetColorTexture(1, 1, 1, (index % 2 == 0) and 0.03 or 0)
+    end
+end
+
+local function LogRows()
+    local n = math.floor(tonumber(settings.logRows) or 14)
+    return math.max(MIN_ROWS + 1, math.min(MAX_ROWS, n))
 end
 
 RefreshLog = function()
     if not (logWindow and logWindow:IsShown()) then return end
     local lines = LogLines()
     local rows = logWindow.rows
-    local maxScroll = math.max(0, #lines - #rows)
+    -- The window is as tall as what it holds, up to the chosen number of lines.
+    local shown = math.max(MIN_ROWS, math.min(LogRows(), #lines))
+    logWindow:SetHeight(TOP_PAD + shown * LINE_H + BOTTOM_PAD)
+    local maxScroll = math.max(0, #lines - shown)
     if logScroll > maxScroll then logScroll = maxScroll end
     if logScroll < 0 then logScroll = 0 end
     logWindow.empty:SetShown(#lines == 0)
+    local me = MyName()
     for i, row in ipairs(rows) do
-        local line = lines[i + logScroll]
-        row.link = nil
+        local line = i <= shown and lines[i + logScroll]
+        row.kind, row.target, row.name = nil, nil, nil
         if not line then
             row:Hide()
-        elseif line.header then
-            local e = line.e
-            local okI, _, _, _, _, _, _, _, _, _, icon = pcall(GetItemInfo, e.link)
-            row.icon:SetTexture((okI and icon) or "Interface\\Icons\\INV_Misc_QuestionMark")
-            row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            row.text:SetText(e.link)
-            if e.winner then
-                row.right:SetText("|cffffd100" .. T("Won by %s"):format(e.winner) .. "|r")
-            elseif e.done then
-                row.right:SetText("|cff999999" .. T("Everyone passed") .. "|r")
-            else
-                row.right:SetText("|cff66ccff" .. T("Rolling") .. "|r")
-            end
-            row.right:SetWidth(0)
-            row.text:SetPoint("RIGHT", row.right, "LEFT", -6, 0)
-            row.bg:SetColorTexture(1, 0.82, 0, 0.10)
-            row.link = e.link
-            row:Show()
         else
-            local r = line.e.rolls[line.name] or {}
-            local c = CHOICE[r.choice or "wait"] or CHOICE.wait
-            row.icon:SetTexture(c.icon)
-            row.icon:SetTexCoord(0, 1, 0, 1)
-            local name = ClassColour(line.name)
-            if line.e.winner == line.name then
-                name = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:12:12|t " .. name
-            end
-            row.text:SetText("    " .. name)
-            local choiceText = ("|cff%02x%02x%02x%s|r"):format(c.r * 255, c.g * 255, c.b * 255, T(c.text))
-            row.right:SetText(r.roll and (choiceText .. "  |cffffffff" .. r.roll .. "|r") or choiceText)
-            -- The name ends where the choice begins, however long that is.
-            row.right:SetWidth(0)
-            row.text:SetPoint("RIGHT", row.right, "LEFT", -6, 0)
-            if line.e.winner == line.name then
-                row.bg:SetColorTexture(1, 0.82, 0, 0.18)
+            if line.group then
+                DrawGroup(row, line.group)
+            elseif line.header then
+                DrawItem(row, line.e)
             else
-                row.bg:SetColorTexture(1, 1, 1, ((i + logScroll) % 2 == 0) and 0.04 or 0)
+                DrawPlayer(row, line.e, line.name, i + logScroll, me)
             end
             row:Show()
         end
     end
+
+    -- A thin bar at the side shows where in the list the view is.
+    local track, thumb = logWindow.track, logWindow.thumb
+    if maxScroll > 0 then
+        local height = shown * LINE_H
+        local size = math.max(14, height * shown / #lines)
+        track:SetHeight(height)
+        thumb:SetHeight(size)
+        thumb:ClearAllPoints()
+        thumb:SetPoint("TOP", track, "TOP", 0, -(height - size) * logScroll / maxScroll)
+        track:Show()
+        thumb:Show()
+    else
+        track:Hide()
+        thumb:Hide()
+    end
+    if logWindow.passes then
+        logWindow.passes:SetText(settings.logShowAll ~= false and T("Hide passes") or T("Show passes"))
+    end
+end
+
+-- Kept by the top left corner, so the window grows downward as rolls come in.
+local function PlaceLog(f)
+    f:ClearAllPoints()
+    if settings.logLeft and settings.logTop then
+        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", settings.logLeft, settings.logTop)
+    else
+        f:SetPoint("TOP", UIParent, "CENTER", 300, 220)
+    end
+end
+
+local function SaveLogPosition(f)
+    local left, top = f:GetLeft(), f:GetTop()
+    if left and top then
+        settings.logLeft, settings.logTop = left, top
+        PlaceLog(f)
+    end
+end
+
+local function ApplyLogScale()
+    if not logWindow then return end
+    local old = logWindow:GetScale() or 1
+    local new = tonumber(settings.logScale) or 1
+    if new < 0.6 or new > 1.6 then new = 1 end
+    if settings.logLeft and settings.logTop and old ~= new then
+        -- The same spot on screen at the new size.
+        settings.logLeft = settings.logLeft * old / new
+        settings.logTop = settings.logTop * old / new
+    end
+    logWindow:SetScale(new)
+    PlaceLog(logWindow)
 end
 
 local function BuildLog()
     local f = CreateFrame("Frame", "OxedHubRollAdvisorLog", UIParent, "BackdropTemplate")
-    f:SetSize(LOG_W, LOG_H)
+    f:SetSize(LOG_W, TOP_PAD + MIN_ROWS * LINE_H + BOTTOM_PAD)
     f:SetFrameStrata("HIGH")
     f:SetClampedToScreen(true)
     f:SetMovable(true)
@@ -857,8 +1235,7 @@ local function BuildLog()
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
-        local point, _, _, x, y = self:GetPoint()
-        settings.logPoint, settings.logX, settings.logY = point, x, y
+        SaveLogPosition(self)
     end)
     f:Hide()
     local Panel = OxedHub.UIComponents and OxedHub.UIComponents.Panel
@@ -871,12 +1248,11 @@ local function BuildLog()
         f:SetBackdropColor(0.06, 0.06, 0.08, 0.95)
         f:SetBackdropBorderColor(0.6, 0.5, 0.3, 1)
     end
-    f:ClearAllPoints()
-    f:SetPoint(settings.logPoint or "CENTER", UIParent, settings.logPoint or "CENTER",
-               settings.logX or 300, settings.logY or 0)
 
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -2, -2)
+    -- ⚠ The template closes through HideUIPanel, which is blocked in combat.
+    close:SetScript("OnClick", function() f:Hide() end)
 
     local clear = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     clear:SetSize(90, 20)
@@ -884,15 +1260,34 @@ local function BuildLog()
     clear:SetText(T("Clear"))
     clear:SetScript("OnClick", function()
         wipe(rollLog)
+        wipe(groups)
+        logScroll = 0
         RefreshLog()
     end)
 
+    local passes = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    passes:SetSize(110, 20)
+    passes:SetPoint("RIGHT", clear, "LEFT", -6, 0)
+    passes:SetScript("OnClick", function()
+        settings.logShowAll = settings.logShowAll == false
+        RefreshLog()
+    end)
+    f.passes = passes
+
     local list = CreateFrame("Frame", nil, f)
-    list:SetPoint("TOPLEFT", 12, -30)
-    list:SetPoint("BOTTOMRIGHT", -12, 36)
+    list:SetPoint("TOPLEFT", 12, -TOP_PAD)
+    list:SetPoint("BOTTOMRIGHT", -12, BOTTOM_PAD)
     f.rows = {}
-    local count = math.floor((LOG_H - 66) / LINE_H)
-    for i = 1, count do f.rows[i] = MakeLine(list, i) end
+    for i = 1, MAX_ROWS do f.rows[i] = MakeLine(list, i) end
+
+    f.track = list:CreateTexture(nil, "BACKGROUND")
+    f.track:SetWidth(3)
+    f.track:SetPoint("TOPRIGHT", list, "TOPRIGHT", 0, 0)
+    f.track:SetColorTexture(1, 1, 1, 0.08)
+    f.thumb = list:CreateTexture(nil, "ARTWORK")
+    f.thumb:SetWidth(3)
+    f.thumb:SetColorTexture(1, 0.82, 0, 0.7)
+
     f.empty = list:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.empty:SetPoint("TOPLEFT", 4, -4)
     f.empty:SetPoint("RIGHT", -4, 0)
@@ -908,6 +1303,7 @@ local function BuildLog()
     if OxedHub.HideInPetBattle then pcall(OxedHub.HideInPetBattle, OxedHub, f) end
     if UISpecialFrames then table.insert(UISpecialFrames, "OxedHubRollAdvisorLog") end
     logWindow = f
+    ApplyLogScale()
 end
 
 ToggleLog = function(show)
@@ -925,13 +1321,19 @@ HideLog = function()
     if logWindow then logWindow:Hide() end
 end
 
+RedrawLog = function()
+    ApplyLogScale()
+    RefreshLog()
+end
+
+
 -- ── Options ─────────────────────────────────────────────────────────────────
 
 ShowOptions = function()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
     if not optionsWindow then
-        local w = API:CreateOptionsWindow("Roll Advisor", 440, 440)
+        local w = API:CreateOptionsWindow("Roll Advisor", 440, 590)
         optionsWindow = w
         w:AddCheckbox(settings, "panel", "Panel beside the roll window", nil, Watch)
         w:AddChoice(settings, "side", "Side", {
@@ -946,6 +1348,15 @@ ShowOptions = function()
         w:AddCheckbox(settings, "showSell", "Show what it sells for", nil, Watch)
         w:AddSoundPicker(settings, "sound", "Sound when it is an upgrade", "None")
         w:AddCheckbox(settings, "logAuto", "Open who rolled what when a roll starts")
+        w:AddCheckbox(settings, "logShowAll", "Show passes and players who did not roll", nil, function()
+            if RedrawLog then RedrawLog() end
+        end)
+        w:AddSlider(settings, "logRows", "Lines before the window scrolls", 6, 30, 1, "%s: %d", function()
+            if RedrawLog then RedrawLog() end
+        end)
+        w:AddSlider(settings, "logScale", "Window size", 0.7, 1.4, 0.05, "%s: %.2f", function()
+            if RedrawLog then RedrawLog() end
+        end)
         w:AddCheckbox(settings, "minimapButton", "Show minimap button", nil, function()
             local icon = MinimapIcon()
             if icon then icon:Apply(settings.enabled == true) end
@@ -999,10 +1410,10 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "rolladvisor",
         name     = "Roll Advisor",
-        version  = "1.1.2",
+        version  = "1.2.0",
         added    = 20261113,
         inDevelopment = true,
-        updated  = 20261115.5,  -- who rolled what: names, items and rolls no longer mixed up or overlapping
+        updated  = 20261118.1,  -- who rolled what: one row per player, loot grouped by boss, folding, smaller window
         author   = "Oxed",
         category = "groups",
         keywords = { "need", "greed", "roll", "loot", "upgrade", "bis", "dungeon", "advice" },

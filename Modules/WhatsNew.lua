@@ -61,6 +61,16 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.70",
+        lines = {
+            { "FIXED", "Roll Advisor: Who rolled what shows each player once. On Forever a name with a surname no longer appears twice, once rolled and once waiting." },
+            { "FIXED", "Roll Advisor: two copies of the same item are kept apart, each with its own rolls, and anyone who never chose shows as No roll." },
+            { "ADDED", "Roll Advisor: loot is grouped by the boss that dropped it, trash in one group per zone. Older items fold to one line with the winner, click to open them." },
+            { "CHANGED", "Roll Advisor: the window is only as tall as what it holds and scrolls after that. Options for how many lines, its size and hiding passes." },
+            { "FIXED", "The close button works in combat on Who rolled what, Currencies, Reputations, the Attributes stat picker, the icon picker and the Shattersight windows." },
+        },
+    },
+    {
         version = "2.4.69",
         lines = {
             { "FIXED", "Quest Mobs: no icon on the NPC a quest is handed in to, only on what you kill or loot." },

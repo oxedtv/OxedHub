@@ -128,6 +128,13 @@ and the game hides the frame itself. Two consequences, both seen in KickBar:
 - **Sounds cannot follow the secret.** Playing one is a decision Lua has to
   make, so a sound tied to "interruptible" can only ever use a best guess.
 
+### UIPanelCloseButton does not close in combat
+
+The template's own click goes through `HideUIPanel`, which is blocked in
+combat, so the X does nothing until the fight ends (Escape still works).
+Every close button made from it needs
+`close:SetScript("OnClick", function() frame:Hide() end)`.
+
 ### Anchor list rows with TOPLEFT and TOPRIGHT
 
 `LEFT` and `RIGHT` pin a frame's **vertical centre**. Adding a `TOP` point to a

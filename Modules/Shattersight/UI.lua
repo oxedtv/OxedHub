@@ -252,6 +252,7 @@ local function CreateStatsFrame()
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+    closeBtn:SetScript("OnClick", function() f:Hide() end)   -- the template's own close is blocked in combat
 
     local scroll = CreateFrame("ScrollFrame", "OxedHub_ShattersightStatsScroll", f, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -40)
@@ -333,6 +334,7 @@ local function CreateDebugFrame()
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+    closeBtn:SetScript("OnClick", function() f:Hide() end)   -- the template's own close is blocked in combat
 
     local scroll = CreateFrame("ScrollFrame", "OxedHub_ShattersightDebugScroll", f, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -40)

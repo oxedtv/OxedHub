@@ -569,7 +569,10 @@ local function BuildAltPanel()
         Panel.ApplyOrnateFrame(p, " ", 0.96)
     end
     local okClose, close = pcall(CreateFrame, "Button", nil, p, "UIPanelCloseButton")
-    if okClose and close then close:SetPoint("TOPRIGHT", p, "TOPRIGHT", -3, -3) end
+    if okClose and close then
+        close:SetPoint("TOPRIGHT", p, "TOPRIGHT", -3, -3)
+        close:SetScript("OnClick", function() p:Hide() end)   -- the template's own close is blocked in combat
+    end
 
     p.head = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     p.head:SetPoint("TOPLEFT", p, "TOPLEFT", 16, -30)
@@ -849,6 +852,7 @@ local function BuildWindow()
     local okClose, close = pcall(CreateFrame, "Button", nil, w, "UIPanelCloseButton")
     if okClose and close then
         close:SetPoint("TOPRIGHT", w, "TOPRIGHT", -3, -3)
+        close:SetScript("OnClick", function() w:Hide() end)
     end
 
     -- ⚠ SetAutoFocus(false) first thing: a new EditBox takes the keyboard,
@@ -1248,8 +1252,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "reputations",
         name     = "Reputations",
-        version  = "1.2.0",
-        updated  = 20261016.99,  -- Minimap button
+        version  = "1.2.1",
+        updated  = 20261118.2,  -- close button works in combat
         author   = "Oxed",
         category = "character",
         keywords = { "reputation", "rep", "renown", "paragon", "faction", "friendship", "warband", "alts" },
