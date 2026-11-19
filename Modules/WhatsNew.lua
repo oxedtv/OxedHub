@@ -61,6 +61,13 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.71",
+        lines = {
+            { "ADDED", "Rank Up, a new module for Forever: finds spells on your action bars at a lower rank than you know and swaps in the highest, after you look. Keep rank leaves a down-rank alone." },
+            { "ADDED", "Leveling Finds: a Close all button above the cards." },
+        },
+    },
+    {
         version = "2.4.70",
         lines = {
             { "FIXED", "Roll Advisor: Who rolled what shows each player once. On Forever a name with a surname no longer appears twice, once rolled and once waiting." },

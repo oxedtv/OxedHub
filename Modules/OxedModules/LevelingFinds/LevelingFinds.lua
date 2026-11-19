@@ -2046,7 +2046,7 @@ end
 -- top, each staying until it is closed. Click one: the list on Best now.
 -- The heading above the stack drags it and clears it all. Only for this
 -- session; the chat lines stay as the record.
---   Leveling Finds  3            [Clear all]
+--   Leveling Finds  3            [x Close all]
 --   [icon] Best Chest, level 24           x
 --          Robe of Evocation  +12.4
 --          Quest: The Defias Brotherhood
@@ -2102,13 +2102,30 @@ local function BuildToastHolder()
     h.title = h:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     h.title:SetPoint("LEFT", 4, 0)
 
-    local clear = CreateFrame("Button", nil, h)
-    clear:SetSize(70, 18)
+    -- The game's red panel button with a small x, like the cards' own close.
+    local okB, clear = pcall(CreateFrame, "Button", nil, h, "UIPanelButtonTemplate")
+    if not okB or not clear then
+        clear = CreateFrame("Button", nil, h)
+        clear:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    end
+    clear:SetSize(96, 22)
     clear:SetPoint("RIGHT", -2, 0)
-    clear.text = clear:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    clear.text:SetAllPoints()
-    clear.text:SetText(L["Clear all"])
-    clear:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    local x = clear:CreateTexture(nil, "OVERLAY")
+    x:SetSize(14, 14)
+    x:SetPoint("LEFT", 8, 0)
+    x:SetTexture("Interface\\Buttons\\UI-StopButton")
+    x:SetVertexColor(1, 0.82, 0)
+    clear.label = clear:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    clear.label:SetPoint("LEFT", x, "RIGHT", 4, 0)
+    clear.label:SetPoint("RIGHT", -6, 0)
+    clear.label:SetText(L["Close all"])
+    if clear.SetText then clear:SetText("") end
+    clear:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine(L["Close every card"], 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    clear:SetScript("OnLeave", function() GameTooltip:Hide() end)
     clear:SetScript("OnClick", function()
         wipe(toastList)
         LayoutToasts()
@@ -2492,8 +2509,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "levelingfinds",
         name     = "Leveling Finds",
-        version  = "2.11.0",
-        updated  = 20261114.1,  -- two-handers against both hands, why not yet, weapons choice, richer tooltip
+        version  = "2.11.1",
+        updated  = 20261119.2,  -- Close all button above the cards
         author   = "Oxed",
         category = "quests",
         keywords = { "leveling", "levelling", "quest", "dungeon", "loot", "map", "forever", "mapgenie", "find" },

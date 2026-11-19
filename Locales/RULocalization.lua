@@ -821,7 +821,7 @@ L["ANIM_PLAY"] = "Запуск"
 L["ANIM_STOP"] = "Стоп"
 L["ANIM_SAVE"] = "Сохранить анимацию"
 
-L["RELEASE_TITLE"] = "Релиз 2.4.70"
+L["RELEASE_TITLE"] = "Релиз 2.4.71"
 L["RELEASE_SUBTITLE"] = "Что нового в этом обновлении"
 L["ANIM_CUSTOM_TITLE"] = "Собственные анимации"
 L["ANIM_CUSTOM_DESC"] = "Управляйте своей библиотекой анимаций здесь. Используйте кнопку Добавить анимацию для настройки кастомных спрайт-листов."
@@ -5097,6 +5097,8 @@ L["New and updated modules are tagged on their cards and shown first, and the Mo
 
 -- Leveling Finds 2.10.0
 L["Clear all"] = "Очистить всё"
+L["Close all"] = "Закрыть все"
+L["Close every card"] = "Закрыть все карточки"
 L["Drag to move. Click a card for the list, x or right-click to close it."] = "Перетащите, чтобы сдвинуть. Клик по карточке открывает список, крестик или правый клик закрывает её."
 L["Click: the list. Right-click: close."] = "Клик: список. Правый клик: закрыть."
 L["and %d more"] = "и ещё %d"
@@ -5592,3 +5594,5 @@ L["Object Glow: an optional card with an arrow, the name and the distance to the
 L["Roll Advisor: Who rolled what no longer mixes up names, items and rolls, and long lines no longer overlap."] = "Roll Advisor: «Кто что бросил» больше не путает имена, предметы и броски, и длинные строки не накладываются."
 L["Object Glow, Quest Mobs, Cursor and Auto Queue use less memory and processor time."] = "Object Glow, Quest Mobs, Cursor и Auto Queue расходуют меньше памяти и процессорного времени."
 L["Roll Advisor: the Show a sample button is gone. Who rolled what opens from its options or the minimap button."] ="Roll Advisor: кнопки «Показать пример» больше нет. «Кто что бросил» открывается из настроек или кнопкой у миникарты."
+L["Rank Up, a new module for Forever: finds spells on your action bars at a lower rank than you know and swaps in the highest, after you look. Keep rank leaves a down-rank alone."] = "Rank Up, новый модуль для Forever: находит на панелях заклинания ниже выученного ранга и ставит высший, после вашей проверки. Keep rank оставляет нужный низкий ранг в покое."
+L["Leveling Finds: a Close all button above the cards."] = "Leveling Finds: кнопка «Закрыть все» над карточками."
