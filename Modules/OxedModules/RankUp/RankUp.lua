@@ -422,23 +422,23 @@ local function BuildRow(parent, i)
     r.name = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     r.name:SetPoint("TOPLEFT", r.icon2, "TOPRIGHT", 8, -1)
     r.name:SetJustifyH("LEFT")
-    r.name:SetWidth(270)
+    r.name:SetWidth(230)
     r.name:SetWordWrap(false)
     r.detail = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     r.detail:SetPoint("BOTTOMLEFT", r.icon2, "BOTTOMRIGHT", 8, 1)
     r.detail:SetJustifyH("LEFT")
-    r.detail:SetWidth(270)
+    r.detail:SetWidth(230)
     r.detail:SetWordWrap(false)
 
-    r.keep = MakeButton(r, 74, L["Keep rank"], function()
+    r.keep = MakeButton(r, 104, L["Keep rank"], function()
         if r.data then Keep(r.data) end
     end)
     r.keep:SetPoint("RIGHT", -6, 0)
-    r.go = MakeButton(r, 74, L["Upgrade"], function()
+    r.go = MakeButton(r, 90, L["Upgrade"], function()
         if r.data then Upgrade({ r.data }) end
     end)
     r.go:SetPoint("RIGHT", r.keep, "LEFT", -4, 0)
-    r.give = MakeButton(r, 110, L["Allow upgrade"], function()
+    r.give = MakeButton(r, 150, L["Allow upgrade"], function()
         if r.data and r.data.id then
             settings.kept[r.data.id] = nil
             Scan()
@@ -571,9 +571,9 @@ local function BuildWindow()
     f:Hide()
     tinsert(UISpecialFrames, "OxedHubRankUpWindow")
 
-    f.tabUp = MakeButton(f, 150, "", function() mode = "upgrades" offset = 0 Refresh() end, 26)
+    f.tabUp = MakeButton(f, 170, "", function() mode = "upgrades" offset = 0 Refresh() end, 26)
     f.tabUp:SetPoint("TOPLEFT", 18, -36)
-    f.tabKept = MakeButton(f, 150, "", function() mode = "kept" offset = 0 Refresh() end, 26)
+    f.tabKept = MakeButton(f, 170, "", function() mode = "kept" offset = 0 Refresh() end, 26)
     f.tabKept:SetPoint("LEFT", f.tabUp, "RIGHT", 4, 0)
     local opt = MakeButton(f, 70, L["Options"], function() ShowOptions() end, 26)
     opt:SetPoint("TOPRIGHT", -26, -36)
@@ -617,9 +617,9 @@ local function BuildWindow()
         Refresh()
     end)
     f.none:SetPoint("LEFT", f.all, "RIGHT", 4, 0)
-    f.doTicked = MakeButton(f, 170, "", function() Upgrade(Ticked()) end)
+    f.doTicked = MakeButton(f, 200, "", function() Upgrade(Ticked()) end)
     f.doTicked:SetPoint("BOTTOMRIGHT", -18, 20)
-    f.keepTicked = MakeButton(f, 120, L["Keep ticked"], function()
+    f.keepTicked = MakeButton(f, 150, L["Keep ticked"], function()
         local n = 0
         for _, c in ipairs(Ticked()) do
             if not settings.kept[c.currentID] then
@@ -766,9 +766,9 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "rankup",
         name     = "Rank Up",
-        version  = "1.0.0",
+        version  = "1.0.1",
         added    = 20261119,
-        updated  = 20261119.1,
+        updated  = 20261119.3,  -- in Russian
         author   = "Oxed",
         category = "character",
         keywords = { "rank", "ranks", "spell", "upgrade", "action bar", "trainer", "down-rank", "spellupgrade" },

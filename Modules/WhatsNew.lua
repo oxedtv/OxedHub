@@ -61,6 +61,12 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.72",
+        lines = {
+            { "CHANGED", "Rank Up speaks Russian, with wider buttons to fit." },
+        },
+    },
+    {
         version = "2.4.71",
         lines = {
             { "ADDED", "Rank Up, a new module for Forever: finds spells on your action bars at a lower rank than you know and swaps in the highest, after you look. Keep rank leaves a down-rank alone." },
