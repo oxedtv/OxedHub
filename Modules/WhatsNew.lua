@@ -61,6 +61,13 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.74",
+        lines = {
+            { "FIXED", "Object Glow: the name and health bar over the nearest NPC no longer cover its quest mark." },
+            { "FIXED", "Layer Swap no longer switches nameplates on by itself. It shows them once when you click the portal." },
+        },
+    },
+    {
         version = "2.4.73",
         lines = {
             { "NEW", "Layer Swap for WoW Forever: your layer as a portal on screen. Click it to move to another layer, right-click to pick one. Hosts other players, with guild layers, chat offers and host ranks." },

@@ -332,7 +332,7 @@ function LS.SwapBlocked()
     if InCombatLockdown() then return LS.T("Not in combat.") end
     if IsInGroup() then return LS.T("Leave your group first: a swap joins a host's group.") end
     if not LS.MyLayer() then
-        if LS.WantLayer then LS.WantLayer() end
+        if LS.WantLayer then LS.WantLayer(true) end
         return LS.T("Your layer is not known yet: target or mouse over a creature.")
     end
     if not LS.Zone() then return LS.T("Your zone is not known yet.") end

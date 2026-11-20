@@ -1443,6 +1443,7 @@ local function SweepPlates()
     end
 end
 
+local TamePlate   -- below, with the plate events
 local function ScanNearby()
     wipe(seenPlates)
     if NEARBY_OK and settings.nearby then
@@ -1454,6 +1455,7 @@ local function ScanNearby()
         -- The interact target first, then whatever the mouse and the target
         -- are on, then every plate.
         ConsiderPlate("softinteract")
+        if TamePlate then pcall(TamePlate, "softinteract") end
         ConsiderPlate("mouseover")
         ConsiderPlate("target")
         for unit in pairs(plateUnits) do ConsiderPlate(unit) end
@@ -1466,18 +1468,78 @@ end
 
 -- A plate is reused for the next thing that needs one: whatever it showed
 -- belonged to something else.
+--
+-- ⚠ "Nodes near you" turns the interact target on for everything, and with it
+-- its nameplate. An NPC is an interact target too, so the nearest one got a
+-- name and health bar that covered its quest "!" / "?". Such a plate (an NPC,
+-- not an object, not your target, friendly NPC plates otherwise off, and only
+-- when this module switched those settings on) is made see-through.
+local mutedPlates = {}    -- plate -> true while its unit frame is hidden by us
+
+local function Yes(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, answer = pcall(function(...)
+        local v = fn(...)
+        if v then return true end
+        return false
+    end, ...)
+    if ok then return answer end
+    return nil
+end
+
+local function SetPlateMuted(plate, mute)
+    local frame = type(plate) == "table" and plate.UnitFrame
+    if type(frame) ~= "table" or not frame.SetAlpha then return end
+    if mute then
+        if pcall(frame.SetAlpha, frame, 0) then mutedPlates[plate] = true end
+    elseif mutedPlates[plate] then
+        pcall(frame.SetAlpha, frame, 1)
+        mutedPlates[plate] = nil
+    end
+end
+
+local function WeTurnedNpcPlatesOn()
+    local saved = settings and settings.softCvars
+    return type(saved) == "table" and (saved.SoftTargetNameplateInteract ~= nil or saved.SoftTargetInteract ~= nil)
+end
+
+function TamePlate(unit)
+    local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
+    if not ok or type(plate) ~= "table" then return end
+    if plate.IsForbidden and plate:IsForbidden() then return end
+    local mute = running and settings.nearby and WeTurnedNpcPlatesOn()
+        and Yes(UnitIsGameObject, unit) == false
+        and Yes(UnitIsUnit, unit, "softinteract") == true
+        and Yes(UnitIsUnit, unit, "target") == false
+        and Yes(UnitIsUnit, unit, "mouseover") == false
+        and select(2, pcall(GetCVar, "nameplateShowFriendlyNPCs")) ~= "1"
+        and Yes(UnitCanAttack, "player", unit) == false
+    SetPlateMuted(plate, mute and true or false)
+end
+
+local function UnmuteAllPlates()
+    for plate in pairs(mutedPlates) do SetPlateMuted(plate, false) end
+end
+
 local function OnPlateAdded(unit)
     if type(unit) ~= "string" then return end
     plateUnits[unit] = true
     local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
-    if ok and type(plate) == "table" then ReleaseMark(plate) end
+    if ok and type(plate) == "table" then
+        ReleaseMark(plate)
+        SetPlateMuted(plate, false)
+    end
+    TamePlate(unit)
 end
 
 local function OnPlateRemoved(unit)
     if type(unit) ~= "string" then return end
     plateUnits[unit] = nil
     local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
-    if ok and type(plate) == "table" then ReleaseMark(plate) end
+    if ok and type(plate) == "table" then
+        ReleaseMark(plate)
+        SetPlateMuted(plate, false)
+    end
 end
 
 -- Plates that were already up when the module was switched on.
@@ -1673,7 +1735,7 @@ local function ApplyGameGlow()
     end
 
     ApplySoftCVars(running and settings.nearby and NEARBY_OK)
-    if not (running and settings.nearby) then ReleaseAllMarks() end
+    if not (running and settings.nearby) then ReleaseAllMarks() UnmuteAllPlates() end
 end
 
 -- ── Left to skin ────────────────────────────────────────────────────────────
@@ -1922,6 +1984,7 @@ local function Stop()
     hoverKind, hoverName, hoverKey, targetCount = nil, nil, nil, 0
     wipe(corpses)
     ReleaseAllMarks()
+    UnmuteAllPlates()
     wipe(plateUnits)
     cardSpot = nil
     if spotCard then spotCard:Hide() end
@@ -2197,10 +2260,10 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "objectglow",
         name     = "Object Glow",
-        version  = "1.6.4",
+        version  = "1.6.5",
         added    = 20261113,
         inDevelopment = true,
-        updated  = 20261117.1,  -- the sparks flying from the character are off by default
+        updated  = 20261120.1,  -- an NPC's interact nameplate no longer covers its quest mark
         author   = "Oxed",
         category = "quests",
         keywords = { "herb", "ore", "mining", "herbalism", "quest", "object", "glow", "sparkle", "outline", "gather" },

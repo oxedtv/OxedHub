@@ -364,7 +364,7 @@ local function MenuRows()
     end
     if not me then
         rows[#rows + 1] = { text = "|cffffd040" .. LS.T("Reading your layer...") .. "|r", run = function()
-            if LS.WantLayer then LS.WantLayer() end
+            if LS.WantLayer then LS.WantLayer(true) end
         end }
         if LS.lastSkip then rows[#rows + 1] = { text = "|cff707070" .. tostring(LS.lastSkip) .. "|r" } end
     end

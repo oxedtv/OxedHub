@@ -588,7 +588,7 @@ LS.On("CHAT_MSG_MONSTER_EMOTE", Spoke)
 
 local PLATES = { "nameplateShowEnemies", "nameplateShowFriendlyNPCs", "nameplateShowAll" }
 local FLASH_FOR, FLASH_EVERY, FLASH_TRIES = 3, 12, 5
-local flashAt, flashTries = nil, 0
+local flashAt, flashTries = nil, FLASH_TRIES   -- no showing until the player asks (a click)
 local lastFlash = -1000
 
 local function CVar(name, value)
@@ -642,9 +642,11 @@ end
 -- A fresh need to know the layer (login, zone, transfer, a click): read every
 -- second and allow the nameplates to be shown again.
 local pollUntil = 0
-function LS.WantLayer()
+function LS.WantLayer(byClick)
     pollUntil = GetTime() + 240
-    flashTries = 0
+    -- the nameplates are shown once, and only for a click: shown on every zone
+    -- change they flickered on and off all the time while the layer stayed unknown
+    flashTries = byClick and (FLASH_TRIES - 1) or FLASH_TRIES
     LS.Scan()
 end
 

@@ -119,7 +119,7 @@ function LS.ShowOptions()
         w:AddSlider(s, "portalSize", "Portal size", 40, 120, 4, "%s: %d", function() if LS.ApplyPortalLayout then LS.ApplyPortalLayout() end end)
         w:AddCheckbox(s, "portalText", "Layer name under the portal", nil,
             function() if LS.ApplyPortalLayout then LS.ApplyPortalLayout() end end)
-        w:AddCheckbox(s, "flashPlates", "Show nameplates for a moment to read the layer", "While your layer is unknown, creature nameplates are switched on for 3 seconds, then put back as they were.")
+        w:AddCheckbox(s, "flashPlates", "Show nameplates for a moment to read the layer", "When you click the portal and your layer is unknown, nameplates are switched on once for 3 seconds, then put back as they were.")
         w:AddCheckbox(s, "hostGlow", "Golden halo while hosting", nil, function() LS.Changed() end)
         w:AddCheckbox(s, "screenFlash", "Flash the screen when the layer changes")
         w:AddCheckbox(s, "sound", "Sound when the layer changes")
@@ -275,9 +275,9 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "layerswap",
         name     = "Layer Swap",
-        version  = "1.1.1",
+        version  = "1.1.2",
         added    = 20261120,
-        updated  = 20261120.6,
+        updated  = 20261120.7,
         author   = "Oxed",
         category = "quests",
         keywords = { "layer", "layers", "swap", "shard", "phase", "host", "portal", "layerswap", "hop" },
