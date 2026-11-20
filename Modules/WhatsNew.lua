@@ -61,6 +61,13 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.73",
+        lines = {
+            { "NEW", "Layer Swap for WoW Forever: your layer as a portal on screen. Click it to move to another layer, right-click to pick one. Hosts other players, with guild layers, chat offers and host ranks." },
+            { "NEW", "Buff Reminder: a reminder when Find Minerals, Find Herbs, Find Fish or Find Treasure is off. Click the icon to switch it on." },
+        },
+    },
+    {
         version = "2.4.72",
         lines = {
             { "CHANGED", "Rank Up speaks Russian, with wider buttons to fit." },

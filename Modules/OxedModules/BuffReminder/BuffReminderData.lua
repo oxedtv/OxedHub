@@ -444,6 +444,22 @@ Data.DEMON_CHOICES = { 691, 697, 688, 366222 }   -- Felhunter, Voidwalker, Imp, 
 -- A pet comes back a moment after you dismount; pet reminders wait this long.
 Data.DISMOUNT_PET_PAUSE = 3
 
+-- ── Gathering tracking ─────────────────────────────────────────────────────
+-- A tracking spell you know that is not switched on: a click casts it,
+-- which turns the tracking on. Read from the minimap tracking list, never
+-- from auras. Outside instances only.
+Data.TRACKING = {
+    { key = "findMinerals", group = "tracking", known = 2580,  check = "tracking" },
+    { key = "findHerbs",    group = "tracking", known = 2383,  check = "tracking" },
+    { key = "findFish",     group = "tracking", known = 43308, check = "tracking" },
+    { key = "findTreasure", group = "tracking", known = 2481,  check = "tracking" },
+}
+Data.GROUP_TITLES.tracking = "Gathering tracking"
+Data.LABELS.findMinerals = "Find Minerals"
+Data.LABELS.findHerbs = "Find Herbs"
+Data.LABELS.findFish = "Find Fish"
+Data.LABELS.findTreasure = "Find Treasure"
+
 Data.LABELS.talentLoadout = "Talent loadout for this content"
 Data.LABELS.gearSet = "Equipment set for this content"
 Data.LABELS.askBuffs = "Ask for buffs you lack"

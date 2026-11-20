@@ -41,6 +41,7 @@ local DEFAULTS = {
     showSelf      = true,   -- poisons, shields, imbues, forms
     showPets      = true,
     showConsumables = true, -- food, flask, rune, oil (instances only)
+    showTracking  = true,   -- Find Minerals / Find Herbs known but off (outside instances)
     expiring      = true,   -- also show buffs with under five minutes left
     onlyInstances = false,  -- group and self buffs only inside instances too
     hideResting   = false,  -- nothing in cities and inns
@@ -1532,6 +1533,79 @@ local function EvaluateAsk(entry, out)
         macro = AskMacro(AskText(name)) })
 end
 
+-- ── Gathering tracking ─────────────────────────────────────────────────────
+-- Read from the minimap tracking list, which comes in two shapes: a table
+-- per row (C_Minimap) or the older name, texture, active returns. Each read
+-- is in pcall and a secret field counts as "cannot tell", never as "off".
+-- A do block: Lua allows only 200 locals in the main chunk. (AnySpellName
+-- lives in the aspect do block above and cannot be reached from here.)
+
+local EvaluateTracking
+do
+local function TrackingCount()
+    local fn = (C_Minimap and C_Minimap.GetNumTrackingTypes) or GetNumTrackingTypes
+    if not fn then return 0 end
+    local ok, n = pcall(fn)
+    if not ok or IsSecret(n) or type(n) ~= "number" then return 0 end
+    return n
+end
+
+-- name, active, spellID of one row. name and spellID are nil when unknown
+-- or secret; active is true / false, or nil when it is secret. The older
+-- shape answers 1 or nil for active, so nil there means off.
+local function TrackingRow(index)
+    local fn = (C_Minimap and C_Minimap.GetTrackingInfo) or GetTrackingInfo
+    if not fn then return nil end
+    local ok, a, _, c, _, _, f = pcall(fn, index)
+    if not ok then return nil end
+    local name, active, spellID
+    if type(a) == "table" then
+        name, active, spellID = a.name, a.active, a.spellID
+    else
+        name, active, spellID = a, c, f
+    end
+    if IsSecret(name) then name = nil end
+    if IsSecret(spellID) or type(spellID) ~= "number" then spellID = nil end
+    if IsSecret(active) then
+        active = nil
+    else
+        active = active == true or active == 1
+    end
+    return name, active, spellID
+end
+
+-- Is the tracking `spellID` turns on switched on? true / false, or nil when
+-- it is not in the list or the game will not say.
+local function TrackingActive(spellID)
+    local name = SpellName(spellID)
+    if not name and GetSpellInfo then
+        local ok, n = pcall(GetSpellInfo, spellID)
+        if ok and type(n) == "string" and not IsSecret(n) then name = n end
+    end
+    for i = 1, TrackingCount() do
+        local rowName, active, rowSpell = TrackingRow(i)
+        if (rowSpell and rowSpell == spellID) or (name and rowName and rowName == name) then
+            return active
+        end
+    end
+    return nil
+end
+
+function EvaluateTracking(entry, out)
+    -- Nothing to gather in a dungeon or a battleground.
+    if IsInInstance() then return end
+    if TrackingActive(entry.known) ~= false then return end
+    -- Older rules allow one tracking at a time: one gathering tracking on
+    -- is enough, or a herbalist-miner would always see the other one.
+    if not OxedHub.IsMainline then
+        for _, other in ipairs(Data.TRACKING) do
+            if other ~= entry and Known(other.known) and TrackingActive(other.known) == true then return end
+        end
+    end
+    Add(out, entry, SpellRecord(entry.known))
+end
+end   -- the tracking do block
+
 -- ── Talents and gear for this content ──────────────────────────────────────
 
 local function LoadoutContent()
@@ -1643,6 +1717,7 @@ end
 local function Evaluate(entry, specID, inInstance, forced, out)
     if entry.check == "talentLoadout" then return EvaluateTalents(entry, specID, out) end
     if entry.check == "gearSet" then return EvaluateGear(entry, specID, out) end
+    if entry.check == "tracking" then return EvaluateTracking(entry, out) end
     if entry.group == "raid" then return EvaluateRaid(entry, out) end
     if entry.group == "targeted" then return EvaluateTargeted(entry, out) end
     if entry.check == "pet" then return EvaluatePet(entry, specID, out) end
@@ -1785,6 +1860,7 @@ local function Collect()
     Run(Data.TARGETED, settings.showTargeted, true)
     Run(Data.PET, settings.showPets, true)
     Run(Data.CONSUMABLE, settings.showConsumables, false)
+    Run(Data.TRACKING, settings.showTracking, false)
     return list
 end
 
@@ -2076,7 +2152,7 @@ end
 
 local function PreviewList()
     local pool = {}
-    for _, part in ipairs({ Data.RAID, Data.SELF, Data.TARGETED, Data.PET, Data.CONSUMABLE }) do
+    for _, part in ipairs({ Data.RAID, Data.SELF, Data.TARGETED, Data.PET, Data.CONSUMABLE, Data.TRACKING }) do
         for _, entry in ipairs(part) do
             local texture = EntryTexture(entry)
             if texture then pool[#pool + 1] = { entry = entry, texture = texture } end
@@ -2346,6 +2422,9 @@ local function Start()
     PlaceBar()
     quietUntil = GetTime() + 5
     for _, event in ipairs(EVENTS) do watcher:RegisterEvent(event) end
+    -- Tracking switched on or off. In pcall: an event a client does not
+    -- know is an error, and the ticker still catches the change.
+    pcall(watcher.RegisterEvent, watcher, "MINIMAP_UPDATE_TRACKING")
     if not InCombatLockdown() then
         -- The game hides the bar in combat and shows it after, even while
         -- the frame is protected by its secure buttons.
@@ -2660,6 +2739,9 @@ local function BuildReminders(API)
     for _, entry in ipairs(Data.CONSUMABLE) do
         if entry.class then EntryRow(remindProxy, entry) end
     end
+
+    Head(Data.GROUP_TITLES.tracking)
+    for _, entry in ipairs(Data.TRACKING) do EntryRow(remindProxy, entry) end
 
     -- Your custom buffs: a row per possible one, filled each time the window
     -- opens, since the list changes in the Custom buffs window.
@@ -3205,6 +3287,8 @@ local function ShowOptions()
         w:AddCheckbox(settings, "showPets", "Pet: missing, on Passive, or the wrong demon", nil, MarkDirty)
         w:AddCheckbox(settings, "showConsumables", "Consumables: food, flask, rune, oil, healthstone",
             "In instances, every matching item in your bags gets its own icon with its count. Oil is offered per hand. The rune only shows when you carry one. Also: delve food, low durability anywhere, and Soulwell or Refreshment Table on a ready check.", MarkDirty)
+        w:AddCheckbox(settings, "showTracking", "Gathering tracking: Find Minerals, Find Herbs",
+            "When you know a tracking spell from a profession and it is switched off, outside instances. A click turns it on. Find Fish and Find Treasure too, where the game has them.", MarkDirty)
         w:AddCheckbox(settings, "expiring", "Also buffs that are running out", nil, MarkDirty)
         w:AddSlider(settings, "expiringMinutes", "Running out means under", 1, 30, 1, "%s %d min", MarkDirty)
         w:AddSlider(settings, "preKeyMinutes", "Before a Mythic+ key starts, under", 0, 60, 5, "%s %d min (0 = off)", MarkDirty)
@@ -3336,13 +3420,13 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "buffreminder",
         name     = "Buff Reminder",
-        version  = "1.13.0",
-        updated  = 20261114.7,  -- combat warning for warlock (armor): every Forever class has one now
+        version  = "1.14.0",
+        updated  = 20261120.1,  -- gathering tracking: Find Minerals, Find Herbs, Find Fish, Find Treasure
         author   = "Oxed",
         category = "combat",
         keywords = { "buff", "missing", "food", "flask", "rune", "oil", "pet", "poison", "consumables",
             "healthstone", "ready check", "beacon", "earth shield", "soulstone", "stance", "form", "custom",
-            "talents", "loadout", "gear set", "ask" },
+            "talents", "loadout", "gear set", "ask", "tracking", "herbs", "minerals", "mining", "herbalism" },
         -- Clipped at about 90 characters on the card; the detail is in Options.
         desc     = "Icons for missing buffs, pets and consumables. Click one to cast it.",
         icon     = "Interface\\Icons\\Spell_Holy_MagicalSentry",
