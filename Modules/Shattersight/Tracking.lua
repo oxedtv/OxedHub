@@ -497,7 +497,7 @@ end
 
 function SS:PrintTrackingStats()
     if not SS.charDb or not SS.charDb.tracking then
-        print(L["|cFF00FFFF[OxedHub Shattersight]:|r No tracking data yet."])
+        print(L["|cFF00FFFF[OxedHub Disenchant Info]:|r No tracking data yet."])
         return
     end
 
@@ -521,7 +521,7 @@ function SS:PrintTrackingStats()
     end
 
     if not found then
-        print(L["|cFF00FFFF[OxedHub Shattersight]:|r No tracking data yet. Disenchant some items!"])
+        print(L["|cFF00FFFF[OxedHub Disenchant Info]:|r No tracking data yet. Disenchant some items!"])
     end
 end
 
@@ -565,7 +565,7 @@ function SS:PrintLoginSummary()
         trackStr = L["|cFF888888no data yet|r"]
     end
 
-    print(string.format(L["%s[OxedHub Shattersight]:|r  Skill: %s  |cFF888888·|r  Tracked: %s"],
+    print(string.format(L["%s[OxedHub Disenchant Info]:|r  Skill: %s  |cFF888888·|r  Tracked: %s"],
         "|cFF00FFFF", skillStr, trackStr))
 end
 
@@ -573,7 +573,7 @@ function SS:ClearTrackingData()
     if SS.charDb then
         SS.charDb.tracking = {}
     end
-    print(L["|cFF00FFFF[OxedHub Shattersight]:|r All personal tracking data cleared."])
+    print(L["|cFF00FFFF[OxedHub Disenchant Info]:|r All personal tracking data cleared."])
     if SS.RefreshStatsFrame then SS:RefreshStatsFrame() end
 end
 
@@ -738,7 +738,7 @@ end
 
 function SS:ToggleTrackDebug()
     debugMode = not debugMode
-    print("|cFF00FFFF[OxedHub Shattersight]:|r Tracking debug "
+    print("|cFF00FFFF[OxedHub Disenchant Info]:|r Tracking debug "
         .. (debugMode and "|cFF00FF00ON|r" or "|cFFFF4444OFF|r"))
 end
 

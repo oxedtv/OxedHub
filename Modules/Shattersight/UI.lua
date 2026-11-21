@@ -248,7 +248,7 @@ local function CreateStatsFrame()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     title:SetPoint("TOP", f, "TOP", 0, -14)
-    title:SetText(L["|cFF00FFFFOxedHub Shattersight|r — Disenchant Stats"])
+    title:SetText(L["|cFF00FFFFOxedHub Disenchant Info|r — Disenchant Stats"])
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
@@ -330,7 +330,7 @@ local function CreateDebugFrame()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     title:SetPoint("TOP", f, "TOP", 0, -14)
-    title:SetText(L["|cFF00FFFFOxedHub Shattersight|r — Diagnostics"])
+    title:SetText(L["|cFF00FFFFOxedHub Disenchant Info|r — Diagnostics"])
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)

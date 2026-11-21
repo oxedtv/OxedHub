@@ -2,7 +2,7 @@ local addonName, OxedHub = ...
 
 -- Configuration and Constants
 OxedHub.CONFIG = {
-    VERSION = "2.4.74",
+    VERSION = "2.4.75",
     DB_VERSION = 1,
 
     -- Shown in the Export/Import "About" panel. Edit freely.
@@ -41,7 +41,6 @@ OxedHub.CONFIG = {
         { value = "ITEM_POTION", label = "Potion Used", desc = "When you drink a potion, flask or elixir. Pick a specific one from your bags, or leave it unpicked to react to any.", category = "advanced" },
 
         -- Basic Triggers
-        { value = "SHATTERSIGHT", label = "Disenchant Insight", desc = "Analyze and track Disenchant values vs vendor prices directly on tooltips", category = "basic" },
         { value = "SUMMON", label = "Summon", desc = "When a summon appears, is accepted, or is declined", category = "basic" },
         { value = "EAT_BUFF", label = "Food/Drink Buff", desc = "When you eat or drink (Well Fed, Refreshment)", category = "basic" },
         { value = "ACHIEVEMENT", label = "Achievement Earned", desc = "When you earn an achievement", category = "basic" },

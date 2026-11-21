@@ -119,6 +119,7 @@ end
 -- ---------------------------------------------------------------------------
 local function BuildDisenchantLines(tooltip, data)
     if not tooltip then return end
+    if not SS.active then return end   -- the module is switched off
     if not SS.db or not SS.db.settings or not SS.db.settings.showTooltip then return end
 
     local itemLink
@@ -204,14 +205,21 @@ local function BuildDisenchantLines(tooltip, data)
         return
     end
 
-    local _, _, quality, _, _, _, _, _, equipLoc, _, sellPrice, _, _, _, expansionID =
+    local _, _, quality, itemLevel, _, _, _, _, equipLoc, _, sellPrice, _, _, _, expansionID =
         C_Item.GetItemInfo(itemLink)
     if not quality then return end
 
     if quality < QUALITY_UNCOMMON or quality > QUALITY_EPIC then return end
     if not IsDisenchantableEquipLoc(equipLoc) then return end
 
-    local results = SS:GetDisenchantResults(quality, expansionID)
+    -- WoW Forever: classic items, odds by item level instead of expansion.
+    local classic = not OxedHub.IsMainline
+    local results
+    if classic then
+        results = SS:GetClassicDisenchantResults(quality, itemLevel, equipLoc)
+    else
+        results = SS:GetDisenchantResults(quality, expansionID)
+    end
     if not results or #results == 0 then
         tooltip:AddLine(" ")
         tooltip:AddLine(COLOR_TITLE .. L["Disenchanting"] .. COLOR_RESET
@@ -220,7 +228,12 @@ local function BuildDisenchantLines(tooltip, data)
         return
     end
 
-    local trackedRates, trackedAttempts, rateSource = SS:GetTrackedRates(quality, expansionID)
+    -- Tracking is keyed by expansion; on Forever every item shares one, so
+    -- different item levels would blur together. Use the table there.
+    local trackedRates, trackedAttempts, rateSource
+    if not classic then
+        trackedRates, trackedAttempts, rateSource = SS:GetTrackedRates(quality, expansionID)
+    end
     local matList    = {}
     local dataSource = "observed"
 
@@ -388,21 +401,186 @@ end
 -- ---------------------------------------------------------------------------
 local eventFrame = CreateFrame("Frame", "OxedHub_ShattersightFrame", UIParent)
 eventFrame:RegisterEvent("ADDON_LOADED")
-eventFrame:RegisterEvent("PLAYER_LOGIN")
+
+-- Events the module listens to while switched on; nothing else runs before
+-- OnEnable. The tooltip hook is installed once and checks SS.active.
+local MODULE_EVENTS = {
+    "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED",
+    "BAG_UPDATE_DELAYED", "PLAYER_ENTERING_WORLD", "TRADE_SKILL_SHOW", "SKILL_LINES_CHANGED",
+}
 
 eventFrame:SetScript("OnEvent", function(self, event, arg1, ...)
-    if event == "ADDON_LOADED" and arg1 == addonName then
-        InitDB()
-        HookTooltips()
-        SS:RegisterPriceEvents(self)
-        SS:RegisterTrackingEvents(self)
-        SS:PreloadMatNames()
-    elseif event == "PLAYER_LOGIN" then
-        SS:PrintLoginSummary()
-    else
+    if event == "ADDON_LOADED" then
+        if arg1 == addonName then
+            self:UnregisterEvent("ADDON_LOADED")
+            InitDB()
+            HookTooltips()
+        end
+    elseif SS.active then
         SS:HandlePriceEvent(event, arg1, ...)
         SS:HandleTrackingEvent(event, arg1, ...)
     end
+end)
+
+local summaryShown = false
+
+local function StartModule()
+    if SS.active then return end
+    if not SS.db then InitDB() end
+    SS.active = true
+    SS:RegisterPriceEvents(eventFrame)
+    SS:RegisterTrackingEvents(eventFrame)
+    SS:PreloadMatNames()
+    if not summaryShown then
+        summaryShown = true
+        SS:PrintLoginSummary()
+    end
+end
+
+local function StopModule()
+    SS.active = false
+    for _, event in ipairs(MODULE_EVENTS) do
+        pcall(eventFrame.UnregisterEvent, eventFrame, event)
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Module registration (Modules page card, options, minimap button)
+-- ---------------------------------------------------------------------------
+local MODULE_DEFAULTS = {
+    enabled       = false,  -- off until the player switches it on (see ModuleAPI:Register)
+    minimapButton = true,
+}
+
+local moduleSettings
+local minimapIcon
+local optionsWindow
+
+local function ShowOptions()
+    local API = OxedHub.ModuleAPI
+    if not API then return end
+    if not SS.db then InitDB() end
+    if not optionsWindow then
+        local s = SS.db.settings
+        local o = API:CreateOptionsWindow("Disenchant Info", 470, 380)
+        o:AddCheckbox(s, "showTooltip", "Disenchant results in item tooltips")
+        o:AddCheckbox(s, "showBreakdown", "Show each material with its chance")
+        o:AddCheckbox(s, "showSource", "Show where each price came from")
+        o:AddCheckbox(s, "autoScan", "Scan material prices when the auction house opens")
+
+        local row = CreateFrame("Frame", nil, o)
+        row:SetSize(420, 24)
+        row:SetPoint("TOPLEFT", o, "TOPLEFT", 20, o.cursorY - 2)
+        local stats = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        stats:SetSize(130, 22)
+        stats:SetPoint("LEFT", row, "LEFT", 0, 0)
+        stats:SetText(L["Open Stats Window"])
+        stats:SetScript("OnClick", function() SS:ToggleStatsFrame() end)
+        local scan = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        scan:SetSize(130, 22)
+        scan:SetPoint("LEFT", stats, "RIGHT", 8, 0)
+        scan:SetText(L["Scan Prices"])
+        scan:SetScript("OnClick", function() SS:ScanAHPrices() end)
+        if OxedHub.UI and OxedHub.UI.ApplyRedButtonStyle then
+            OxedHub.UI:ApplyRedButtonStyle(stats)
+            OxedHub.UI:ApplyRedButtonStyle(scan)
+        end
+        o.cursorY = o.cursorY - 32
+
+        if moduleSettings then
+            o:AddCheckbox(moduleSettings, "minimapButton", "Show minimap button", nil, function()
+                if minimapIcon then minimapIcon:Apply(moduleSettings.enabled == true) end
+            end)
+        end
+        o:AddNote("Prices come from the auction house scan. /ss lists every command.")
+        optionsWindow = o
+    end
+    optionsWindow:Show()
+end
+SS.ShowOptions = ShowOptions
+
+local function MinimapIcon()
+    if minimapIcon or not moduleSettings then return minimapIcon end
+    local API = OxedHub.ModuleAPI
+    minimapIcon = API and API.MinimapButton and API:MinimapButton({
+        key = "shattersight", label = L["Disenchant Info"],
+        icon = "Interface\\Icons\\INV_Enchant_Disenchant", config = moduleSettings,
+        hint = L["Click: stats window. Right-click: options."],
+        onClick = function(mouse)
+            if mouse == "RightButton" then ShowOptions() else SS:ToggleStatsFrame() end
+        end,
+    })
+    return minimapIcon
+end
+
+local loginFrame = CreateFrame("Frame")
+loginFrame:RegisterEvent("PLAYER_LOGIN")
+loginFrame:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_LOGIN")
+    OxedHubDB = OxedHubDB or {}
+    OxedHubDB.modules = OxedHubDB.modules or {}
+    local config = OxedHubDB.modules.shattersight
+    if type(config) ~= "table" then
+        config = {}
+        OxedHubDB.modules.shattersight = config
+    end
+    for key, value in pairs(MODULE_DEFAULTS) do
+        if config[key] == nil then config[key] = value end
+    end
+    moduleSettings = config
+
+    -- The old "Disenchant Insight" trigger is gone. Remove saved copies;
+    -- a player who had one switched on keeps the module on.
+    local triggers = OxedHub.db and OxedHub.db.profile and OxedHub.db.profile.triggers
+    if type(triggers) == "table" then
+        local remove = {}
+        for id, trigger in pairs(triggers) do
+            if type(trigger) == "table" and trigger.event == "SHATTERSIGHT" then
+                remove[#remove + 1] = id
+                if trigger.enabled and not config.migratedFromTrigger then
+                    config.enabled = true
+                    config.playerSet = true
+                    config.defaultOffSeen = true
+                end
+            end
+        end
+        for _, id in ipairs(remove) do triggers[id] = nil end
+        config.migratedFromTrigger = true
+    end
+
+    if not OxedHub.ModuleAPI then
+        if config.enabled == true then StartModule() end
+        return
+    end
+
+    OxedHub.ModuleAPI:Register({
+        id       = "shattersight",
+        name     = "Disenchant Info",
+        version  = "1.0.0",
+        added    = 20261121,
+        updated  = 20261121.1,  -- now a module, Forever item-level tables
+        author   = "Oxed",
+        category = "items",
+        keywords = { "disenchant", "enchanting", "dust", "essence", "shard", "crystal", "auction", "profit" },
+        desc     = "What an item disenchants into and whether that beats selling it to a vendor.",
+        icon     = "Interface\\Icons\\INV_Enchant_Disenchant",
+
+        defaults = MODULE_DEFAULTS,
+
+        OnOptionsShow = function() ShowOptions() end,
+
+        OnEnable = function(_, cfg)
+            moduleSettings = cfg or moduleSettings
+            local icon = MinimapIcon()
+            if icon then icon:Apply(true) end
+            StartModule()
+        end,
+
+        OnDisable = function()
+            if minimapIcon then minimapIcon:Apply(false) end
+            StopModule()
+        end,
+    })
 end)
 
 -- ---------------------------------------------------------------------------
@@ -421,28 +599,28 @@ SlashCmdList["OXEDHUB_SHATTERSIGHT"] = function(msg)
     elseif cmd == "autoscan" then
         SS.db.settings.autoScan = not SS.db.settings.autoScan
         local state = SS.db.settings.autoScan and "|cFF00FF00enabled|r" or "|cFFFF4444disabled|r"
-        print(COLOR_TITLE .. "[OxedHub Shattersight]:|r Auto AH scan " .. state)
+        print(COLOR_TITLE .. "[OxedHub Disenchant Info]:|r Auto AH scan " .. state)
     elseif cmd == "toggle" then
         SS.db.settings.showTooltip = not SS.db.settings.showTooltip
         local state = SS.db.settings.showTooltip and "|cFF00FF00enabled|r" or "|cFFFF4444disabled|r"
-        print(COLOR_TITLE .. "[OxedHub Shattersight]:|r Tooltip " .. state)
+        print(COLOR_TITLE .. "[OxedHub Disenchant Info]:|r Tooltip " .. state)
     elseif cmd == "breakdown" then
         SS.db.settings.showBreakdown = not SS.db.settings.showBreakdown
         local state = SS.db.settings.showBreakdown and "|cFF00FF00enabled|r" or "|cFFFF4444disabled|r"
-        print(COLOR_TITLE .. "[OxedHub Shattersight]:|r Per-mat breakdown " .. state)
+        print(COLOR_TITLE .. "[OxedHub Disenchant Info]:|r Per-mat breakdown " .. state)
     elseif cmd == "source" then
         SS.db.settings.showSource = not SS.db.settings.showSource
         local state = SS.db.settings.showSource and "|cFF00FF00shown|r" or "|cFFFF4444hidden|r"
-        print(COLOR_TITLE .. "[OxedHub Shattersight]:|r Price source tag " .. state)
+        print(COLOR_TITLE .. "[OxedHub Disenchant Info]:|r Price source tag " .. state)
     elseif cmd == "setprice" then
         local itemID, goldStr = rest:match("^(%d+)%s+(%d+)g?$")
         if itemID and goldStr then
             local copper = tonumber(goldStr) * 10000
             SS:SetManualPrice(tonumber(itemID), copper)
-            print(string.format("%s[OxedHub Shattersight]:%s Set price for item %d to %s",
+            print(string.format("%s[OxedHub Disenchant Info]:%s Set price for item %d to %s",
                 COLOR_TITLE, COLOR_RESET, tonumber(itemID), SS:FormatGold(copper)))
         else
-            print(COLOR_TITLE .. "[OxedHub Shattersight]:|r Usage: /ss setprice <itemID> <gold>")
+            print(COLOR_TITLE .. "[OxedHub Disenchant Info]:|r Usage: /ss setprice <itemID> <gold>")
         end
     elseif cmd == "stats" then
         SS:ToggleStatsFrame()
@@ -453,7 +631,7 @@ SlashCmdList["OXEDHUB_SHATTERSIGHT"] = function(msg)
     elseif cmd == "clearstats" then
         SS:ClearTrackingData()
     elseif cmd == "prices" then
-        print(COLOR_TITLE .. "[OxedHub Shattersight] Price diagnostics:" .. COLOR_RESET)
+        print(COLOR_TITLE .. "[OxedHub Disenchant Info] Price diagnostics:" .. COLOR_RESET)
         print("  TSM_API present: " .. tostring(TSM_API ~= nil))
 
         local entries = {}
@@ -487,7 +665,7 @@ SlashCmdList["OXEDHUB_SHATTERSIGHT"] = function(msg)
         end
     elseif cmd == "tooltipdebug" then
         SS.tooltipDebug = true
-        print(COLOR_TITLE .. "[OxedHub Shattersight]:|r Hover any item — debug frame will dump info.")
+        print(COLOR_TITLE .. "[OxedHub Disenchant Info]:|r Hover any item — debug frame will dump info.")
         SS:ToggleDebugFrame()
     elseif cmd == "debug" then
         local itemLink
@@ -496,11 +674,11 @@ SlashCmdList["OXEDHUB_SHATTERSIGHT"] = function(msg)
             itemLink = link
         end
         if not itemLink then
-            print(COLOR_TITLE .. L["[OxedHub Shattersight]:|r No item currently in tooltip."])
+            print(COLOR_TITLE .. L["[OxedHub Disenchant Info]:|r No item currently in tooltip."])
         else
             local name, _, quality, ilvl, _, _, _, _, equipLoc, _, _, _, _, _, expansionID =
                 C_Item.GetItemInfo(itemLink)
-            print(string.format("%s[OxedHub Shattersight]:%s item=%s quality=%s ilvl=%s expansionID=%s equipLoc=%s",
+            print(string.format("%s[OxedHub Disenchant Info]:%s item=%s quality=%s ilvl=%s expansionID=%s equipLoc=%s",
                 COLOR_TITLE, COLOR_RESET,
                 tostring(name), tostring(quality), tostring(ilvl),
                 tostring(expansionID), tostring(equipLoc)))
@@ -512,7 +690,7 @@ SlashCmdList["OXEDHUB_SHATTERSIGHT"] = function(msg)
             end
         end
     else
-        print(COLOR_TITLE .. L["[OxedHub Shattersight] Commands:"] .. COLOR_RESET)
+        print(COLOR_TITLE .. L["[OxedHub Disenchant Info] Commands:"] .. COLOR_RESET)
         print(L["  /ss scan        — Scan AH mat prices (at Auction House)"])
         print(L["  /ss autoscan    — Toggle auto-scan on AH open"])
         print(L["  /ss toggle      — Toggle tooltip display"])
@@ -525,75 +703,3 @@ SlashCmdList["OXEDHUB_SHATTERSIGHT"] = function(msg)
     end
 end
 
--- ---------------------------------------------------------------------------
--- ActionHub Basic Trigger Registration
--- ---------------------------------------------------------------------------
-local ShattersightTriggerHandler = {
-    name = "Disenchant Insight",
-    CheckCondition = function(trigger, eventData)
-        return true
-    end,
-    CreateConditionUI = function(frame, trigger, yOffset)
-        local conditions = trigger.conditions or {}
-
-        local enableCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-        enableCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
-        enableCheck:SetSize(20, 20)
-        enableCheck:SetChecked(SS.db and SS.db.settings and SS.db.settings.showTooltip ~= false)
-        enableCheck.text:SetText(L["Enable Disenchant Tooltips (Shattersight)"])
-        enableCheck:SetScript("OnClick", function(self)
-            local isChecked = self:GetChecked()
-            conditions.enableTooltip = isChecked
-            if SS.db and SS.db.settings then
-                SS.db.settings.showTooltip = isChecked
-            end
-            if OxedHub.Triggers.ShowAutoSaved then OxedHub.Triggers.ShowAutoSaved(frame:GetParent()) end
-        end)
-        yOffset = yOffset - 30
-
-        local breakdownCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-        breakdownCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
-        breakdownCheck:SetSize(20, 20)
-        breakdownCheck:SetChecked(SS.db and SS.db.settings and SS.db.settings.showBreakdown ~= false)
-        breakdownCheck.text:SetText(L["Show Per-Material Drop Breakdown"])
-        breakdownCheck:SetScript("OnClick", function(self)
-            local isChecked = self:GetChecked()
-            conditions.showBreakdown = isChecked
-            if SS.db and SS.db.settings then
-                SS.db.settings.showBreakdown = isChecked
-            end
-            if OxedHub.Triggers.ShowAutoSaved then OxedHub.Triggers.ShowAutoSaved(frame:GetParent()) end
-        end)
-        yOffset = yOffset - 30
-
-        local autoScanCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-        autoScanCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
-        autoScanCheck:SetSize(20, 20)
-        autoScanCheck:SetChecked(SS.db and SS.db.settings and SS.db.settings.autoScan ~= false)
-        autoScanCheck.text:SetText(L["Auto-scan Reagent Prices at Auction House"])
-        autoScanCheck:SetScript("OnClick", function(self)
-            local isChecked = self:GetChecked()
-            conditions.autoScan = isChecked
-            if SS.db and SS.db.settings then
-                SS.db.settings.autoScan = isChecked
-            end
-            if OxedHub.Triggers.ShowAutoSaved then OxedHub.Triggers.ShowAutoSaved(frame:GetParent()) end
-        end)
-        yOffset = yOffset - 35
-
-        local statsBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-        statsBtn:SetSize(160, 24)
-        statsBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, yOffset)
-        statsBtn:SetText(L["Open Stats Window"])
-        statsBtn:SetScript("OnClick", function()
-            SS:ToggleStatsFrame()
-        end)
-        yOffset = yOffset - 35
-
-        return yOffset
-    end
-}
-
-if OxedHub.Triggers and OxedHub.Triggers.RegisterEventType then
-    OxedHub.Triggers:RegisterEventType("SHATTERSIGHT", ShattersightTriggerHandler)
-end

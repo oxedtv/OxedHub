@@ -106,8 +106,9 @@ local function ReadMe()
     if not myKey then
         if InCombatLockdown() then return end
         local name = Plain(UnitName("player"))
-        if not name then return end
-        myKey = name .. "-" .. Realm()
+        local realm = Plain(Realm())
+        if not name or not realm then return end
+        myKey = name .. "-" .. realm
     end
     local me = s.chars[myKey]
     if type(me) ~= "table" then
@@ -137,8 +138,9 @@ local function ReadMe()
         local faction = UnitFactionGroup("player")
         if Plain(faction) then me.faction = faction end
         local guild, _, _, guildRealm = GetGuildInfo("player")
-        if Plain(guild) then
-            me.guild = guild .. "-" .. (Plain(guildRealm) and guildRealm:gsub("[%s%-]", "") or me.realm)
+        local guildHome = Plain(guildRealm) and guildRealm:gsub("[%s%-]", "") or me.realm
+        if Plain(guild) and Plain(guildHome) then
+            me.guild = guild .. "-" .. guildHome
         elseif IsInGuild and not IsInGuild() then
             me.guild = nil
         end
@@ -1096,8 +1098,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "goldstock",
         name     = "Gold Stock",
-        version  = "1.0.2",
-        updated  = 20261102.9,  -- gold mailed to your own characters stays counted; warband bank keeps its figure at login
+        version  = "1.0.3",
+        updated  = 20261121.1,  -- no error when the realm name is not known yet at login
         author   = "Oxed",
         category = "items",
         keywords = { "gold", "money", "stock", "alts", "guild bank", "warband", "bank", "mail", "export" },

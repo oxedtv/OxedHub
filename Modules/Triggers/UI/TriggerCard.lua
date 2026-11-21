@@ -699,7 +699,7 @@ function Triggers:CreateTriggerCard(parent, trigger)
     card.actionsLabel = actionsLabel
     card.actionsDescLabel = actionsDescLabel
     
-    local hasNoActions = (trigger.event == "MOUNT" or trigger.event == "HEARTBEAT" or trigger.event == "BASIC_AURA_TRACKER" or trigger.event == "PREY_HUNT" or trigger.event == "PVP_ANTI_AFK" or trigger.event == "SHATTERSIGHT" or trigger.event == "POWER_INFUSION")
+    local hasNoActions = (trigger.event == "MOUNT" or trigger.event == "HEARTBEAT" or trigger.event == "BASIC_AURA_TRACKER" or trigger.event == "PREY_HUNT" or trigger.event == "PVP_ANTI_AFK" or trigger.event == "POWER_INFUSION")
     actionsBox:SetShown(not hasNoActions)
     actionsFrame:SetShown(not hasNoActions)
     actionsLabel:SetShown(not hasNoActions)
@@ -1146,7 +1146,7 @@ function Triggers:LayoutTriggerCard(card)
         card.conditionsLabel:Show()
         if card.conditionsDescLabel then card.conditionsDescLabel:Show() end
         
-        local hasNoActions = (trigger.event == "MOUNT" or trigger.event == "HEARTBEAT" or trigger.event == "BASIC_AURA_TRACKER" or trigger.event == "PREY_HUNT" or trigger.event == "PVP_ANTI_AFK" or trigger.event == "SHATTERSIGHT" or trigger.event == "POWER_INFUSION")
+        local hasNoActions = (trigger.event == "MOUNT" or trigger.event == "HEARTBEAT" or trigger.event == "BASIC_AURA_TRACKER" or trigger.event == "PREY_HUNT" or trigger.event == "PVP_ANTI_AFK" or trigger.event == "POWER_INFUSION")
         card.actionsBox:SetShown(not hasNoActions)
         card.actionsFrame:SetShown(not hasNoActions)
         card.actionsLabel:SetShown(not hasNoActions)
@@ -1227,7 +1227,7 @@ function Triggers:LayoutTriggerCard(card)
         local conditionsPadding = card.conditionsDescLabel and 50 or 36
         card.conditionsBox:SetHeight(conditionsHeight + conditionsPadding)
 
-        local hasNoActions = (trigger.event == "MOUNT" or trigger.event == "HEARTBEAT" or trigger.event == "BASIC_AURA_TRACKER" or trigger.event == "PREY_HUNT" or trigger.event == "PVP_ANTI_AFK" or trigger.event == "SHATTERSIGHT" or trigger.event == "POWER_INFUSION")
+        local hasNoActions = (trigger.event == "MOUNT" or trigger.event == "HEARTBEAT" or trigger.event == "BASIC_AURA_TRACKER" or trigger.event == "PREY_HUNT" or trigger.event == "PVP_ANTI_AFK" or trigger.event == "POWER_INFUSION")
         if hasNoActions then
             card.actionsBox:Hide()
             card.actionsFrame:Hide()

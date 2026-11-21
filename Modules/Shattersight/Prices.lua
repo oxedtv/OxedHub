@@ -37,6 +37,13 @@ function SS:GetItemPrice(itemID)
         end
     end
 
+    -- 4. Craft Profit's own quiet auction scan (no Auctionator needed)
+    local cp = OxedHubDB and OxedHubDB.modules and OxedHubDB.modules.craftprofit
+    local own = cp and type(cp.prices) == "table" and cp.prices[itemID]
+    if type(own) == "table" and own.p and own.p > 0 then
+        return own.p, "cache"
+    end
+
     return nil, nil
 end
 
@@ -68,6 +75,11 @@ local scanState = {
     lastAutoScan = 0,
 }
 
+-- Craft Profit waits while this scan runs: both read the same browse results.
+function SS:IsScanning()
+    return scanState.active == true
+end
+
 local function BuildScanQueue()
     local byName = {}
     for _, mat in pairs(SS.MATS) do
@@ -91,7 +103,7 @@ local function ScanNext()
     if #scanState.queue == 0 then
         scanState.active = false
         local prefix = scanState.isAuto and L["Auto-scan"] or L["Scan"]
-        print(string.format(L["|cFF00FFFF[OxedHub Shattersight]:|r %s complete. Updated %d/%d prices."],
+        print(string.format(L["|cFF00FFFF[OxedHub Disenchant Info]:|r %s complete. Updated %d/%d prices."],
             prefix, scanState.completed, scanState.total))
         return
     end
@@ -111,7 +123,7 @@ local function ScanNext()
         maxResults       = 50,
     })
     if not ok then
-        print("|cFFFF4444[OxedHub Shattersight]|r Browse query error (" .. entry.name .. "): " .. tostring(err))
+        print("|cFFFF4444[OxedHub Disenchant Info]|r Browse query error (" .. entry.name .. "): " .. tostring(err))
         ScanNext()
     end
 end
@@ -146,7 +158,7 @@ end
 function SS:ScanAHPrices(isAuto)
     if not AuctionHouseFrame or not AuctionHouseFrame:IsShown() then
         if not isAuto then
-            print(L["|cFF00FFFF[OxedHub Shattersight]:|r You must be at the Auction House to scan prices."])
+            print(L["|cFF00FFFF[OxedHub Disenchant Info]:|r You must be at the Auction House to scan prices."])
             print(L["  Tip: Open the AH, then run |cFFFFD700/ss scan|r"])
         end
         return
@@ -154,7 +166,7 @@ function SS:ScanAHPrices(isAuto)
 
     if scanState.active then
         if not isAuto then
-            print(L["|cFF00FFFF[OxedHub Shattersight]:|r A scan is already in progress."])
+            print(L["|cFF00FFFF[OxedHub Disenchant Info]:|r A scan is already in progress."])
         end
         return
     end
@@ -162,7 +174,7 @@ function SS:ScanAHPrices(isAuto)
     local queue = BuildScanQueue()
     if #queue == 0 then
         if not isAuto then
-            print(L["|cFF00FFFF[OxedHub Shattersight]:|r No materials with cached names to scan."])
+            print(L["|cFF00FFFF[OxedHub Disenchant Info]:|r No materials with cached names to scan."])
             print(L["  Tip: Wait a moment after login for item names to load, then try again."])
         end
         return
@@ -178,7 +190,7 @@ function SS:ScanAHPrices(isAuto)
     scanState.total     = total
 
     local prefix = isAuto and L["Auto-scanning"] or L["Scanning"]
-    print(string.format(L["|cFF00FFFF[OxedHub Shattersight]:|r %s prices (%d queries for %d mats)..."],
+    print(string.format(L["|cFF00FFFF[OxedHub Disenchant Info]:|r %s prices (%d queries for %d mats)..."],
         prefix, #queue, total))
     ScanNext()
 end
@@ -195,10 +207,8 @@ function SS:HandlePriceEvent(event, ...)
         -- rule switched on. It scanned on every visit to the auction house
         -- even with the only such rule turned off, sending queries and
         -- filling chat for nothing. /ss can still scan by hand.
-        local Triggers = OxedHub.Triggers
-        local wanted = Triggers and Triggers.HasEnabledTriggerForEvent
-            and Triggers:HasEnabledTriggerForEvent("SHATTERSIGHT")
-        if wanted and SS.db and SS.db.settings and SS.db.settings.autoScan ~= false then
+        -- Now: only while the Disenchant Insight module is switched on.
+        if SS.active and SS.db and SS.db.settings and SS.db.settings.autoScan ~= false then
             local now = time()
             if (now - (scanState.lastAutoScan or 0)) >= 60 then
                 scanState.lastAutoScan = now

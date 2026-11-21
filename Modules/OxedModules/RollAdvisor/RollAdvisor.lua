@@ -43,6 +43,7 @@ local DEFAULTS = {
     logShowAll    = true,   -- list passes and players who never rolled
     logRows       = 14,     -- the most lines the window shows before it scrolls
     logScale      = 1,
+    logCompact    = true,   -- items as an icon with item level; the name is in the tooltip
 }
 
 local settings
@@ -544,6 +545,7 @@ end
 
 local LOG_KEEP = 40        -- items remembered
 local LOG_W = 380
+local LOG_W_COMPACT = 290  -- items shown as an icon only
 local LINE_H = 20
 local MAX_ROWS = 30        -- rows made; settings.logRows says how many show
 local MIN_ROWS = 4
@@ -1042,6 +1044,11 @@ local function MakeLine(parent, i)
     row.toggle:SetSize(12, 12)
     row.icon = row:CreateTexture(nil, "ARTWORK")
     row.icon:SetSize(16, 16)
+    -- A frame of the item's quality colour, shown behind item icons only.
+    row.iconBg = row:CreateTexture(nil, "BORDER")
+    row.iconBg:SetPoint("TOPLEFT", row.icon, "TOPLEFT", -1, 1)
+    row.iconBg:SetPoint("BOTTOMRIGHT", row.icon, "BOTTOMRIGHT", 1, -1)
+    row.iconBg:Hide()
     row.right = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.right:SetPoint("RIGHT", -4, 0)
     row.right:SetJustifyH("RIGHT")
@@ -1083,6 +1090,21 @@ local function Place(row, indent, iconSize, toggle)
     row.icon:ClearAllPoints()
     row.icon:SetPoint("LEFT", indent + 15, 0)
     row.icon:SetSize(iconSize, iconSize)
+    row.iconBg:Hide()
+end
+
+-- The item's quality and level, either nil while the item is not loaded.
+local function ItemQualityLevel(link)
+    local ok, _, _, quality, level = pcall(GetItemInfo, link)
+    if not ok then return nil, nil end
+    if Secret(quality) or type(quality) ~= "number" then quality = nil end
+    if Secret(level) or type(level) ~= "number" then level = nil end
+    local detailed = (C_Item and C_Item.GetDetailedItemLevelInfo) or GetDetailedItemLevelInfo
+    if detailed then
+        local okD, real = pcall(detailed, link)
+        if okD and PlainNumber(real) and real > 0 then level = real end
+    end
+    return quality, level
 end
 
 local function DrawGroup(row, g)
@@ -1109,7 +1131,22 @@ local function DrawItem(row, e)
     row.icon:SetTexture(icon or "Interface\\Icons\\INV_Misc_QuestionMark")
     row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     row.text:SetFontObject(GameFontHighlightSmall)
-    row.text:SetText(e.link)
+    if settings.logCompact ~= false then
+        -- The icon alone, framed in its quality colour, with the item level
+        -- beside it. Hovering the row shows the whole item.
+        Place(row, 12, 18, EntryOpen(e) and MINUS or PLUS)
+        local quality, level = ItemQualityLevel(e.link)
+        local qc = quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+        if qc then
+            row.iconBg:SetColorTexture(qc.r, qc.g, qc.b, 1)
+            row.iconBg:Show()
+        end
+        local text = level and tostring(math.floor(level)) or ""
+        if qc and qc.hex then text = qc.hex .. text .. "|r" end
+        row.text:SetText(text)
+    else
+        row.text:SetText(e.link)
+    end
     row.right:SetText(EntryState(e))
     row.bg:SetColorTexture(1, 1, 1, EntryOpen(e) and 0.07 or 0.035)
 end
@@ -1149,7 +1186,7 @@ RefreshLog = function()
     local rows = logWindow.rows
     -- The window is as tall as what it holds, up to the chosen number of lines.
     local shown = math.max(MIN_ROWS, math.min(LogRows(), #lines))
-    logWindow:SetHeight(TOP_PAD + shown * LINE_H + BOTTOM_PAD)
+    logWindow:SetSize(settings.logCompact ~= false and LOG_W_COMPACT or LOG_W, TOP_PAD + shown * LINE_H + BOTTOM_PAD)
     local maxScroll = math.max(0, #lines - shown)
     if logScroll > maxScroll then logScroll = maxScroll end
     if logScroll < 0 then logScroll = 0 end
@@ -1333,7 +1370,7 @@ ShowOptions = function()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
     if not optionsWindow then
-        local w = API:CreateOptionsWindow("Roll Advisor", 440, 590)
+        local w = API:CreateOptionsWindow("Roll Advisor", 440, 620)
         optionsWindow = w
         w:AddCheckbox(settings, "panel", "Panel beside the roll window", nil, Watch)
         w:AddChoice(settings, "side", "Side", {
@@ -1349,6 +1386,9 @@ ShowOptions = function()
         w:AddSoundPicker(settings, "sound", "Sound when it is an upgrade", "None")
         w:AddCheckbox(settings, "logAuto", "Open who rolled what when a roll starts")
         w:AddCheckbox(settings, "logShowAll", "Show passes and players who did not roll", nil, function()
+            if RedrawLog then RedrawLog() end
+        end)
+        w:AddCheckbox(settings, "logCompact", "Compact list: item icon only, the name on hover", nil, function()
             if RedrawLog then RedrawLog() end
         end)
         w:AddSlider(settings, "logRows", "Lines before the window scrolls", 6, 30, 1, "%s: %d", function()
@@ -1389,6 +1429,19 @@ MinimapIcon = function()
     return minimapIcon
 end
 
+-- /oxroll opens or closes "who rolled what"; /oxroll options opens the options.
+SLASH_OXEDHUBROLLADVISOR1 = "/oxroll"
+SlashCmdList["OXEDHUBROLLADVISOR"] = function(msg)
+    if not settings then return end
+    if type(msg) == "string" and msg:lower():find("^%s*opt") then
+        ShowOptions()
+    elseif settings.enabled ~= true then
+        print(PREFIX .. T("The module is switched off. Switch it on in OxedHub, Modules."))
+    else
+        ToggleLog()
+    end
+end
+
 local loginFrame = CreateFrame("Frame")
 loginFrame:RegisterEvent("PLAYER_LOGIN")
 loginFrame:SetScript("OnEvent", function(self)
@@ -1410,10 +1463,10 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "rolladvisor",
         name     = "Roll Advisor",
-        version  = "1.2.0",
+        version  = "1.3.0",
         added    = 20261113,
         inDevelopment = true,
-        updated  = 20261118.1,  -- who rolled what: one row per player, loot grouped by boss, folding, smaller window
+        updated  = 20261121.1,  -- who rolled what: compact list, item icon with level, name in the tooltip
         author   = "Oxed",
         category = "groups",
         keywords = { "need", "greed", "roll", "loot", "upgrade", "bis", "dungeon", "advice" },

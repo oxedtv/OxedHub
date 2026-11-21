@@ -61,6 +61,15 @@ local KIND_COLORS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.75",
+        lines = {
+            { "NEW", "Craft Profit: beside a profession window or trainer, every recipe sorted by the gold it earns. It scans auction prices itself, no Auctionator needed. Every profession works, Cooking and First Aid too." },
+            { "CHANGED", "Disenchant Info is now a module on the Modules page instead of a trigger. On WoW Forever it knows what each item disenchants into by its item level." },
+            { "CHANGED", "Roll Advisor: who rolled what is narrower, each item shown as its icon with item level, the name on hover. /oxroll opens it." },
+            { "FIXED", "Gold Stock: no error at login when the realm name is not known yet." },
+        },
+    },
+    {
         version = "2.4.74",
         lines = {
             { "FIXED", "Object Glow: the name and health bar over the nearest NPC no longer cover its quest mark." },
