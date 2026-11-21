@@ -56,10 +56,25 @@ local KIND_COLORS = {
     FIXED   = "ff40c0ff",
 }
 
+-- A line's optional third field names the one client it is for: "forever"
+-- or "retail". It is printed in front of the text. Leave it out for both.
+local CLIENT_TAGS = {
+    forever = "|cff4fc3f7Forever:|r ",
+    retail  = "|cffffb347Retail:|r ",
+}
+
 -- Newest version first. Only the entries newer than what the player last saw
 -- are shown, so an update that skips a version still explains everything that
 -- changed in between.
 WhatsNew.RELEASES = {
+    {
+        version = "2.4.76",
+        lines = {
+            { "FIXED", "Object Glow: the NPC nearest you keeps its name again. Only the health bar is hidden, so its quest mark stays clear." },
+            { "CHANGED", "Roll Advisor: who rolled what shows the item's name and each player's name under their roll. Item icons no longer show a question mark." },
+            { "CHANGED", "What's New opens on the sound and animation packs page. Each line says when a change is only for Forever or Retail." },
+        },
+    },
     {
         version = "2.4.75",
         lines = {
@@ -73,27 +88,27 @@ WhatsNew.RELEASES = {
         version = "2.4.74",
         lines = {
             { "FIXED", "Object Glow: the name and health bar over the nearest NPC no longer cover its quest mark." },
-            { "FIXED", "Layer Swap no longer switches nameplates on by itself. It shows them once when you click the portal." },
+            { "FIXED", "Layer Swap no longer switches nameplates on by itself. It shows them once when you click the portal.", "forever" },
         },
     },
     {
         version = "2.4.73",
         lines = {
-            { "NEW", "Layer Swap for WoW Forever: your layer as a portal on screen. Click it to move to another layer, right-click to pick one. Hosts other players, with guild layers, chat offers and host ranks." },
+            { "NEW", "Layer Swap: your layer as a portal on screen. Click it to move to another layer, right-click to pick one. Hosts other players, with guild layers, chat offers and host ranks.", "forever" },
             { "NEW", "Buff Reminder: a reminder when Find Minerals, Find Herbs, Find Fish or Find Treasure is off. Click the icon to switch it on." },
         },
     },
     {
         version = "2.4.72",
         lines = {
-            { "CHANGED", "Rank Up speaks Russian, with wider buttons to fit." },
+            { "CHANGED", "Rank Up speaks Russian, with wider buttons to fit.", "forever" },
         },
     },
     {
         version = "2.4.71",
         lines = {
-            { "ADDED", "Rank Up, a new module for Forever: finds spells on your action bars at a lower rank than you know and swaps in the highest, after you look. Keep rank leaves a down-rank alone." },
-            { "ADDED", "Leveling Finds: a Close all button above the cards." },
+            { "ADDED", "Rank Up, a new module: finds spells on your action bars at a lower rank than you know and swaps in the highest, after you look. Keep rank leaves a down-rank alone.", "forever" },
+            { "ADDED", "Leveling Finds: a Close all button above the cards.", "forever" },
         },
     },
     {
@@ -1609,6 +1624,8 @@ local function RenderReleases(content, releases)
 
         for _, line in ipairs(release.lines) do
             local kind, text = line[1], line[2]
+            local client = line[3] and CLIENT_TAGS[line[3]]
+            if client then text = client .. (OxedHub.T and OxedHub.T(text) or text) end
             local row = AcquireRow()
 
             row.rule:Hide()

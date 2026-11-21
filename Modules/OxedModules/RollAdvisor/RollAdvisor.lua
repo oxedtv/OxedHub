@@ -43,7 +43,6 @@ local DEFAULTS = {
     logShowAll    = true,   -- list passes and players who never rolled
     logRows       = 14,     -- the most lines the window shows before it scrolls
     logScale      = 1,
-    logCompact    = true,   -- items as an icon with item level; the name is in the tooltip
 }
 
 local settings
@@ -544,12 +543,16 @@ end
 -- single line with the winner; a click opens them again.
 
 local LOG_KEEP = 40        -- items remembered
-local LOG_W = 380
-local LOG_W_COMPACT = 290  -- items shown as an icon only
-local LINE_H = 20
+-- One line per item: its icon, then a small mark per player (the choice's
+-- icon and the roll, the name under them). The item's name is on top.
+local LOG_W = 312
+local GROUP_H = 18         -- a boss or trash header
+local ITEM_H = 46          -- an item with its players
+local PIP_W = 44           -- one player's mark
+local MAX_PIPS = 5         -- marks that fit; past that the last one says "+N"
 local MAX_ROWS = 30        -- rows made; settings.logRows says how many show
-local MIN_ROWS = 4
-local TOP_PAD, BOTTOM_PAD = 30, 40
+local MIN_ROWS = 1
+local TOP_PAD, BOTTOM_PAD = 30, 32
 local SAME_ROLL = 300      -- the same item linked again within this long is the same roll
 local SAME_BOSS = 300      -- more loot from the same boss this soon joins its group
 local SAME_TRASH = 1200    -- trash loot this soon after the last joins the trash group
@@ -823,6 +826,20 @@ end
 
 local RefreshLog
 
+-- An item seen before the client has it loads a moment later: draw the list
+-- again then, so its name and quality turn up. Only while the list is open,
+-- and once per burst of answers.
+local itemWatch = CreateFrame("Frame")
+local itemRedrawPending = false
+itemWatch:SetScript("OnEvent", function()
+    if itemRedrawPending or not RefreshLog then return end
+    itemRedrawPending = true
+    C_Timer.After(0.2, function()
+        itemRedrawPending = false
+        pcall(RefreshLog)
+    end)
+end)
+
 LogRollStart = function(rollID)
     if not GetLootRollItemLink then return end
     local ok, link = pcall(GetLootRollItemLink, rollID)
@@ -969,128 +986,27 @@ local function Hidden(e, r)
     return c == CHOICE.pass or c == CHOICE.none
 end
 
--- Flat lines: a header per group, then per item, then one per player.
+-- Flat lines: a header per group, then one line per item. The players of an
+-- item sit on its own line as small marks: the choice's icon and the roll.
 local function LogLines()
     local lines = {}
     for _, g in ipairs(groups) do
         lines[#lines + 1] = { group = g }
         if GroupOpen(g) then
-            for _, e in ipairs(g.entries) do
-                lines[#lines + 1] = { header = true, e = e }
-                if EntryOpen(e) then
-                    for _, n in ipairs(SortedNames(e)) do
-                        if not Hidden(e, e.rolls[n]) then lines[#lines + 1] = { e = e, name = n } end
-                    end
-                end
-            end
+            for _, e in ipairs(g.entries) do lines[#lines + 1] = { e = e } end
         end
     end
     return lines
 end
 
--- What an item's header says on its right: who won, or how far the roll is.
-local function EntryState(e)
-    if e.winner then
-        local text = "|cffffd100" .. T("Won by %s"):format(e.winner) .. "|r"
-        local r = e.rolls[e.winner]
-        if r and r.roll and not EntryOpen(e) then text = text .. "  " .. ChoiceText(e, r) end
-        return text
-    elseif e.done then
-        return "|cff999999" .. T("Everyone passed") .. "|r"
+-- The players to show for an item, the winner first, passes left out when
+-- the player chose so.
+local function ShownPlayers(e)
+    local out = {}
+    for _, n in ipairs(SortedNames(e)) do
+        if not Hidden(e, e.rolls[n]) then out[#out + 1] = n end
     end
-    local decided = 0
-    for _, n in ipairs(e.names) do
-        if (e.rolls[n].choice or "wait") ~= "wait" then decided = decided + 1 end
-    end
-    return "|cff66ccff" .. T("Rolling %d/%d"):format(decided, #e.names) .. "|r"
-end
-
-local function ShowRowTooltip(row)
-    GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
-    if row.kind == "item" then
-        pcall(GameTooltip.SetHyperlink, GameTooltip, row.target.link)
-        if row.target.source then
-            GameTooltip:AddLine(T("Dropped by %s"):format(row.target.source), 0.8, 0.8, 0.8)
-        end
-        GameTooltip:AddLine(T("Shift-click: link the item in chat. Click: show or hide the rolls."), 0.6, 0.6, 0.6, true)
-    elseif row.kind == "group" then
-        local g = row.target
-        GameTooltip:SetText(g.title, 1, 0.82, 0)
-        if g.zone and g.boss then GameTooltip:AddLine(g.zone, 0.8, 0.8, 0.8) end
-        GameTooltip:AddLine(T("Click: show or hide this loot."), 0.6, 0.6, 0.6, true)
-    elseif row.kind == "player" then
-        local e, name = row.target, row.name
-        GameTooltip:SetText(fullNames[name] or name, 1, 1, 1)
-        GameTooltip:AddLine(ChoiceText(e, e.rolls[name]))
-        if e.winner == name then GameTooltip:AddLine(T("Won by %s"):format(name), 1, 0.82, 0) end
-    else
-        return
-    end
-    GameTooltip:Show()
-end
-
-local function MakeLine(parent, i)
-    local row = CreateFrame("Button", nil, parent)
-    row:SetHeight(LINE_H)
-    row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(i - 1) * LINE_H)
-    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -8, -(i - 1) * LINE_H)
-    row:RegisterForClicks("LeftButtonUp")
-    row.bg = row:CreateTexture(nil, "BACKGROUND")
-    row.bg:SetAllPoints()
-    row.hl = row:CreateTexture(nil, "HIGHLIGHT")
-    row.hl:SetAllPoints()
-    row.hl:SetColorTexture(1, 1, 1, 0.07)
-    row.toggle = row:CreateTexture(nil, "ARTWORK")
-    row.toggle:SetSize(12, 12)
-    row.icon = row:CreateTexture(nil, "ARTWORK")
-    row.icon:SetSize(16, 16)
-    -- A frame of the item's quality colour, shown behind item icons only.
-    row.iconBg = row:CreateTexture(nil, "BORDER")
-    row.iconBg:SetPoint("TOPLEFT", row.icon, "TOPLEFT", -1, 1)
-    row.iconBg:SetPoint("BOTTOMRIGHT", row.icon, "BOTTOMRIGHT", 1, -1)
-    row.iconBg:Hide()
-    row.right = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.right:SetPoint("RIGHT", -4, 0)
-    row.right:SetJustifyH("RIGHT")
-    row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.text:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
-    row.text:SetPoint("RIGHT", row.right, "LEFT", -6, 0)
-    row.text:SetJustifyH("LEFT")
-    row.text:SetWordWrap(false)
-    row:SetScript("OnEnter", ShowRowTooltip)
-    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    row:SetScript("OnClick", function(self)
-        local t = self.target
-        if not t then return end
-        if self.kind == "item" and IsModifiedClick and IsModifiedClick("CHATLINK") and ChatEdit_InsertLink then
-            pcall(ChatEdit_InsertLink, t.link)
-            return
-        end
-        if self.kind == "group" then
-            t.open = not GroupOpen(t)
-        elseif self.kind == "item" then
-            t.open = not EntryOpen(t)
-        else
-            return
-        end
-        RefreshLog()
-    end)
-    return row
-end
-
-local function Place(row, indent, iconSize, toggle)
-    row.toggle:ClearAllPoints()
-    row.toggle:SetPoint("LEFT", indent, 0)
-    if toggle then
-        row.toggle:SetTexture(toggle)
-        row.toggle:Show()
-    else
-        row.toggle:Hide()
-    end
-    row.icon:ClearAllPoints()
-    row.icon:SetPoint("LEFT", indent + 15, 0)
-    row.icon:SetSize(iconSize, iconSize)
-    row.iconBg:Hide()
+    return out
 end
 
 -- The item's quality and level, either nil while the item is not loaded.
@@ -1107,71 +1023,245 @@ local function ItemQualityLevel(link)
     return quality, level
 end
 
+-- GetItemInfoInstant answers from the client's own files, so the icon is
+-- there even before the item has loaded; the others wait for the server.
+local function ItemIcon(link)
+    local instant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if instant then
+        local ok, _, _, _, _, tex = pcall(instant, link)
+        if ok and tex and not Secret(tex) then return tex end
+    end
+    local icon = Ask(GetItemIcon, link)
+    if not icon then
+        local okI, _, _, _, _, _, _, _, _, _, tex = pcall(GetItemInfo, link)
+        icon = okI and tex or nil
+    end
+    return icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+end
+
+-- Everything about one item in its tooltip: the item itself, then every
+-- player with what they chose and rolled.
+local function ItemTooltip(owner, e)
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    pcall(GameTooltip.SetHyperlink, GameTooltip, e.link)
+    GameTooltip:AddLine(" ")
+    if e.source then GameTooltip:AddLine(T("Dropped by %s"):format(e.source), 0.8, 0.8, 0.8) end
+    if e.winner then
+        GameTooltip:AddLine(T("Won by %s"):format(fullNames[e.winner] or e.winner), 1, 0.82, 0)
+    elseif e.done then
+        GameTooltip:AddLine(T("Everyone passed"), 0.6, 0.6, 0.6)
+    end
+    for _, n in ipairs(SortedNames(e)) do
+        GameTooltip:AddDoubleLine(ShownName(n), ChoiceText(e, e.rolls[n]))
+    end
+    GameTooltip:AddLine(T("Shift-click: link the item in chat."), 0.6, 0.6, 0.6, true)
+    GameTooltip:Show()
+end
+
+local function MakePip(row)
+    local pip = CreateFrame("Button", nil, row)
+    pip:SetSize(PIP_W, 28)
+    pip.bg = pip:CreateTexture(nil, "BACKGROUND")
+    pip.bg:SetAllPoints()
+    pip.icon = pip:CreateTexture(nil, "ARTWORK")
+    pip.icon:SetSize(12, 12)
+    pip.icon:SetPoint("TOPLEFT", 3, -1)
+    pip.num = pip:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    pip.num:SetPoint("LEFT", pip.icon, "RIGHT", 2, 0)
+    pip.who = pip:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    pip.who:SetPoint("BOTTOMLEFT", 1, 1)
+    pip.who:SetPoint("BOTTOMRIGHT", -1, 1)
+    pip.who:SetJustifyH("CENTER")
+    pip.who:SetWordWrap(false)
+    pip.crown = pip:CreateTexture(nil, "OVERLAY")
+    pip.crown:SetSize(10, 10)
+    pip.crown:SetPoint("TOPRIGHT", 1, 2)
+    pip.crown:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon")
+    pip:SetScript("OnEnter", function(self)
+        local e, name = self.e, self.name
+        if not e then return end
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        if name then
+            GameTooltip:SetText(fullNames[name] or name, 1, 1, 1)
+            GameTooltip:AddLine(ChoiceText(e, e.rolls[name]))
+            if e.winner == name then GameTooltip:AddLine(T("Won by %s"):format(name), 1, 0.82, 0) end
+            GameTooltip:Show()
+        else
+            ItemTooltip(self, e)   -- the "+N" mark: everyone
+        end
+    end)
+    pip:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    return pip
+end
+
+local function MakeLine(parent)
+    local row = CreateFrame("Button", nil, parent)
+    row:RegisterForClicks("LeftButtonUp")
+    row.bg = row:CreateTexture(nil, "BACKGROUND")
+    row.bg:SetAllPoints()
+    row.hl = row:CreateTexture(nil, "HIGHLIGHT")
+    row.hl:SetAllPoints()
+    row.hl:SetColorTexture(1, 1, 1, 0.07)
+    row.toggle = row:CreateTexture(nil, "ARTWORK")
+    row.toggle:SetSize(11, 11)
+    row.toggle:SetPoint("LEFT", 2, 0)
+    row.icon = row:CreateTexture(nil, "ARTWORK")
+    -- A frame of the item's quality colour behind its icon.
+    row.iconBg = row:CreateTexture(nil, "BORDER")
+    row.iconBg:SetPoint("TOPLEFT", row.icon, "TOPLEFT", -1, 1)
+    row.iconBg:SetPoint("BOTTOMRIGHT", row.icon, "BOTTOMRIGHT", 1, -1)
+    row.level = row:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    row.level:SetPoint("BOTTOMRIGHT", row.icon, "BOTTOMRIGHT", 1, -1)
+    row.right = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    row.right:SetPoint("RIGHT", -4, 0)
+    row.right:SetJustifyH("RIGHT")
+    row.text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    row.text:SetPoint("LEFT", row.icon, "RIGHT", 5, 0)
+    row.text:SetPoint("RIGHT", row.right, "LEFT", -4, 0)
+    row.text:SetJustifyH("LEFT")
+    row.text:SetWordWrap(false)
+    row.pips = {}
+    for i = 1, MAX_PIPS do
+        local pip = MakePip(row)
+        pip:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", ITEM_H + 4 + (i - 1) * (PIP_W + 2), 2)
+        row.pips[i] = pip
+    end
+    row:SetScript("OnEnter", function(self)
+        if self.kind == "item" then
+            ItemTooltip(self, self.target)
+        elseif self.kind == "group" then
+            local g = self.target
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(g.title, 1, 0.82, 0)
+            if g.zone and g.boss then GameTooltip:AddLine(g.zone, 0.8, 0.8, 0.8) end
+            local n = #g.entries
+            GameTooltip:AddLine(n == 1 and T("1 item") or T("%d items"):format(n), 0.8, 0.8, 0.8)
+            GameTooltip:AddLine(T("Click: show or hide this loot."), 0.6, 0.6, 0.6, true)
+            GameTooltip:Show()
+        end
+    end)
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row:SetScript("OnClick", function(self)
+        local t = self.target
+        if not t then return end
+        if self.kind == "item" then
+            if IsModifiedClick and IsModifiedClick("CHATLINK") and ChatEdit_InsertLink then
+                pcall(ChatEdit_InsertLink, t.link)
+            end
+            return
+        end
+        if self.kind == "group" then
+            t.open = not GroupOpen(t)
+            RefreshLog()
+        end
+    end)
+    return row
+end
+
+local function HidePips(row)
+    for _, pip in ipairs(row.pips) do
+        pip.e, pip.name = nil, nil
+        pip:Hide()
+    end
+end
+
 local function DrawGroup(row, g)
     row.kind, row.target = "group", g
-    Place(row, 2, 16, GroupOpen(g) and MINUS or PLUS)
+    row:SetHeight(GROUP_H)
+    HidePips(row)
+    row.toggle:SetTexture(GroupOpen(g) and MINUS or PLUS)
+    row.toggle:Show()
+    row.icon:ClearAllPoints()
+    row.icon:SetPoint("LEFT", 16, 0)
+    row.icon:SetSize(14, 14)
     row.icon:SetTexture(g.boss and BOSS_ICON or TRASH_ICON)
     if g.boss then row.icon:SetTexCoord(0, 1, 0, 1) else row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
-    row.text:SetFontObject(GameFontNormal)
+    row.iconBg:Hide()
+    row.level:SetText("")
+    row.text:ClearAllPoints()
+    row.text:SetPoint("LEFT", row.icon, "RIGHT", 5, 0)
+    row.text:SetPoint("RIGHT", row.right, "LEFT", -4, 0)
     row.text:SetText(g.title)
-    local n = #g.entries
-    local count = n == 1 and T("1 item") or T("%d items"):format(n)
-    row.right:SetText("|cffa0a0a0" .. count .. ", " .. g.clock .. "|r")
+    row.text:Show()
+    row.right:SetText(g.clock)
+    row.right:Show()
     row.bg:SetColorTexture(0.45, 0.32, 0.06, 0.45)
 end
 
-local function DrawItem(row, e)
-    row.kind, row.target = "item", e
-    Place(row, 12, 16, EntryOpen(e) and MINUS or PLUS)
-    local icon = Ask(GetItemIcon, e.link)
-    if not icon then
-        local okI, _, _, _, _, _, _, _, _, _, tex = pcall(GetItemInfo, e.link)
-        icon = okI and tex or nil
-    end
-    row.icon:SetTexture(icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-    row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    row.text:SetFontObject(GameFontHighlightSmall)
-    if settings.logCompact ~= false then
-        -- The icon alone, framed in its quality colour, with the item level
-        -- beside it. Hovering the row shows the whole item.
-        Place(row, 12, 18, EntryOpen(e) and MINUS or PLUS)
-        local quality, level = ItemQualityLevel(e.link)
-        local qc = quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
-        if qc then
-            row.iconBg:SetColorTexture(qc.r, qc.g, qc.b, 1)
-            row.iconBg:Show()
-        end
-        local text = level and tostring(math.floor(level)) or ""
-        if qc and qc.hex then text = qc.hex .. text .. "|r" end
-        row.text:SetText(text)
-    else
-        row.text:SetText(e.link)
-    end
-    row.right:SetText(EntryState(e))
-    row.bg:SetColorTexture(1, 1, 1, EntryOpen(e) and 0.07 or 0.035)
-end
-
-local function DrawPlayer(row, e, name, index, me)
-    row.kind, row.target, row.name = "player", e, name
+local function DrawPip(pip, e, name)
     local r = e.rolls[name] or {}
     local c = ChoiceOf(e, r)
-    Place(row, 26, 15, nil)
-    row.icon:SetTexture(c.icon)
-    row.icon:SetTexCoord(0, 1, 0, 1)
-    row.text:SetFontObject(GameFontHighlightSmall)
-    local text = ShownName(name)
+    pip.e, pip.name = e, name
+    pip.icon:SetTexture(c.icon)
+    pip.icon:SetDesaturated(c.rank >= 5)
+    pip.num:SetText(r.roll and tostring(r.roll) or "")
+    pip.num:SetTextColor(c.r, c.g, c.b)
+    pip.who:SetText(ClassColour(name))
+    pip.crown:SetShown(e.winner == name)
     if e.winner == name then
-        text = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:12:12|t " .. text
+        pip.bg:SetColorTexture(1, 0.82, 0, 0.25)
+    elseif name == MyName() then
+        pip.bg:SetColorTexture(0.3, 0.6, 1, 0.18)
+    else
+        pip.bg:SetColorTexture(1, 1, 1, 0.05)
     end
-    if c.rank >= 5 then text = "|cff9a9a9a" .. text .. "|r" end
-    row.text:SetText(text)
-    row.right:SetText(ChoiceText(e, r))
-    if e.winner == name then
-        row.bg:SetColorTexture(1, 0.82, 0, 0.18)
-    elseif name == me then
+    pip:Show()
+end
+
+local function DrawItem(row, e, index)
+    row.kind, row.target = "item", e
+    row:SetHeight(ITEM_H)
+    row.toggle:Hide()
+    row.icon:ClearAllPoints()
+    row.icon:SetPoint("LEFT", 4, 0)
+    row.icon:SetSize(ITEM_H - 6, ITEM_H - 6)
+    row.icon:SetTexture(ItemIcon(e.link))
+    row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    local quality, level = ItemQualityLevel(e.link)
+    local qc = quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+    if qc then
+        row.iconBg:SetColorTexture(qc.r, qc.g, qc.b, 1)
+        row.iconBg:Show()
+    else
+        row.iconBg:Hide()
+    end
+    row.level:SetText(level and tostring(math.floor(level)) or "")
+    row.right:Hide()
+    -- The item's name over its players, in its quality colour.
+    row.text:ClearAllPoints()
+    row.text:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 5, 0)
+    row.text:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+    local okN, itemName = pcall(GetItemInfo, e.link)
+    if not okN or Secret(itemName) or type(itemName) ~= "string" then
+        itemName = type(e.link) == "string" and e.link:match("%[(.-)%]") or "?"
+    end
+    local colour = qc and ("|cff%02x%02x%02x"):format(qc.r * 255, qc.g * 255, qc.b * 255) or "|cffffffff"
+    row.text:SetText(colour .. itemName .. "|r")
+    row.text:Show()
+
+    local players = ShownPlayers(e)
+    HidePips(row)
+    local room = #players > MAX_PIPS and MAX_PIPS - 1 or #players
+    for i = 1, room do DrawPip(row.pips[i], e, players[i]) end
+    if #players > MAX_PIPS then
+        -- One more mark for the rest; its tooltip lists everyone.
+        local pip = row.pips[MAX_PIPS]
+        pip.e, pip.name = e, nil
+        pip.icon:SetTexture(nil)
+        pip.who:SetText("")
+        pip.crown:Hide()
+        pip.num:SetText("+" .. (#players - room))
+        pip.num:SetTextColor(0.8, 0.8, 0.8)
+        pip.bg:SetColorTexture(1, 1, 1, 0.05)
+        pip:Show()
+    elseif #players == 0 and e.done then
+        row.text:SetText(row.text:GetText() .. "  |cff999999" .. T("Everyone passed") .. "|r")
+    end
+    -- Still rolling: a faint blue line, so it stands out from the finished ones.
+    if not e.done then
         row.bg:SetColorTexture(0.3, 0.6, 1, 0.10)
     else
-        row.bg:SetColorTexture(1, 1, 1, (index % 2 == 0) and 0.03 or 0)
+        row.bg:SetColorTexture(1, 1, 1, (index % 2 == 0) and 0.04 or 0.015)
     end
 end
 
@@ -1180,44 +1270,47 @@ local function LogRows()
     return math.max(MIN_ROWS + 1, math.min(MAX_ROWS, n))
 end
 
+local function LineHeight(line)
+    return line.group and GROUP_H or ITEM_H
+end
+
 RefreshLog = function()
     if not (logWindow and logWindow:IsShown()) then return end
     local lines = LogLines()
     local rows = logWindow.rows
-    -- The window is as tall as what it holds, up to the chosen number of lines.
     local shown = math.max(MIN_ROWS, math.min(LogRows(), #lines))
-    logWindow:SetSize(settings.logCompact ~= false and LOG_W_COMPACT or LOG_W, TOP_PAD + shown * LINE_H + BOTTOM_PAD)
     local maxScroll = math.max(0, #lines - shown)
     if logScroll > maxScroll then logScroll = maxScroll end
     if logScroll < 0 then logScroll = 0 end
     logWindow.empty:SetShown(#lines == 0)
-    local me = MyName()
+
+    -- Rows stack from the top; the window is as tall as what it shows.
+    local y = 0
     for i, row in ipairs(rows) do
         local line = i <= shown and lines[i + logScroll]
-        row.kind, row.target, row.name = nil, nil, nil
+        row.kind, row.target = nil, nil
         if not line then
             row:Hide()
         else
-            if line.group then
-                DrawGroup(row, line.group)
-            elseif line.header then
-                DrawItem(row, line.e)
-            else
-                DrawPlayer(row, line.e, line.name, i + logScroll, me)
-            end
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", logWindow.list, "TOPLEFT", 0, -y)
+            row:SetPoint("TOPRIGHT", logWindow.list, "TOPRIGHT", -6, -y)
+            if line.group then DrawGroup(row, line.group) else DrawItem(row, line.e, i + logScroll) end
+            y = y + LineHeight(line) + 1
             row:Show()
         end
     end
+    local listHeight = math.max(y, #lines == 0 and 44 or 0)
+    logWindow:SetSize(LOG_W, TOP_PAD + listHeight + BOTTOM_PAD)
 
     -- A thin bar at the side shows where in the list the view is.
     local track, thumb = logWindow.track, logWindow.thumb
     if maxScroll > 0 then
-        local height = shown * LINE_H
-        local size = math.max(14, height * shown / #lines)
-        track:SetHeight(height)
+        local size = math.max(12, listHeight * shown / #lines)
+        track:SetHeight(listHeight)
         thumb:SetHeight(size)
         thumb:ClearAllPoints()
-        thumb:SetPoint("TOP", track, "TOP", 0, -(height - size) * logScroll / maxScroll)
+        thumb:SetPoint("TOP", track, "TOP", 0, -(listHeight - size) * logScroll / maxScroll)
         track:Show()
         thumb:Show()
     else
@@ -1263,7 +1356,7 @@ end
 
 local function BuildLog()
     local f = CreateFrame("Frame", "OxedHubRollAdvisorLog", UIParent, "BackdropTemplate")
-    f:SetSize(LOG_W, TOP_PAD + MIN_ROWS * LINE_H + BOTTOM_PAD)
+    f:SetSize(LOG_W, TOP_PAD + 44 + BOTTOM_PAD)
     f:SetFrameStrata("HIGH")
     f:SetClampedToScreen(true)
     f:SetMovable(true)
@@ -1292,8 +1385,8 @@ local function BuildLog()
     close:SetScript("OnClick", function() f:Hide() end)
 
     local clear = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    clear:SetSize(90, 20)
-    clear:SetPoint("BOTTOMRIGHT", -12, 10)
+    clear:SetSize(72, 18)
+    clear:SetPoint("BOTTOMRIGHT", -12, 9)
     clear:SetText(T("Clear"))
     clear:SetScript("OnClick", function()
         wipe(rollLog)
@@ -1303,8 +1396,8 @@ local function BuildLog()
     end)
 
     local passes = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    passes:SetSize(110, 20)
-    passes:SetPoint("RIGHT", clear, "LEFT", -6, 0)
+    passes:SetSize(124, 18)
+    passes:SetPoint("RIGHT", clear, "LEFT", -4, 0)
     passes:SetScript("OnClick", function()
         settings.logShowAll = settings.logShowAll == false
         RefreshLog()
@@ -1314,8 +1407,9 @@ local function BuildLog()
     local list = CreateFrame("Frame", nil, f)
     list:SetPoint("TOPLEFT", 12, -TOP_PAD)
     list:SetPoint("BOTTOMRIGHT", -12, BOTTOM_PAD)
+    f.list = list
     f.rows = {}
-    for i = 1, MAX_ROWS do f.rows[i] = MakeLine(list, i) end
+    for i = 1, MAX_ROWS do f.rows[i] = MakeLine(list) end
 
     f.track = list:CreateTexture(nil, "BACKGROUND")
     f.track:SetWidth(3)
@@ -1339,6 +1433,8 @@ local function BuildLog()
     end)
     if OxedHub.HideInPetBattle then pcall(OxedHub.HideInPetBattle, OxedHub, f) end
     if UISpecialFrames then table.insert(UISpecialFrames, "OxedHubRollAdvisorLog") end
+    f:HookScript("OnShow", function() pcall(itemWatch.RegisterEvent, itemWatch, "GET_ITEM_INFO_RECEIVED") end)
+    f:HookScript("OnHide", function() itemWatch:UnregisterAllEvents() end)
     logWindow = f
     ApplyLogScale()
 end
@@ -1388,10 +1484,7 @@ ShowOptions = function()
         w:AddCheckbox(settings, "logShowAll", "Show passes and players who did not roll", nil, function()
             if RedrawLog then RedrawLog() end
         end)
-        w:AddCheckbox(settings, "logCompact", "Compact list: item icon only, the name on hover", nil, function()
-            if RedrawLog then RedrawLog() end
-        end)
-        w:AddSlider(settings, "logRows", "Lines before the window scrolls", 6, 30, 1, "%s: %d", function()
+        w:AddSlider(settings, "logRows", "Lines before the window scrolls", 4, 30, 1, "%s: %d", function()
             if RedrawLog then RedrawLog() end
         end)
         w:AddSlider(settings, "logScale", "Window size", 0.7, 1.4, 0.05, "%s: %.2f", function()
@@ -1463,10 +1556,10 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "rolladvisor",
         name     = "Roll Advisor",
-        version  = "1.3.0",
+        version  = "1.4.0",
         added    = 20261113,
         inDevelopment = true,
-        updated  = 20261121.1,  -- who rolled what: compact list, item icon with level, name in the tooltip
+        updated  = 20261121.3,  -- who rolled what redesigned: one line per item, each player as a mark with the roll
         author   = "Oxed",
         category = "groups",
         keywords = { "need", "greed", "roll", "loot", "upgrade", "bis", "dungeon", "advice" },

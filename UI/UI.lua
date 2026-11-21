@@ -1385,12 +1385,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.75)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.76)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.75")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.76")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
@@ -1772,18 +1772,19 @@ function UI:CreateDashboardTab()
     packsCard:SetScript("OnShow", function() UI:UpdatePackCountdown() end)
 
     -- Which of the two comes first. "Got it, hide this" (saved for the
-    -- account) puts the release notes first and this page second; /oxpacks
-    -- turns it back. Only the first two swap, so every other page keeps its
-    -- number.
+    -- account) moves it behind the Forever page and the release notes;
+    -- /oxpacks turns it back. Only the first three move, so every other page
+    -- keeps its number.
     function UI:ApplyPackCardOrder()
         -- Moved back for ten days at a time: then it is first again, with its
         -- button, until the packs are in or the player moves it back again.
         local at = OxedHubDB and OxedHubDB.globalSettings and OxedHubDB.globalSettings.packCardHidden
         local hidden = type(at) == "number" and (time() - at) < PACK_CARD_REST
+        -- Shown: the packs page opens the slider, ahead of the Forever page.
         if hidden then
-            cards[2], cards[3] = card1, packsCard
+            cards[1], cards[2], cards[3] = foreverCard, card1, packsCard
         else
-            cards[2], cards[3] = packsCard, card1
+            cards[1], cards[2], cards[3] = packsCard, foreverCard, card1
         end
         hideBtn:SetShown(not hidden)
         local w = sliderScroll:GetWidth()

@@ -1473,7 +1473,7 @@ end
 -- its nameplate. An NPC is an interact target too, so the nearest one got a
 -- name and health bar that covered its quest "!" / "?". Such a plate (an NPC,
 -- not an object, not your target, friendly NPC plates otherwise off, and only
--- when this module switched those settings on) is made see-through.
+-- when this module switched those settings on) loses its bars; its name stays.
 local mutedPlates = {}    -- plate -> true while its unit frame is hidden by us
 
 local function Yes(fn, ...)
@@ -1487,13 +1487,35 @@ local function Yes(fn, ...)
     return nil
 end
 
+-- ⚠ Never hide the whole unit frame: while a plate is up the game hides the
+-- NPC's own name over its head, so a see-through plate left the NPC with no
+-- name at all (2.4.74 report). Only the bars go; the name stays.
+local function PlateBars(frame)
+    local bars = {}
+    local function Add(region)
+        if type(region) == "table" and region.SetAlpha then bars[#bars + 1] = region end
+    end
+    Add(frame.HealthBarsContainer)
+    Add(frame.healthBar)
+    Add(frame.castBar)
+    Add(frame.CastBar)
+    Add(frame.selectionHighlight)
+    Add(frame.aggroHighlight)
+    Add(frame.ClassificationFrame)
+    return bars
+end
+
 local function SetPlateMuted(plate, mute)
     local frame = type(plate) == "table" and plate.UnitFrame
-    if type(frame) ~= "table" or not frame.SetAlpha then return end
+    if type(frame) ~= "table" then return end
     if mute then
-        if pcall(frame.SetAlpha, frame, 0) then mutedPlates[plate] = true end
+        local any = false
+        for _, region in ipairs(PlateBars(frame)) do
+            if pcall(region.SetAlpha, region, 0) then any = true end
+        end
+        if any then mutedPlates[plate] = true end
     elseif mutedPlates[plate] then
-        pcall(frame.SetAlpha, frame, 1)
+        for _, region in ipairs(PlateBars(frame)) do pcall(region.SetAlpha, region, 1) end
         mutedPlates[plate] = nil
     end
 end
@@ -2260,10 +2282,10 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "objectglow",
         name     = "Object Glow",
-        version  = "1.6.5",
+        version  = "1.6.6",
         added    = 20261113,
         inDevelopment = true,
-        updated  = 20261120.1,  -- an NPC's interact nameplate no longer covers its quest mark
+        updated  = 20261121.1,  -- an NPC near you keeps its name again; only the plate's bars are hidden
         author   = "Oxed",
         category = "quests",
         keywords = { "herb", "ore", "mining", "herbalism", "quest", "object", "glow", "sparkle", "outline", "gather" },
