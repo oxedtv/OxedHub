@@ -1444,6 +1444,7 @@ local function SweepPlates()
 end
 
 local TamePlate   -- below, with the plate events
+local RecheckMutedPlates
 local function ScanNearby()
     wipe(seenPlates)
     if NEARBY_OK and settings.nearby then
@@ -1456,6 +1457,7 @@ local function ScanNearby()
         -- are on, then every plate.
         ConsiderPlate("softinteract")
         if TamePlate then pcall(TamePlate, "softinteract") end
+        if RecheckMutedPlates then pcall(RecheckMutedPlates) end
         ConsiderPlate("mouseover")
         ConsiderPlate("target")
         for unit in pairs(plateUnits) do ConsiderPlate(unit) end
@@ -1489,34 +1491,129 @@ end
 
 -- ⚠ Never hide the whole unit frame: while a plate is up the game hides the
 -- NPC's own name over its head, so a see-through plate left the NPC with no
--- name at all (2.4.74 report). Only the bars go; the name stays.
-local function PlateBars(frame)
-    local bars = {}
-    local function Add(region)
-        if type(region) == "table" and region.SetAlpha then bars[#bars + 1] = region end
-    end
-    Add(frame.HealthBarsContainer)
-    Add(frame.healthBar)
-    Add(frame.castBar)
-    Add(frame.CastBar)
-    Add(frame.selectionHighlight)
-    Add(frame.aggroHighlight)
-    Add(frame.ClassificationFrame)
-    return bars
+-- name at all (2.4.74 report). Hiding only the bars left a broken plate: a
+-- name and a lone level badge (2.4.77 reports). Now everything on the plate
+-- but its name goes, and the NPC's title ("<General Goods>") is written under
+-- the name, so the plate reads like the game's own name over a friendly NPC.
+local function PlateName(frame)
+    local name = frame.name or frame.Name
+    if type(name) == "table" and name.GetObjectType then return name end
+    return nil
 end
 
-local function SetPlateMuted(plate, mute)
+-- Is `region` the name, or a frame holding it?
+local function Holds(region, name)
+    local node = name
+    while node do
+        if node == region then return true end
+        local ok, parent = pcall(node.GetParent, node)
+        node = ok and parent or nil
+    end
+    return false
+end
+
+local function PlateParts(frame)
+    local parts = {}
+    local name = PlateName(frame)
+    local function Add(region)
+        if type(region) == "table" and region.SetAlpha and not (name and Holds(region, name)) then
+            parts[#parts + 1] = region
+        end
+    end
+    local okC, children = pcall(function() return { frame:GetChildren() } end)
+    if okC then for _, child in ipairs(children) do Add(child) end end
+    local okR, regions = pcall(function() return { frame:GetRegions() } end)
+    if okR then for _, region in ipairs(regions) do Add(region) end end
+    return parts
+end
+
+local plateTitles = {}    -- plate -> our FontString with the NPC's title
+local plateNameColours = {} -- plate -> { r, g, b } the name had before we coloured it
+
+-- The player picks the colour of a friendly NPC's name (default the game's
+-- own green). The game sets it again on its updates, so it is set on every scan.
+local function ColourName(plate, frame)
+    local name = PlateName(frame)
+    if not name then return end
+    if not plateNameColours[plate] then
+        local ok, r, g, b = pcall(name.GetTextColor, name)
+        if ok and type(r) == "number" and not Secret(r) and not Secret(g) and not Secret(b) then
+            plateNameColours[plate] = { r, g, b }
+        else
+            plateNameColours[plate] = false
+        end
+    end
+    local c = type(settings.npcNameColour) == "table" and settings.npcNameColour or {}
+    pcall(name.SetTextColor, name, c[1] or 0.1, c[2] or 1, c[3] or 0.1)
+end
+
+local function UncolourName(plate, frame)
+    local old = plateNameColours[plate]
+    plateNameColours[plate] = nil
+    local name = PlateName(frame)
+    if name and type(old) == "table" then pcall(name.SetTextColor, name, old[1], old[2], old[3]) end
+end
+
+local function NpcTitle(unit)
+    if not (C_TooltipInfo and C_TooltipInfo.GetUnit) then return nil end
+    local ok, data = pcall(C_TooltipInfo.GetUnit, unit)
+    if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then return nil end
+    local line = data.lines[2]
+    local text = type(line) == "table" and line.leftText or nil
+    if not PlainString(text) or text == "" then return nil end
+    local levelWord = PlainString(LEVEL) and LEVEL or "Level"
+    if text:find(levelWord, 1, true) or text:find("^%??%d") then return nil end
+    return text
+end
+
+local function ShowTitle(plate, frame, unit)
+    local name = PlateName(frame)
+    local text = name and unit and NpcTitle(unit)
+    local title = plateTitles[plate]
+    if not text then
+        if title then title:Hide() end
+        return
+    end
+    if not title then
+        title = plate:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        plateTitles[plate] = title
+    end
+    title:ClearAllPoints()
+    title:SetPoint("TOP", name, "BOTTOM", 0, -1)
+    local c = type(settings.npcTitleColour) == "table" and settings.npcTitleColour or {}
+    title:SetTextColor(c[1] or 0.1, c[2] or 1, c[3] or 0.1)
+    title:SetText("<" .. text .. ">")
+    title:Show()
+end
+
+local function SetPlateMuted(plate, mute, unit)
     local frame = type(plate) == "table" and plate.UnitFrame
     if type(frame) ~= "table" then return end
     if mute then
-        local any = false
-        for _, region in ipairs(PlateBars(frame)) do
-            if pcall(region.SetAlpha, region, 0) then any = true end
+        local saved = mutedPlates[plate]
+        if type(saved) ~= "table" then
+            saved = {}
+            for _, region in ipairs(PlateParts(frame)) do
+                local okA, alpha = pcall(region.GetAlpha, region)
+                if okA and type(alpha) == "number" and not Secret(alpha)
+                    and pcall(region.SetAlpha, region, 0) then
+                    saved[region] = alpha
+                end
+            end
+            mutedPlates[plate] = saved
+        else
+            for region in pairs(saved) do pcall(region.SetAlpha, region, 0) end
         end
-        if any then mutedPlates[plate] = true end
+        pcall(ColourName, plate, frame)
+        pcall(ShowTitle, plate, frame, unit)
     elseif mutedPlates[plate] then
-        for _, region in ipairs(PlateBars(frame)) do pcall(region.SetAlpha, region, 1) end
+        local saved = mutedPlates[plate]
+        if type(saved) == "table" then
+            for region, alpha in pairs(saved) do pcall(region.SetAlpha, region, alpha) end
+        end
         mutedPlates[plate] = nil
+        if plateTitles[plate] then plateTitles[plate]:Hide() end
+        pcall(UncolourName, plate, frame)
     end
 end
 
@@ -1529,14 +1626,37 @@ function TamePlate(unit)
     local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
     if not ok or type(plate) ~= "table" then return end
     if plate.IsForbidden and plate:IsForbidden() then return end
+    -- A friendly NPC whose plate is up only because this module turned the
+    -- interact plate on. Its health is of no use; its name and title are.
     local mute = running and settings.nearby and WeTurnedNpcPlatesOn()
         and Yes(UnitIsGameObject, unit) == false
         and Yes(UnitIsUnit, unit, "softinteract") == true
-        and Yes(UnitIsUnit, unit, "target") == false
-        and Yes(UnitIsUnit, unit, "mouseover") == false
         and select(2, pcall(GetCVar, "nameplateShowFriendlyNPCs")) ~= "1"
         and Yes(UnitCanAttack, "player", unit) == false
-    SetPlateMuted(plate, mute and true or false)
+    SetPlateMuted(plate, mute and true or false, unit)
+end
+
+-- ⚠ A plate muted while it was the interact target stayed muted after the
+-- player moved on, targeted or attacked it: the mob's health was hidden
+-- (2.4.77 report). Every muted plate is asked again on each scan.
+function RecheckMutedPlates()
+    for plate in pairs(mutedPlates) do
+        local unit = plate.namePlateUnitToken
+        if not PlainString(unit) then
+            local frame = plate.UnitFrame
+            unit = type(frame) == "table" and frame.unit or nil
+        end
+        if PlainString(unit) then
+            pcall(TamePlate, unit)
+            -- TamePlate keeps a plate muted only if it is still the interact
+            -- target; one under another token is released here.
+            if mutedPlates[plate] and Yes(UnitIsUnit, unit, "softinteract") ~= true then
+                SetPlateMuted(plate, false)
+            end
+        else
+            SetPlateMuted(plate, false)
+        end
+    end
 end
 
 local function UnmuteAllPlates()
@@ -2103,12 +2223,14 @@ local function ShowNearbyOptions()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
     if not nearbyWindow then
-        local w = API:CreateOptionsWindow("Object Glow: nodes near you", 460, 360)
+        local w = API:CreateOptionsWindow("Object Glow: nodes near you", 460, 450)
         nearbyWindow = w
         w:AddCheckbox(settings, "nearby", "Sparks on herbs, ore and quest objects near you",
             "No mouse needed: the sparks sit on the node itself. This switches on the game's Interact Key settings, which also changes what the interact key picks up. Your own settings come back when you switch this off.", ApplyGameGlow)
         w:AddCheckbox(settings, "nearbyNames", "Show its name under the sparks")
         w:AddSlider(settings, "nearbySize", "Size", 0.5, 2, 0.05, "%s: %.2f")
+        w:AddColour(settings, "npcNameColour", "Name of a friendly NPC near you")
+        w:AddColour(settings, "npcTitleColour", "Its title (<General Goods>)")
         w:AddNote("The game decides how close you must be before a node gets its sparks, and it shows them only for what is in front of you. The colours are the ones chosen for herbs, ore, quest objects and skinning in the main window.")
     end
     nearbyWindow:Show()
@@ -2244,6 +2366,8 @@ loginFrame:SetScript("OnEvent", function(self)
     if type(config.skinners) ~= "table" then config.skinners = {} end
     if type(config.savedCvars) ~= "table" then config.savedCvars = {} end
     if type(config.markOwn) ~= "table" then config.markOwn = { 1, 0.8, 0.2 } end
+    if type(config.npcNameColour) ~= "table" then config.npcNameColour = { 0.1, 1, 0.1 } end
+    if type(config.npcTitleColour) ~= "table" then config.npcTitleColour = { 0.1, 1, 0.1 } end
     -- 1.6.0 switched the spot card on for everyone; it is off by default now.
     -- Done once, so a player who ticks it afterwards keeps it.
     if not config.spotCardOffOnce then
@@ -2282,10 +2406,10 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "objectglow",
         name     = "Object Glow",
-        version  = "1.6.6",
+        version  = "1.6.7",
         added    = 20261113,
         inDevelopment = true,
-        updated  = 20261121.1,  -- an NPC near you keeps its name again; only the plate's bars are hidden
+        updated  = 20261122.2,  -- a friendly NPC near you shows its name and title in colours you choose, never a health bar
         author   = "Oxed",
         category = "quests",
         keywords = { "herb", "ore", "mining", "herbalism", "quest", "object", "glow", "sparkle", "outline", "gather" },

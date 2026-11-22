@@ -68,6 +68,13 @@ local CLIENT_TAGS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.78",
+        lines = {
+            { "FIXED", "Object Glow: a friendly NPC near you shows its name and title again, never a health bar or a lone level badge over its head." },
+            { "NEW", "Object Glow: choose the colour of a friendly NPC's name and title in Nodes near you." },
+        },
+    },
+    {
         version = "2.4.77",
         lines = {
             { "FIXED", "Layer Swap: leaving the host's group after the move works again, also when the host passed you the lead.", "forever" },

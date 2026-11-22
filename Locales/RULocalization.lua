@@ -821,7 +821,7 @@ L["ANIM_PLAY"] = "Запуск"
 L["ANIM_STOP"] = "Стоп"
 L["ANIM_SAVE"] = "Сохранить анимацию"
 
-L["RELEASE_TITLE"] = "Релиз 2.4.77"
+L["RELEASE_TITLE"] = "Релиз 2.4.78"
 L["RELEASE_SUBTITLE"] = "Что нового в этом обновлении"
 L["ANIM_CUSTOM_TITLE"] = "Собственные анимации"
 L["ANIM_CUSTOM_DESC"] = "Управляйте своей библиотекой анимаций здесь. Используйте кнопку Добавить анимацию для настройки кастомных спрайт-листов."
@@ -5907,3 +5907,9 @@ L["What's New opens on the sound and animation packs page. Each line says when a
 -- 2.4.77
 L["Layer Swap: leaving the host's group after the move works again, also when the host passed you the lead."] = "Layer Swap: выход из группы хоста после переноса снова работает, даже если хост передал вам лидерство."
 L["Item Tooltips: after a layer swap your character is no longer counted twice as an alt on another realm."] = "Item Tooltips: после смены слоя ваш персонаж больше не считается дважды, как альт с другого сервера."
+
+-- 2.4.78
+L["Object Glow: a friendly NPC near you shows its name and title again, never a health bar or a lone level badge over its head."] = "Object Glow: у дружественного NPC рядом снова видно имя и подпись, без полосы здоровья и одинокого значка уровня над головой."
+L["Object Glow: choose the colour of a friendly NPC's name and title in Nodes near you."] = "Object Glow: цвет имени и подписи дружественного NPC можно выбрать в окне Nodes near you."
+L["Name of a friendly NPC near you"] = "Имя дружественного NPC рядом"
+L["Its title (<General Goods>)"] = "Его подпись (<Товары>)"
