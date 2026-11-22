@@ -275,9 +275,9 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "layerswap",
         name     = "Layer Swap",
-        version  = "1.1.2",
+        version  = "1.1.3",
         added    = 20261120,
-        updated  = 20261120.7,
+        updated  = 20261122.2,
         author   = "Oxed",
         category = "quests",
         keywords = { "layer", "layers", "swap", "shard", "phase", "host", "portal", "layerswap", "hop" },

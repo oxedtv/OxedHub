@@ -525,13 +525,24 @@ end
 
 local function LeaveAfterMove(helper)
     if not LS.settings.autoLeave then return end
-    C_Timer.After(S.LEAVE_AFTER, function()
-        if LS.Known(UnitIsGroupLeader, "player") == true then return end
-        if HelperInGroup(helper) == true then
+    -- The host's name often reads "Unknown" once the move puts them out of
+    -- sight, and the host may hand over the lead, so neither may block the
+    -- leave. A group of just you and the host is always left; a bigger one
+    -- only when the host is still seen in it. Tried a few times in case the
+    -- first call comes too early.
+    local tries = 0
+    local function Try()
+        tries = tries + 1
+        if not IsInGroup() or IsInRaid() then return end
+        local size = GetNumGroupMembers and GetNumGroupMembers() or 0
+        local small = type(size) == "number" and size <= 2
+        if small or HelperInGroup(helper) == true then
             local leave = (C_PartyInfo and C_PartyInfo.LeaveParty) or LeaveParty
-            if leave then pcall(leave) end
+            if leave and not pcall(leave) and LeaveParty and leave ~= LeaveParty then pcall(LeaveParty) end
         end
-    end)
+        if tries < 3 then C_Timer.After(2, function() if IsInGroup() then Try() end end) end
+    end
+    C_Timer.After(S.LEAVE_AFTER, Try)
 end
 
 local function Moved(s, id, how)

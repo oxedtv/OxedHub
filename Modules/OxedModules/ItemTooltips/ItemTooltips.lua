@@ -196,13 +196,46 @@ end
 -- settings.warband = { [tab] = { [itemID] = count } }
 -- Kept per bag so a change re-reads that bag only.
 
+-- A layer swap on Forever changes what GetRealmName() answers ("... Realm 7
+-- PvE"), which used to save the same character twice. The end of the GUID
+-- names the character itself, so a saved character with the same one (or an
+-- older record with the same name, class, race and faction) keeps its key,
+-- and any other copy of it is dropped.
 local charKey
 local function PlayerKey()
     if not charKey then
         local name = UnitName("player")
         local realm = GetRealmName()
-        if Secret(name) or Secret(realm) then return nil end
-        charKey = (name or "?") .. "-" .. (realm or "?")
+        local guid = UnitGUID and UnitGUID("player")
+        if Secret(name) or Secret(realm) or Secret(guid) then return nil end
+        local uid = type(guid) == "string" and guid:match("%-(%x+)$") or nil
+        local _, class = UnitClass("player")
+        local _, race = UnitRace("player")
+        local faction = UnitFactionGroup("player")
+        local own = (name or "?") .. "-" .. (realm or "?")
+        local same = {}
+        for key, rec in pairs(settings.characters) do
+            if type(rec) == "table" and rec.name == name then
+                if (uid and rec.uid == uid)
+                    or (not rec.uid and rec.class == class and Clean(rec.race) == Clean(race)
+                        and rec.faction == faction) then
+                    same[#same + 1] = key
+                end
+            end
+        end
+        -- Keep the copy seen first (the home realm); drop the rest.
+        table.sort(same, function(a, b)
+            if a == own or b == own then return b == own end
+            return (settings.characters[a].lastSeen or 0) < (settings.characters[b].lastSeen or 0)
+        end)
+        charKey = same[1] or own
+        for i = 2, #same do
+            settings.characters[same[i]], settings.inventory[same[i]] = nil, nil
+        end
+        if uid then
+            settings.characters[charKey] = settings.characters[charKey] or {}
+            settings.characters[charKey].uid = uid
+        end
     end
     return charKey
 end
@@ -222,7 +255,7 @@ local function Inventory()
         settings.characters[key] = record
     end
     record.name = UnitName("player")
-    record.realm = GetRealmName()
+    record.realm = record.realm or GetRealmName()
     record.class = select(2, UnitClass("player"))
     record.faction = UnitFactionGroup("player")
     local _, raceFile = UnitRace("player")
@@ -1276,8 +1309,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "itemtooltips",
         name     = "Item Tooltips",
-        version  = "1.3.0",
-        updated  = 20261030.4,  -- race icons, place icons, tick, layout options
+        version  = "1.3.1",
+        updated  = 20261122.1,  -- one entry per character across Forever layer swaps
         author   = "Oxed",
         category = "items",
         keywords = { "tooltip", "item", "id", "aura", "spell", "inventory", "count", "alts", "expansion",

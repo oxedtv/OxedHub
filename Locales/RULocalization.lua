@@ -821,7 +821,7 @@ L["ANIM_PLAY"] = "Запуск"
 L["ANIM_STOP"] = "Стоп"
 L["ANIM_SAVE"] = "Сохранить анимацию"
 
-L["RELEASE_TITLE"] = "Релиз 2.4.76"
+L["RELEASE_TITLE"] = "Релиз 2.4.77"
 L["RELEASE_SUBTITLE"] = "Что нового в этом обновлении"
 L["ANIM_CUSTOM_TITLE"] = "Собственные анимации"
 L["ANIM_CUSTOM_DESC"] = "Управляйте своей библиотекой анимаций здесь. Используйте кнопку Добавить анимацию для настройки кастомных спрайт-листов."
@@ -5903,3 +5903,7 @@ L["Open a profession window first."] = "Сначала откройте окно
 L["Object Glow: the NPC nearest you keeps its name again. Only the health bar is hidden, so its quest mark stays clear."] = "Object Glow: у ближайшего NPC снова видно имя. Скрыта только полоса здоровья, так что квестовый знак не закрыт."
 L["Roll Advisor: who rolled what shows the item's name and each player's name under their roll. Item icons no longer show a question mark."] = "Roll Advisor: в списке бросков видно название вещи и имя каждого игрока под его броском. Вместо иконок вещей больше нет вопросительного знака."
 L["What's New opens on the sound and animation packs page. Each line says when a change is only for Forever or Retail."] = "What's New открывается на странице паков звуков и анимаций. В каждой строке указано, если изменение только для Forever или Retail."
+
+-- 2.4.77
+L["Layer Swap: leaving the host's group after the move works again, also when the host passed you the lead."] = "Layer Swap: выход из группы хоста после переноса снова работает, даже если хост передал вам лидерство."
+L["Item Tooltips: after a layer swap your character is no longer counted twice as an alt on another realm."] = "Item Tooltips: после смены слоя ваш персонаж больше не считается дважды, как альт с другого сервера."
