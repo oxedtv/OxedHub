@@ -56,6 +56,7 @@ local function InitDB()
         }
     end
     if db.settings.autoScan == nil then db.settings.autoScan = true end
+    if db.settings.scanEvery == nil then db.settings.scanEvery = 20 end  -- minutes
     if db.settings.showTooltip == nil then db.settings.showTooltip = true end
     if db.settings.showBreakdown == nil then db.settings.showBreakdown = true end
 
@@ -462,11 +463,12 @@ local function ShowOptions()
     if not SS.db then InitDB() end
     if not optionsWindow then
         local s = SS.db.settings
-        local o = API:CreateOptionsWindow("Disenchant Info", 470, 380)
+        local o = API:CreateOptionsWindow("Disenchant Info", 470, 430)
         o:AddCheckbox(s, "showTooltip", "Disenchant results in item tooltips")
         o:AddCheckbox(s, "showBreakdown", "Show each material with its chance")
         o:AddCheckbox(s, "showSource", "Show where each price came from")
         o:AddCheckbox(s, "autoScan", "Scan material prices when the auction house opens")
+        o:AddSlider(s, "scanEvery", "Scan again after", 5, 240, 5, "%s: %d min")
 
         local row = CreateFrame("Frame", nil, o)
         row:SetSize(420, 24)
@@ -556,9 +558,9 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "shattersight",
         name     = "Disenchant Info",
-        version  = "1.0.0",
+        version  = "1.1.0",
         added    = 20261121,
-        updated  = 20261121.1,  -- now a module, Forever item-level tables
+        updated  = 20261123.1,  -- choose how long before the auction house is scanned again
         author   = "Oxed",
         category = "items",
         keywords = { "disenchant", "enchanting", "dust", "essence", "shard", "crystal", "auction", "profit" },

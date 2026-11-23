@@ -209,9 +209,13 @@ function SS:HandlePriceEvent(event, ...)
         -- filling chat for nothing. /ss can still scan by hand.
         -- Now: only while the Disenchant Insight module is switched on.
         if SS.active and SS.db and SS.db.settings and SS.db.settings.autoScan ~= false then
+            -- Like Craft Profit: kept in the saved settings, so a reload or
+            -- the next login does not scan again before the chosen wait.
+            local st = SS.db.settings
             local now = time()
-            if (now - (scanState.lastAutoScan or 0)) >= 60 then
-                scanState.lastAutoScan = now
+            local wait = (tonumber(st.scanEvery) or 20) * 60
+            if (now - (tonumber(st.lastAutoScan) or 0)) >= wait then
+                st.lastAutoScan = now
                 C_Timer.After(0.5, function()
                     if AuctionHouseFrame and AuctionHouseFrame:IsShown() and not scanState.active then
                         SS:ScanAHPrices(true)

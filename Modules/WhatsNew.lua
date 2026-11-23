@@ -68,6 +68,13 @@ local CLIENT_TAGS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.79",
+        lines = {
+            { "NEW", "Disenchant Info: choose how long before the auction house is scanned again, and a reload no longer starts a new scan." },
+            { "NEW", "Craft Profit: choose how long before the auction house is scanned again (20 minutes until now)." },
+        },
+    },
+    {
         version = "2.4.78",
         lines = {
             { "FIXED", "Object Glow: a friendly NPC near you shows its name and title again, never a health bar or a lone level badge over its head." },

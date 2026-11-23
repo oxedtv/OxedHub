@@ -821,7 +821,7 @@ L["ANIM_PLAY"] = "Запуск"
 L["ANIM_STOP"] = "Стоп"
 L["ANIM_SAVE"] = "Сохранить анимацию"
 
-L["RELEASE_TITLE"] = "Релиз 2.4.78"
+L["RELEASE_TITLE"] = "Релиз 2.4.79"
 L["RELEASE_SUBTITLE"] = "Что нового в этом обновлении"
 L["ANIM_CUSTOM_TITLE"] = "Собственные анимации"
 L["ANIM_CUSTOM_DESC"] = "Управляйте своей библиотекой анимаций здесь. Используйте кнопку Добавить анимацию для настройки кастомных спрайт-листов."
@@ -5876,7 +5876,8 @@ L["Open the auction house first."] = "Сначала откройте аукци
 L["Nothing to scan yet. Open a profession window once so the module learns its recipes."] = "Пока нечего сканировать. Откройте окно профессии, чтобы модуль узнал рецепты."
 L["Scanning %d items quietly. Searching yourself stops it."] = "Тихо сканирую предметов: %d. Ваш собственный поиск остановит сканирование."
 L["Scan prices quietly when the auction house opens"] = "Тихо сканировать цены при открытии аукциона"
-L["At most every 20 minutes. Searching yourself stops it."] = "Не чаще раза в 20 минут. Ваш собственный поиск его остановит."
+L["Searching yourself stops it."] = "Ваш собственный поиск его остановит."
+L["Scan again after"] = "Сканировать снова через"
 L["Scan even when Auctionator is installed"] = "Сканировать, даже если установлен Auctionator"
 L["Also scan dusts, essences and shards"] = "Сканировать также пыль, эссенции и осколки"
 L["Professions to scan:"] = "Какие профессии сканировать:"
@@ -5913,3 +5914,7 @@ L["Object Glow: a friendly NPC near you shows its name and title again, never a 
 L["Object Glow: choose the colour of a friendly NPC's name and title in Nodes near you."] = "Object Glow: цвет имени и подписи дружественного NPC можно выбрать в окне Nodes near you."
 L["Name of a friendly NPC near you"] = "Имя дружественного NPC рядом"
 L["Its title (<General Goods>)"] = "Его подпись (<Товары>)"
+
+-- 2.4.79
+L["Disenchant Info: choose how long before the auction house is scanned again, and a reload no longer starts a new scan."] = "Disenchant Info: можно выбрать, через сколько снова сканировать аукцион, а перезагрузка интерфейса больше не запускает новый скан."
+L["Craft Profit: choose how long before the auction house is scanned again (20 minutes until now)."] = "Craft Profit: можно выбрать, через сколько снова сканировать аукцион (раньше всегда 20 минут)."

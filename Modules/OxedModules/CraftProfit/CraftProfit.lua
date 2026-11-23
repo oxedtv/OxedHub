@@ -35,6 +35,7 @@ local DEFAULTS = {
     autoScan       = true,   -- quietly price the chosen professions at the auction house
     skipWithAuctionator = false, -- leave pricing to Auctionator when it is installed
     scanDisenchantMats  = true,  -- include dusts, essences and shards
+    scanEvery      = 20,     -- minutes before the auction house is scanned again
 }
 -- Tables are made in BindSettings, never here: prices, vendorPrices,
 -- recipeItems (profession -> {itemID = true}), scanProfs (profession -> bool).
@@ -641,7 +642,7 @@ end
 local function AutoScan()
     if not settings.autoScan then return end
     if Auctionator and settings.skipWithAuctionator then return end
-    if settings.lastScan and time() - settings.lastScan < 20 * 60 then return end
+    if settings.lastScan and time() - settings.lastScan < (tonumber(settings.scanEvery) or 20) * 60 then return end
     C_Timer.After(1.5, function() if active then StartScan(false) end end)
 end
 
@@ -1004,7 +1005,7 @@ local function ShowOptions()
         local profs = {}
         for prof in pairs(settings.recipeItems) do profs[#profs + 1] = prof end
         table.sort(profs)
-        local o = API:CreateOptionsWindow("Craft Profit", 470, 560 + math.max(1, #profs) * 28)
+        local o = API:CreateOptionsWindow("Craft Profit", 470, 610 + math.max(1, #profs) * 28)
         local function Again() QueueRescan() end
         o:AddCheckbox(settings, "showCrafting", "List beside the profession window")
         o:AddCheckbox(settings, "showTrainer", "List beside a profession trainer")
@@ -1018,7 +1019,8 @@ local function ShowOptions()
             if minimapIcon then minimapIcon:Apply(settings.enabled == true) end
         end)
         o:AddCheckbox(settings, "autoScan", "Scan prices quietly when the auction house opens",
-            "At most every 20 minutes. Searching yourself stops it.")
+            "Searching yourself stops it.")
+        o:AddSlider(settings, "scanEvery", "Scan again after", 5, 240, 5, "%s: %d min")
         o:AddCheckbox(settings, "skipWithAuctionator", "Do not scan when Auctionator is installed")
         o:AddCheckbox(settings, "scanDisenchantMats", "Also scan dusts, essences and shards")
         o:AddNote("Professions to scan:")
@@ -1150,9 +1152,9 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "craftprofit",
         name     = "Craft Profit",
-        version  = "1.2.0",
+        version  = "1.3.0",
         added    = 20261121,
-        updated  = 20261121.95,  -- "How it works" window, can-make count from bags, scan waits for Disenchant Info
+        updated  = 20261123.1,  -- choose how long before the auction house is scanned again
         author   = "Oxed",
         category = "items",
         keywords = { "profession", "craft", "crafting", "profit", "gold", "trainer", "recipe", "auction", "disenchant" },
