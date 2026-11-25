@@ -821,7 +821,7 @@ L["ANIM_PLAY"] = "Запуск"
 L["ANIM_STOP"] = "Стоп"
 L["ANIM_SAVE"] = "Сохранить анимацию"
 
-L["RELEASE_TITLE"] = "Релиз 2.4.79"
+L["RELEASE_TITLE"] = "Релиз 2.4.80"
 L["RELEASE_SUBTITLE"] = "Что нового в этом обновлении"
 L["ANIM_CUSTOM_TITLE"] = "Собственные анимации"
 L["ANIM_CUSTOM_DESC"] = "Управляйте своей библиотекой анимаций здесь. Используйте кнопку Добавить анимацию для настройки кастомных спрайт-листов."
@@ -5918,3 +5918,7 @@ L["Its title (<General Goods>)"] = "Его подпись (<Товары>)"
 -- 2.4.79
 L["Disenchant Info: choose how long before the auction house is scanned again, and a reload no longer starts a new scan."] = "Disenchant Info: можно выбрать, через сколько снова сканировать аукцион, а перезагрузка интерфейса больше не запускает новый скан."
 L["Craft Profit: choose how long before the auction house is scanned again (20 minutes until now)."] = "Craft Profit: можно выбрать, через сколько снова сканировать аукцион (раньше всегда 20 минут)."
+
+-- 2.4.80
+L["Layer Swap is removed. Blizzard is disabling the game functions that addons used to move players between layers, so the module can no longer work."] = "Layer Swap удалён. Blizzard отключает игровые функции, с помощью которых аддоны переносили игроков между слоями, поэтому модуль больше не может работать."
+L["Object Glow: quest objects have their own on/off switch, like skinning and other objects."] = "Object Glow: у квестовых предметов теперь свой переключатель, как у снятия шкур и прочих объектов."

@@ -68,6 +68,13 @@ local CLIENT_TAGS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.80",
+        lines = {
+            { "CHANGED", "Layer Swap is removed. Blizzard is disabling the game functions that addons used to move players between layers, so the module can no longer work.", "forever" },
+            { "NEW", "Object Glow: quest objects have their own on/off switch, like skinning and other objects." },
+        },
+    },
+    {
         version = "2.4.79",
         lines = {
             { "NEW", "Disenchant Info: choose how long before the auction house is scanned again, and a reload no longer starts a new scan." },

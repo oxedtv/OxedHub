@@ -17,15 +17,6 @@
     <Binding name="OXEDHUB_VENDOR_TOGGLE_HOVERED" category="OXEDHUB_CATEGORY">
         OxedHub_AutoVendorToggleHovered()
     </Binding>
-    <Binding name="OXEDHUB_LAYERSWAP_SWAP" category="OXEDHUB_CATEGORY">
-        OxedHub_LayerSwapSwap()
-    </Binding>
-    <Binding name="OXEDHUB_LAYERSWAP_WINDOW" category="OXEDHUB_CATEGORY">
-        OxedHub_LayerSwapWindow()
-    </Binding>
-    <Binding name="OXEDHUB_LAYERSWAP_INVITE" category="OXEDHUB_CATEGORY">
-        OxedHub_LayerSwapInvite()
-    </Binding>
     <Binding name="OXEDHUB_MYTHICLOOTER_TOGGLE" category="OXEDHUB_CATEGORY" header="OXEDHUB_MYTHICLOOTER">
         if OxMythicLooterFrame then OxMythicLooterFrame:SetShown(not OxMythicLooterFrame:IsShown()) end
     </Binding>

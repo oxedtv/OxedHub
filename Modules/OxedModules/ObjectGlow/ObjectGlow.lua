@@ -58,6 +58,7 @@ local DEFAULTS = {
     herbStyle     = "nature",
     oreStyle      = "fire",
     questStyle    = "holy",
+    showQuest     = true,   -- quest objects; off leaves them without sparks
     skin          = true,   -- corpses that can be skinned
     skinStyle     = "blood",
     skinCount     = true,   -- the "left to skin" counter
@@ -549,6 +550,7 @@ local function ScanHover()
         if ok then kind, name, key = k, n, id end
     end
     if kind == "other" and not settings.showOther then kind = nil end
+    if kind == "quest" and not settings.showQuest then kind = nil end
     if not kind then key = nil end
     -- The mouse has just arrived on something: light a beacon where it is.
     if key and key ~= hoverKey then StartBeacon(kind, key) end
@@ -1290,6 +1292,7 @@ local function NearbyKind(unit)
     end
     local learned = name and settings.names and settings.names[name]
     if learned == "herb" or learned == "ore" then return learned end
+    if not settings.showQuest then return false end
     if cursor == "quest" then return "quest" end
     if C_QuestLog and C_QuestLog.UnitIsRelatedToActiveQuest then
         local related = Known(C_QuestLog.UnitIsRelatedToActiveQuest, unit)
@@ -2290,6 +2293,7 @@ ShowOptions = function()
         w:AddCheckbox(settings, "hover", "Sparks around the pointer on a world object")
         w:AddChoice(settings, "herbStyle", "Herbs", StyleChoices())
         w:AddChoice(settings, "oreStyle", "Ore", StyleChoices())
+        w:AddCheckbox(settings, "showQuest", "Quest objects")
         w:AddChoice(settings, "questStyle", "Quest objects", StyleChoices())
         w:AddCheckbox(settings, "skin", "Corpses you can skin")
         w:AddChoice(settings, "skinStyle", "Skinning", StyleChoices())
@@ -2406,10 +2410,10 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "objectglow",
         name     = "Object Glow",
-        version  = "1.6.7",
+        version  = "1.6.8",
         added    = 20261113,
         inDevelopment = true,
-        updated  = 20261122.2,  -- a friendly NPC near you shows its name and title in colours you choose, never a health bar
+        updated  = 20261125,    -- quest objects can be switched off on their own
         author   = "Oxed",
         category = "quests",
         keywords = { "herb", "ore", "mining", "herbalism", "quest", "object", "glow", "sparkle", "outline", "gather" },
