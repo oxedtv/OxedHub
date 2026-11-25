@@ -1620,9 +1620,15 @@ local function SetPlateMuted(plate, mute, unit)
     end
 end
 
-local function WeTurnedNpcPlatesOn()
-    local saved = settings and settings.softCvars
-    return type(saved) == "table" and (saved.SoftTargetNameplateInteract ~= nil or saved.SoftTargetInteract ~= nil)
+-- ⚠ This used to ask "did this module switch the interact plate on?" (an
+-- entry in settings.softCvars). A player whose interact settings were already
+-- on (set by hand, by another addon, or left on from an earlier session whose
+-- entry was cleared) has no entry, so the plate was never tamed and the
+-- nearest quest NPC kept a health bar and level over its "?" (2.4.80 report).
+-- What matters is only that the interact plate is on now.
+local function InteractPlatesOn()
+    local ok, value = pcall(GetCVar, "SoftTargetNameplateInteract")
+    return ok and value ~= nil and value ~= "0"
 end
 
 function TamePlate(unit)
@@ -1631,7 +1637,7 @@ function TamePlate(unit)
     if plate.IsForbidden and plate:IsForbidden() then return end
     -- A friendly NPC whose plate is up only because this module turned the
     -- interact plate on. Its health is of no use; its name and title are.
-    local mute = running and settings.nearby and WeTurnedNpcPlatesOn()
+    local mute = running and settings.nearby and InteractPlatesOn()
         and Yes(UnitIsGameObject, unit) == false
         and Yes(UnitIsUnit, unit, "softinteract") == true
         and select(2, pcall(GetCVar, "nameplateShowFriendlyNPCs")) ~= "1"
@@ -2413,7 +2419,7 @@ loginFrame:SetScript("OnEvent", function(self)
         version  = "1.6.8",
         added    = 20261113,
         inDevelopment = true,
-        updated  = 20261125,    -- quest objects can be switched off on their own
+        updated  = 20261125.1,  -- quest objects switch; quest NPC plate tamed whoever turned interact plates on
         author   = "Oxed",
         category = "quests",
         keywords = { "herb", "ore", "mining", "herbalism", "quest", "object", "glow", "sparkle", "outline", "gather" },

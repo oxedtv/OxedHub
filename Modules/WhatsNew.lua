@@ -72,6 +72,7 @@ WhatsNew.RELEASES = {
         lines = {
             { "CHANGED", "Layer Swap is removed. Blizzard is disabling the game functions that addons used to move players between layers, so the module can no longer work.", "forever" },
             { "NEW", "Object Glow: quest objects have their own on/off switch, like skinning and other objects." },
+            { "FIXED", "Object Glow: the nearest quest NPC no longer gets a health bar and level over its quest mark when your interact settings were already on." },
         },
     },
     {

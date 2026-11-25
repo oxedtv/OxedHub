@@ -5922,3 +5922,4 @@ L["Craft Profit: choose how long before the auction house is scanned again (20 m
 -- 2.4.80
 L["Layer Swap is removed. Blizzard is disabling the game functions that addons used to move players between layers, so the module can no longer work."] = "Layer Swap удалён. Blizzard отключает игровые функции, с помощью которых аддоны переносили игроков между слоями, поэтому модуль больше не может работать."
 L["Object Glow: quest objects have their own on/off switch, like skinning and other objects."] = "Object Glow: у квестовых предметов теперь свой переключатель, как у снятия шкур и прочих объектов."
+L["Object Glow: the nearest quest NPC no longer gets a health bar and level over its quest mark when your interact settings were already on."] = "Object Glow: у ближайшего квестового NPC больше не появляются полоса здоровья и уровень поверх знака задания, если настройки взаимодействия уже были включены."
