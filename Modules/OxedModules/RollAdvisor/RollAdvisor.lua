@@ -43,14 +43,21 @@ local DEFAULTS = {
     logShowAll    = true,   -- list passes and players who never rolled
     logRows       = 14,     -- the most lines the window shows before it scrolls
     logScale      = 1,
+    showPrice     = true,   -- auction price from Auctionator, TSM, Auctioneer or AuctionMaster
+    keepRun       = true,   -- keep the list through a /reload, a fresh one per dungeon or raid
+    logCombatWait = false,  -- open the list only once the fight is over
+    hideRollSpam  = false,  -- hide the "selected Need / rolled" loot lines in chat
+    groupUpgrade  = false,  -- upgrade % for everyone (inspects the group; GroupUpgrade.lua)
 }
+-- settings.run (the saved list) is made after binding: never a table here.
 
 local settings
 local running = false
 local optionsWindow
-local minimapIcon, MinimapIcon, ShowOptions
+local minimapIcon, MinimapIcon, ShowOptions, ShowLogOptions
 local OnLootLine, LogRollStart, ToggleLog, HideLog   -- the "who rolled what" window, further down
 local NoteBoss, RedrawLog
+local OnHistoryDrop, CheckRun, SaveRun, OnCombatEnd, AuctionPrice
 local panels = {}        -- [index] = our panel on GroupLootFrame<index>
 local announced = {}     -- [rollID] = true once its chat line is out
 local announcedCount = 0
@@ -168,6 +175,13 @@ local function Advise(link, canNeed, canGreed)
     if settings.showSell then
         local money = Money(cmp.sell)
         if money then advice.lines[#advice.lines + 1] = T("Sells for %s"):format(money) end
+    end
+    if settings.showPrice and AuctionPrice then
+        local copper, source = AuctionPrice(link)
+        local money = copper and Money(copper)
+        if money then
+            advice.lines[#advice.lines + 1] = T("Auction house: %s (%s)"):format(money, source)
+        end
     end
     -- 2 is "binds when equipped": it can be sold or passed on.
     if cmp.bind == 2 then
@@ -495,6 +509,23 @@ events:SetScript("OnEvent", function(_, event, rollID, arg2, _, _, arg5)
         pcall(NoteBoss, arg2)
         return
     end
+    -- The game's loot history: every player's exact choice, roll and the winner.
+    if event == "LOOT_HISTORY_UPDATE_DROP" then
+        pcall(OnHistoryDrop, rollID, arg2)   -- here: encounter id, loot list key
+        return
+    end
+    if event == "PLAYER_ENTERING_WORLD" then
+        pcall(CheckRun)
+        return
+    end
+    if event == "PLAYER_LOGOUT" then
+        pcall(SaveRun)
+        return
+    end
+    if event == "PLAYER_REGEN_ENABLED" then
+        pcall(OnCombatEnd)
+        return
+    end
     if event == "START_LOOT_ROLL" and PlainNumber(rollID) then
         pendingRolls[rollID] = 20   -- five seconds for the item to load
         pcall(LogRollStart, rollID)
@@ -520,10 +551,28 @@ local function Start()
     pcall(events.RegisterEvent, events, "CHAT_MSG_LOOT")
     pcall(events.RegisterEvent, events, "ENCOUNTER_END")
     pcall(events.RegisterEvent, events, "BOSS_KILL")
+    pcall(events.RegisterEvent, events, "LOOT_HISTORY_UPDATE_DROP")
+    pcall(events.RegisterEvent, events, "PLAYER_ENTERING_WORLD")
+    pcall(events.RegisterEvent, events, "PLAYER_LOGOUT")
+    pcall(events.RegisterEvent, events, "PLAYER_REGEN_ENABLED")
+    pcall(CheckRun)
+    -- After a /reload: rolls that were already open.
+    if GetActiveLootRollIDs then
+        local ok, open = pcall(GetActiveLootRollIDs)
+        if ok and type(open) == "table" and not Secret(open) then
+            for _, id in ipairs(open) do
+                if PlainNumber(id) then
+                    pendingRolls[id] = 20
+                    pcall(LogRollStart, id)
+                end
+            end
+        end
+    end
     Watch()   -- a roll may already be on screen
 end
 
 local function Stop()
+    if running then pcall(SaveRun) end
     running = false
     events:UnregisterAllEvents()
     ticker:SetScript("OnUpdate", nil)
@@ -574,6 +623,10 @@ local LOOT_LINES = {
     { "LOOT_ROLL_ROLLED_NEED",      "rollneed",  "nip" },
     { "LOOT_ROLL_ROLLED_GREED",     "rollgreed", "nip" },
     { "LOOT_ROLL_ROLLED_DE",        "rollde",    "nip" },
+    -- Transmog rolls; a client without them has no such globals and skips these.
+    { "LOOT_ROLL_TRANSMOG",         "transmog", "pi" },
+    { "LOOT_ROLL_TRANSMOG_SELF",    "transmog", "i", true },
+    { "LOOT_ROLL_ROLLED_TRANSMOG",  "rolltransmog", "nip" },
     { "LOOT_ROLL_WON",              "won",   "pi" },
     { "LOOT_ROLL_YOU_WON",          "won",   "i", true },
     { "LOOT_ROLL_ALL_PASSED",       "allpass", "i" },
@@ -794,7 +847,16 @@ local function EntryForLine(link, player, what)
     else
         pick = Pick(open, function(e) local r = e.rolls[player]; return not r or r.choice == "wait" end)
     end
-    return pick or open[1] or NewEntry(link)
+    if pick or open[1] then return pick or open[1] end
+    -- The loot history may have finished this item already; its late chat
+    -- lines belong to it, not to a new row.
+    local now = GetTime()
+    for _, e in ipairs(rollLog) do
+        if e.key == key and e.done and now - e.at < SAME_ROLL and player and e.rolls[player] then
+            return e
+        end
+    end
+    return NewEntry(link)
 end
 
 local function Mark(e, name, field, value)
@@ -825,6 +887,7 @@ local function GroupNames()
 end
 
 local RefreshLog
+local openAfterFight = false   -- a roll started in a fight with logCombatWait on
 
 -- An item seen before the client has it loads a moment later: draw the list
 -- again then, so its name and quality turn up. Only while the list is open,
@@ -858,7 +921,14 @@ LogRollStart = function(rollID)
     for _, name in ipairs(GroupNames()) do
         if not e.rolls[name] then Mark(e, name, "choice", "wait") end
     end
-    if settings and settings.logAuto and not (logWindow and logWindow:IsShown()) then ToggleLog(true) end
+    if settings and settings.logAuto and not (logWindow and logWindow:IsShown()) then
+        local okC, fighting = pcall(InCombatLockdown)
+        if settings.logCombatWait and okC and fighting == true then
+            openAfterFight = true
+        else
+            ToggleLog(true)
+        end
+    end
     RefreshLog()
 end
 
@@ -903,16 +973,357 @@ OnLootLine = function(text)
     end
 end
 
+-- Each choice as shown. Defined here, above everything that reads it (the
+-- group message below as well as the window). rank 6 and up is "no choice".
+local CHOICE = {
+    need     = { icon = "Interface\\Buttons\\UI-GroupLoot-Dice-Up",  text = "Need",  r = 0.3, g = 1,   b = 0.3, rank = 1 },
+    transmog = { icon = "Interface\\Icons\\INV_Chest_Cloth_17",      text = "Transmog", r = 0.95, g = 0.5, b = 1, rank = 2 },
+    greed    = { icon = "Interface\\Buttons\\UI-GroupLoot-Coin-Up",  text = "Greed", r = 1,   g = 0.82, b = 0, rank = 3 },
+    de       = { icon = "Interface\\Buttons\\UI-GroupLoot-DE-Up",    text = "Disenchant", r = 0.7, g = 0.5, b = 1, rank = 4 },
+    pass     = { icon = "Interface\\Buttons\\UI-GroupLoot-Pass-Up",  text = "Pass",  r = 0.6, g = 0.6, b = 0.6, rank = 5 },
+    wait     = { icon = "Interface\\COMMON\\StreamCircle",           text = "Waiting", r = 0.5, g = 0.5, b = 0.5, rank = 6 },
+    none     = { icon = "Interface\\COMMON\\StreamCircle",           text = "No roll", r = 0.4, g = 0.4, b = 0.4, rank = 7 },
+}
+
+-- ── The game's loot history ──
+-- Clients with C_LootHistory keep every drop with each player's choice (Need
+-- main spec or off spec, Transmog, Greed, Pass), the roll and the winner. It
+-- is more exact than the chat lines, which stay as the fallback: an empty or
+-- secret answer leaves what chat said untouched.
+
+local function Plain(v)
+    if Secret(v) then return nil end
+    return v
+end
+
+-- The game's roll state as this list's choice, and "main" / "off" for a Need.
+local function StateChoice(state)
+    state = Plain(state)
+    if type(state) ~= "number" then return nil end
+    local S = (Enum and Enum.EncounterLootDropRollState) or {}
+    if state == (S.NeedMainSpec or 0) then return "need", "main" end
+    if state == (S.NeedOffSpec or 1) then return "need", "off" end
+    if state == (S.Transmog or 2) then return "transmog" end
+    if state == (S.Greed or 3) then return "greed" end
+    if state == (S.Pass or 5) then return "pass" end
+    return nil   -- no choice yet
+end
+
+local function HistoryFinished(info)
+    return type(Plain(info.winner)) == "table" or Plain(info.allPassed) == true
+end
+
+OnHistoryDrop = function(enc, key)
+    local H = C_LootHistory
+    enc, key = Plain(enc), Plain(key)
+    if not (H and H.GetSortedInfoForDrop and enc ~= nil and key ~= nil) then return end
+    local ok, info = pcall(H.GetSortedInfoForDrop, enc, key)
+    if not ok or type(info) ~= "table" or Secret(info) then return end
+    local link = Plain(info.itemHyperlink)
+    if not PlainString(link) then return end
+
+    local e
+    for _, x in ipairs(rollLog) do
+        if x.histEnc == enc and x.histKey == key then e = x break end
+    end
+    if not e then
+        local open = OpenEntries(ItemKey(link))
+        e = Pick(open, function(x) return x.histKey == nil and x.rollID ~= nil end)
+            or Pick(open, function(x) return x.histKey == nil end)
+        if not e then
+            if HistoryFinished(info) then return end   -- an old drop, not this roll
+            e = NewEntry(link)
+        end
+        e.histEnc, e.histKey = enc, key
+    end
+
+    local list = Plain(info.rollInfos)
+    if type(list) == "table" then
+        for _, r in ipairs(list) do
+            if type(r) == "table" then
+                local name = PlainName(Plain(r.playerName))
+                if name then
+                    local choice, spec = StateChoice(r.state)
+                    if choice then
+                        Mark(e, name, "choice", choice)
+                        Mark(e, name, "spec", spec)
+                    elseif not e.rolls[name] then
+                        Mark(e, name, "choice", "wait")
+                    end
+                    local roll = Plain(r.roll)
+                    if type(roll) == "number" then Mark(e, name, "roll", roll) end
+                    if Plain(r.isWinner) == true then e.winner, e.done = name, true end
+                end
+            end
+        end
+    end
+    local w = Plain(info.winner)
+    if type(w) == "table" then
+        local name = PlainName(Plain(w.playerName))
+        if name then e.winner, e.done = name, true end
+    end
+    if Plain(info.allPassed) == true then e.done = true end
+    RefreshLog()
+end
+
+-- ── Wins this run ──
+
+local function WinsOf(name)
+    local n = 0
+    for _, e in ipairs(rollLog) do
+        if e.winner == name then n = n + 1 end
+    end
+    return n
+end
+
+-- ── Kept through a /reload ──
+-- The list is saved at logout (a /reload is one) in settings.run, with the
+-- dungeon or raid it belongs to. Entering a different one starts afresh.
+
+local currentInstance
+local restored = false
+
+local function InstanceID()
+    if not GetInstanceInfo then return nil end
+    local ok, name, kind, _, _, _, _, _, id = pcall(GetInstanceInfo)
+    if not ok then return nil end
+    kind, id = Plain(kind), Plain(id)
+    if kind == nil or kind == "none" or type(id) ~= "number" then return nil end
+    return id, PlainString(name) and name or nil
+end
+
+local function ClearLog()
+    wipe(rollLog)
+    wipe(groups)
+    logScroll = 0
+end
+
+local function Restore(run)
+    if type(run) ~= "table" or type(run.groups) ~= "table" then return end
+    local old = GetTime() - SAME_ROLL - 1   -- never "still rolling"
+    for gi = #run.groups, 1, -1 do
+        local sg = run.groups[gi]
+        if type(sg) == "table" and type(sg.entries) == "table" and #sg.entries > 0 then
+            local g = { title = sg.title or T("Trash"), boss = sg.boss and true or false, zone = sg.zone,
+                        clock = sg.clock or "", last = 0, entries = {} }
+            for ei = #sg.entries, 1, -1 do
+                local se = sg.entries[ei]
+                if type(se) == "table" and PlainString(se.link) then
+                    local e = { key = ItemKey(se.link), link = se.link, at = old, rolls = {}, names = {},
+                                group = g, source = se.source, winner = se.winner, done = true }
+                    if type(se.names) == "table" and type(se.rolls) == "table" then
+                        for _, n in ipairs(se.names) do
+                            local sr = se.rolls[n]
+                            if type(n) == "string" and type(sr) == "table" then
+                                e.names[#e.names + 1] = n
+                                e.rolls[n] = { choice = sr.choice, roll = sr.roll, spec = sr.spec }
+                            end
+                        end
+                    end
+                    table.insert(g.entries, 1, e)
+                    table.insert(rollLog, 1, e)
+                end
+            end
+            if #g.entries > 0 then table.insert(groups, 1, g) end
+        end
+    end
+    Trim()
+end
+
+SaveRun = function()
+    if not settings then return end
+    if not settings.keepRun or #rollLog == 0 then
+        settings.run = nil
+        return
+    end
+    local out = { instance = currentInstance, groups = {} }
+    for _, g in ipairs(groups) do
+        local sg = { title = g.title, boss = g.boss or nil, zone = g.zone, clock = g.clock, entries = {} }
+        for _, e in ipairs(g.entries) do
+            local se = { link = e.link, source = e.source, winner = e.winner, names = {}, rolls = {} }
+            for _, n in ipairs(e.names) do
+                local r = e.rolls[n]
+                if r then
+                    se.names[#se.names + 1] = n
+                    se.rolls[n] = { choice = r.choice, roll = r.roll, spec = r.spec }
+                end
+            end
+            sg.entries[#sg.entries + 1] = se
+        end
+        out.groups[#out.groups + 1] = sg
+    end
+    settings.run = out
+end
+
+CheckRun = function()
+    if not settings then return end
+    local id = InstanceID()
+    if not restored then
+        restored = true
+        local run = settings.run
+        settings.run = nil
+        if settings.keepRun and type(run) == "table" and #rollLog == 0
+            and (id == nil or run.instance == nil or run.instance == id) then
+            Restore(run)
+            currentInstance = run.instance
+        end
+    end
+    if id and id ~= currentInstance then
+        -- A different dungeon or raid: a fresh list. Outside (no id) keeps it,
+        -- so a corpse run or a trip to the vendor loses nothing.
+        if settings.keepRun and currentInstance ~= nil then ClearLog() end
+        currentInstance = id
+    end
+    if RefreshLog then RefreshLog() end
+end
+
+OnCombatEnd = function()
+    if not openAfterFight then return end
+    openAfterFight = false
+    if settings and settings.enabled and not (logWindow and logWindow:IsShown()) then ToggleLog(true) end
+end
+
+-- ── Auction prices ──
+-- Read from the auction addon the player already uses, through its public
+-- functions. Never scans or touches the auction house.
+
+local priceCache, priceCount = {}, 0
+
+local function WholeCopper(v)
+    if not PlainNumber(v) or v < 1 then return nil end
+    return math.floor(v + 0.5)
+end
+
+local PRICE_SOURCES = {
+    { name = "Auctionator", get = function(link)
+        local api = type(Auctionator) == "table" and type(Auctionator.API) == "table" and Auctionator.API.v1
+        if type(api) ~= "table" or type(api.GetAuctionPriceByItemLink) ~= "function" then return nil end
+        local ok, v = pcall(api.GetAuctionPriceByItemLink, "OxedHub", link)
+        return ok and WholeCopper(v) or nil
+    end },
+    { name = "TSM", get = function(link)
+        local api = type(TSM_API) == "table" and TSM_API
+        if not (api and type(api.ToItemString) == "function" and type(api.GetCustomPriceValue) == "function") then return nil end
+        local ok, itemString = pcall(api.ToItemString, link)
+        if not ok or not PlainString(itemString) then return nil end
+        for _, source in ipairs({ "DBMinBuyout", "DBMarket" }) do
+            local okV, v = pcall(api.GetCustomPriceValue, source, itemString)
+            local copper = okV and WholeCopper(v) or nil
+            if copper then return copper end
+        end
+    end },
+    { name = "Auctioneer", get = function(link)
+        local api = type(AucAdvanced) == "table" and AucAdvanced.API
+        if type(api) ~= "table" or type(api.GetMarketValue) ~= "function" then return nil end
+        local ok, v = pcall(api.GetMarketValue, link)
+        return ok and WholeCopper(v) or nil
+    end },
+    { name = "AuctionMaster", get = function(link)
+        local api = type(AuctionMaster) == "table" and AuctionMaster.API
+        if type(api) ~= "table" then return nil end
+        for _, fn in ipairs({ api.GetLowestPrice, api.GetMarketPrice }) do
+            if type(fn) == "function" then
+                local ok, v = pcall(fn, link)
+                local copper = ok and WholeCopper(v) or nil
+                if copper then return copper end
+            end
+        end
+    end },
+}
+
+-- The price in copper and the addon it came from, or nil.
+AuctionPrice = function(link)
+    if not PlainString(link) then return nil end
+    local now = GetTime()
+    local hit = priceCache[link]
+    if hit and now - hit.at < (hit.copper and 60 or 5) then return hit.copper, hit.source end
+    if not hit then
+        priceCount = priceCount + 1
+        if priceCount > 200 then wipe(priceCache) priceCount = 1 end
+    end
+    hit = { at = now }
+    for _, source in ipairs(PRICE_SOURCES) do
+        local ok, copper = pcall(source.get, link)
+        if ok and copper then
+            hit.copper, hit.source = copper, source.name
+            break
+        end
+    end
+    priceCache[link] = hit
+    return hit.copper, hit.source
+end
+
+-- ── Telling the group ──
+
+local function GroupChannel()
+    local function Yes(fn, ...) local ok, v = pcall(fn, ...) return ok and v == true end
+    if LE_PARTY_CATEGORY_INSTANCE and IsInGroup and Yes(IsInGroup, LE_PARTY_CATEGORY_INSTANCE) then return "INSTANCE_CHAT" end
+    if IsInRaid and Yes(IsInRaid) then return "RAID" end
+    if IsInGroup and Yes(IsInGroup) then return "PARTY" end
+end
+
+-- "Ana won [Item] (Need 87)" in group chat, or in your own chat when alone.
+local function ShareEntry(e)
+    if not (e and PlainString(e.link)) then return end
+    local text
+    if e.winner then
+        text = T("%s won %s"):format(e.winner, e.link)
+        local r = e.rolls[e.winner]
+        if r and r.choice and CHOICE[r.choice] then
+            local how = T(CHOICE[r.choice].text)
+            if r.roll then how = how .. " " .. r.roll end
+            text = text .. " (" .. how .. ")"
+        end
+    elseif e.done then
+        text = T("Everyone passed on %s"):format(e.link)
+    else
+        print(PREFIX .. T("Nobody has won it yet."))
+        return
+    end
+    local channel = GroupChannel()
+    if not channel then
+        print(PREFIX .. text)
+        return
+    end
+    if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown then
+        local ok, locked = pcall(C_ChatInfo.InChatMessagingLockdown)
+        if ok and locked == true then
+            print(PREFIX .. T("The game is not letting addons post in chat right now. Try again in a moment."))
+            return
+        end
+    end
+    local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
+    if type(send) == "function" then pcall(send, text, channel) end
+end
+
+-- ── Quieter chat ──
+-- With hideRollSpam on, the "has selected Need" and "rolled 54" lines leave
+-- the chat windows; who won stays. The list reads its lines from the event,
+-- not the chat windows, so it misses nothing. No side effects here: the
+-- filter runs once per chat window for the same line.
+
+local SPAM = { need = true, greed = true, de = true, pass = true, transmog = true,
+               rollneed = true, rollgreed = true, rollde = true, rolltransmog = true }
+
+local function RollSpamFilter(_, _, text)
+    if not (settings and settings.enabled and settings.hideRollSpam and running) then return false end
+    local ok, hide = pcall(function()
+        if not PlainString(text) or not text:find("|Hitem:", 1, true) then return false end
+        for _, p in ipairs(LootPatterns()) do
+            if text:match(p.pattern) then return SPAM[p.what] == true end
+        end
+        return false
+    end)
+    return ok and hide == true
+end
+
+do
+    local add = (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter) or ChatFrame_AddMessageEventFilter
+    if type(add) == "function" then pcall(add, "CHAT_MSG_LOOT", RollSpamFilter) end
+end
+
 -- ── The window ──
 
-local CHOICE = {
-    need  = { icon = "Interface\\Buttons\\UI-GroupLoot-Dice-Up",  text = "Need",  r = 0.3, g = 1,   b = 0.3, rank = 1 },
-    greed = { icon = "Interface\\Buttons\\UI-GroupLoot-Coin-Up",  text = "Greed", r = 1,   g = 0.82, b = 0, rank = 2 },
-    de    = { icon = "Interface\\Buttons\\UI-GroupLoot-DE-Up",    text = "Disenchant", r = 0.7, g = 0.5, b = 1, rank = 3 },
-    pass  = { icon = "Interface\\Buttons\\UI-GroupLoot-Pass-Up",  text = "Pass",  r = 0.6, g = 0.6, b = 0.6, rank = 4 },
-    wait  = { icon = "Interface\\COMMON\\StreamCircle",           text = "Waiting", r = 0.5, g = 0.5, b = 0.5, rank = 5 },
-    none  = { icon = "Interface\\COMMON\\StreamCircle",           text = "No roll", r = 0.4, g = 0.4, b = 0.4, rank = 6 },
-}
 local PLUS  = "Interface\\Buttons\\UI-PlusButton-Up"
 local MINUS = "Interface\\Buttons\\UI-MinusButton-Up"
 local BOSS_ICON  = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
@@ -931,6 +1342,11 @@ end
 
 local function ChoiceText(e, r)
     local text = Tint(ChoiceOf(e, r), T(ChoiceOf(e, r).text))
+    if r and r.choice == "need" and r.spec == "main" then
+        text = text .. " |cff9fd78f" .. T("Main spec") .. "|r"
+    elseif r and r.choice == "need" and r.spec == "off" then
+        text = text .. " |cff9d9d9d" .. T("Off spec") .. "|r"
+    end
     if r and r.roll then text = text .. "  |cffffffff" .. r.roll .. "|r" end
     return text
 end
@@ -964,6 +1380,19 @@ local function GroupOpen(g)
     return g == groups[1]
 end
 
+-- The upgrade % for a player on this item, or nil (off, cannot tell).
+local function UpgradeOf(e, name)
+    local Up = OxedHub.RollGroupUpgrade
+    if not (Up and Up.For and settings and settings.groupUpgrade) then return nil end
+    return Up.For(e.link, name, name == MyName())
+end
+
+local function UpgradeText(e, name)
+    local value = UpgradeOf(e, name)
+    if not value then return nil end
+    return OxedHub.RollGroupUpgrade.Text(value)
+end
+
 local function SortedNames(e)
     local names = {}
     for _, n in ipairs(e.names) do names[#names + 1] = n end
@@ -988,12 +1417,39 @@ end
 
 -- Flat lines: a header per group, then one line per item. The players of an
 -- item sit on its own line as small marks: the choice's icon and the roll.
+local logQuery = ""   -- the search, lower case; "" shows everything
+
+-- Whether an item's name, or the name of anyone who rolled on it, holds the search.
+local function Matches(e)
+    if logQuery == "" then return true end
+    local name = PlainString(e.link) and e.link:match("%[(.-)%]") or ""
+    if name:lower():find(logQuery, 1, true) then return true end
+    for _, n in ipairs(e.names) do
+        if n:lower():find(logQuery, 1, true) then return true end
+        local full = fullNames[n]
+        if full and full:lower():find(logQuery, 1, true) then return true end
+    end
+    return false
+end
+
 local function LogLines()
     local lines = {}
     for _, g in ipairs(groups) do
-        lines[#lines + 1] = { group = g }
-        if GroupOpen(g) then
-            for _, e in ipairs(g.entries) do lines[#lines + 1] = { e = e } end
+        if logQuery == "" then
+            lines[#lines + 1] = { group = g }
+            if GroupOpen(g) then
+                for _, e in ipairs(g.entries) do lines[#lines + 1] = { e = e } end
+            end
+        else
+            -- Searching: every group with a match, opened.
+            local found = {}
+            for _, e in ipairs(g.entries) do
+                if Matches(e) then found[#found + 1] = { e = e } end
+            end
+            if #found > 0 then
+                lines[#lines + 1] = { group = g }
+                for _, line in ipairs(found) do lines[#lines + 1] = line end
+            end
         end
     end
     return lines
@@ -1051,10 +1507,21 @@ local function ItemTooltip(owner, e)
     elseif e.done then
         GameTooltip:AddLine(T("Everyone passed"), 0.6, 0.6, 0.6)
     end
+    if settings.showPrice and AuctionPrice then
+        local copper, source = AuctionPrice(e.link)
+        local money = copper and Money(copper)
+        if money then GameTooltip:AddLine(T("Auction house: %s (%s)"):format(money, source), 0.8, 0.8, 0.8) end
+    end
     for _, n in ipairs(SortedNames(e)) do
-        GameTooltip:AddDoubleLine(ShownName(n), ChoiceText(e, e.rolls[n]))
+        local wins = WinsOf(n)
+        local left = ShownName(n)
+        if wins > 0 then left = left .. " |cffffd100(" .. T("%d won"):format(wins) .. ")|r" end
+        local up = UpgradeText(e, n)
+        if up then left = left .. " " .. up end
+        GameTooltip:AddDoubleLine(left, ChoiceText(e, e.rolls[n]))
     end
     GameTooltip:AddLine(T("Shift-click: link the item in chat."), 0.6, 0.6, 0.6, true)
+    GameTooltip:AddLine(T("Right-click: tell the group who won."), 0.6, 0.6, 0.6, true)
     GameTooltip:Show()
 end
 
@@ -1073,6 +1540,12 @@ local function MakePip(row)
     pip.who:SetPoint("BOTTOMRIGHT", -1, 1)
     pip.who:SetJustifyH("CENTER")
     pip.who:SetWordWrap(false)
+    -- A thin line along the bottom: green an upgrade for them, red a downgrade.
+    pip.up = pip:CreateTexture(nil, "ARTWORK")
+    pip.up:SetHeight(2)
+    pip.up:SetPoint("BOTTOMLEFT", 0, 0)
+    pip.up:SetPoint("BOTTOMRIGHT", 0, 0)
+    pip.up:Hide()
     pip.crown = pip:CreateTexture(nil, "OVERLAY")
     pip.crown:SetSize(10, 10)
     pip.crown:SetPoint("TOPRIGHT", 1, 2)
@@ -1085,6 +1558,14 @@ local function MakePip(row)
             GameTooltip:SetText(fullNames[name] or name, 1, 1, 1)
             GameTooltip:AddLine(ChoiceText(e, e.rolls[name]))
             if e.winner == name then GameTooltip:AddLine(T("Won by %s"):format(name), 1, 0.82, 0) end
+            GameTooltip:AddLine(T("Items won this run: %d"):format(WinsOf(name)), 0.8, 0.8, 0.8)
+            local up = UpgradeText(e, name)
+            if up then
+                GameTooltip:AddLine(T("Upgrade for them: %s"):format(up), 0.8, 0.8, 0.8)
+                if up:find("~", 1, true) then
+                    GameTooltip:AddLine(T("~ is a guess: inspected gear, spec told from their role."), 0.6, 0.6, 0.6, true)
+                end
+            end
             GameTooltip:Show()
         else
             ItemTooltip(self, e)   -- the "+N" mark: everyone
@@ -1096,7 +1577,7 @@ end
 
 local function MakeLine(parent)
     local row = CreateFrame("Button", nil, parent)
-    row:RegisterForClicks("LeftButtonUp")
+    row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     row.bg = row:CreateTexture(nil, "BACKGROUND")
     row.bg:SetAllPoints()
     row.hl = row:CreateTexture(nil, "HIGHLIGHT")
@@ -1141,9 +1622,13 @@ local function MakeLine(parent)
         end
     end)
     row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    row:SetScript("OnClick", function(self)
+    row:SetScript("OnClick", function(self, mouse)
         local t = self.target
         if not t then return end
+        if self.kind == "item" and mouse == "RightButton" then
+            ShareEntry(t)
+            return
+        end
         if self.kind == "item" then
             if IsModifiedClick and IsModifiedClick("CHATLINK") and ChatEdit_InsertLink then
                 pcall(ChatEdit_InsertLink, t.link)
@@ -1193,11 +1678,20 @@ local function DrawPip(pip, e, name)
     local c = ChoiceOf(e, r)
     pip.e, pip.name = e, name
     pip.icon:SetTexture(c.icon)
-    pip.icon:SetDesaturated(c.rank >= 5)
+    pip.icon:SetDesaturated(c.rank >= 6)
     pip.num:SetText(r.roll and tostring(r.roll) or "")
     pip.num:SetTextColor(c.r, c.g, c.b)
     pip.who:SetText(ClassColour(name))
     pip.crown:SetShown(e.winner == name)
+    local ur, ug, ub
+    local value = UpgradeOf(e, name)
+    if value then ur, ug, ub = OxedHub.RollGroupUpgrade.Colour(value) end
+    if ur then
+        pip.up:SetColorTexture(ur, ug, ub, 0.9)
+        pip.up:Show()
+    else
+        pip.up:Hide()
+    end
     if e.winner == name then
         pip.bg:SetColorTexture(1, 0.82, 0, 0.25)
     elseif name == MyName() then
@@ -1250,6 +1744,7 @@ local function DrawItem(row, e, index)
         pip.icon:SetTexture(nil)
         pip.who:SetText("")
         pip.crown:Hide()
+        pip.up:Hide()
         pip.num:SetText("+" .. (#players - room))
         pip.num:SetTextColor(0.8, 0.8, 0.8)
         pip.bg:SetColorTexture(1, 1, 1, 0.05)
@@ -1282,6 +1777,8 @@ RefreshLog = function()
     local maxScroll = math.max(0, #lines - shown)
     if logScroll > maxScroll then logScroll = maxScroll end
     if logScroll < 0 then logScroll = 0 end
+    logWindow.empty:SetText(logQuery ~= "" and T("Nothing matches the search.")
+        or T("No rolls yet. Each Need, Greed or Pass in your group shows here, with the roll and who won."))
     logWindow.empty:SetShown(#lines == 0)
 
     -- Rows stack from the top; the window is as tall as what it shows.
@@ -1389,11 +1886,41 @@ local function BuildLog()
     clear:SetPoint("BOTTOMRIGHT", -12, 9)
     clear:SetText(T("Clear"))
     clear:SetScript("OnClick", function()
-        wipe(rollLog)
-        wipe(groups)
+        ClearLog()
+        RefreshLog()
+    end)
+
+    -- The search. ⚠ SetAutoFocus(false) first thing: a new EditBox takes the
+    -- keyboard otherwise, and the player can neither move nor cast.
+    local search
+    local okS, made = pcall(CreateFrame, "EditBox", nil, f, "SearchBoxTemplate")
+    if okS and made then
+        search = made
+    else
+        okS, made = pcall(CreateFrame, "EditBox", nil, f, "InputBoxTemplate")
+        search = okS and made or CreateFrame("EditBox", nil, f)
+    end
+    search:SetAutoFocus(false)
+    search:SetSize(78, 18)
+    search:SetPoint("BOTTOMLEFT", 16, 9)
+    search:SetFontObject(ChatFontSmall or GameFontHighlightSmall)
+    search:SetMaxLetters(40)
+    search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    search:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    search:HookScript("OnTextChanged", function(self)
+        local text = self:GetText()
+        logQuery = (type(text) == "string" and not Secret(text)) and text:lower():gsub("^%s+", ""):gsub("%s+$", "") or ""
         logScroll = 0
         RefreshLog()
     end)
+    search:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(T("Search an item or a player"), 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    search:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    f:HookScript("OnHide", function() search:ClearFocus() end)
+    f.search = search
 
     local passes = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     passes:SetSize(124, 18)
@@ -1462,6 +1989,32 @@ end
 
 -- ── Options ─────────────────────────────────────────────────────────────────
 
+local logOptionsWindow
+ShowLogOptions = function()
+    local API = OxedHub.ModuleAPI
+    if not API or not settings then return end
+    if not logOptionsWindow then
+        local w = API:CreateOptionsWindow("Who rolled what", 440, 620)
+        logOptionsWindow = w
+        local function Redraw() if RedrawLog then RedrawLog() end end
+        w:AddCheckbox(settings, "logAuto", "Open who rolled what when a roll starts")
+        w:AddCheckbox(settings, "logCombatWait", "In a fight, wait until it is over to open it")
+        w:AddCheckbox(settings, "logShowAll", "Show passes and players who did not roll", nil, Redraw)
+        w:AddCheckbox(settings, "keepRun", "Keep the list through a reload, a fresh one per dungeon or raid")
+        w:AddCheckbox(settings, "hideRollSpam", "Hide the Need, Greed and roll lines in chat (who won stays)")
+        w:AddCheckbox(settings, "groupUpgrade", "Upgrade % for everyone who rolls (inspects the group, out of combat)", nil, function()
+            local Up = OxedHub.RollGroupUpgrade
+            if Up and Up.Apply then pcall(Up.Apply, settings) end
+            Redraw()
+        end)
+        w:AddSlider(settings, "logRows", "Lines before the window scrolls", 4, 30, 1, "%s: %d", Redraw)
+        w:AddSlider(settings, "logScale", "Window size", 0.7, 1.4, 0.05, "%s: %.2f", Redraw)
+        w:AddNote("Upgrade %: a line under each player, green better, red worse; the number is in their tooltip. Others' carry a ~, a guess from inspected gear.")
+        w:AddNote("Right-click an item to tell the group who won. Type in the box at the bottom to find an item or a player. A key for the list is in the game's Key Bindings, under Oxed Hub.")
+    end
+    logOptionsWindow:Show()
+end
+
 ShowOptions = function()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
@@ -1479,17 +2032,8 @@ ShowOptions = function()
         w:AddCheckbox(settings, "highlight", "Glow on the suggested button", nil, Watch)
         w:AddCheckbox(settings, "chat", "A line in chat for every roll")
         w:AddCheckbox(settings, "showSell", "Show what it sells for", nil, Watch)
+        w:AddCheckbox(settings, "showPrice", "Show the auction price (Auctionator, TSM, Auctioneer)", nil, Watch)
         w:AddSoundPicker(settings, "sound", "Sound when it is an upgrade", "None")
-        w:AddCheckbox(settings, "logAuto", "Open who rolled what when a roll starts")
-        w:AddCheckbox(settings, "logShowAll", "Show passes and players who did not roll", nil, function()
-            if RedrawLog then RedrawLog() end
-        end)
-        w:AddSlider(settings, "logRows", "Lines before the window scrolls", 4, 30, 1, "%s: %d", function()
-            if RedrawLog then RedrawLog() end
-        end)
-        w:AddSlider(settings, "logScale", "Window size", 0.7, 1.4, 0.05, "%s: %.2f", function()
-            if RedrawLog then RedrawLog() end
-        end)
         w:AddCheckbox(settings, "minimapButton", "Show minimap button", nil, function()
             local icon = MinimapIcon()
             if icon then icon:Apply(settings.enabled == true) end
@@ -1500,6 +2044,11 @@ ShowOptions = function()
         log:SetPoint("TOPLEFT", w, "TOPLEFT", 20, w.cursorY - 6)
         log:SetText(T("Who rolled what"))
         log:SetScript("OnClick", function() ToggleLog(true) end)
+        local logOpts = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+        logOpts:SetSize(180, 22)
+        logOpts:SetPoint("LEFT", log, "RIGHT", 8, 0)
+        logOpts:SetText(T("List options"))
+        logOpts:SetScript("OnClick", function() ShowLogOptions() end)
         w.cursorY = w.cursorY - 34
 
         w:AddNote("It only advises: nothing is rolled for you. What counts as better is set in Leveling Finds (your role's stats, or item level).")
@@ -1520,6 +2069,22 @@ MinimapIcon = function()
         end,
     })
     return minimapIcon
+end
+
+-- The key in the game's Key Bindings (Bindings.xml). Named at file scope, so
+-- the key is listed by name even while the module is off.
+BINDING_NAME_OXEDHUB_ROLLADVISOR_LOG = "Roll Advisor: who rolled what"
+if GetLocale() == "ruRU" then
+    BINDING_NAME_OXEDHUB_ROLLADVISOR_LOG = "Roll Advisor: кто что бросил"
+end
+
+function OxedHub_RollAdvisorLog()
+    if not settings then return end
+    if settings.enabled ~= true then
+        print(PREFIX .. T("The module is switched off. Switch it on in OxedHub, Modules."))
+        return
+    end
+    ToggleLog()
 end
 
 -- /oxroll opens or closes "who rolled what"; /oxroll options opens the options.
@@ -1556,10 +2121,10 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "rolladvisor",
         name     = "Roll Advisor",
-        version  = "1.4.0",
+        version  = "1.5.0",
         added    = 20261113,
         inDevelopment = true,
-        updated  = 20261121.3,  -- who rolled what redesigned: one line per item, each player as a mark with the roll
+        updated  = 20261126,  -- loot history, main/off spec and transmog, kept through a reload, search, auction price, tell the group
         author   = "Oxed",
         category = "groups",
         keywords = { "need", "greed", "roll", "loot", "upgrade", "bis", "dungeon", "advice" },
@@ -1572,10 +2137,17 @@ loginFrame:SetScript("OnEvent", function(self)
             local icon = MinimapIcon()
             if icon then icon:Apply(true) end
             Start()
+            local Up = OxedHub.RollGroupUpgrade
+            if Up and Up.Apply then
+                Up.OnChanged = function() if RefreshLog then RefreshLog() end end
+                pcall(Up.Apply, cfg, true)
+            end
         end,
         OnDisable = function()
             if minimapIcon then minimapIcon:Apply(false) end
             Stop()
+            local Up = OxedHub.RollGroupUpgrade
+            if Up and Up.Apply then pcall(Up.Apply, settings, false) end
         end,
     })
 end)

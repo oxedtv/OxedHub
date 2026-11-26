@@ -68,6 +68,16 @@ local CLIENT_TAGS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.81",
+        lines = {
+            { "NEW", "Roll Advisor: who rolled what reads the game's loot history, showing Need main spec or off spec and Transmog." },
+            { "NEW", "Roll Advisor: upgrade % for everyone who rolls (switch it on in List options): a green or red line under each player." },
+            { "NEW", "Roll Advisor: the list is kept through a reload, a fresh one per dungeon or raid, with how many items each player has won." },
+            { "NEW", "Roll Advisor: search the list, right-click an item to tell the group who won, and see its auction price (Auctionator, TSM, Auctioneer)." },
+            { "NEW", "Roll Advisor: hide the Need and roll lines in chat, open the list only after a fight, and a key for it in Key Bindings." },
+        },
+    },
+    {
         version = "2.4.80",
         lines = {
             { "CHANGED", "Layer Swap is removed. Blizzard is disabling the game functions that addons used to move players between layers, so the module can no longer work.", "forever" },
