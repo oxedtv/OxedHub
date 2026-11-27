@@ -70,6 +70,13 @@ local CLIENT_TAGS = {
 -- changed in between.
 WhatsNew.RELEASES = {
     {
+        version = "2.4.83",
+        lines = {
+            { "CHANGED", "Context Menu Links: \"Copy link\" sits under an OxedHub heading in the right-click menu.", "midnight" },
+            { "CHANGED", "The OxedHub signature under windows is gold and easier to read.", "both" },
+        },
+    },
+    {
         version = "2.4.82",
         lines = {
             { "NEW", "Cooldown Pulse module: a spell's icon flashes mid-screen when it is ready again, with a sound if you choose one.", "both" },

@@ -135,6 +135,7 @@ local function AddEntries(_, root, contextData)
     local ok, links = pcall(LinksFor, contextData)
     if not ok or #links == 0 then return end
     root:CreateDivider()
+    root:CreateTitle("OxedHub")
     local sub = root:CreateButton(L["Copy link"])
     for _, link in ipairs(links) do
         local title, url = link[1], link[2]

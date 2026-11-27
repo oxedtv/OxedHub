@@ -480,7 +480,7 @@ local function BuildGroupWindow()
     w.notLearnedIcon:SetPoint("RIGHT", w.notLearned, "LEFT", -5, 0)
     w.notLearnedIcon:SetDesaturated(true)
 
-    w.footer = w:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    w.footer = w:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     w.footer:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -10, 7)
     w.footer:SetText("OxedHub")
     return w

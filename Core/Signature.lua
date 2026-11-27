@@ -26,11 +26,13 @@ local decided = setmetatable({}, { __mode = "k" })   -- frame -> true / false
 function OxedHub:Sign(frame)
     if not frame or decided[frame] == true or frame.oxedSignature then return end
     if frame.IsForbidden and frame:IsForbidden() then return end
-    local ok, text = pcall(frame.CreateFontString, frame, nil, "OVERLAY", "GameFontDisableSmall")
+    local ok, text = pcall(frame.CreateFontString, frame, nil, "OVERLAY", "GameFontNormalSmall")
     if not ok or not text then return end
     text:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", -8, -1)
     text:SetText("OxedHub")
-    text:SetAlpha(0.8)
+    text:SetTextColor(1, 0.82, 0)   -- gold, readable against the world
+    text:SetShadowColor(0, 0, 0, 1)
+    text:SetShadowOffset(1, -1)
     frame.oxedSignature = text
     decided[frame] = true
 end

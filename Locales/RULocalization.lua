@@ -821,7 +821,7 @@ L["ANIM_PLAY"] = "Запуск"
 L["ANIM_STOP"] = "Стоп"
 L["ANIM_SAVE"] = "Сохранить анимацию"
 
-L["RELEASE_TITLE"] = "Релиз 2.4.82"
+L["RELEASE_TITLE"] = "Релиз 2.4.83"
 L["RELEASE_SUBTITLE"] = "Что нового в этом обновлении"
 L["ANIM_CUSTOM_TITLE"] = "Собственные анимации"
 L["ANIM_CUSTOM_DESC"] = "Управляйте своей библиотекой анимаций здесь. Используйте кнопку Добавить анимацию для настройки кастомных спрайт-листов."
@@ -6054,6 +6054,10 @@ L["Nothing to learn here right now."] = "Сейчас здесь нечего и
 L["Ask before spending gold"] = "Спрашивать перед тратой золота"
 L["A line in chat when done"] = "Строка в чате по завершении"
 L["The button sits beside Train on any class or profession trainer."] = "Кнопка появляется рядом с «Обучить» у любого учителя класса или профессии."
+
+-- 2.4.83
+L["Context Menu Links: \"Copy link\" sits under an OxedHub heading in the right-click menu."] = "Context Menu Links: «Копировать ссылку» теперь под заголовком OxedHub в меню ПКМ."
+L["The OxedHub signature under windows is gold and easier to read."] = "Подпись OxedHub под окнами теперь золотая и лучше читается."
 
 -- 2.4.82
 L["Cooldown Pulse module: a spell's icon flashes mid-screen when it is ready again, with a sound if you choose one."] = "Модуль Cooldown Pulse: значок заклинания вспыхивает посреди экрана, когда оно снова готово, со звуком, если он выбран."
