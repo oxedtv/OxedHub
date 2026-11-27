@@ -649,6 +649,7 @@ local function ShowExport(kind)
     if not exportWindow then
         local f = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplate")
         f:SetSize(560, 360)
+        if OxedHub.Sign then OxedHub:Sign(f) end
         f:SetPoint("CENTER", 40, -20)
         f:SetFrameStrata("DIALOG")
         f:SetFrameLevel(220)

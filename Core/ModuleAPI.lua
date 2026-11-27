@@ -147,11 +147,47 @@ local MAINLINE_ONLY = {
     bosstimers = true, bossalerts = true, bosstrack = true, bosshealth = true,
     trashtimers = true, goldwq = true, wqachievements = true, preyhunt = true,
     currencytransfer = true, pvpprogress = true, missinggems = true,
+    contextlinks = true,
+}
+
+-- The other way round: built for WoW Forever (its group finder, hunter pet
+-- happiness, trainers, its quests). Each of these also stops itself on the
+-- main game before registering; listing them here is what labels the card.
+local FOREVER_ONLY = {
+    groupfinder = true, hunterpets = true, levelingfinds = true,
+    trainingreminder = true,
+}
+
+-- Which client a module is for: "midnight", "forever" or "both". A module can
+-- say so itself with client = "midnight" / "forever" in its Register table.
+function ModuleAPI:GetClient(mod)
+    if type(mod) ~= "table" then mod = self.modules[mod] or { id = mod } end
+    local c = mod.client
+    if c == "midnight" or c == "forever" or c == "both" then return c end
+    if MAINLINE_ONLY[mod.id] then return "midnight" end
+    if FOREVER_ONLY[mod.id] then return "forever" end
+    return "both"
+end
+
+-- Tag text and colour for each client, shared by the card and its tooltip.
+-- Colours match the Forever / Retail tags in What's New.
+ModuleAPI.CLIENT_TAGS = {
+    midnight = { text = "MIDNIGHT", r = 0.85, g = 0.5,  b = 0.1 },
+    forever  = { text = "FOREVER",  r = 0.15, g = 0.55, b = 0.75 },
+    both     = { text = "MIDNIGHT + FOREVER", r = 0.3, g = 0.3, b = 0.3 },
 }
 
 function ModuleAPI:Register(moduleInfo)
     if not moduleInfo or not moduleInfo.id then return end
     if MAINLINE_ONLY[moduleInfo.id] and not OxedHub.IsMainline then return end
+    if FOREVER_ONLY[moduleInfo.id] and OxedHub.IsMainline then return end
+
+    -- Once every module has registered (they do at login), the per-module
+    -- minimap icons are laid out (RefreshModuleIcons).
+    if not self.iconsQueued then
+        self.iconsQueued = true
+        C_Timer.After(5, function() pcall(self.RefreshModuleIcons, self) end)
+    end
 
     -- The order they arrive in is the order of the TOC, so the newest module
     -- is the one registered last. That is what "Newest first" sorts by.
@@ -286,6 +322,7 @@ function ModuleAPI:SetModuleEnabled(id, on)
         end
     end
 
+    if self.RefreshModuleIcons then pcall(self.RefreshModuleIcons, self) end
     if not self.switchingAll then self:RefreshModulesTab() end
 end
 
@@ -344,6 +381,9 @@ function ModuleAPI:MinimapButton(opts)
     if type(opts.config.minimap) ~= "table" then opts.config.minimap = {} end
 
     local name = "OxedHub_" .. opts.key
+    -- Remembered so RefreshModuleIcons gives this module no second icon.
+    self.ownIcons = self.ownIcons or {}
+    self.ownIcons[tostring(opts.key):lower()] = true
     local obj = LDB:GetDataObjectByName(name) or LDB:NewDataObject(name, {
         type = "launcher",
         label = opts.label,
@@ -370,6 +410,57 @@ function ModuleAPI:MinimapButton(opts)
         end
     end
     return handle
+end
+
+-- "Minimap button for every module" (Modules page). A module with an icon of
+-- its own keeps that one; every other switched-on module with options gets a
+-- plain icon that opens them. Named OxedHub_auto_<id>, so Minimap Buttons'
+-- "Only OxedHub's own icons" gathers them. Positions live in the module's
+-- saved table as autoMinimap, made here, never in DEFAULTS.
+function ModuleAPI:RefreshModuleIcons()
+    local LDB = LibStub and LibStub("LibDataBroker-1.1", true)
+    local DBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
+    if not (LDB and DBIcon and OxedHubDB) then return end
+    local g = OxedHubDB.globalSettings
+    local on = g and g.moduleMinimapIcons == true
+    self.ownIcons = self.ownIcons or {}
+    -- Icons modules made through LibDataBroker by hand (GoldWQ), any case.
+    local made = {}
+    if LDB.DataObjectIterator then
+        for objName in LDB:DataObjectIterator() do
+            local key = type(objName) == "string" and objName:match("^OxedHub_(.+)$")
+            if key and not key:find("^auto_") then made[key:lower()] = true end
+        end
+    end
+
+    for id, mod in pairs(self.modules) do
+        local lower = tostring(id):lower()
+        local own = self.ownIcons[lower] or made[lower]
+        local name = "OxedHub_auto_" .. lower
+        local wanted = on and not own and mod.OnOptionsShow and self:IsModuleEnabled(id)
+        if wanted and not DBIcon:IsRegistered(name) then
+            local config = OxedHubDB.modules and OxedHubDB.modules[id]
+            if type(config) == "table" then
+                if type(config.autoMinimap) ~= "table" then config.autoMinimap = {} end
+                local obj = LDB:GetDataObjectByName(name) or LDB:NewDataObject(name, {
+                    type = "launcher",
+                    label = mod.name or id,
+                    icon = mod.icon or "Interface\\Icons\\inv_misc_questionmark",
+                    OnClick = function() if mod.OnOptionsShow then mod.OnOptionsShow(mod) end end,
+                    OnTooltipShow = function(tt)
+                        tt:AddLine("Oxed " .. OxedHub.T(mod.name or id))
+                        tt:AddLine(L["Click: options"], 1, 1, 1)
+                        tt:AddLine(L["Drag to move it round the minimap."], 0.6, 0.6, 0.6)
+                    end,
+                })
+                config.autoMinimap.hide = false
+                DBIcon:Register(name, obj, config.autoMinimap)
+            end
+        end
+        if DBIcon:IsRegistered(name) then
+            if wanted then DBIcon:Show(name) else DBIcon:Hide(name) end
+        end
+    end
 end
 
 function ModuleAPI:GetAllModules()
@@ -467,6 +558,8 @@ function ModuleAPI:CreateOptionsWindow(title, width, height)
     if f.CloseButton then
         f.CloseButton:SetScript("OnClick", function() f:Hide() end)
     end
+    -- "OxedHub" under the corner (Core\Signature.lua).
+    if OxedHub.Sign then OxedHub:Sign(f) end
 
     f.cursorY = -36
     f.checks = {}
@@ -1698,6 +1791,17 @@ function ModuleAPI:RefreshModulesTab()
         mod.category = NormalizeCategory(mod.category, mod.id or id)
     end
 
+    -- A module for the other client is never listed: Forever-only ones stay
+    -- off the page in Midnight and Midnight-only ones off it in Forever,
+    -- whichever route (registration or the addon list) brought them here.
+    for id, mod in pairs(allModules) do
+        local client = self:GetClient(mod.id or id)
+        if (client == "forever" and OxedHub.IsMainline)
+            or (client == "midnight" and not OxedHub.IsMainline) then
+            allModules[id] = nil
+        end
+    end
+
     -- Modules the player left out in the setup wizard are not listed at all.
     if self:HasModulePicks() then
         for id, mod in pairs(allModules) do
@@ -1921,6 +2025,34 @@ function ModuleAPI:RefreshModulesTab()
             fresh:Hide()
             card.fresh = fresh
 
+            -- Which client the module is for, on the top edge at the right.
+            local clientTag = CreateFrame("Frame", nil, card)
+            clientTag:SetFrameLevel(card:GetFrameLevel() + 6)
+            clientTag:SetHeight(16)
+            clientTag:SetPoint("BOTTOMRIGHT", card, "TOPRIGHT", -12, -8)
+            clientTag.bg = clientTag:CreateTexture(nil, "BACKGROUND")
+            clientTag.bg:SetAllPoints()
+            clientTag.text = clientTag:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            clientTag.text:SetPoint("CENTER")
+            clientTag:EnableMouse(true)
+            clientTag:SetScript("OnEnter", function(self)
+                local c = self.client
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                if c == "midnight" then
+                    GameTooltip:SetText(L["Midnight only"])
+                    GameTooltip:AddLine(L["Works in the main game (Midnight). Not available in WoW Forever."], 1, 1, 1, true)
+                elseif c == "forever" then
+                    GameTooltip:SetText(L["WoW Forever only"])
+                    GameTooltip:AddLine(L["Works in WoW Forever. Not available in the main game (Midnight)."], 1, 1, 1, true)
+                else
+                    GameTooltip:SetText(L["Both clients"])
+                    GameTooltip:AddLine(L["Works in the main game (Midnight) and in WoW Forever."], 1, 1, 1, true)
+                end
+                GameTooltip:Show()
+            end)
+            clientTag:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            card.clientTag = clientTag
+
             tab.cards[cardIndex] = card
         end
         
@@ -1984,6 +2116,21 @@ function ModuleAPI:RefreshModulesTab()
             card.fresh:Show()
         else
             card.fresh:Hide()
+        end
+
+        -- Only built-in modules have a known client; a found addon gets none.
+        -- Modules for both clients (most of them) carry no tag: on every card
+        -- it took too much room and said nothing. Only the exclusive ones show.
+        local client = mod._registered and self:GetClient(mod)
+        if client and client ~= "both" then
+            local tag = self.CLIENT_TAGS[client]
+            card.clientTag.client = client
+            card.clientTag.text:SetText(L[tag.text])
+            card.clientTag:SetWidth((card.clientTag.text:GetStringWidth() or 60) + 14)
+            card.clientTag.bg:SetColorTexture(tag.r, tag.g, tag.b, 0.95)
+            card.clientTag:Show()
+        else
+            card.clientTag:Hide()
         end
 
         -- ⚠ The card has a fixed height and no ellipsis handling, so a long

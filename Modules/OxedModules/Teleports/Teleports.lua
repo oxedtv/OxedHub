@@ -39,6 +39,7 @@ local DEFAULTS = {
     showButton    = true,   -- the button the rows fly out of
     lockButton    = false,  -- drag it while unlocked
     showHidden    = false,  -- show the ones put away with a right click
+    randomHearth  = false,  -- one random hearthstone instead of all of them
     iconSize      = 36,     -- the icons that fly out
     buttonSize    = 32,     -- the button itself, set apart from them on purpose
     perLine       = 12,     -- icons before a row wraps into a second line
@@ -192,6 +193,17 @@ local function CollectEntries()
                 AddEntry(Group("hearth"), { kind = "item", id = itemID, name = name, icon = icon })
             end
         end
+
+        -- Random hearthstone: one icon in place of the whole group, aimed at a
+        -- different stone each time the list is built (after every use). The
+        -- All teleports list still shows every stone, so they can be put away
+        -- from the draw there.
+        local pool = groups.hearth
+        if settings.randomHearth and not includeHidden and pool and #pool > 1 then
+            local pick = pool[math.random(#pool)]
+            pick.random = true
+            groups.hearth = { pick }
+        end
     end
 
     -- Class spells, split into what moves you and what opens a door for others.
@@ -327,6 +339,9 @@ local function ShowEntryTooltip(button)
         GameTooltip:SetItemByID(entry.id)
     end
     GameTooltip:AddLine(" ")
+    if entry.random then
+        GameTooltip:AddLine(L["Random hearthstone: a different one after each use"], 0.4, 1, 0.4)
+    end
     GameTooltip:AddLine(entry.hidden and L["Right-click to bring it back"]
         or L["Right-click to put it away"], 0.6, 0.8, 1)
     GameTooltip:Show()
@@ -368,6 +383,12 @@ local function CreateButton(strip, index)
             GameTooltip:Hide()
             QueueRender()
             return
+        end
+
+        -- Draw the next stone. Deferred so the secure click has finished;
+        -- QueueRender waits out combat on its own.
+        if self.entry and self.entry.random then
+            C_Timer.After(0.5, function() QueueRender() end)
         end
 
         if settings and settings.closeAfterUse then CloseAll() end
@@ -1939,6 +1960,8 @@ local function ShowOptions()
         AddDirectionRow(w, "item",   L["Items in your bags"])
         AddDirectionRow(w, "equip",  L["Worn cloak or ring"])
 
+        w:AddCheckbox(settings, "randomHearth", "Random hearthstone (one icon, the others hidden)",
+            nil, function() QueueRender() end)
         w:AddCheckbox(settings, "closeAfterUse", "Fold away after use")
         w:AddCheckbox(settings, "closeOnLeave", "Fold away when the mouse leaves")
         w:AddCheckbox(settings, "showButton", "Show the button on screen", nil, ApplyButton)

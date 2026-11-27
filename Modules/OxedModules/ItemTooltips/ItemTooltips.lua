@@ -817,11 +817,93 @@ end
 
 -- ── Units, currencies, quests, achievements ─────────────────────────────────
 
+-- One plain answer from a unit function, or nil when it fails or is secret.
+local function Ask(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, a, b = pcall(fn, ...)
+    if not ok then return nil end
+    return Clean(a), Clean(b)
+end
+
+-- The mount a player is riding, from its buffs. Out of combat only: auras
+-- read back secret or empty in a fight.
+local function MountName(unit)
+    if InCombatLockdown() or not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex
+        and C_MountJournal and C_MountJournal.GetMountFromSpell) then return nil end
+    for i = 1, 40 do
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HELPFUL")
+        if not ok or type(aura) ~= "table" then return nil end
+        local spellId = Clean(aura.spellId)
+        if type(spellId) == "number" then
+            local mountId = C_MountJournal.GetMountFromSpell(spellId)
+            if mountId then
+                return (C_MountJournal.GetMountInfoByID(mountId)), mountId
+            end
+        end
+    end
+    return nil
+end
+
+local function SpecName(unit)
+    local specId
+    if Ask(UnitIsUnit, unit, "player") == true then
+        local index = GetSpecialization and GetSpecialization()
+        specId = index and GetSpecializationInfo and (GetSpecializationInfo(index))
+    else
+        -- Known only once the game has inspected them (the inspect window,
+        -- or another addon); nothing is asked of the server here.
+        specId = Ask(GetInspectSpecialization, unit)
+    end
+    if type(specId) ~= "number" or specId <= 0 or not GetSpecializationInfoByID then return nil end
+    local _, name = GetSpecializationInfoByID(specId)
+    return name
+end
+
+local function UnitDetails(tooltip, unit)
+    if not CheckModifier(settings.mod_ids) then return end
+    local isPlayer = Ask(UnitIsPlayer, unit) == true
+    if isPlayer and settings.showUnitSpec then
+        local spec = SpecName(unit)
+        if spec then AddInfo(tooltip, L["Spec"], spec) end
+    end
+    if isPlayer and settings.showUnitRealm then
+        local _, realm = Ask(UnitName, unit)
+        if realm == nil or realm == "" then realm = GetRealmName and GetRealmName() end
+        if type(realm) == "string" and realm ~= "" then AddInfo(tooltip, L["Realm"], realm) end
+    end
+    if isPlayer and settings.showUnitMount then
+        local name, mountId = MountName(unit)
+        if name then
+            AddInfo(tooltip, L["Mount"], settings.showMountId and mountId
+                and ("%s (%d)"):format(name, mountId) or name)
+        end
+    end
+    if settings.showUnitTarget then
+        local target = unit .. "target"
+        if Ask(UnitExists, target) == true then
+            local name = Ask(UnitName, target)
+            if type(name) == "string" then
+                local r, g, b = 1, 1, 1
+                if Ask(UnitIsUnit, target, "player") == true then
+                    name, r, g, b = L["You"], 1, 0.3, 0.3
+                elseif Ask(UnitIsPlayer, target) == true then
+                    local _, classFile = Ask(UnitClass, target)
+                    local c = classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
+                    if c then r, g, b = c.r, c.g, c.b end
+                end
+                AddInfo(tooltip, L["Target"], name, r, g, b)
+            end
+        end
+    end
+end
+
 local function ProcessUnit(tooltip)
-    if not (Active() and settings.showIds and settings.showUnitId and CheckModifier(settings.mod_ids)) then return end
+    if not Active() then return end
     local okUnit, _, unit = pcall(tooltip.GetUnit, tooltip)
     unit = okUnit and Clean(unit)
     if type(unit) ~= "string" then return end
+    UnitDetails(tooltip, unit)
+    if not (settings.showIds and settings.showUnitId and CheckModifier(settings.mod_ids)) then return end
     local okGuid, guid = pcall(UnitGUID, unit)
     guid = okGuid and Clean(guid)
     if type(guid) ~= "string" then return end
@@ -1043,6 +1125,11 @@ local function BuildIdsWindow(API)
     w:AddCheckbox(settings, "showEnchantId", "Enchant ID")
     w:AddCheckbox(settings, "showGemIds", "Socketed gem IDs")
     w:AddCheckbox(settings, "showIconId", "Icon (file) ID")
+    Heading(w, L["On players and NPCs"])
+    w:AddCheckbox(settings, "showUnitSpec", "Spec", "Your own, or a player the game has inspected.")
+    w:AddCheckbox(settings, "showUnitRealm", "Realm")
+    w:AddCheckbox(settings, "showUnitMount", "Mount they ride", "Out of combat.")
+    w:AddCheckbox(settings, "showUnitTarget", "Their target")
     Heading(w, L["Format"])
     w:AddChoice(settings, "idPrefix", "Written as", Data.ID_FORMAT_CHOICES)
     w:AddChoice(settings, "mod_ids", "Show IDs", Data.MODIFIER_CHOICES)
@@ -1310,7 +1397,7 @@ loginFrame:SetScript("OnEvent", function(self)
         id       = "itemtooltips",
         name     = "Item Tooltips",
         version  = "1.3.1",
-        updated  = 20261122.1,  -- one entry per character across Forever layer swaps
+        updated  = 20261127,  -- spec, realm, mount and target on players
         author   = "Oxed",
         category = "items",
         keywords = { "tooltip", "item", "id", "aura", "spell", "inventory", "count", "alts", "expansion",

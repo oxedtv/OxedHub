@@ -56,17 +56,40 @@ local KIND_COLORS = {
     FIXED   = "ff40c0ff",
 }
 
--- A line's optional third field names the one client it is for: "forever"
--- or "retail". It is printed in front of the text. Leave it out for both.
+-- A line's optional third field names the client it is for: "forever",
+-- "midnight" (or the old "retail") or "both". It is printed in front of the text.
 local CLIENT_TAGS = {
     forever = "|cff4fc3f7Forever:|r ",
-    retail  = "|cffffb347Retail:|r ",
+    retail  = "|cffffb347Midnight:|r ",
+    midnight = "|cffffb347Midnight:|r ",
+    both    = "|cffffb347Midnight|r + |cff4fc3f7Forever:|r ",
 }
 
 -- Newest version first. Only the entries newer than what the player last saw
 -- are shown, so an update that skips a version still explains everything that
 -- changed in between.
 WhatsNew.RELEASES = {
+    {
+        version = "2.4.82",
+        lines = {
+            { "NEW", "Cooldown Pulse module: a spell's icon flashes mid-screen when it is ready again, with a sound if you choose one.", "both" },
+            { "NEW", "Sound Muter module: mute Bloodlust, demon summons, chatty mounts and more, always or only in combat. /oxmute add <ID> for any other sound.", "both" },
+            { "NEW", "Context Menu Links module: right-click a player or NPC to copy its Raider.IO, Warcraft Logs, Armory or Wowhead link.", "midnight" },
+            { "NEW", "Train All module: a button on every trainer learns everything you can afford, one skill at a time.", "both" },
+            { "NEW", "Flight Timer: a route shows its time and cost before you have ever flown it.", "both" },
+            { "NEW", "Item Tooltips: a player's spec, realm, the mount they ride and their target.", "both" },
+            { "NEW", "Modules page: a minimap button for every module, either standalone or gathered into the OxedHub button.", "both" },
+            { "NEW", "Minimap Buttons: gather only OxedHub's own icons.", "both" },
+            { "CHANGED", "Minimap Buttons: its button wears the Oxed logo and sits on the minimap's edge; Ctrl+click opens the OxedHub window.", "both" },
+            { "NEW", "Teleports: random hearthstone, one icon and a different stone after each use.", "both" },
+            { "NEW", "Craft Profit: choose which of this character's professions are scanned.", "both" },
+            { "NEW", "Auto Confirm: the destroy popup says when the item is a quest item or a crafting material.", "both" },
+            { "NEW", "Chat Filter: asks before deleting anything from its lists.", "both" },
+            { "FIXED", "Chat Filter: the \"why are you ignoring\" popup no longer opens by itself after login.", "both" },
+            { "CHANGED", "Modules page: modules made for the other client are no longer listed; only single-client modules carry a MIDNIGHT or FOREVER tag.", "both" },
+            { "CHANGED", "OxedHub's windows carry a small OxedHub signature under the corner.", "both" },
+        },
+    },
     {
         version = "2.4.81",
         lines = {

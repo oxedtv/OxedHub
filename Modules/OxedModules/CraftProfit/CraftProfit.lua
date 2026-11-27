@@ -105,6 +105,46 @@ local function RememberItems(profession, entries)
     if settings.scanProfs[profession] == nil then settings.scanProfs[profession] = true end
 end
 
+-- The professions this character has learned, by name (the same name the
+-- profession window gives, which is what recipeItems is keyed by). Fishing and
+-- Archaeology are left out: nothing to craft. Nil when the client gives no
+-- answer at all, so callers can fall back to every profession seen.
+local NO_RECIPES = { [356] = true, [794] = true }   -- Fishing, Archaeology
+local function KnownProfessions()
+    local names = {}
+    if GetProfessions and GetProfessionInfo then
+        local ok, a, b, c, d, e = pcall(GetProfessions)
+        if ok then
+            for _, index in pairs({ a, b, c, d, e }) do
+                local okI, name, _, _, _, _, _, skillLine = pcall(GetProfessionInfo, index)
+                if okI and type(name) == "string" and name ~= "" and not NO_RECIPES[skillLine] then
+                    names[#names + 1] = name
+                end
+            end
+        end
+        -- An empty answer on a client that also has the skills list may only
+        -- mean this call is a stub there: ask the skills list as well.
+        if #names > 0 or not GetNumSkillLines then return ok and names or nil end
+    end
+    -- Older clients: the skills list, under its Professions and Secondary
+    -- Skills headers.
+    if GetNumSkillLines and GetSkillLineInfo then
+        local fishing = GetSpellInfo and GetSpellInfo(7620)
+        local wanted = { [TRADE_SKILLS or "Professions"] = true, [SECONDARY_SKILLS or "Secondary Skills"] = true }
+        local under = false
+        for i = 1, GetNumSkillLines() or 0 do
+            local name, isHeader = GetSkillLineInfo(i)
+            if isHeader then
+                under = wanted[name] == true
+            elseif under and type(name) == "string" and name ~= fishing then
+                names[#names + 1] = name
+            end
+        end
+        return names
+    end
+    return nil
+end
+
 -- Reagents every trade-goods vendor sells, at their price. Anything else seen
 -- at a merchant is remembered in settings.vendorPrices (MERCHANT_SHOW).
 local VENDOR_REAGENTS = {
@@ -444,8 +484,16 @@ end
 
 local function ScanQueue()
     local ids = {}
+    -- Only this character's professions: another character's list stays
+    -- saved but is not scanned here.
+    local known = KnownProfessions()
+    local mine
+    if known then
+        mine = {}
+        for _, name in ipairs(known) do mine[name] = true end
+    end
     for prof, on in pairs(settings.scanProfs) do
-        if on and type(settings.recipeItems[prof]) == "table" then
+        if on and (not mine or mine[prof]) and type(settings.recipeItems[prof]) == "table" then
             for id in pairs(settings.recipeItems[prof]) do ids[id] = true end
         end
     end
@@ -1002,8 +1050,13 @@ local function ShowOptions()
     local API = OxedHub.ModuleAPI
     if not API or not settings then return end
     if not optionsWindow then
-        local profs = {}
-        for prof in pairs(settings.recipeItems) do profs[#profs + 1] = prof end
+        -- This character's professions; every one seen only if the client
+        -- cannot say which are learned.
+        local profs = KnownProfessions()
+        if not profs then
+            profs = {}
+            for prof in pairs(settings.recipeItems) do profs[#profs + 1] = prof end
+        end
         table.sort(profs)
         local o = API:CreateOptionsWindow("Craft Profit", 470, 610 + math.max(1, #profs) * 28)
         local function Again() QueueRescan() end
@@ -1023,14 +1076,22 @@ local function ShowOptions()
         o:AddSlider(settings, "scanEvery", "Scan again after", 5, 240, 5, "%s: %d min")
         o:AddCheckbox(settings, "skipWithAuctionator", "Do not scan when Auctionator is installed")
         o:AddCheckbox(settings, "scanDisenchantMats", "Also scan dusts, essences and shards")
-        o:AddNote("Professions to scan:")
+        o:AddNote("Professions to scan (learned on this character):")
         if #profs == 0 then
-            o:AddNote("Open a profession window once and it is listed here.")
+            o:AddNote("This character has no crafting profession yet.")
         end
         for _, prof in ipairs(profs) do
-            local count = 0
-            for _ in pairs(settings.recipeItems[prof]) do count = count + 1 end
-            o:AddCheckbox(settings.scanProfs, prof, prof .. " |cFF888888(" .. count .. ")|r")
+            if settings.scanProfs[prof] == nil then settings.scanProfs[prof] = true end
+            local items = settings.recipeItems[prof]
+            local label
+            if type(items) == "table" then
+                local count = 0
+                for _ in pairs(items) do count = count + 1 end
+                label = prof .. " |cFF888888(" .. count .. ")|r"
+            else
+                label = prof .. " |cFF888888" .. L["(open its window once)"] .. "|r"
+            end
+            o:AddCheckbox(settings.scanProfs, prof, label)
         end
 
         local row = CreateFrame("Frame", nil, o)

@@ -1220,6 +1220,7 @@ end
 local function BuildQueuePanel()
     queuePanel = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     OxedHub:HideInPetBattle(queuePanel)
+    if OxedHub.Sign then OxedHub:Sign(queuePanel) end
     queuePanel:SetFrameStrata("TOOLTIP")
     queuePanel:SetClampedToScreen(true)
     queuePanel:SetWidth(Q_WIDTH)

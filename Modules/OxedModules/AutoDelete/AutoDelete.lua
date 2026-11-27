@@ -30,6 +30,7 @@ local DEFAULTS = {
     questItems     = true,   -- ...also for quest items
     housingDecor   = true,   -- ...also for housing decor
     pressDelete    = false,  -- and press Accept as well
+    warnDestroy    = true,   -- say above the popup what kind of item it is
 
     -- Everything else: skip the popup entirely
     sellTradeable  = false,
@@ -174,6 +175,97 @@ local function PressAccept(which, dialog)
     end)
 end
 
+-- ── What is being destroyed ─────────────────────────────────────────────────
+-- The game's delete popup only names the item. A line above it says what kind
+-- of thing it is, loudly when it is a quest item or a crafting material, the
+-- two that get thrown away by mistake.
+
+local warnFrame
+
+-- The item on the cursor, which is what a delete popup is about.
+-- Returns itemID, link or nil.
+local function CursorItem()
+    if not GetCursorInfo then return nil end
+    local ok, kind, itemID, link = pcall(GetCursorInfo)
+    if ok and kind == "item" and type(itemID) == "number" then return itemID, link end
+    return nil
+end
+
+-- "quest", "reagent" or nil, and a description such as "Quest item" or
+-- "Tradeskill - Cloth".
+local function DescribeItem(itemID)
+    local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    if not getInfo then return nil end
+    local ok, _, _, _, _, _, itemType, subType, _, _, _, _, classID, _, _, _, _, isReagent = pcall(getInfo, itemID)
+    if not ok then return nil end
+    local QUEST = (Enum and Enum.ItemClass and Enum.ItemClass.Questitem) or 12
+    local TRADE = (Enum and Enum.ItemClass and Enum.ItemClass.Tradegoods) or 7
+    local kind
+    if classID == QUEST then
+        kind = "quest"
+    elseif isReagent == true or classID == TRADE then
+        kind = "reagent"
+    end
+    local text = itemType or ""
+    if type(subType) == "string" and subType ~= "" and subType ~= itemType then
+        text = text ~= "" and (text .. " - " .. subType) or subType
+    end
+    return kind, text
+end
+
+local function HideWarning()
+    if warnFrame then warnFrame:Hide() end
+end
+
+local function ShowWarning(dialog, kind, text)
+    if not warnFrame then
+        warnFrame = CreateFrame("Frame", "OxedHubDeleteWarning", UIParent, "BackdropTemplate")
+        warnFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+        warnFrame:SetSize(360, 30)
+        warnFrame:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        warnFrame.text = warnFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        warnFrame.text:SetPoint("CENTER")
+        -- Gone with the popup, whichever way it closes.
+        warnFrame:SetScript("OnUpdate", function(self)
+            -- .which is compared only where the dialog has one: newer popup
+            -- frames may not, and the warning would vanish at once.
+            local d = self.dialog
+            if not (d and d:IsShown() and (d.which == nil or d.which == self.which)) then
+                self:Hide()
+            end
+        end)
+        warnFrame:Hide()
+    end
+    local line
+    if kind == "quest" then
+        line = "|cffff4040" .. L["QUEST ITEM"] .. "|r"
+        warnFrame:SetBackdropColor(0.35, 0, 0, 0.95)
+        warnFrame:SetBackdropBorderColor(1, 0.2, 0.2, 1)
+    elseif kind == "reagent" then
+        line = "|cffffb347" .. L["CRAFTING MATERIAL"] .. "|r"
+        warnFrame:SetBackdropColor(0.3, 0.18, 0, 0.95)
+        warnFrame:SetBackdropBorderColor(1, 0.7, 0.2, 1)
+    else
+        line = ""
+        warnFrame:SetBackdropColor(0.05, 0.05, 0.05, 0.9)
+        warnFrame:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+    end
+    if text and text ~= "" then
+        line = line ~= "" and (line .. "  |cffd0d0d0" .. text .. "|r") or ("|cffd0d0d0" .. text .. "|r")
+    end
+    if line == "" then warnFrame:Hide() return end
+    warnFrame.text:SetText(line)
+    warnFrame:SetWidth(math.max(200, (warnFrame.text:GetStringWidth() or 200) + 30))
+    warnFrame:ClearAllPoints()
+    warnFrame:SetPoint("BOTTOM", dialog, "TOP", 0, 4)
+    warnFrame.dialog, warnFrame.which = dialog, dialog.which
+    warnFrame:Show()
+end
+
 -- ── Handling one popup ──────────────────────────────────────────────────────
 
 local function OnPopupShown(which, _, _, data)
@@ -181,6 +273,21 @@ local function OnPopupShown(which, _, _, data)
     if type(which) ~= "string" then return end
     -- OxedHub's own questions are the player's to answer, never this module's.
     if which:find("^OXEDHUB_") then return end
+
+    -- Say what is being destroyed, before any rule can press anything.
+    local guarded = false
+    if settings.warnDestroy and which:find("^DELETE_") then
+        local itemID = CursorItem()
+        local dialog = itemID and FindDialog(which)
+        if dialog then
+            local kind, text = DescribeItem(itemID)
+            if which:find("QUEST") then kind = "quest" end
+            ShowWarning(dialog, kind, text)
+            guarded = kind ~= nil
+        else
+            HideWarning()
+        end
+    end
 
     local rule = RULES[which]
     if not rule then
@@ -193,6 +300,10 @@ local function OnPopupShown(which, _, _, data)
 
     -- With the Shift switch on, Shift shows a popup the settings would skip.
     if settings.shiftSkip and IsShiftKeyDown() then return end
+
+    -- A quest item or crafting material is never destroyed without the
+    -- player's own click, whatever "Press Accept too" says.
+    if guarded and rule.delete and not rule.word then return end
 
     local dialog = FindDialog(which)
     if not dialog then return end
@@ -208,7 +319,7 @@ local function OnPopupShown(which, _, _, data)
         end
         -- The word alone is the default. Accept is pressed only when the
         -- player has asked for deletes to go through without stopping.
-        if not settings.pressDelete then return end
+        if not settings.pressDelete or guarded then return end
     end
 
     PressAccept(which, dialog)
@@ -269,6 +380,8 @@ local function ShowOptions()
             "Destroying decor from your housing storage.")
         w:AddCheckbox(settings, "pressDelete", "Press Accept too (no delete popup)",
             "Deletes go through the moment you drop the item, with no chance to change your mind.")
+        w:AddCheckbox(settings, "warnDestroy", "Warn when destroying a quest item or crafting material",
+            "A line above the delete popup says what kind of item it is. Such items are never deleted without your click.")
 
         w:AddCheckbox(settings, "shiftSkip", "Hold Shift to see a popup anyway",
             "With this on, holding Shift while doing the action shows its popup, whatever is ticked below.")

@@ -68,7 +68,7 @@ local LOG_LIMIT = 250        -- blocked lines kept for this session
 local EXPIRY_STEPS = { 0, 1, 7, 30, 90 }   -- days; 0 means never
 
 -- Forward declarations
-local RefreshManager, OpenManager, SetIgnored, SyncToBlizzard, HookBlizzardIgnore
+local RefreshManager, OpenManager, SetIgnored, SyncToBlizzard, HookBlizzardIgnore, ConfirmDelete
 
 -- Set while OxedHub itself adds to or removes from Blizzard's ignore list
 -- (the 50-slot sync), so the hook on that list can tell those calls from the
@@ -219,6 +219,24 @@ local function AskReason(full)
         }
     end
     StaticPopup_Show("OXEDHUB_IGNORE_REASON", full, nil, full)
+end
+
+-- Asked before any row of the manager's lists is removed.
+function ConfirmDelete(what, onAccept)
+    if not StaticPopupDialogs.OXEDHUB_CHATFILTER_DELETE then
+        StaticPopupDialogs.OXEDHUB_CHATFILTER_DELETE = {
+            text = "|cff00ff00OxedHub|r |cff9d9d9d" .. L["Chat Filter"] .. "|r\n\n"
+                .. L["Remove %s from the list?"],
+            button1 = L["Remove"],
+            button2 = L["Cancel"],
+            OnAccept = function(_, data) if data then data() end end,
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+            preferredIndex = 3,
+        }
+    end
+    StaticPopup_Show("OXEDHUB_CHATFILTER_DELETE", what ~= "" and what or L["this entry"], nil, onAccept)
 end
 
 -- ── Warnings ────────────────────────────────────────────────────────────────
@@ -1409,7 +1427,17 @@ local function DrawRows(items)
         row.left:SetPoint("RIGHT", row.right, "LEFT", -8, 0)
 
         row.delete:SetShown(item.onDelete ~= nil)
-        row.delete:SetScript("OnClick", item.onDelete)
+        -- Every delete asks first: one stray click used to drop an entry for good.
+        if item.onDelete then
+            local c = item.cols or {}
+            local what = tostring(c[1] or "") .. ((c[2] and c[2] ~= "") and (" " .. tostring(c[2])) or "")
+            local onDelete = item.onDelete
+            row.delete:SetScript("OnClick", function()
+                ConfirmDelete(what, onDelete)
+            end)
+        else
+            row.delete:SetScript("OnClick", nil)
+        end
         row:SetScript("OnClick", item.onClick)
         row:Show()
         y = y + ROW_HEIGHT
@@ -2157,8 +2185,21 @@ end
 -- they join the account-wide list too, and the reason is asked for. OxedHub's
 -- own sync calls are marked and skipped.
 local blizzardHooked = false
+local loginTime = GetTime()
+local LOGIN_GRACE = 60
+-- Every loading screen starts the quiet minute again.
+local graceFrame = CreateFrame("Frame")
+graceFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+graceFrame:SetScript("OnEvent", function() loginTime = GetTime() end)
 local function OnBlizzardIgnore(name, toggled)
-    if ourIgnoreCall or not settings or settings.enabled == false then return end
+    if ourIgnoreCall or inBlizzardSync or not settings or settings.enabled == false then return end
+    -- ⚠ The popup used to open at random after logging in: another addon (or
+    -- the game restoring a list) calling AddIgnore at login looks the same to
+    -- this hook as the player ignoring someone. Nothing in the first minute
+    -- after a login, reload or loading screen is asked about.
+    -- (issecure() cannot tell them apart: inside a hooksecurefunc hook it is
+    -- always false, since the hook itself is addon code.)
+    if GetTime() - loginTime < LOGIN_GRACE then return end
     local full = FullName(name)
     if not full then return end
     -- AddOrDelIgnore may have removed them instead: asked a moment later.

@@ -610,6 +610,7 @@ end
 local function BuildShareWindow()
     local f = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplate")
     f:SetSize(440, 260)
+    if OxedHub.Sign then OxedHub:Sign(f) end
     f:SetPoint("CENTER")
     -- Above the options window it is opened from.
     f:SetFrameStrata("FULLSCREEN_DIALOG")

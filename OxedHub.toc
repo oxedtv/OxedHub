@@ -2,7 +2,7 @@
 ## Title: Oxed Hub
 ## Notes: Unified interface for sounds, animations, emotes, chat messages, and toys based on in-game events
 ## Author: https://customwowaddon.com/
-## Version: 2.4.81
+## Version: 2.4.82
 ## SavedVariables: OxedHubDB, OxMythicLooterDB
 ## SavedVariablesPerCharacter: OxMythicLooterCharDB
 ## OptionalDeps: OxedHub_MemePack, OxedHub_GamingPack, OxedHub_CustomMedia
@@ -47,6 +47,7 @@ Core\Core.lua
 Core\Sections.lua
 Core\ModuleAPI.lua
 Core\PetBattleHide.lua
+Core\Signature.lua
 Modules\ErrorJournal.lua
 Modules\WhatsNew.lua
 Modules\MacroRegistry.lua
@@ -156,7 +157,12 @@ Modules\OxedModules\Cursor\Cursor.lua
 Modules\OxedModules\Mail\Mail.lua
 Modules\OxedModules\Markers\Markers.lua
 Modules\OxedModules\ThreatBar\ThreatBar.lua
+Modules\OxedModules\FlightTimer\FlightTimerData.lua
 Modules\OxedModules\FlightTimer\FlightTimer.lua
+Modules\OxedModules\CooldownPulse\CooldownPulse.lua
+Modules\OxedModules\SoundMuter\SoundMuter.lua
+Modules\OxedModules\ContextLinks\ContextLinks.lua
+Modules\OxedModules\TrainAll\TrainAll.lua
 Modules\OxedModules\Instances\Instances.lua
 Modules\OxedModules\PvPProgress\PvPProgress.lua
 Modules\OxedModules\GoldWQ\GoldWQData.lua

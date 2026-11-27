@@ -3,11 +3,9 @@
 -- A bar while you are on a flight path: where you are going, how long is left,
 -- and a sound shortly before you land so you can do something else meanwhile.
 --
--- It learns the times itself. The first flight on a route is timed and written
--- down, and every flight after that counts down from what it learned. Nothing
--- is shipped with the module: a table of every route in the game would be
--- larger than the whole addon, and a time measured on your own connection is
--- the right one anyway.
+-- Times come from FlightTimerData.lua (by the game's node ids), so a route
+-- shows its time before it was ever flown. Each flight is also timed and
+-- written down, and a learned time wins over the shipped one.
 --
 -- ⚠ TakeTaxiNode is hooked with hooksecurefunc, never replaced. Replacing a
 -- Blizzard global taints everything that calls it afterwards.
@@ -91,6 +89,108 @@ local function Learn(from, to, seconds)
     else
         settings.routes[key] = seconds
     end
+end
+
+-- ── Times known before the first flight ─────────────────────────────────────
+-- FlightTimerData.lua holds measured times by the game's node ids, so a route
+-- shows a time before it was ever flown. A time learned here wins over it.
+-- Merged once, for this client and faction, on first use.
+
+local defaultTimes   -- nil: not built yet, false: no data
+
+local function DefaultTable()
+    if defaultTimes ~= nil then return defaultTimes or nil end
+    defaultTimes = false
+    local data = OxedHub.FlightTimeData
+    if type(data) ~= "table" then return nil end
+    local build = select(4, GetBuildInfo()) or 0
+    local faction = UnitFactionGroup and UnitFactionGroup("player")
+    local merged = {}
+    local function Apply(era)
+        if type(era) ~= "table" then return end
+        -- Faction last, so its own times win over the shared zones.
+        for _, side in ipairs({ "FactionslessZones", faction }) do
+            local nodes = side and era[side]
+            if type(nodes) == "table" then
+                for from, dests in pairs(nodes) do
+                    if type(dests) == "table" then
+                        merged[from] = merged[from] or {}
+                        for to, seconds in pairs(dests) do merged[from][to] = seconds end
+                    end
+                end
+            end
+        end
+    end
+    if build >= 40000 then
+        Apply(data.main)
+    elseif WOW_PROJECT_CAMELOT and WOW_PROJECT_ID == WOW_PROJECT_CAMELOT then
+        -- Forever: the old routes only; the later ones were redrawn.
+        Apply(data.classic)
+        Apply(data.forever)
+    else
+        Apply(data.main)
+        Apply(data.classic)
+        if build >= 20000 then Apply(data.tbc) end
+        if build >= 30000 then Apply(data.wrath) end
+    end
+    defaultTimes = merged
+    return merged
+end
+
+local function TaxiMapID()
+    if FlightMapFrame and FlightMapFrame.GetMapID then
+        local ok, id = pcall(FlightMapFrame.GetMapID, FlightMapFrame)
+        if ok and id then return id end
+    end
+    return GetTaxiMapID and GetTaxiMapID() or nil
+end
+
+local function NodeIDOfSlot(slot)
+    if type(slot) ~= "number" or not (C_TaxiMap and C_TaxiMap.GetAllTaxiNodes) then return nil end
+    local ok, nodes = pcall(C_TaxiMap.GetAllTaxiNodes, TaxiMapID())
+    if not ok or type(nodes) ~= "table" then return nil end
+    for _, node in ipairs(nodes) do
+        if node.slotIndex == slot then return node.nodeID end
+    end
+    return nil
+end
+
+local function CurrentSlot()
+    if not (NumTaxiNodes and TaxiNodeGetType) then return nil end
+    for index = 1, NumTaxiNodes() do
+        local ok, kind = pcall(TaxiNodeGetType, index)
+        if ok and kind == "CURRENT" then return index end
+    end
+    return nil
+end
+
+-- The time to the node in `slot` while the flight map is open: the route
+-- itself, or else its legs added up. Nil when any part is unknown.
+local function DefaultTime(slot)
+    local times = DefaultTable()
+    if not times then return nil end
+    local src, dst = NodeIDOfSlot(CurrentSlot()), NodeIDOfSlot(slot)
+    if not (src and dst) then return nil end
+    local direct = times[src] and times[src][dst]
+    if type(direct) == "number" then return direct end
+
+    if not (GetNumRoutes and TaxiGetNodeSlot) then return nil end
+    local okN, hops = pcall(GetNumRoutes, slot)
+    if not okN or type(hops) ~= "number" or hops < 2 then return nil end
+    local total, prev = 0, src
+    for hop = 1, hops do
+        local nextID
+        if hop == hops then
+            nextID = dst
+        else
+            local okS, s = pcall(TaxiGetNodeSlot, slot, hop + 1, true)
+            nextID = okS and NodeIDOfSlot(s) or nil
+        end
+        local leg = nextID and times[prev] and times[prev][nextID]
+        if type(leg) ~= "number" then return nil end
+        total, prev = total + leg, nextID
+    end
+    return total
 end
 
 -- ── The names of the two ends ───────────────────────────────────────────────
@@ -274,7 +374,7 @@ local function Tick(_, elapsed)
     end
 end
 
-local function Start(destination)
+local function Start(destination, slot)
     if not settings or settings.enabled == false then return end
 
     BuildBar()
@@ -283,7 +383,7 @@ local function Start(destination)
     flight.clickedAt = GetTime()
     flight.startedAt = GetTime()   -- reset on boarding; see Tick
     flight.boarded = UnitOnTaxi and UnitOnTaxi("player") and true or false
-    flight.total = KnownTime(flight.from, flight.to)
+    flight.total = KnownTime(flight.from, flight.to) or DefaultTime(slot)
     flight.warned = false
     flight.since = 0
     flight.active = true
@@ -320,7 +420,7 @@ local function InstallHooks()
     hooksecurefunc("TakeTaxiNode", function(slot)
         if not settings or settings.enabled == false then return end
         local okName, name = pcall(TaxiNodeName, slot)
-        Start(okName and SafeName(name) or nil)
+        Start(okName and SafeName(name) or nil, slot)
     end)
 
     local addingTooltip = false
@@ -348,10 +448,24 @@ local function InstallHooks()
             local to = SafeName(text)
             if not from or not to or from == to then return end
 
-            local time = KnownTime(from, to)
-            if time then
+            local slot
+            if isRetailFlightPin then
+                slot = owner.taxiNodeData.slotIndex
+            elseif owner.GetID then
+                slot = owner:GetID()
+            end
+            local time = KnownTime(from, to) or DefaultTime(slot)
+            -- The cost, unless the game's tooltip already shows it.
+            local cost
+            if not (self.shownMoneyFrames and self.shownMoneyFrames > 0)
+                and type(slot) == "number" and TaxiNodeCost and GetCoinTextureString then
+                local okCost, c = pcall(TaxiNodeCost, slot)
+                if okCost and type(c) == "number" and c > 0 then cost = c end
+            end
+            if time or cost then
                 addingTooltip = true
-                self:AddLine(L["Duration: "] .. Clock(time), 1, 1, 1)
+                if time then self:AddLine(L["Duration: "] .. Clock(time), 1, 1, 1) end
+                if cost then self:AddLine(L["Cost: "] .. GetCoinTextureString(cost), 1, 1, 1) end
                 self:Show()
                 addingTooltip = false
             end
@@ -519,7 +633,7 @@ local function ShowOptions()
         end)
         w.cursorY = w.cursorY - 30
 
-        w:AddNote("The first flight on a route is timed and written down. Every flight after that counts down from what was learned, and each new flight nudges the figure, so it settles on your own connection rather than on a table shipped with the addon.")
+        w:AddNote("Most routes show their time and cost before you have ever flown them. A route flown here is also timed, and each new flight nudges the figure, so it settles on your own connection.")
         w:AddNote("The landing sound is picked from your own OxedHub sounds, the same library the triggers use, and it plays through OxedHub so it follows your sound channel.")
         w:AddNote("Type /oxflight for what has been learned so far.")
     end
@@ -571,7 +685,8 @@ loginFrame:SetScript("OnEvent", function(self)
     OxedHub.ModuleAPI:Register({
         id       = "flighttimer",
         name     = "Flight Timer",
-        version  = "1.0.0",
+        version  = "1.1.0",
+        updated  = 20261127,
         author   = "Oxed",
         category = "quests",
         keywords = { "flight", "taxi", "flight path", "timer", "inflight", "travel", "afk" },

@@ -1385,12 +1385,12 @@ function UI:CreateDashboardTab()
     end)
 
     -- ───────────────────────────────────────────────────────────────
-    -- CARD 1: RELEASE NOTES (RELEASE 2.4.81)
+    -- CARD 1: RELEASE NOTES (RELEASE 2.4.82)
     -- ───────────────────────────────────────────────────────────────
     local relTitle = card1:CreateFontString(nil, "OVERLAY", "QuestFont_Shadow_Huge")
     relTitle:SetPoint("TOP", card1, "TOP", 0, -12)
     relTitle:SetTextColor(1, 0.82, 0, 1)
-    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.81")
+    relTitle:SetText(L["RELEASE_TITLE"] or "Release 2.4.82")
     local rName, rHeight, rFlags = relTitle:GetFont()
     if rName then relTitle:SetFont(OxedHub:GetFont(rName), rHeight * 1.1, rFlags) end
 
@@ -1472,10 +1472,10 @@ function UI:CreateDashboardTab()
     -- describing features that shipped many versions ago -- so an update
     -- looked like nothing had changed. Keep it to what is actually new.
     local relLines = {
-        L["•  New: Thanks for the Buff. An emote and thanks for buffs."],
-        L["•  Buff Reminder: warns in combat about wrong aspect, seal, armor."],
-        L["•  Roll Advisor: a window of who rolled what."],
-        L["•  Group Finder: Post LFG, Decline, whispers lit up."],
+        L["•  New: Cooldown Pulse, Sound Muter and Train All (both clients)."],
+        L["•  New, Midnight only: Context Menu Links (Raider.IO, Logs)."],
+        L["•  Flight Timer knows routes before you fly them."],
+        L["•  A minimap button for every module, or all in one."],
         L["•  Leave feedback with the button on the first page."],
         L["•  Grab either pack from CurseForge:"],
     }
@@ -3834,11 +3834,84 @@ function UI:CreateModulesTab()
 
     local shareAll = CreateFrame("Button", nil, header, "UIPanelButtonTemplate")
     shareAll:SetSize(150, 24)
-    shareAll:SetPoint("TOPRIGHT", header, "TOPRIGHT", -16, -48)
+    shareAll:SetPoint("TOPRIGHT", header, "TOPRIGHT", -16, -43)
     shareAll:SetText(L["Share all modules"])
     shareAll:SetScript("OnClick", function()
         if OxedHub.Share then OxedHub.Share:ShowModuleShare(nil) end
     end)
+
+    -- Minimap icons: one button, one menu. Where OxedHub's icons go (on the
+    -- minimap, or gathered into one OxedHub button: OxedHub.MinimapPlacement
+    -- in MinimapButtons.lua), and whether every module gets one
+    -- (ModuleAPI:RefreshModuleIcons). A tick box under the button used to
+    -- hold the second choice and was covered by the category tabs.
+    do
+    local function Placement()
+        local P = OxedHub.MinimapPlacement
+        return P and P.Get() or "standalone"
+    end
+    local function EveryModule()
+        local g = OxedHubDB and OxedHubDB.globalSettings
+        return g and g.moduleMinimapIcons == true
+    end
+    local function SetPlacement(value)
+        local P = OxedHub.MinimapPlacement
+        if P then P.Set(value) end
+    end
+    local function SetEveryModule(on)
+        OxedHubDB.globalSettings = OxedHubDB.globalSettings or {}
+        OxedHubDB.globalSettings.moduleMinimapIcons = on and true or nil
+        if OxedHub.ModuleAPI and OxedHub.ModuleAPI.RefreshModuleIcons then
+            OxedHub.ModuleAPI:RefreshModuleIcons()
+        end
+    end
+
+    local place = CreateFrame("Button", nil, header, "UIPanelButtonTemplate")
+    place:SetSize(210, 24)
+    place:SetPoint("TOPRIGHT", shareAll, "TOPLEFT", -6, 0)
+    place:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    local function PlaceText()
+        place:SetText(Placement() == "oxedhub" and L["Minimap icons: in one button"]
+            or L["Minimap icons: separate"])
+    end
+    place:SetScript("OnShow", PlaceText)
+    place:SetScript("OnClick", function(self, mouse)
+        if MenuUtil and MenuUtil.CreateContextMenu then
+            MenuUtil.CreateContextMenu(self, function(_, root)
+                root:CreateTitle(L["Where OxedHub's minimap icons go"])
+                root:CreateRadio(L["Each icon on the minimap"],
+                    function() return Placement() ~= "oxedhub" end,
+                    function() SetPlacement("standalone") PlaceText() end)
+                root:CreateRadio(L["All in one OxedHub button"],
+                    function() return Placement() == "oxedhub" end,
+                    function() SetPlacement("oxedhub") PlaceText() end)
+                root:CreateDivider()
+                root:CreateCheckbox(L["An icon for every module, not only some"],
+                    EveryModule, function() SetEveryModule(not EveryModule()) end)
+            end)
+        elseif mouse == "RightButton" then
+            -- Clients without the menu: right-click switches every-module icons.
+            SetEveryModule(not EveryModule())
+        else
+            SetPlacement(Placement() == "oxedhub" and "standalone" or "oxedhub")
+            PlaceText()
+        end
+    end)
+    place:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(L["Minimap icons"])
+        GameTooltip:AddLine(Placement() == "oxedhub"
+            and L["Now: every OxedHub icon is gathered into one minimap button with the Oxed logo; click it to open them."]
+            or L["Now: each OxedHub icon sits on the minimap by itself."], 1, 1, 1, true)
+        GameTooltip:AddLine(EveryModule()
+            and L["Every switched-on module has an icon."]
+            or L["Only modules with an icon of their own have one."], 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine(L["Click to change."], 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    end)
+    place:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    PlaceText()
+    end
 
     -- Only for a player who picked their modules in the setup wizard: the page
     -- lists just those, and this opens the wizard's list to add or drop some.
